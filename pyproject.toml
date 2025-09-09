@@ -1,0 +1,15 @@
+[tool.black]
+line-length = 100
+target-version = ["py312"]
+exclude = '''
+/(
+    \.venv
+  | \.git
+  | \.mypy_cache
+  | \.ruff_cache
+  | __pycache__
+  | .*\.pyc
+  | .*\.pyo
+  | .*/migrations/.*
+)/
+'''

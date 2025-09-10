@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+
+{% block title %}
+  Register · Homeschool Hub
+{% endblock %}
+
+{% block content %}
+  <h2>Create your account</h2>
+  <form method="post" novalidate>
+    {% csrf_token %}
+    {{ form.non_field_errors }}
+
+    <label>
+      Email
+      {{ form.email }}
+      {{ form.email.errors }}
+    </label>
+
+    <label>
+      Username
+      {{ form.username }}
+      {{ form.username.errors }}
+    </label>
+
+    <label>
+      Role
+      {{ form.role }}
+      {{ form.role.errors }}
+    </label>
+
+    <label>
+      Password
+      {{ form.password1 }}
+      {{ form.password1.errors }}
+    </label>
+
+    <label>
+      Confirm Password
+      {{ form.password2 }}
+      {{ form.password2.errors }}
+    </label>
+
+    <div class="actions">
+      <button type="submit">Register</button>
+    </div>
+  </form>
+
+  <p style="margin-top:1rem;">
+    Already have an account? <a href="{% url 'accounts:login' %}">Log in</a>
+  </p>
+{% endblock %}

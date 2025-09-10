@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block title %}Home · Homeschool Hub{% endblock %}
+{% block content %}
+  <h2>Welcome</h2>
+  {% if user.is_authenticated %}
+    <p>You’re signed in as <strong>{{ user.username }}</strong>.</p>
+  {% else %}
+    <p>Please <a href="{% url 'accounts:login' %}">log in</a> or
+       <a href="{% url 'accounts:register' %}">create an account</a>.</p>
+  {% endif %}
+{% endblock %}

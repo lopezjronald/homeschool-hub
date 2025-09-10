@@ -28,9 +28,22 @@ class EmailOrUsernameModelBackend:
             user = User.objects.get(Q(email__iexact=username) | Q(username__iexact=username))
         except User.DoesNotExist:
             return None
-        return user if user.check_password(password) and self.user_can_authenticate(user) else None
+        
+        if user.check_password(password) and self.user_can_authenticate(user):
+            return user
+        return None
 
     def user_can_authenticate(self, user) -> bool:
         """Return True if the user is active (mirrors Django defaults)."""
         is_active = getattr(user, "is_active", None)
         return bool(is_active or is_active is None)
+
+    # --- THIS IS THE FIX ---
+    # Django requires this method to retrieve the user object from the session.
+    def get_user(self, user_id: int):
+        """Get a user by their primary key."""
+        try:
+            return User.objects.get(pk=user_id)
+        except User.DoesNotExist:
+            return None
+

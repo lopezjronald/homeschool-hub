@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+
+{% block title %}
+  Login · Homeschool Hub
+{% endblock %}
+
+{% block content %}
+  <h2>Login</h2>
+  <form method="post" novalidate>
+    {% csrf_token %}
+    {{ form.non_field_errors }}
+
+    <label>
+      Email or Username
+      {{ form.username }}
+      {{ form.username.errors }}
+    </label>
+
+    <label>
+      Password
+      {{ form.password }}
+      {{ form.password.errors }}
+    </label>
+
+    <div class="actions">
+      <button type="submit">Login</button>
+    </div>
+  </form>
+
+  <p style="margin-top:1rem;">
+    <a href="{% url 'accounts:password_reset' %}">Forgot your password?</a>
+  </p>
+{% endblock %}

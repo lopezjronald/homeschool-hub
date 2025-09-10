@@ -18,13 +18,23 @@ import dj_database_url
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-# Load environment variables from .env file
-load_dotenv(BASE_DIR / ".env")
+# --- ADD THESE LINES FOR DEBUGGING ---
+print("--- Starting settings.py diagnostic ---")
+env_path = BASE_DIR / ".env"
+print(f"Looking for .env file at: {env_path}")
+print(f"Does the .env file exist? {env_path.exists()}")
+# --- END OF DEBUGGING LINES ---
 
+# Load environment variables from .env file
+load_dotenv(env_path)
+
+# --- ADD THIS LINE FOR DEBUGGING ---
+print(f"Value of SECRET_KEY from os.getenv(): {os.getenv('SECRET_KEY')}")
+print("--- End of settings.py diagnostic ---")
+# --- END OF DEBUGGING LINES ---
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.0/howto/deployment/checklist/
-
 
 # robust boolean parsing:
 def _get_bool(name: str, default: bool = False) -> bool:
@@ -35,7 +45,7 @@ def _get_bool(name: str, default: bool = False) -> bool:
 
 
 # SECURITY WARNING: keep the secret key used in production secret!
-DEBUG = _get_bool("DEBUG", False)
+DEBUG = _get_bool("DEBUG", True)
 SECRET_KEY = os.getenv("SECRET_KEY", "unsafe-secret")
 ALLOWED_HOSTS = os.getenv("ALLOWED_HOSTS", "127.0.0.1,localhost").split(",")
 

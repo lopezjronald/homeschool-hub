@@ -1,0 +1,26 @@
+#!/bin/sh
+MSG_FILE="$1"
+MSG="$(cat "$MSG_FILE")"
+
+# Require: HH-123: description
+PATTERN='^HH-[0-9]+: .+'
+
+# Allow merge commits
+if echo "$MSG" | grep -Eq '^Merge '; then
+  exit 0
+fi
+
+if echo "$MSG" | grep -Eq "$PATTERN"; then
+  exit 0
+fi
+
+echo ""
+echo "❌ Commit rejected."
+echo "Required format:"
+echo "  HH-<number>: <description>"
+echo ""
+echo "Examples:"
+echo "  HH-60: add auth flow unit tests"
+echo "  HH-102: fix enrollment validation bug"
+echo ""
+exit 1

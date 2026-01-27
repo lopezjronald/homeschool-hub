@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}My Curricula · Homeschool Hub{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+  <div class="d-flex justify-content-between align-items-center mb-4">
+    <h1>My Curricula</h1>
+    <a href="{% url 'curricula:curriculum_create' %}" class="btn btn-primary">
+      Add Curriculum
+    </a>
+  </div>
+
+  {% if curricula %}
+    <div class="table-responsive">
+      <table class="table table-hover">
+        <thead class="table-light">
+          <tr>
+            <th>Name</th>
+            <th>Subject</th>
+            <th>Grade Level</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for curriculum in curricula %}
+            <tr>
+              <td>
+                <a href="{% url 'curricula:curriculum_detail' curriculum.pk %}">{{ curriculum.name }}</a>
+              </td>
+              <td>{{ curriculum.subject }}</td>
+              <td>
+                {% if curriculum.grade_level %}
+                  <span class="badge bg-secondary">{{ curriculum.get_grade_level_display }}</span>
+                {% else %}
+                  <span class="text-muted">—</span>
+                {% endif %}
+              </td>
+              <td>
+                <a href="{% url 'curricula:curriculum_update' curriculum.pk %}" class="btn btn-sm btn-outline-secondary">Edit</a>
+                <a href="{% url 'curricula:curriculum_delete' curriculum.pk %}" class="btn btn-sm btn-outline-danger">Delete</a>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <div class="alert alert-info" role="alert">
+      <h4 class="alert-heading">No curricula yet</h4>
+      <p>You haven't added any curricula. Curricula help you organize subjects and lessons for your children.</p>
+      <hr>
+      <a href="{% url 'curricula:curriculum_create' %}" class="btn btn-primary">Add Your First Curriculum</a>
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

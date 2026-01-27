@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__jira__searchJiraIssuesUsingJql",
+      "mcp__github__get_file_contents"
+    ]
+  }
+}

@@ -1,0 +1,109 @@
+from django.contrib import messages
+from django.contrib.auth.decorators import login_required
+from django.shortcuts import get_object_or_404, redirect, render
+
+from curricula.models import Curriculum
+from students.models import Student
+
+from .forms import AssignmentForm
+from .models import Assignment
+
+
+def get_assignment_for_user(user, pk):
+    """Get assignment owned by user or raise 404."""
+    return get_object_or_404(Assignment, pk=pk, parent=user)
+
+
+@login_required
+def assignment_list(request):
+    assignments = Assignment.objects.filter(parent=request.user).select_related(
+        "child", "curriculum"
+    )
+    return render(
+        request,
+        "assignments/assignment_list.html",
+        {"assignments": assignments},
+    )
+
+
+@login_required
+def assignment_create(request):
+    # Check if user has children and curricula
+    has_children = Student.objects.filter(parent=request.user).exists()
+    has_curricula = Curriculum.objects.filter(parent=request.user).exists()
+
+    if not has_children or not has_curricula:
+        return render(
+            request,
+            "assignments/assignment_form.html",
+            {
+                "action": "Create",
+                "has_children": has_children,
+                "has_curricula": has_curricula,
+                "empty_state": True,
+            },
+        )
+
+    if request.method == "POST":
+        form = AssignmentForm(request.POST, user=request.user)
+        if form.is_valid():
+            assignment = form.save(commit=False)
+            assignment.parent = request.user
+            assignment.save()
+            messages.success(request, f"Assignment '{assignment.title}' created.")
+            return redirect("assignments:assignment_list")
+    else:
+        form = AssignmentForm(user=request.user)
+
+    return render(
+        request,
+        "assignments/assignment_form.html",
+        {"form": form, "action": "Create"},
+    )
+
+
+@login_required
+def assignment_detail(request, pk):
+    assignment = get_assignment_for_user(request.user, pk)
+    return render(
+        request,
+        "assignments/assignment_detail.html",
+        {"assignment": assignment},
+    )
+
+
+@login_required
+def assignment_update(request, pk):
+    assignment = get_assignment_for_user(request.user, pk)
+
+    if request.method == "POST":
+        form = AssignmentForm(request.POST, instance=assignment, user=request.user)
+        if form.is_valid():
+            form.save()
+            messages.success(request, f"Assignment '{assignment.title}' updated.")
+            return redirect("assignments:assignment_list")
+    else:
+        form = AssignmentForm(instance=assignment, user=request.user)
+
+    return render(
+        request,
+        "assignments/assignment_form.html",
+        {"form": form, "action": "Edit", "assignment": assignment},
+    )
+
+
+@login_required
+def assignment_delete(request, pk):
+    assignment = get_assignment_for_user(request.user, pk)
+
+    if request.method == "POST":
+        title = assignment.title
+        assignment.delete()
+        messages.success(request, f"Assignment '{title}' deleted.")
+        return redirect("assignments:assignment_list")
+
+    return render(
+        request,
+        "assignments/assignment_confirm_delete.html",
+        {"assignment": assignment},
+    )

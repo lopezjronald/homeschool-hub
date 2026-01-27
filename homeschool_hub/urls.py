@@ -16,6 +16,7 @@ urlpatterns = [
     path("accounts/", include(("accounts.urls", "accounts"), namespace="accounts")),
     path("students/", include(("students.urls", "students"), namespace="students")),
     path("curricula/", include(("curricula.urls", "curricula"), namespace="curricula")),
+    path("assignments/", include(("assignments.urls", "assignments"), namespace="assignments")),
 ]
 
 if settings.DEBUG:

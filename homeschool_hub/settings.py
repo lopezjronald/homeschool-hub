@@ -55,6 +55,7 @@ INSTALLED_APPS = [
     "accounts",  # Our custom accounts app
     "students",  # Child profile management
     "curricula",  # Curriculum management
+    "assignments",  # Assignment tracking
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",

@@ -1,11 +1,23 @@
 {% extends "base.html" %}
 {% block title %}Home · Homeschool Hub{% endblock %}
 {% block content %}
-  <h2>Welcome</h2>
-  {% if user.is_authenticated %}
-    <p>You’re signed in as <strong>{{ user.username }}</strong>.</p>
-  {% else %}
-    <p>Please <a href="{% url 'accounts:login' %}">log in</a> or
-       <a href="{% url 'accounts:register' %}">create an account</a>.</p>
-  {% endif %}
+<div class="container py-5">
+  <div class="row justify-content-center">
+    <div class="col-md-8 text-center">
+      <h1 class="display-4">Welcome to Homeschool Hub</h1>
+      {% if user.is_authenticated %}
+        <p class="lead">You're signed in as <strong>{{ user.username }}</strong>.</p>
+        <hr class="my-4">
+        <p>Get started by managing your children's profiles and assignments.</p>
+        <a href="{% url 'students:student_list' %}" class="btn btn-primary btn-lg">My Children</a>
+      {% else %}
+        <p class="lead">Your all-in-one platform for managing homeschool curriculum, assignments, and progress.</p>
+        <hr class="my-4">
+        <p>Please log in or create an account to get started.</p>
+        <a href="{% url 'accounts:login' %}" class="btn btn-primary btn-lg me-2">Login</a>
+        <a href="{% url 'accounts:register' %}" class="btn btn-outline-primary btn-lg">Register</a>
+      {% endif %}
+    </div>
+  </div>
+</div>
 {% endblock %}

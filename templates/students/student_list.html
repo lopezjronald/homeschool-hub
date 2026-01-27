@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}My Children · Homeschool Hub{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+  <div class="d-flex justify-content-between align-items-center mb-4">
+    <h1>My Children</h1>
+    <a href="{% url 'students:student_create' %}" class="btn btn-primary">
+      Add Child
+    </a>
+  </div>
+
+  {% if students %}
+    <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4">
+      {% for student in students %}
+        <div class="col">
+          <div class="card h-100">
+            <div class="card-body">
+              <h5 class="card-title">{{ student.get_full_name }}</h5>
+              <p class="card-text">
+                <span class="badge bg-secondary">{{ student.get_grade_level_display }}</span>
+                {% if student.date_of_birth %}
+                  <br><small class="text-muted">Born: {{ student.date_of_birth }}</small>
+                {% endif %}
+              </p>
+            </div>
+            <div class="card-footer bg-transparent">
+              <a href="{% url 'students:student_detail' student.pk %}" class="btn btn-sm btn-outline-primary">View</a>
+              <a href="{% url 'students:student_update' student.pk %}" class="btn btn-sm btn-outline-secondary">Edit</a>
+              <a href="{% url 'students:student_delete' student.pk %}" class="btn btn-sm btn-outline-danger">Delete</a>
+            </div>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  {% else %}
+    <div class="alert alert-info" role="alert">
+      <h4 class="alert-heading">No children yet</h4>
+      <p>You haven't added any children to your account.</p>
+      <hr>
+      <a href="{% url 'students:student_create' %}" class="btn btn-primary">Add Your First Child</a>
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

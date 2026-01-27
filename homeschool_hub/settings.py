@@ -53,13 +53,20 @@ ALLOWED_HOSTS = os.getenv("ALLOWED_HOSTS", "127.0.0.1,localhost").split(",")
 
 INSTALLED_APPS = [
     "accounts",  # Our custom accounts app
+    "students",  # Child profile management
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    "crispy_forms",
+    "crispy_bootstrap5",
 ]
+
+# Crispy Forms configuration
+CRISPY_ALLOWED_TEMPLATE_PACKS = "bootstrap5"
+CRISPY_TEMPLATE_PACK = "bootstrap5"
 
 # Set the custom user model for our app. It must be declared after INSTALLED_APPS.
 AUTH_USER_MODEL = "accounts.CustomUser"

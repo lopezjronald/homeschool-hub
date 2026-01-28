@@ -19,5 +19,10 @@ urlpatterns = [
     path("assignments/", include(("assignments.urls", "assignments"), namespace="assignments")),
 ]
 
+# Serve static files in DEBUG mode (fallback if WhiteNoise isn't handling them)
 if settings.DEBUG:
     urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
+
+# Serve media files locally in DEBUG mode when not using R2
+if settings.DEBUG and not getattr(settings, "USE_R2", False):
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

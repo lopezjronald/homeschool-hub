@@ -56,6 +56,7 @@ INSTALLED_APPS = [
     "students",  # Child profile management
     "curricula",  # Curriculum management
     "assignments",  # Assignment tracking
+    "storages",  # django-storages for R2/S3
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
@@ -75,6 +76,7 @@ AUTH_USER_MODEL = "accounts.CustomUser"
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -170,3 +172,42 @@ LOGOUT_REDIRECT_URL = "/"
 CSRF_COOKIE_SECURE = False
 SESSION_COOKIE_SECURE = False
 SECURE_SSL_REDIRECT = False
+
+# ---------------------------------------------------------------------------
+# Storage Configuration (Static + Media)
+# ---------------------------------------------------------------------------
+
+# Toggle for R2 media storage (set USE_R2=true in production)
+USE_R2 = _get_bool("USE_R2", False)
+
+# Static files: Always use WhiteNoise (not R2)
+STORAGES = {
+    "staticfiles": {
+        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+    },
+}
+
+# Media files: R2 in production, local filesystem in development
+if USE_R2:
+    # Cloudflare R2 (S3-compatible) storage for media
+    STORAGES["default"] = {
+        "BACKEND": "storages.backends.s3boto3.S3Boto3Storage",
+        "OPTIONS": {
+            "access_key": os.getenv("R2_ACCESS_KEY_ID"),
+            "secret_key": os.getenv("R2_SECRET_ACCESS_KEY"),
+            "bucket_name": os.getenv("R2_BUCKET_NAME", "steadfast-scholars-media"),
+            "endpoint_url": os.getenv("R2_ENDPOINT_URL"),
+            "region_name": os.getenv("R2_REGION", "auto"),
+            "default_acl": None,  # R2 doesn't support ACLs
+            "querystring_auth": True,  # Use signed URLs for private files
+            "file_overwrite": False,
+        },
+    }
+    MEDIA_URL = ""  # URLs come from signed S3 URLs
+else:
+    # Local filesystem storage for development
+    STORAGES["default"] = {
+        "BACKEND": "django.core.files.storage.FileSystemStorage",
+    }
+    MEDIA_ROOT = BASE_DIR / "media"
+    MEDIA_URL = "/media/"

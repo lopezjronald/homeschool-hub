@@ -1,7 +1,9 @@
 from datetime import date
 
 from django.conf import settings
+from django.core import signing
 from django.db import models
+from django.urls import reverse
 
 from curricula.models import Curriculum
 from students.models import Student
@@ -10,14 +12,16 @@ from students.models import Student
 class Assignment(models.Model):
     """An assignment linking a child to a curriculum entry."""
 
-    NOT_STARTED = "NOT_STARTED"
-    IN_PROGRESS = "IN_PROGRESS"
-    COMPLETED = "COMPLETED"
+    PENDING = "pending"
+    IN_PROGRESS = "in_progress"
+    SUBMITTED = "submitted"
+    COMPLETE = "complete"
 
     STATUS_CHOICES = [
-        (NOT_STARTED, "Not Started"),
+        (PENDING, "Pending"),
         (IN_PROGRESS, "In Progress"),
-        (COMPLETED, "Completed"),
+        (SUBMITTED, "Submitted"),
+        (COMPLETE, "Complete"),
     ]
 
     parent = models.ForeignKey(
@@ -41,7 +45,7 @@ class Assignment(models.Model):
     status = models.CharField(
         max_length=20,
         choices=STATUS_CHOICES,
-        default=NOT_STARTED,
+        default=PENDING,
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -54,5 +58,27 @@ class Assignment(models.Model):
 
     @property
     def is_overdue(self):
-        """Return True if due_date is in the past and status is not COMPLETED."""
-        return self.due_date < date.today() and self.status != self.COMPLETED
+        """Return True if due_date is in the past and status is not complete."""
+        return self.due_date < date.today() and self.status != self.COMPLETE
+
+    def get_student_status_token(self):
+        """Generate a signed token for student status updates (7 day expiry)."""
+        return signing.dumps({"assignment_id": self.pk}, salt="student-status-update")
+
+    def get_student_status_url(self):
+        """Return the relative URL for student status updates."""
+        token = self.get_student_status_token()
+        return reverse("assignments:assignment_student_update", args=[token])
+
+    @classmethod
+    def get_from_student_token(cls, token, max_age=7 * 24 * 60 * 60):
+        """
+        Retrieve an assignment from a signed student token.
+        Returns None if token is invalid or expired.
+        max_age: 7 days in seconds (default)
+        """
+        try:
+            data = signing.loads(token, salt="student-status-update", max_age=max_age)
+            return cls.objects.get(pk=data["assignment_id"])
+        except (signing.BadSignature, signing.SignatureExpired, cls.DoesNotExist):
+            return None

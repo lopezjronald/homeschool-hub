@@ -1,13 +1,14 @@
 from datetime import date, timedelta
 
 from django.contrib.auth import get_user_model
+from django.core import signing
 from django.test import Client, TestCase
 from django.urls import reverse
 
 from curricula.models import Curriculum
 from students.models import Student
 
-from .forms import AssignmentForm
+from .forms import AssignmentForm, AssignmentStatusForm
 from .models import Assignment
 
 User = get_user_model()
@@ -39,25 +40,25 @@ class AssignmentModelTests(TestCase):
         )
         self.assertEqual(str(assignment), "Chapter 1 Review")
 
-    def test_is_overdue_true_when_past_and_not_completed(self):
+    def test_is_overdue_true_when_past_and_not_complete(self):
         assignment = Assignment.objects.create(
             parent=self.user,
             child=self.child,
             curriculum=self.curriculum,
             title="Old Assignment",
             due_date=date.today() - timedelta(days=1),
-            status=Assignment.NOT_STARTED,
+            status=Assignment.PENDING,
         )
         self.assertTrue(assignment.is_overdue)
 
-    def test_is_overdue_false_when_completed(self):
+    def test_is_overdue_false_when_complete(self):
         assignment = Assignment.objects.create(
             parent=self.user,
             child=self.child,
             curriculum=self.curriculum,
             title="Done Assignment",
             due_date=date.today() - timedelta(days=1),
-            status=Assignment.COMPLETED,
+            status=Assignment.COMPLETE,
         )
         self.assertFalse(assignment.is_overdue)
 
@@ -68,11 +69,11 @@ class AssignmentModelTests(TestCase):
             curriculum=self.curriculum,
             title="Future Assignment",
             due_date=date.today() + timedelta(days=1),
-            status=Assignment.NOT_STARTED,
+            status=Assignment.PENDING,
         )
         self.assertFalse(assignment.is_overdue)
 
-    def test_default_status_is_not_started(self):
+    def test_default_status_is_pending(self):
         assignment = Assignment.objects.create(
             parent=self.user,
             child=self.child,
@@ -80,7 +81,59 @@ class AssignmentModelTests(TestCase):
             title="New Assignment",
             due_date=date.today(),
         )
-        self.assertEqual(assignment.status, Assignment.NOT_STARTED)
+        self.assertEqual(assignment.status, Assignment.PENDING)
+
+    def test_get_student_status_token(self):
+        assignment = Assignment.objects.create(
+            parent=self.user,
+            child=self.child,
+            curriculum=self.curriculum,
+            title="Test Assignment",
+            due_date=date.today(),
+        )
+        token = assignment.get_student_status_token()
+        self.assertIsNotNone(token)
+        self.assertIsInstance(token, str)
+
+    def test_get_from_student_token_valid(self):
+        assignment = Assignment.objects.create(
+            parent=self.user,
+            child=self.child,
+            curriculum=self.curriculum,
+            title="Test Assignment",
+            due_date=date.today(),
+        )
+        token = assignment.get_student_status_token()
+        retrieved = Assignment.get_from_student_token(token)
+        self.assertEqual(retrieved, assignment)
+
+    def test_get_from_student_token_invalid(self):
+        retrieved = Assignment.get_from_student_token("invalid-token")
+        self.assertIsNone(retrieved)
+
+    def test_get_from_student_token_expired(self):
+        assignment = Assignment.objects.create(
+            parent=self.user,
+            child=self.child,
+            curriculum=self.curriculum,
+            title="Test Assignment",
+            due_date=date.today(),
+        )
+        token = assignment.get_student_status_token()
+        # Test with max_age=0 to simulate expiration
+        retrieved = Assignment.get_from_student_token(token, max_age=0)
+        self.assertIsNone(retrieved)
+
+    def test_get_student_status_url(self):
+        assignment = Assignment.objects.create(
+            parent=self.user,
+            child=self.child,
+            curriculum=self.curriculum,
+            title="Test Assignment",
+            due_date=date.today(),
+        )
+        url = assignment.get_student_status_url()
+        self.assertIn("/assignments/s/", url)
 
 
 class AssignmentFormTests(TestCase):
@@ -131,7 +184,7 @@ class AssignmentFormTests(TestCase):
                 "curriculum": self.curriculum.pk,
                 "title": "Test",
                 "due_date": date.today() - timedelta(days=1),
-                "status": Assignment.NOT_STARTED,
+                "status": Assignment.PENDING,
             },
             user=self.user,
         )
@@ -145,7 +198,7 @@ class AssignmentFormTests(TestCase):
             curriculum=self.curriculum,
             title="Existing",
             due_date=date.today() - timedelta(days=5),
-            status=Assignment.NOT_STARTED,
+            status=Assignment.PENDING,
         )
         form = AssignmentForm(
             data={
@@ -167,7 +220,7 @@ class AssignmentFormTests(TestCase):
                 "curriculum": self.curriculum.pk,
                 "title": "Test",
                 "due_date": date.today(),
-                "status": Assignment.NOT_STARTED,
+                "status": Assignment.PENDING,
             },
             user=self.user,
         )
@@ -181,12 +234,23 @@ class AssignmentFormTests(TestCase):
                 "curriculum": self.other_curriculum.pk,
                 "title": "Test",
                 "due_date": date.today(),
-                "status": Assignment.NOT_STARTED,
+                "status": Assignment.PENDING,
             },
             user=self.user,
         )
         self.assertFalse(form.is_valid())
         self.assertIn("curriculum", form.errors)
+
+
+class AssignmentStatusFormTests(TestCase):
+    def test_valid_status_choices(self):
+        for status, _ in Assignment.STATUS_CHOICES:
+            form = AssignmentStatusForm(data={"status": status})
+            self.assertTrue(form.is_valid())
+
+    def test_invalid_status(self):
+        form = AssignmentStatusForm(data={"status": "invalid"})
+        self.assertFalse(form.is_valid())
 
 
 class AssignmentViewTests(TestCase):
@@ -307,7 +371,7 @@ class AssignmentViewTests(TestCase):
                 "curriculum": self.curriculum.pk,
                 "title": "New Assignment",
                 "due_date": date.today(),
-                "status": Assignment.NOT_STARTED,
+                "status": Assignment.PENDING,
             },
         )
         self.assertRedirects(response, reverse("assignments:assignment_list"))
@@ -337,6 +401,79 @@ class AssignmentViewTests(TestCase):
         )
         self.assertRedirects(response, reverse("assignments:assignment_list"))
         self.assertFalse(Assignment.objects.filter(pk=self.assignment.pk).exists())
+
+    def test_detail_shows_student_link(self):
+        self.client.login(username="parent1", password="testpass123")
+        response = self.client.get(
+            reverse("assignments:assignment_detail", args=[self.assignment.pk])
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Student Update Link")
+        self.assertContains(response, "/assignments/s/")
+
+
+class StudentUpdateViewTests(TestCase):
+    def setUp(self):
+        self.client = Client()
+        self.user = User.objects.create_user(
+            username="parent1", email="parent1@test.com", password="testpass123"
+        )
+        self.child = Student.objects.create(
+            parent=self.user,
+            first_name="Alice",
+            grade_level="G03",
+        )
+        self.curriculum = Curriculum.objects.create(
+            parent=self.user,
+            name="Math 3A",
+            subject="Math",
+        )
+        self.assignment = Assignment.objects.create(
+            parent=self.user,
+            child=self.child,
+            curriculum=self.curriculum,
+            title="Test Assignment",
+            due_date=date.today(),
+            status=Assignment.PENDING,
+        )
+
+    def test_student_update_no_login_required(self):
+        token = self.assignment.get_student_status_token()
+        url = reverse("assignments:assignment_student_update", args=[token])
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Test Assignment")
+
+    def test_student_update_shows_form(self):
+        token = self.assignment.get_student_status_token()
+        url = reverse("assignments:assignment_student_update", args=[token])
+        response = self.client.get(url)
+        self.assertContains(response, "Update Status")
+
+    def test_student_update_post_success(self):
+        token = self.assignment.get_student_status_token()
+        url = reverse("assignments:assignment_student_update", args=[token])
+        response = self.client.post(url, {"status": Assignment.SUBMITTED})
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Status Updated")
+        self.assignment.refresh_from_db()
+        self.assertEqual(self.assignment.status, Assignment.SUBMITTED)
+
+    def test_student_update_invalid_token(self):
+        url = reverse("assignments:assignment_student_update", args=["invalid-token"])
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "invalid or has expired")
+
+    def test_student_update_all_statuses(self):
+        token = self.assignment.get_student_status_token()
+        url = reverse("assignments:assignment_student_update", args=[token])
+
+        for status, _ in Assignment.STATUS_CHOICES:
+            response = self.client.post(url, {"status": status})
+            self.assertEqual(response.status_code, 200)
+            self.assignment.refresh_from_db()
+            self.assertEqual(self.assignment.status, status)
 
 
 class CurriculumAssignmentCountTests(TestCase):

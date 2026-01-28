@@ -10,12 +10,14 @@
           <h4 class="mb-0">{{ assignment.title }}</h4>
           {% if assignment.is_overdue %}
             <span class="badge bg-danger">Overdue</span>
-          {% elif assignment.status == "COMPLETED" %}
-            <span class="badge bg-success">Completed</span>
-          {% elif assignment.status == "IN_PROGRESS" %}
+          {% elif assignment.status == "complete" %}
+            <span class="badge bg-success">Complete</span>
+          {% elif assignment.status == "submitted" %}
+            <span class="badge bg-info">Submitted</span>
+          {% elif assignment.status == "in_progress" %}
             <span class="badge bg-primary">In Progress</span>
           {% else %}
-            <span class="badge bg-secondary">Not Started</span>
+            <span class="badge bg-secondary">Pending</span>
           {% endif %}
         </div>
         <div class="card-body">
@@ -52,6 +54,17 @@
             <dt class="col-sm-3">Last Updated</dt>
             <dd class="col-sm-9">{{ assignment.updated_at|date:"M d, Y" }}</dd>
           </dl>
+
+          <hr>
+
+          <div class="mb-3">
+            <h6>Student Update Link</h6>
+            <p class="text-muted small">Share this link with your child so they can update the assignment status. Link expires in 7 days.</p>
+            <div class="input-group">
+              <input type="text" class="form-control form-control-sm" id="studentLink" value="{{ request.scheme }}://{{ request.get_host }}{{ assignment.get_student_status_url }}" readonly>
+              <button class="btn btn-outline-secondary btn-sm" type="button" onclick="copyStudentLink()">Copy</button>
+            </div>
+          </div>
         </div>
         <div class="card-footer">
           <a href="{% url 'assignments:assignment_list' %}" class="btn btn-secondary">Back to List</a>
@@ -62,4 +75,13 @@
     </div>
   </div>
 </div>
+
+<script>
+function copyStudentLink() {
+  var linkInput = document.getElementById('studentLink');
+  linkInput.select();
+  linkInput.setSelectionRange(0, 99999);
+  navigator.clipboard.writeText(linkInput.value);
+}
+</script>
 {% endblock %}

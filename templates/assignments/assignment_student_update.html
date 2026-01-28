@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% load crispy_forms_tags %}
+
+{% block title %}Update Assignment Status · Homeschool Hub{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+  <div class="row justify-content-center">
+    <div class="col-md-6 col-lg-5">
+      <div class="card">
+        <div class="card-header">
+          <h4 class="mb-0">Update Assignment Status</h4>
+        </div>
+        <div class="card-body">
+          {% if error %}
+            <div class="alert alert-danger" role="alert">
+              <h5 class="alert-heading">Link Invalid</h5>
+              <p class="mb-0">{{ error }}</p>
+            </div>
+            <p class="text-muted">Please ask your parent for a new link.</p>
+          {% elif success %}
+            <div class="alert alert-success" role="alert">
+              <h5 class="alert-heading">Status Updated!</h5>
+              <p class="mb-0">Your assignment status has been updated to <strong>{{ assignment.get_status_display }}</strong>.</p>
+            </div>
+            <p class="text-muted">You can close this page now.</p>
+          {% else %}
+            <dl class="row mb-4">
+              <dt class="col-sm-4">Assignment</dt>
+              <dd class="col-sm-8">{{ assignment.title }}</dd>
+
+              <dt class="col-sm-4">Due Date</dt>
+              <dd class="col-sm-8">
+                {{ assignment.due_date|date:"M d, Y" }}
+                {% if assignment.is_overdue %}
+                  <span class="badge bg-danger">Overdue</span>
+                {% endif %}
+              </dd>
+
+              <dt class="col-sm-4">Current Status</dt>
+              <dd class="col-sm-8">
+                {% if assignment.status == "complete" %}
+                  <span class="badge bg-success">Complete</span>
+                {% elif assignment.status == "submitted" %}
+                  <span class="badge bg-info">Submitted</span>
+                {% elif assignment.status == "in_progress" %}
+                  <span class="badge bg-primary">In Progress</span>
+                {% else %}
+                  <span class="badge bg-secondary">Pending</span>
+                {% endif %}
+              </dd>
+            </dl>
+
+            <form method="post" novalidate>
+              {% csrf_token %}
+              {{ form|crispy }}
+              <div class="d-grid mt-3">
+                <button type="submit" class="btn btn-primary">Update Status</button>
+              </div>
+            </form>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

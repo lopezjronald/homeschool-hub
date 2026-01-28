@@ -43,3 +43,9 @@ class AssignmentForm(forms.ModelForm):
         if curriculum and self.user and curriculum.parent != self.user:
             raise forms.ValidationError("Invalid curriculum selection.")
         return curriculum
+
+
+class AssignmentStatusForm(forms.Form):
+    """Simple form for updating assignment status only (used by students via magic link)."""
+
+    status = forms.ChoiceField(choices=Assignment.STATUS_CHOICES)

@@ -82,3 +82,27 @@ class Assignment(models.Model):
             return cls.objects.get(pk=data["assignment_id"])
         except (signing.BadSignature, signing.SignatureExpired, cls.DoesNotExist):
             return None
+
+
+class AssignmentResourceLink(models.Model):
+    """An external resource link attached to an assignment."""
+
+    assignment = models.ForeignKey(
+        Assignment,
+        on_delete=models.CASCADE,
+        related_name="resource_links",
+    )
+    url = models.URLField()
+    label = models.CharField(max_length=200, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at"]
+
+    def __str__(self):
+        return self.label or self.url
+
+    @property
+    def display_label(self):
+        """Return label if set, otherwise the URL."""
+        return self.label if self.label else self.url

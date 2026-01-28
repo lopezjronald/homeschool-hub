@@ -5,8 +5,8 @@ from django.shortcuts import get_object_or_404, redirect, render
 from curricula.models import Curriculum
 from students.models import Student
 
-from .forms import AssignmentForm, AssignmentStatusForm
-from .models import Assignment
+from .forms import AssignmentForm, AssignmentStatusForm, ResourceLinkForm
+from .models import Assignment, AssignmentResourceLink
 
 
 def get_assignment_for_user(user, pk):
@@ -65,10 +65,11 @@ def assignment_create(request):
 @login_required
 def assignment_detail(request, pk):
     assignment = get_assignment_for_user(request.user, pk)
+    resource_form = ResourceLinkForm()
     return render(
         request,
         "assignments/assignment_detail.html",
-        {"assignment": assignment},
+        {"assignment": assignment, "resource_form": resource_form},
     )
 
 
@@ -141,3 +142,36 @@ def assignment_student_update(request, token):
         "assignments/assignment_student_update.html",
         {"assignment": assignment, "form": form},
     )
+
+
+@login_required
+def resource_link_add(request, pk):
+    """Add a resource link to an assignment (owner only)."""
+    assignment = get_assignment_for_user(request.user, pk)
+
+    if request.method == "POST":
+        form = ResourceLinkForm(request.POST)
+        if form.is_valid():
+            AssignmentResourceLink.objects.create(
+                assignment=assignment,
+                url=form.cleaned_data["url"],
+                label=form.cleaned_data.get("label", ""),
+            )
+            messages.success(request, "Resource link added.")
+    return redirect("assignments:assignment_detail", pk=pk)
+
+
+@login_required
+def resource_link_delete(request, link_pk):
+    """Delete a resource link (owner only)."""
+    link = get_object_or_404(
+        AssignmentResourceLink,
+        pk=link_pk,
+        assignment__parent=request.user,
+    )
+    assignment_pk = link.assignment.pk
+
+    if request.method == "POST":
+        link.delete()
+        messages.success(request, "Resource link removed.")
+    return redirect("assignments:assignment_detail", pk=assignment_pk)

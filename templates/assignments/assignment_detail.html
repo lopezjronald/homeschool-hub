@@ -65,6 +65,42 @@
               <button class="btn btn-outline-secondary btn-sm" type="button" onclick="copyStudentLink()">Copy</button>
             </div>
           </div>
+
+          <hr>
+
+          <div class="mb-3">
+            <h6>Resources</h6>
+            {% if assignment.resource_links.all %}
+              <ul class="list-group list-group-flush mb-3">
+                {% for link in assignment.resource_links.all %}
+                  <li class="list-group-item d-flex justify-content-between align-items-center px-0">
+                    <a href="{{ link.url }}" target="_blank" rel="noopener noreferrer">{{ link.display_label }}</a>
+                    <form method="post" action="{% url 'assignments:resource_link_delete' link.pk %}" class="d-inline">
+                      {% csrf_token %}
+                      <button type="submit" class="btn btn-sm btn-outline-danger" title="Remove">×</button>
+                    </form>
+                  </li>
+                {% endfor %}
+              </ul>
+            {% else %}
+              <p class="text-muted small">No resources added yet.</p>
+            {% endif %}
+
+            <form method="post" action="{% url 'assignments:resource_link_add' assignment.pk %}" class="row g-2 align-items-end">
+              {% csrf_token %}
+              <div class="col-md-6">
+                <label for="id_url" class="form-label small">URL</label>
+                <input type="url" name="url" class="form-control form-control-sm" id="id_url" placeholder="https://example.com/resource" required>
+              </div>
+              <div class="col-md-4">
+                <label for="id_label" class="form-label small">Label (optional)</label>
+                <input type="text" name="label" class="form-control form-control-sm" id="id_label" maxlength="200" placeholder="Optional label">
+              </div>
+              <div class="col-md-2">
+                <button type="submit" class="btn btn-sm btn-primary w-100">Add</button>
+              </div>
+            </form>
+          </div>
         </div>
         <div class="card-footer">
           <a href="{% url 'assignments:assignment_list' %}" class="btn btn-secondary">Back to List</a>

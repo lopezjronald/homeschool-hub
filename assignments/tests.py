@@ -8,8 +8,8 @@ from django.urls import reverse
 from curricula.models import Curriculum
 from students.models import Student
 
-from .forms import AssignmentForm, AssignmentStatusForm
-from .models import Assignment
+from .forms import AssignmentForm, AssignmentStatusForm, ResourceLinkForm
+from .models import Assignment, AssignmentResourceLink
 
 User = get_user_model()
 
@@ -511,3 +511,204 @@ class CurriculumAssignmentCountTests(TestCase):
         )
 
         self.assertEqual(self.curriculum.get_related_assignments_count(), 2)
+
+
+class AssignmentResourceLinkModelTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="parent1", email="parent1@test.com", password="testpass123"
+        )
+        self.child = Student.objects.create(
+            parent=self.user,
+            first_name="Alice",
+            grade_level="G03",
+        )
+        self.curriculum = Curriculum.objects.create(
+            parent=self.user,
+            name="Math 3A",
+            subject="Math",
+        )
+        self.assignment = Assignment.objects.create(
+            parent=self.user,
+            child=self.child,
+            curriculum=self.curriculum,
+            title="Test Assignment",
+            due_date=date.today(),
+        )
+
+    def test_str_with_label(self):
+        link = AssignmentResourceLink.objects.create(
+            assignment=self.assignment,
+            url="https://example.com",
+            label="Example Site",
+        )
+        self.assertEqual(str(link), "Example Site")
+
+    def test_str_without_label(self):
+        link = AssignmentResourceLink.objects.create(
+            assignment=self.assignment,
+            url="https://example.com",
+        )
+        self.assertEqual(str(link), "https://example.com")
+
+    def test_display_label_with_label(self):
+        link = AssignmentResourceLink.objects.create(
+            assignment=self.assignment,
+            url="https://example.com",
+            label="Example Site",
+        )
+        self.assertEqual(link.display_label, "Example Site")
+
+    def test_display_label_without_label(self):
+        link = AssignmentResourceLink.objects.create(
+            assignment=self.assignment,
+            url="https://example.com",
+        )
+        self.assertEqual(link.display_label, "https://example.com")
+
+    def test_cascade_delete(self):
+        link = AssignmentResourceLink.objects.create(
+            assignment=self.assignment,
+            url="https://example.com",
+        )
+        link_pk = link.pk
+        self.assignment.delete()
+        self.assertFalse(AssignmentResourceLink.objects.filter(pk=link_pk).exists())
+
+
+class ResourceLinkFormTests(TestCase):
+    def test_valid_https_url(self):
+        form = ResourceLinkForm(data={"url": "https://example.com", "label": "Test"})
+        self.assertTrue(form.is_valid())
+
+    def test_valid_http_url(self):
+        form = ResourceLinkForm(data={"url": "http://example.com", "label": ""})
+        self.assertTrue(form.is_valid())
+
+    def test_invalid_ftp_url(self):
+        form = ResourceLinkForm(data={"url": "ftp://example.com", "label": ""})
+        self.assertFalse(form.is_valid())
+        self.assertIn("url", form.errors)
+
+    def test_invalid_javascript_url(self):
+        form = ResourceLinkForm(data={"url": "javascript:alert(1)", "label": ""})
+        self.assertFalse(form.is_valid())
+
+    def test_label_optional(self):
+        form = ResourceLinkForm(data={"url": "https://example.com"})
+        self.assertTrue(form.is_valid())
+
+
+class ResourceLinkViewTests(TestCase):
+    def setUp(self):
+        self.client = Client()
+        self.user = User.objects.create_user(
+            username="parent1", email="parent1@test.com", password="testpass123"
+        )
+        self.other_user = User.objects.create_user(
+            username="parent2", email="parent2@test.com", password="testpass123"
+        )
+        self.child = Student.objects.create(
+            parent=self.user,
+            first_name="Alice",
+            grade_level="G03",
+        )
+        self.curriculum = Curriculum.objects.create(
+            parent=self.user,
+            name="Math 3A",
+            subject="Math",
+        )
+        self.assignment = Assignment.objects.create(
+            parent=self.user,
+            child=self.child,
+            curriculum=self.curriculum,
+            title="Test Assignment",
+            due_date=date.today(),
+        )
+
+    def test_add_resource_link_success(self):
+        self.client.login(username="parent1", password="testpass123")
+        response = self.client.post(
+            reverse("assignments:resource_link_add", args=[self.assignment.pk]),
+            {"url": "https://youtube.com/watch?v=123", "label": "Math Video"},
+        )
+        self.assertRedirects(
+            response,
+            reverse("assignments:assignment_detail", args=[self.assignment.pk]),
+        )
+        self.assertTrue(
+            AssignmentResourceLink.objects.filter(
+                assignment=self.assignment, label="Math Video"
+            ).exists()
+        )
+
+    def test_add_resource_link_requires_login(self):
+        response = self.client.post(
+            reverse("assignments:resource_link_add", args=[self.assignment.pk]),
+            {"url": "https://example.com", "label": ""},
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("/accounts/login/", response.url)
+
+    def test_add_resource_link_returns_404_for_other_user(self):
+        self.client.login(username="parent2", password="testpass123")
+        response = self.client.post(
+            reverse("assignments:resource_link_add", args=[self.assignment.pk]),
+            {"url": "https://example.com", "label": ""},
+        )
+        self.assertEqual(response.status_code, 404)
+
+    def test_delete_resource_link_success(self):
+        self.client.login(username="parent1", password="testpass123")
+        link = AssignmentResourceLink.objects.create(
+            assignment=self.assignment,
+            url="https://example.com",
+            label="Test",
+        )
+        response = self.client.post(
+            reverse("assignments:resource_link_delete", args=[link.pk])
+        )
+        self.assertRedirects(
+            response,
+            reverse("assignments:assignment_detail", args=[self.assignment.pk]),
+        )
+        self.assertFalse(AssignmentResourceLink.objects.filter(pk=link.pk).exists())
+
+    def test_delete_resource_link_returns_404_for_other_user(self):
+        self.client.login(username="parent2", password="testpass123")
+        link = AssignmentResourceLink.objects.create(
+            assignment=self.assignment,
+            url="https://example.com",
+            label="Test",
+        )
+        response = self.client.post(
+            reverse("assignments:resource_link_delete", args=[link.pk])
+        )
+        self.assertEqual(response.status_code, 404)
+
+    def test_detail_shows_resources(self):
+        self.client.login(username="parent1", password="testpass123")
+        AssignmentResourceLink.objects.create(
+            assignment=self.assignment,
+            url="https://youtube.com/video",
+            label="Video Tutorial",
+        )
+        response = self.client.get(
+            reverse("assignments:assignment_detail", args=[self.assignment.pk])
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Video Tutorial")
+        self.assertContains(response, "https://youtube.com/video")
+
+    def test_student_view_shows_resources(self):
+        AssignmentResourceLink.objects.create(
+            assignment=self.assignment,
+            url="https://youtube.com/video",
+            label="Video Tutorial",
+        )
+        token = self.assignment.get_student_status_token()
+        url = reverse("assignments:assignment_student_update", args=[token])
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Video Tutorial")
+        self.assertContains(response, "https://youtube.com/video")

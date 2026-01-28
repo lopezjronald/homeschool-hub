@@ -49,6 +49,17 @@
                   <span class="badge bg-secondary">Pending</span>
                 {% endif %}
               </dd>
+
+              {% if assignment.resource_links.all %}
+                <dt class="col-sm-4">Resources</dt>
+                <dd class="col-sm-8">
+                  <ul class="list-unstyled mb-0">
+                    {% for link in assignment.resource_links.all %}
+                      <li><a href="{{ link.url }}" target="_blank" rel="noopener noreferrer">{{ link.display_label }}</a></li>
+                    {% endfor %}
+                  </ul>
+                </dd>
+              {% endif %}
             </dl>
 
             <form method="post" novalidate>

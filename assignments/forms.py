@@ -49,3 +49,29 @@ class AssignmentStatusForm(forms.Form):
     """Simple form for updating assignment status only (used by students via magic link)."""
 
     status = forms.ChoiceField(choices=Assignment.STATUS_CHOICES)
+
+
+class ResourceLinkForm(forms.Form):
+    """Form for adding external resource links to an assignment."""
+
+    url = forms.URLField(
+        widget=forms.URLInput(attrs={"placeholder": "https://example.com/resource"})
+    )
+    label = forms.CharField(
+        max_length=200,
+        required=False,
+        widget=forms.TextInput(attrs={"placeholder": "Optional label"}),
+    )
+
+    def clean_url(self):
+        url = self.cleaned_data.get("url", "")
+        # Only allow http and https schemes
+        if url:
+            from urllib.parse import urlparse
+
+            parsed = urlparse(url)
+            if parsed.scheme not in ("http", "https"):
+                raise forms.ValidationError(
+                    "Only HTTP and HTTPS URLs are allowed."
+                )
+        return url

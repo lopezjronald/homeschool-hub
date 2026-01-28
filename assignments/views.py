@@ -5,7 +5,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from curricula.models import Curriculum
 from students.models import Student
 
-from .forms import AssignmentForm
+from .forms import AssignmentForm, AssignmentStatusForm
 from .models import Assignment
 
 
@@ -106,4 +106,38 @@ def assignment_delete(request, pk):
         request,
         "assignments/assignment_confirm_delete.html",
         {"assignment": assignment},
+    )
+
+
+def assignment_student_update(request, token):
+    """
+    Allow students to update assignment status via signed magic link.
+    No login required. Token expires after 7 days.
+    """
+    assignment = Assignment.get_from_student_token(token)
+
+    if assignment is None:
+        return render(
+            request,
+            "assignments/assignment_student_update.html",
+            {"error": "This link is invalid or has expired."},
+        )
+
+    if request.method == "POST":
+        form = AssignmentStatusForm(request.POST)
+        if form.is_valid():
+            assignment.status = form.cleaned_data["status"]
+            assignment.save()
+            return render(
+                request,
+                "assignments/assignment_student_update.html",
+                {"assignment": assignment, "success": True},
+            )
+    else:
+        form = AssignmentStatusForm(initial={"status": assignment.status})
+
+    return render(
+        request,
+        "assignments/assignment_student_update.html",
+        {"assignment": assignment, "form": form},
     )

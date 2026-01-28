@@ -36,12 +36,14 @@
               <td>{{ assignment.curriculum.name }}</td>
               <td>{{ assignment.due_date|date:"M d, Y" }}</td>
               <td>
-                {% if assignment.status == "COMPLETED" %}
-                  <span class="badge bg-success">Completed</span>
-                {% elif assignment.status == "IN_PROGRESS" %}
+                {% if assignment.status == "complete" %}
+                  <span class="badge bg-success">Complete</span>
+                {% elif assignment.status == "submitted" %}
+                  <span class="badge bg-info">Submitted</span>
+                {% elif assignment.status == "in_progress" %}
                   <span class="badge bg-primary">In Progress</span>
                 {% else %}
-                  <span class="badge bg-secondary">Not Started</span>
+                  <span class="badge bg-secondary">Pending</span>
                 {% endif %}
               </td>
               <td>

@@ -1,33 +1,30 @@
 {% extends "base.html" %}
+{% load crispy_forms_tags %}
 
-{% block title %}
-  Login · Homeschool Hub
-{% endblock %}
+{% block title %}Login · Homeschool Hub{% endblock %}
 
 {% block content %}
-  <h2>Login</h2>
-  <form method="post" novalidate>
-    {% csrf_token %}
-    {{ form.non_field_errors }}
-
-    <label>
-      Email or Username
-      {{ form.username }}
-      {{ form.username.errors }}
-    </label>
-
-    <label>
-      Password
-      {{ form.password }}
-      {{ form.password.errors }}
-    </label>
-
-    <div class="actions">
-      <button type="submit">Login</button>
+<div class="container py-4">
+  <div class="row justify-content-center">
+    <div class="col-md-5 col-lg-4">
+      <div class="card">
+        <div class="card-header">
+          <h4 class="mb-0">Login</h4>
+        </div>
+        <div class="card-body">
+          <form method="post" novalidate>
+            {% csrf_token %}
+            {{ form|crispy }}
+            <div class="d-grid mt-3">
+              <button type="submit" class="btn btn-primary">Login</button>
+            </div>
+          </form>
+        </div>
+        <div class="card-footer text-center">
+          <a href="{% url 'accounts:password_reset' %}">Forgot your password?</a>
+        </div>
+      </div>
     </div>
-  </form>
-
-  <p style="margin-top:1rem;">
-    <a href="{% url 'accounts:password_reset' %}">Forgot your password?</a>
-  </p>
+  </div>
+</div>
 {% endblock %}

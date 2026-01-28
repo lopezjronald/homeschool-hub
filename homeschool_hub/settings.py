@@ -36,18 +36,50 @@ print("--- End of settings.py diagnostic ---")
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.0/howto/deployment/checklist/
 
-# robust boolean parsing:
-def _get_bool(name: str, default: bool = False) -> bool:
+# ---------------------------------------------------------------------------
+# Environment Variable Helpers
+# ---------------------------------------------------------------------------
+
+
+def _env_bool(name: str, default: bool = False) -> bool:
+    """
+    Parse boolean from environment variable string.
+    Accepts: "1", "true", "yes", "on" (case-insensitive) as True.
+    Returns default if variable is not set.
+    """
     val = os.getenv(name)
     if val is None:
         return default
     return val.strip().lower() in ("1", "true", "yes", "on")
 
 
+def _env_list(name: str, default: str = "") -> list:
+    """
+    Parse comma-separated list from environment variable.
+    Strips whitespace from each item and removes empty strings.
+    Example: "a.com, b.com" -> ["a.com", "b.com"]
+    """
+    val = os.getenv(name, default)
+    if not val:
+        return []
+    return [item.strip() for item in val.split(",") if item.strip()]
+
+
+# ---------------------------------------------------------------------------
+# Core Settings
+# ---------------------------------------------------------------------------
+
 # SECURITY WARNING: keep the secret key used in production secret!
-DEBUG = _get_bool("DEBUG", True)
-SECRET_KEY = os.getenv("SECRET_KEY", "unsafe-secret")
-ALLOWED_HOSTS = os.getenv("ALLOWED_HOSTS", "127.0.0.1,localhost").split(",")
+SECRET_KEY = os.getenv("SECRET_KEY", "unsafe-secret-for-dev-only")
+
+# DEBUG: Default True for local dev (when env var not set), explicitly set False in production
+DEBUG = _env_bool("DEBUG", default=True)
+
+# ALLOWED_HOSTS: Comma-separated list of hostnames
+# Local dev default: localhost only. Production: set to exact hostname(s).
+# Example: ALLOWED_HOSTS="myapp.herokuapp.com,www.mydomain.com"
+_default_hosts = "127.0.0.1,localhost" if DEBUG else ""
+ALLOWED_HOSTS = _env_list("ALLOWED_HOSTS", default=_default_hosts)
 
 # Application definition
 
@@ -178,7 +210,7 @@ SECURE_SSL_REDIRECT = False
 # ---------------------------------------------------------------------------
 
 # Toggle for R2 media storage (set USE_R2=true in production)
-USE_R2 = _get_bool("USE_R2", False)
+USE_R2 = _env_bool("USE_R2", default=False)
 
 # Static files: Always use WhiteNoise (not R2)
 STORAGES = {

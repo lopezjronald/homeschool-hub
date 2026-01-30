@@ -18,20 +18,10 @@ import dj_database_url
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-# --- ADD THESE LINES FOR DEBUGGING ---
-print("--- Starting settings.py diagnostic ---")
 env_path = BASE_DIR / ".env"
-print(f"Looking for .env file at: {env_path}")
-print(f"Does the .env file exist? {env_path.exists()}")
-# --- END OF DEBUGGING LINES ---
 
 # Load environment variables from .env file
 load_dotenv(env_path)
-
-# --- ADD THIS LINE FOR DEBUGGING ---
-print(f"Value of SECRET_KEY from os.getenv(): {os.getenv('SECRET_KEY')}")
-print("--- End of settings.py diagnostic ---")
-# --- END OF DEBUGGING LINES ---
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.0/howto/deployment/checklist/

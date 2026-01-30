@@ -5,9 +5,11 @@
 <div class="container py-4">
   <div class="d-flex justify-content-between align-items-center mb-4">
     <h1>My Curricula</h1>
+    {% if can_edit %}
     <a href="{% url 'curricula:curriculum_create' %}" class="btn btn-primary">
       Add Curriculum
     </a>
+    {% endif %}
   </div>
 
   {% if curricula %}
@@ -36,8 +38,10 @@
                 {% endif %}
               </td>
               <td>
+                {% if can_edit %}
                 <a href="{% url 'curricula:curriculum_update' curriculum.pk %}" class="btn btn-sm btn-outline-secondary">Edit</a>
                 <a href="{% url 'curricula:curriculum_delete' curriculum.pk %}" class="btn btn-sm btn-outline-danger">Delete</a>
+                {% endif %}
               </td>
             </tr>
           {% endfor %}
@@ -49,7 +53,9 @@
       <h4 class="alert-heading">No curricula yet</h4>
       <p>You haven't added any curricula. Curricula help you organize subjects and lessons for your children.</p>
       <hr>
+      {% if can_edit %}
       <a href="{% url 'curricula:curriculum_create' %}" class="btn btn-primary">Add Your First Curriculum</a>
+      {% endif %}
     </div>
   {% endif %}
 </div>

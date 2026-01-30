@@ -5,9 +5,11 @@
 <div class="container py-4">
   <div class="d-flex justify-content-between align-items-center mb-4">
     <h1>Assignments</h1>
+    {% if can_edit %}
     <a href="{% url 'assignments:assignment_create' %}" class="btn btn-primary">
       Add Assignment
     </a>
+    {% endif %}
   </div>
 
   {% if assignments %}
@@ -20,7 +22,7 @@
             <th>Curriculum</th>
             <th>Due Date</th>
             <th>Status</th>
-            <th>Actions</th>
+            {% if can_edit %}<th>Actions</th>{% endif %}
           </tr>
         </thead>
         <tbody>
@@ -46,10 +48,12 @@
                   <span class="badge bg-secondary">Pending</span>
                 {% endif %}
               </td>
+              {% if can_edit %}
               <td>
                 <a href="{% url 'assignments:assignment_update' assignment.pk %}" class="btn btn-sm btn-outline-secondary">Edit</a>
                 <a href="{% url 'assignments:assignment_delete' assignment.pk %}" class="btn btn-sm btn-outline-danger">Delete</a>
               </td>
+              {% endif %}
             </tr>
           {% endfor %}
         </tbody>
@@ -60,7 +64,9 @@
       <h4 class="alert-heading">No assignments yet</h4>
       <p>You haven't added any assignments. Assignments link your children with curriculum entries and help track their progress.</p>
       <hr>
+      {% if can_edit %}
       <a href="{% url 'assignments:assignment_create' %}" class="btn btn-primary">Add Your First Assignment</a>
+      {% endif %}
     </div>
   {% endif %}
 </div>

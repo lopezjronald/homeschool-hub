@@ -1,7 +1,10 @@
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.http import Http404
 from django.shortcuts import get_object_or_404, redirect, render
 
+from core.permissions import viewable_queryset, editable_queryset, user_can_edit
+from core.utils import get_active_family
 from curricula.models import Curriculum
 from students.models import Student
 
@@ -9,28 +12,27 @@ from .forms import AssignmentForm, AssignmentStatusForm, ResourceLinkForm
 from .models import Assignment, AssignmentResourceLink
 
 
-def get_assignment_for_user(user, pk):
-    """Get assignment owned by user or raise 404."""
-    return get_object_or_404(Assignment, pk=pk, parent=user)
-
-
 @login_required
 def assignment_list(request):
-    assignments = Assignment.objects.filter(parent=request.user).select_related(
-        "child", "curriculum"
-    )
+    assignments = viewable_queryset(
+        Assignment.objects.all(), request.user,
+    ).select_related("child", "curriculum")
+    can_edit = user_can_edit(request.user)
     return render(
         request,
         "assignments/assignment_list.html",
-        {"assignments": assignments},
+        {"assignments": assignments, "can_edit": can_edit},
     )
 
 
 @login_required
 def assignment_create(request):
-    # Check if user has children and curricula
-    has_children = Student.objects.filter(parent=request.user).exists()
-    has_curricula = Curriculum.objects.filter(parent=request.user).exists()
+    if not user_can_edit(request.user):
+        raise Http404
+
+    # Check if user has children and curricula they can edit
+    has_children = editable_queryset(Student.objects.all(), request.user).exists()
+    has_curricula = editable_queryset(Curriculum.objects.all(), request.user).exists()
 
     if not has_children or not has_curricula:
         return render(
@@ -49,6 +51,7 @@ def assignment_create(request):
         if form.is_valid():
             assignment = form.save(commit=False)
             assignment.parent = request.user
+            assignment.family = get_active_family(request.user)
             assignment.save()
             messages.success(request, f"Assignment '{assignment.title}' created.")
             return redirect("assignments:assignment_list")
@@ -64,18 +67,23 @@ def assignment_create(request):
 
 @login_required
 def assignment_detail(request, pk):
-    assignment = get_assignment_for_user(request.user, pk)
-    resource_form = ResourceLinkForm()
+    assignment = get_object_or_404(
+        viewable_queryset(Assignment.objects.all(), request.user), pk=pk,
+    )
+    can_edit = user_can_edit(request.user)
+    resource_form = ResourceLinkForm() if can_edit else None
     return render(
         request,
         "assignments/assignment_detail.html",
-        {"assignment": assignment, "resource_form": resource_form},
+        {"assignment": assignment, "resource_form": resource_form, "can_edit": can_edit},
     )
 
 
 @login_required
 def assignment_update(request, pk):
-    assignment = get_assignment_for_user(request.user, pk)
+    assignment = get_object_or_404(
+        editable_queryset(Assignment.objects.all(), request.user), pk=pk,
+    )
 
     if request.method == "POST":
         form = AssignmentForm(request.POST, instance=assignment, user=request.user)
@@ -95,7 +103,9 @@ def assignment_update(request, pk):
 
 @login_required
 def assignment_delete(request, pk):
-    assignment = get_assignment_for_user(request.user, pk)
+    assignment = get_object_or_404(
+        editable_queryset(Assignment.objects.all(), request.user), pk=pk,
+    )
 
     if request.method == "POST":
         title = assignment.title
@@ -146,8 +156,10 @@ def assignment_student_update(request, token):
 
 @login_required
 def resource_link_add(request, pk):
-    """Add a resource link to an assignment (owner only)."""
-    assignment = get_assignment_for_user(request.user, pk)
+    """Add a resource link to an assignment (editors only)."""
+    assignment = get_object_or_404(
+        editable_queryset(Assignment.objects.all(), request.user), pk=pk,
+    )
 
     if request.method == "POST":
         form = ResourceLinkForm(request.POST)
@@ -163,11 +175,12 @@ def resource_link_add(request, pk):
 
 @login_required
 def resource_link_delete(request, link_pk):
-    """Delete a resource link (owner only)."""
+    """Delete a resource link (editors only)."""
     link = get_object_or_404(
-        AssignmentResourceLink,
+        AssignmentResourceLink.objects.filter(
+            assignment__in=editable_queryset(Assignment.objects.all(), request.user)
+        ),
         pk=link_pk,
-        assignment__parent=request.user,
     )
     assignment_pk = link.assignment.pk
 

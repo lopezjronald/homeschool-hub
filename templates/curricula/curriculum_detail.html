@@ -32,8 +32,10 @@
         </div>
         <div class="card-footer">
           <a href="{% url 'curricula:curriculum_list' %}" class="btn btn-secondary">Back to List</a>
+          {% if can_edit %}
           <a href="{% url 'curricula:curriculum_update' curriculum.pk %}" class="btn btn-primary">Edit</a>
           <a href="{% url 'curricula:curriculum_delete' curriculum.pk %}" class="btn btn-danger">Delete</a>
+          {% endif %}
         </div>
       </div>
     </div>

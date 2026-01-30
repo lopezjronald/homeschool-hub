@@ -217,3 +217,53 @@ class DashboardViewTests(TestCase):
         )
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.context["summary"]["total"], 0)
+
+
+class TeacherDashboardViewTests(TestCase):
+    """Tests that teachers can view the dashboard for their family."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from core.models import Family, FamilyMembership
+
+        cls.parent_user = CustomUser.objects.create_user(
+            username="td_parent", email="td_parent@test.com", password="testpass123",
+        )
+        cls.teacher_user = CustomUser.objects.create_user(
+            username="td_teacher", email="td_teacher@test.com", password="testpass123",
+        )
+        cls.family = Family.objects.create(name="Teacher Dash Family")
+        FamilyMembership.objects.create(
+            user=cls.parent_user, family=cls.family, role="parent",
+        )
+        FamilyMembership.objects.create(
+            user=cls.teacher_user, family=cls.family, role="teacher",
+        )
+        cls.child = Student.objects.create(
+            parent=cls.parent_user, first_name="DashChild", grade_level="G03",
+            family=cls.family,
+        )
+        cls.curriculum = Curriculum.objects.create(
+            parent=cls.parent_user, name="Dash Math", subject="Math",
+            family=cls.family,
+        )
+        cls.assignment = Assignment.objects.create(
+            parent=cls.parent_user,
+            child=cls.child,
+            curriculum=cls.curriculum,
+            title="Dash Assignment",
+            due_date=date.today(),
+            family=cls.family,
+        )
+        cls.url = reverse("dashboard:dashboard")
+
+    def test_teacher_can_view_dashboard(self):
+        self.client.login(username="td_teacher", password="testpass123")
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, 200)
+
+    def test_teacher_sees_family_assignments(self):
+        self.client.login(username="td_teacher", password="testpass123")
+        response = self.client.get(self.url)
+        self.assertEqual(response.context["summary"]["total"], 1)
+        self.assertContains(response, "Dash Assignment")

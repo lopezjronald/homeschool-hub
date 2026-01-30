@@ -189,3 +189,75 @@ class CurriculumViewsTest(TestCase):
         )
         self.assertEqual(response.status_code, 302)
         self.assertFalse(Curriculum.objects.filter(pk=self.curriculum1.pk).exists())
+
+
+class TeacherCurriculumViewTests(TestCase):
+    """Tests that teachers can view but not create/edit/delete curricula."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from core.models import Family, FamilyMembership
+
+        cls.parent_user = User.objects.create_user(
+            username="tc_parent", email="tc_parent@test.com", password="testpass123",
+        )
+        cls.teacher_user = User.objects.create_user(
+            username="tc_teacher", email="tc_teacher@test.com", password="testpass123",
+        )
+        cls.family = Family.objects.create(name="Teacher Curr Family")
+        FamilyMembership.objects.create(
+            user=cls.parent_user, family=cls.family, role="parent",
+        )
+        FamilyMembership.objects.create(
+            user=cls.teacher_user, family=cls.family, role="teacher",
+        )
+        cls.curriculum = Curriculum.objects.create(
+            parent=cls.parent_user, name="Family Math", subject="Math",
+            family=cls.family,
+        )
+
+    def test_teacher_can_list_curricula(self):
+        self.client.login(username="tc_teacher", password="testpass123")
+        response = self.client.get(reverse("curricula:curriculum_list"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Family Math")
+
+    def test_teacher_can_view_curriculum_detail(self):
+        self.client.login(username="tc_teacher", password="testpass123")
+        response = self.client.get(
+            reverse("curricula:curriculum_detail", kwargs={"pk": self.curriculum.pk})
+        )
+        self.assertEqual(response.status_code, 200)
+
+    def test_teacher_cannot_create_curriculum(self):
+        self.client.login(username="tc_teacher", password="testpass123")
+        response = self.client.get(reverse("curricula:curriculum_create"))
+        self.assertEqual(response.status_code, 404)
+
+    def test_teacher_cannot_update_curriculum(self):
+        self.client.login(username="tc_teacher", password="testpass123")
+        response = self.client.get(
+            reverse("curricula:curriculum_update", kwargs={"pk": self.curriculum.pk})
+        )
+        self.assertEqual(response.status_code, 404)
+
+    def test_teacher_cannot_delete_curriculum(self):
+        self.client.login(username="tc_teacher", password="testpass123")
+        response = self.client.get(
+            reverse("curricula:curriculum_delete", kwargs={"pk": self.curriculum.pk})
+        )
+        self.assertEqual(response.status_code, 404)
+
+    def test_teacher_list_hides_edit_buttons(self):
+        self.client.login(username="tc_teacher", password="testpass123")
+        response = self.client.get(reverse("curricula:curriculum_list"))
+        self.assertNotContains(response, "Add Curriculum")
+        self.assertNotContains(response, "btn-outline-danger")
+
+    def test_teacher_detail_hides_edit_buttons(self):
+        self.client.login(username="tc_teacher", password="testpass123")
+        response = self.client.get(
+            reverse("curricula:curriculum_detail", kwargs={"pk": self.curriculum.pk})
+        )
+        self.assertNotContains(response, "btn-primary\">Edit")
+        self.assertNotContains(response, "btn-danger\">Delete")

@@ -2,30 +2,37 @@ from django.contrib.auth.decorators import login_required
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
 
+from core.permissions import viewable_queryset, editable_queryset, user_can_edit
+from core.utils import get_active_family
+
 from .models import Curriculum
 from .forms import CurriculumForm
 
 
-def get_curriculum_for_user(user, pk):
-    """Get a curriculum owned by the given user, or 404."""
-    return get_object_or_404(Curriculum, pk=pk, parent=user)
-
-
 @login_required
 def curriculum_list(request):
-    """Display list of curricula for the logged-in parent."""
-    curricula = Curriculum.objects.filter(parent=request.user)
-    return render(request, "curricula/curriculum_list.html", {"curricula": curricula})
+    """Display list of curricula the user can view."""
+    curricula = viewable_queryset(Curriculum.objects.all(), request.user)
+    can_edit = user_can_edit(request.user)
+    return render(request, "curricula/curriculum_list.html", {
+        "curricula": curricula,
+        "can_edit": can_edit,
+    })
 
 
 @login_required
 def curriculum_create(request):
-    """Create a new curriculum."""
+    """Create a new curriculum (editors only)."""
+    if not user_can_edit(request.user):
+        from django.http import Http404
+        raise Http404
+
     if request.method == "POST":
         form = CurriculumForm(request.POST)
         if form.is_valid():
             curriculum = form.save(commit=False)
             curriculum.parent = request.user
+            curriculum.family = get_active_family(request.user)
             curriculum.save()
             messages.success(request, f'Curriculum "{curriculum.name}" has been created.')
             return redirect("curricula:curriculum_list")
@@ -40,14 +47,18 @@ def curriculum_create(request):
 @login_required
 def curriculum_detail(request, pk):
     """View details of a single curriculum."""
-    curriculum = get_curriculum_for_user(request.user, pk)
-    return render(request, "curricula/curriculum_detail.html", {"curriculum": curriculum})
+    curriculum = get_object_or_404(viewable_queryset(Curriculum.objects.all(), request.user), pk=pk)
+    can_edit = user_can_edit(request.user)
+    return render(request, "curricula/curriculum_detail.html", {
+        "curriculum": curriculum,
+        "can_edit": can_edit,
+    })
 
 
 @login_required
 def curriculum_update(request, pk):
-    """Edit an existing curriculum."""
-    curriculum = get_curriculum_for_user(request.user, pk)
+    """Edit an existing curriculum (editors only)."""
+    curriculum = get_object_or_404(editable_queryset(Curriculum.objects.all(), request.user), pk=pk)
 
     if request.method == "POST":
         form = CurriculumForm(request.POST, instance=curriculum)
@@ -67,8 +78,8 @@ def curriculum_update(request, pk):
 
 @login_required
 def curriculum_delete(request, pk):
-    """Delete a curriculum with confirmation."""
-    curriculum = get_curriculum_for_user(request.user, pk)
+    """Delete a curriculum with confirmation (editors only)."""
+    curriculum = get_object_or_404(editable_queryset(Curriculum.objects.all(), request.user), pk=pk)
     assignment_count = curriculum.get_related_assignments_count()
 
     if request.method == "POST":

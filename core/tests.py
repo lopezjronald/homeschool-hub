@@ -252,3 +252,108 @@ class GetActiveFamilyTests(FamilyBackfillMixin, TestCase):
         FamilyMembership.objects.create(user=user, family=family, role="teacher")
 
         self.assertIsNone(get_active_family(user))
+
+
+class PermissionHelperTests(TestCase):
+    """Tests for core.permissions module."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from core.permissions import (
+            viewable_queryset, editable_queryset, user_can_edit,
+        )
+
+        cls.parent_user = CustomUser.objects.create_user(
+            username="perm_owner", email="perm_owner@test.com", password="testpass123",
+        )
+        cls.teacher_user = CustomUser.objects.create_user(
+            username="perm_teacher", email="perm_teacher@test.com", password="testpass123",
+        )
+        cls.outsider = CustomUser.objects.create_user(
+            username="perm_outsider", email="perm_outsider@test.com", password="testpass123",
+        )
+        cls.legacy_user = CustomUser.objects.create_user(
+            username="perm_legacy", email="perm_legacy@test.com", password="testpass123",
+        )
+
+        cls.family = Family.objects.create(name="Perm Test Family")
+        FamilyMembership.objects.create(
+            user=cls.parent_user, family=cls.family, role="parent",
+        )
+        FamilyMembership.objects.create(
+            user=cls.teacher_user, family=cls.family, role="teacher",
+        )
+        # outsider gets a membership in a DIFFERENT family (teacher-only)
+        cls.other_family = Family.objects.create(name="Other Perm Family")
+        FamilyMembership.objects.create(
+            user=cls.outsider, family=cls.other_family, role="teacher",
+        )
+
+        # Family-owned student
+        cls.student_family = Student.objects.create(
+            parent=cls.parent_user, first_name="FamChild", grade_level="G03",
+            family=cls.family,
+        )
+        # Legacy student (no family)
+        cls.student_legacy = Student.objects.create(
+            parent=cls.legacy_user, first_name="LegacyChild", grade_level="G01",
+        )
+
+    # ── user_can_edit ──────────────────────────────────────────────────────
+
+    def test_user_can_edit_parent(self):
+        from core.permissions import user_can_edit
+        self.assertTrue(user_can_edit(self.parent_user))
+
+    def test_user_can_edit_teacher_only(self):
+        from core.permissions import user_can_edit
+        self.assertFalse(user_can_edit(self.teacher_user))
+
+    def test_user_can_edit_legacy_no_membership(self):
+        from core.permissions import user_can_edit
+        self.assertTrue(user_can_edit(self.legacy_user))
+
+    def test_user_can_edit_outsider_teacher_only(self):
+        from core.permissions import user_can_edit
+        self.assertFalse(user_can_edit(self.outsider))
+
+    # ── viewable_queryset ──────────────────────────────────────────────────
+
+    def test_viewable_parent_sees_family_records(self):
+        from core.permissions import viewable_queryset
+        qs = viewable_queryset(Student.objects.all(), self.parent_user)
+        self.assertIn(self.student_family, qs)
+
+    def test_viewable_teacher_sees_family_records(self):
+        from core.permissions import viewable_queryset
+        qs = viewable_queryset(Student.objects.all(), self.teacher_user)
+        self.assertIn(self.student_family, qs)
+
+    def test_viewable_outsider_sees_nothing_in_family(self):
+        from core.permissions import viewable_queryset
+        qs = viewable_queryset(Student.objects.all(), self.outsider)
+        self.assertNotIn(self.student_family, qs)
+        self.assertNotIn(self.student_legacy, qs)
+
+    def test_viewable_legacy_fallback(self):
+        from core.permissions import viewable_queryset
+        qs = viewable_queryset(Student.objects.all(), self.legacy_user)
+        self.assertIn(self.student_legacy, qs)
+        self.assertNotIn(self.student_family, qs)
+
+    # ── editable_queryset ──────────────────────────────────────────────────
+
+    def test_editable_parent_can_edit_family_records(self):
+        from core.permissions import editable_queryset
+        qs = editable_queryset(Student.objects.all(), self.parent_user)
+        self.assertIn(self.student_family, qs)
+
+    def test_editable_teacher_cannot_edit_family_records(self):
+        from core.permissions import editable_queryset
+        qs = editable_queryset(Student.objects.all(), self.teacher_user)
+        self.assertNotIn(self.student_family, qs)
+
+    def test_editable_legacy_fallback(self):
+        from core.permissions import editable_queryset
+        qs = editable_queryset(Student.objects.all(), self.legacy_user)
+        self.assertIn(self.student_legacy, qs)

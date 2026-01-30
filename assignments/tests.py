@@ -712,3 +712,107 @@ class ResourceLinkViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Video Tutorial")
         self.assertContains(response, "https://youtube.com/video")
+
+
+class TeacherAssignmentViewTests(TestCase):
+    """Tests that teachers can view but not create/edit/delete assignments."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from core.models import Family, FamilyMembership
+
+        cls.parent_user = User.objects.create_user(
+            username="ta_parent", email="ta_parent@test.com", password="testpass123",
+        )
+        cls.teacher_user = User.objects.create_user(
+            username="ta_teacher", email="ta_teacher@test.com", password="testpass123",
+        )
+        cls.family = Family.objects.create(name="Teacher Assign Family")
+        FamilyMembership.objects.create(
+            user=cls.parent_user, family=cls.family, role="parent",
+        )
+        FamilyMembership.objects.create(
+            user=cls.teacher_user, family=cls.family, role="teacher",
+        )
+        cls.child = Student.objects.create(
+            parent=cls.parent_user, first_name="FamChild", grade_level="G03",
+            family=cls.family,
+        )
+        cls.curriculum = Curriculum.objects.create(
+            parent=cls.parent_user, name="Family Math", subject="Math",
+            family=cls.family,
+        )
+        cls.assignment = Assignment.objects.create(
+            parent=cls.parent_user,
+            child=cls.child,
+            curriculum=cls.curriculum,
+            title="Family Assignment",
+            due_date=date.today(),
+            family=cls.family,
+        )
+
+    def test_teacher_can_list_assignments(self):
+        self.client.login(username="ta_teacher", password="testpass123")
+        response = self.client.get(reverse("assignments:assignment_list"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Family Assignment")
+
+    def test_teacher_can_view_assignment_detail(self):
+        self.client.login(username="ta_teacher", password="testpass123")
+        response = self.client.get(
+            reverse("assignments:assignment_detail", args=[self.assignment.pk])
+        )
+        self.assertEqual(response.status_code, 200)
+
+    def test_teacher_cannot_create_assignment(self):
+        self.client.login(username="ta_teacher", password="testpass123")
+        response = self.client.get(reverse("assignments:assignment_create"))
+        self.assertEqual(response.status_code, 404)
+
+    def test_teacher_cannot_update_assignment(self):
+        self.client.login(username="ta_teacher", password="testpass123")
+        response = self.client.get(
+            reverse("assignments:assignment_update", args=[self.assignment.pk])
+        )
+        self.assertEqual(response.status_code, 404)
+
+    def test_teacher_cannot_delete_assignment(self):
+        self.client.login(username="ta_teacher", password="testpass123")
+        response = self.client.get(
+            reverse("assignments:assignment_delete", args=[self.assignment.pk])
+        )
+        self.assertEqual(response.status_code, 404)
+
+    def test_teacher_cannot_add_resource_link(self):
+        self.client.login(username="ta_teacher", password="testpass123")
+        response = self.client.post(
+            reverse("assignments:resource_link_add", args=[self.assignment.pk]),
+            {"url": "https://example.com", "label": "Test"},
+        )
+        self.assertEqual(response.status_code, 404)
+
+    def test_teacher_cannot_delete_resource_link(self):
+        link = AssignmentResourceLink.objects.create(
+            assignment=self.assignment,
+            url="https://example.com",
+            label="Test",
+        )
+        self.client.login(username="ta_teacher", password="testpass123")
+        response = self.client.post(
+            reverse("assignments:resource_link_delete", args=[link.pk])
+        )
+        self.assertEqual(response.status_code, 404)
+
+    def test_teacher_list_hides_edit_buttons(self):
+        self.client.login(username="ta_teacher", password="testpass123")
+        response = self.client.get(reverse("assignments:assignment_list"))
+        self.assertNotContains(response, "Add Assignment")
+        self.assertNotContains(response, "btn-outline-danger")
+
+    def test_teacher_detail_hides_edit_controls(self):
+        self.client.login(username="ta_teacher", password="testpass123")
+        response = self.client.get(
+            reverse("assignments:assignment_detail", args=[self.assignment.pk])
+        )
+        self.assertNotContains(response, "Student Update Link")
+        self.assertNotContains(response, "btn-danger\">Delete")

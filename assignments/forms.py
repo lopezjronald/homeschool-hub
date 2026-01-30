@@ -2,6 +2,7 @@ from datetime import date
 
 from django import forms
 
+from core.permissions import editable_queryset
 from curricula.models import Curriculum
 from students.models import Student
 
@@ -21,8 +22,12 @@ class AssignmentForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         self.user = user
         if user:
-            self.fields["child"].queryset = Student.objects.filter(parent=user)
-            self.fields["curriculum"].queryset = Curriculum.objects.filter(parent=user)
+            self.fields["child"].queryset = editable_queryset(
+                Student.objects.all(), user,
+            )
+            self.fields["curriculum"].queryset = editable_queryset(
+                Curriculum.objects.all(), user,
+            )
 
     def clean_due_date(self):
         due_date = self.cleaned_data.get("due_date")
@@ -34,14 +39,18 @@ class AssignmentForm(forms.ModelForm):
 
     def clean_child(self):
         child = self.cleaned_data.get("child")
-        if child and self.user and child.parent != self.user:
-            raise forms.ValidationError("Invalid child selection.")
+        if child and self.user:
+            allowed = editable_queryset(Student.objects.all(), self.user)
+            if not allowed.filter(pk=child.pk).exists():
+                raise forms.ValidationError("Invalid child selection.")
         return child
 
     def clean_curriculum(self):
         curriculum = self.cleaned_data.get("curriculum")
-        if curriculum and self.user and curriculum.parent != self.user:
-            raise forms.ValidationError("Invalid curriculum selection.")
+        if curriculum and self.user:
+            allowed = editable_queryset(Curriculum.objects.all(), self.user)
+            if not allowed.filter(pk=curriculum.pk).exists():
+                raise forms.ValidationError("Invalid curriculum selection.")
         return curriculum
 
 

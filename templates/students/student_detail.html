@@ -30,8 +30,10 @@
         </div>
         <div class="card-footer">
           <a href="{% url 'students:student_list' %}" class="btn btn-secondary">Back to List</a>
+          {% if can_edit %}
           <a href="{% url 'students:student_update' student.pk %}" class="btn btn-primary">Edit</a>
           <a href="{% url 'students:student_delete' student.pk %}" class="btn btn-danger">Delete</a>
+          {% endif %}
         </div>
       </div>
     </div>

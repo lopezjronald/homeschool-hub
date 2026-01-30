@@ -194,3 +194,75 @@ class StudentFormValidationTest(TestCase):
         )
         self.assertEqual(response.status_code, 200)  # Form re-rendered with errors
         self.assertContains(response, "cannot be in the future")
+
+
+class TeacherStudentViewTests(TestCase):
+    """Tests that teachers can view but not create/edit/delete students."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from core.models import Family, FamilyMembership
+
+        cls.parent_user = User.objects.create_user(
+            username="t_parent", email="t_parent@test.com", password="testpass123",
+        )
+        cls.teacher_user = User.objects.create_user(
+            username="t_teacher", email="t_teacher@test.com", password="testpass123",
+        )
+        cls.family = Family.objects.create(name="Teacher Test Family")
+        FamilyMembership.objects.create(
+            user=cls.parent_user, family=cls.family, role="parent",
+        )
+        FamilyMembership.objects.create(
+            user=cls.teacher_user, family=cls.family, role="teacher",
+        )
+        cls.student = Student.objects.create(
+            parent=cls.parent_user, first_name="FamChild", grade_level="G03",
+            family=cls.family,
+        )
+
+    def test_teacher_can_list_students(self):
+        self.client.login(username="t_teacher", password="testpass123")
+        response = self.client.get(reverse("students:student_list"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "FamChild")
+
+    def test_teacher_can_view_student_detail(self):
+        self.client.login(username="t_teacher", password="testpass123")
+        response = self.client.get(
+            reverse("students:student_detail", kwargs={"pk": self.student.pk})
+        )
+        self.assertEqual(response.status_code, 200)
+
+    def test_teacher_cannot_create_student(self):
+        self.client.login(username="t_teacher", password="testpass123")
+        response = self.client.get(reverse("students:student_create"))
+        self.assertEqual(response.status_code, 404)
+
+    def test_teacher_cannot_update_student(self):
+        self.client.login(username="t_teacher", password="testpass123")
+        response = self.client.get(
+            reverse("students:student_update", kwargs={"pk": self.student.pk})
+        )
+        self.assertEqual(response.status_code, 404)
+
+    def test_teacher_cannot_delete_student(self):
+        self.client.login(username="t_teacher", password="testpass123")
+        response = self.client.get(
+            reverse("students:student_delete", kwargs={"pk": self.student.pk})
+        )
+        self.assertEqual(response.status_code, 404)
+
+    def test_teacher_list_hides_edit_buttons(self):
+        self.client.login(username="t_teacher", password="testpass123")
+        response = self.client.get(reverse("students:student_list"))
+        self.assertNotContains(response, "Add Child")
+        self.assertNotContains(response, "btn-outline-danger")
+
+    def test_teacher_detail_hides_edit_buttons(self):
+        self.client.login(username="t_teacher", password="testpass123")
+        response = self.client.get(
+            reverse("students:student_detail", kwargs={"pk": self.student.pk})
+        )
+        self.assertNotContains(response, "btn-primary\">Edit")
+        self.assertNotContains(response, "btn-danger\">Delete")

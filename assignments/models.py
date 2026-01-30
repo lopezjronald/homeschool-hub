@@ -29,6 +29,13 @@ class Assignment(models.Model):
         on_delete=models.CASCADE,
         related_name="assignments",
     )
+    family = models.ForeignKey(
+        "core.Family",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="assignments",
+    )
     child = models.ForeignKey(
         Student,
         on_delete=models.PROTECT,

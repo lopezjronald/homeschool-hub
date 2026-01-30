@@ -28,6 +28,13 @@ class Curriculum(models.Model):
         on_delete=models.CASCADE,
         related_name="curricula",
     )
+    family = models.ForeignKey(
+        "core.Family",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="curricula",
+    )
     name = models.CharField(
         max_length=200,
         help_text="e.g., 'Singapore Math 5A' or 'American History'",

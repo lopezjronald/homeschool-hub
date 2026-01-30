@@ -27,6 +27,13 @@ class Student(models.Model):
         on_delete=models.CASCADE,
         related_name="children",
     )
+    family = models.ForeignKey(
+        "core.Family",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="students",
+    )
     first_name = models.CharField(max_length=100)
     last_name = models.CharField(max_length=100, blank=True)
     date_of_birth = models.DateField(null=True, blank=True)

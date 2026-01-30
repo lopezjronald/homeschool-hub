@@ -5,6 +5,7 @@ from django.db.models import Count, Q
 from django.shortcuts import render
 
 from assignments.models import Assignment
+from core.permissions import viewable_queryset
 from curricula.models import Curriculum
 from students.models import Student
 
@@ -13,10 +14,10 @@ from students.models import Student
 def dashboard_view(request):
     today = date.today()
 
-    # Base queryset: only this parent's assignments
-    qs = Assignment.objects.filter(parent=request.user).select_related(
-        "child", "curriculum"
-    )
+    # Base queryset: assignments the user can view (via family or legacy parent)
+    qs = viewable_queryset(
+        Assignment.objects.all(), request.user,
+    ).select_related("child", "curriculum")
 
     # --- Read filter params ---------------------------------------------------
     child_id = request.GET.get("child_id", "")
@@ -29,12 +30,10 @@ def dashboard_view(request):
 
     # --- Apply filters --------------------------------------------------------
     if child_id:
-        qs = qs.filter(child_id=child_id, child__parent=request.user)
+        qs = qs.filter(child_id=child_id)
 
     if curriculum_id:
-        qs = qs.filter(
-            curriculum_id=curriculum_id, curriculum__parent=request.user
-        )
+        qs = qs.filter(curriculum_id=curriculum_id)
 
     if date_filter_active:
         # Exclude assignments with null due_date when date filtering
@@ -91,11 +90,13 @@ def dashboard_view(request):
     # --- Assignment list for drill-down ---------------------------------------
     assignments = qs.order_by("due_date", "title")
 
-    # --- Filter dropdown options (scoped to this user) ------------------------
-    children = Student.objects.filter(parent=request.user).order_by(
-        "first_name"
-    )
-    curricula = Curriculum.objects.filter(parent=request.user).order_by("name")
+    # --- Filter dropdown options (scoped to viewable families) ----------------
+    children = viewable_queryset(
+        Student.objects.all(), request.user,
+    ).order_by("first_name")
+    curricula = viewable_queryset(
+        Curriculum.objects.all(), request.user,
+    ).order_by("name")
 
     context = {
         "summary": summary,

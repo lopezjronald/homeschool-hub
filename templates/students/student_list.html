@@ -5,9 +5,11 @@
 <div class="container py-4">
   <div class="d-flex justify-content-between align-items-center mb-4">
     <h1>My Children</h1>
+    {% if can_edit %}
     <a href="{% url 'students:student_create' %}" class="btn btn-primary">
       Add Child
     </a>
+    {% endif %}
   </div>
 
   {% if students %}
@@ -26,8 +28,10 @@
             </div>
             <div class="card-footer bg-transparent">
               <a href="{% url 'students:student_detail' student.pk %}" class="btn btn-sm btn-outline-primary">View</a>
+              {% if can_edit %}
               <a href="{% url 'students:student_update' student.pk %}" class="btn btn-sm btn-outline-secondary">Edit</a>
               <a href="{% url 'students:student_delete' student.pk %}" class="btn btn-sm btn-outline-danger">Delete</a>
+              {% endif %}
             </div>
           </div>
         </div>
@@ -38,7 +42,9 @@
       <h4 class="alert-heading">No children yet</h4>
       <p>You haven't added any children to your account.</p>
       <hr>
+      {% if can_edit %}
       <a href="{% url 'students:student_create' %}" class="btn btn-primary">Add Your First Child</a>
+      {% endif %}
     </div>
   {% endif %}
 </div>

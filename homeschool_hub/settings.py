@@ -85,6 +85,7 @@ ALLOWED_HOSTS = _env_list("ALLOWED_HOSTS", default=_default_hosts)
 
 INSTALLED_APPS = [
     "accounts",  # Our custom accounts app
+    "core",  # Family & organization domain models
     "students",  # Child profile management
     "curricula",  # Curriculum management
     "assignments",  # Assignment tracking

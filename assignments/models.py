@@ -24,6 +24,16 @@ class Assignment(models.Model):
         (COMPLETE, "Complete"),
     ]
 
+    SOURCE_PARENT = "parent"
+    SOURCE_TEACHER = "teacher"
+    SOURCE_SYSTEM = "system"
+
+    SOURCE_CHOICES = [
+        (SOURCE_PARENT, "Parent"),
+        (SOURCE_TEACHER, "Teacher"),
+        (SOURCE_SYSTEM, "System"),
+    ]
+
     parent = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
@@ -53,6 +63,18 @@ class Assignment(models.Model):
         max_length=20,
         choices=STATUS_CHOICES,
         default=PENDING,
+    )
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="created_assignments",
+    )
+    source = models.CharField(
+        max_length=20,
+        choices=SOURCE_CHOICES,
+        default=SOURCE_PARENT,
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

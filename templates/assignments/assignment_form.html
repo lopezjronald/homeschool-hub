@@ -15,16 +15,24 @@
           {% if empty_state %}
             <div class="alert alert-warning" role="alert">
               <h5 class="alert-heading">Cannot create assignment</h5>
-              <p>Before creating an assignment, you need to:</p>
+              <p>Before creating an assignment, you need:</p>
               <ul class="mb-0">
                 {% if not has_children %}
                   <li>
-                    Please <a href="{% url 'students:student_create' %}">add a child first</a> — you need at least one child to assign work to.
+                    {% if is_parent_or_admin %}
+                      Please <a href="{% url 'students:student_create' %}">add a child first</a> — you need at least one child to assign work to.
+                    {% else %}
+                      No children have been added to this family yet. Ask a parent to add them.
+                    {% endif %}
                   </li>
                 {% endif %}
                 {% if not has_curricula %}
                   <li>
-                    Please <a href="{% url 'curricula:curriculum_create' %}">add a curriculum first</a> — you need at least one curriculum to assign.
+                    {% if is_parent_or_admin %}
+                      Please <a href="{% url 'curricula:curriculum_create' %}">add a curriculum first</a> — you need at least one curriculum to assign.
+                    {% else %}
+                      No curricula have been added to this family yet. Ask a parent to add them.
+                    {% endif %}
                   </li>
                 {% endif %}
               </ul>

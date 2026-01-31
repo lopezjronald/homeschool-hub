@@ -48,6 +48,17 @@
               <dd class="col-sm-9">{{ assignment.description|linebreaks }}</dd>
             {% endif %}
 
+            <dt class="col-sm-3">Assigned by</dt>
+            <dd class="col-sm-9">
+              {% if assignment.source == "teacher" and assignment.created_by %}
+                {{ assignment.created_by.get_full_name|default:assignment.created_by.username }} (Teacher)
+              {% elif assignment.source == "teacher" %}
+                Teacher
+              {% else %}
+                Parent
+              {% endif %}
+            </dd>
+
             <dt class="col-sm-3">Created</dt>
             <dd class="col-sm-9">{{ assignment.created_at|date:"M d, Y" }}</dd>
 
@@ -112,6 +123,8 @@
           <a href="{% url 'assignments:assignment_list' %}" class="btn btn-secondary">Back to List</a>
           {% if can_edit %}
           <a href="{% url 'assignments:assignment_update' assignment.pk %}" class="btn btn-primary">Edit</a>
+          {% endif %}
+          {% if can_delete %}
           <a href="{% url 'assignments:assignment_delete' assignment.pk %}" class="btn btn-danger">Delete</a>
           {% endif %}
         </div>

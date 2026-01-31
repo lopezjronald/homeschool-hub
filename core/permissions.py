@@ -82,6 +82,29 @@ def editable_queryset(qs, user, family_field="family", parent_field="parent"):
     )
 
 
+def scoped_queryset(qs, user, family, family_field="family", parent_field="parent"):
+    """Filter a queryset to records in the selected *family* only.
+
+    - If *family* is None (legacy user with no memberships), returns only
+      records where family IS NULL and parent == user.
+    - Parents/admins also see their legacy null-family records alongside
+      the selected family's records.
+    - Teachers see only the selected family's records.
+    """
+    if family is None:
+        null_lookup = f"{family_field}__isnull"
+        return qs.filter(**{null_lookup: True, parent_field: user})
+
+    family_filter = Q(**{family_field: family})
+
+    if user_can_edit(user):
+        null_lookup = f"{family_field}__isnull"
+        return qs.filter(
+            family_filter | Q(**{null_lookup: True, parent_field: user})
+        )
+    return qs.filter(family_filter)
+
+
 def user_can_edit(user):
     """Return True if the user has edit rights in at least one family.
 

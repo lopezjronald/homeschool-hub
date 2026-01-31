@@ -3,8 +3,8 @@ from django.contrib.auth.decorators import login_required
 from django.http import Http404
 from django.shortcuts import get_object_or_404, redirect, render
 
-from core.permissions import viewable_queryset, editable_queryset, user_can_edit
-from core.utils import get_active_family
+from core.permissions import viewable_queryset, editable_queryset, scoped_queryset, user_can_edit
+from core.utils import get_active_family, get_selected_family
 from curricula.models import Curriculum
 from students.models import Student
 
@@ -14,8 +14,9 @@ from .models import Assignment, AssignmentResourceLink
 
 @login_required
 def assignment_list(request):
-    assignments = viewable_queryset(
-        Assignment.objects.all(), request.user,
+    family = get_selected_family(request)
+    assignments = scoped_queryset(
+        Assignment.objects.all(), request.user, family,
     ).select_related("child", "curriculum")
     can_edit = user_can_edit(request.user)
     return render(

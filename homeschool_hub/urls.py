@@ -18,6 +18,7 @@ urlpatterns = [
     path("curricula/", include(("curricula.urls", "curricula"), namespace="curricula")),
     path("assignments/", include(("assignments.urls", "assignments"), namespace="assignments")),
     path("dashboard/", include(("dashboard.urls", "dashboard"), namespace="dashboard")),
+    path("core/", include(("core.urls", "core"), namespace="core")),
 ]
 
 # Serve static files in DEBUG mode (fallback if WhiteNoise isn't handling them)

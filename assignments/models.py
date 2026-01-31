@@ -116,13 +116,28 @@ class Assignment(models.Model):
 class AssignmentResourceLink(models.Model):
     """An external resource link attached to an assignment."""
 
+    TYPE_RESOURCE = "resource"
+    TYPE_ASSESSMENT = "assessment"
+
+    TYPE_CHOICES = [
+        (TYPE_RESOURCE, "Resource"),
+        (TYPE_ASSESSMENT, "Assessment"),
+    ]
+
     assignment = models.ForeignKey(
         Assignment,
         on_delete=models.CASCADE,
         related_name="resource_links",
     )
     url = models.URLField()
-    label = models.CharField(max_length=200, blank=True)
+    label = models.CharField(max_length=200)
+    link_type = models.CharField(
+        max_length=20,
+        choices=TYPE_CHOICES,
+        default=TYPE_RESOURCE,
+    )
+    window_start = models.DateField(null=True, blank=True)
+    window_end = models.DateField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -135,3 +150,14 @@ class AssignmentResourceLink(models.Model):
     def display_label(self):
         """Return label if set, otherwise the URL."""
         return self.label if self.label else self.url
+
+    @property
+    def window_display(self):
+        """Human-readable testing window text, or empty string."""
+        if self.window_start and self.window_end:
+            return f"Window: {self.window_start} \u2013 {self.window_end}"
+        if self.window_start:
+            return f"Window starts: {self.window_start}"
+        if self.window_end:
+            return f"Window ends: {self.window_end}"
+        return ""

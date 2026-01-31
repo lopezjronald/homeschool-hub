@@ -578,25 +578,36 @@ class AssignmentResourceLinkModelTests(TestCase):
 
 class ResourceLinkFormTests(TestCase):
     def test_valid_https_url(self):
-        form = ResourceLinkForm(data={"url": "https://example.com", "label": "Test"})
+        form = ResourceLinkForm(data={
+            "url": "https://example.com", "label": "Test", "link_type": "resource",
+        })
         self.assertTrue(form.is_valid())
 
     def test_valid_http_url(self):
-        form = ResourceLinkForm(data={"url": "http://example.com", "label": ""})
+        form = ResourceLinkForm(data={
+            "url": "http://example.com", "label": "Test", "link_type": "resource",
+        })
         self.assertTrue(form.is_valid())
 
     def test_invalid_ftp_url(self):
-        form = ResourceLinkForm(data={"url": "ftp://example.com", "label": ""})
+        form = ResourceLinkForm(data={
+            "url": "ftp://example.com", "label": "Test", "link_type": "resource",
+        })
         self.assertFalse(form.is_valid())
         self.assertIn("url", form.errors)
 
     def test_invalid_javascript_url(self):
-        form = ResourceLinkForm(data={"url": "javascript:alert(1)", "label": ""})
+        form = ResourceLinkForm(data={
+            "url": "javascript:alert(1)", "label": "Test", "link_type": "resource",
+        })
         self.assertFalse(form.is_valid())
 
-    def test_label_optional(self):
-        form = ResourceLinkForm(data={"url": "https://example.com"})
-        self.assertTrue(form.is_valid())
+    def test_label_required(self):
+        form = ResourceLinkForm(data={
+            "url": "https://example.com", "label": "", "link_type": "resource",
+        })
+        self.assertFalse(form.is_valid())
+        self.assertIn("label", form.errors)
 
 
 class ResourceLinkViewTests(TestCase):
@@ -630,7 +641,7 @@ class ResourceLinkViewTests(TestCase):
         self.client.login(username="parent1", password="testpass123")
         response = self.client.post(
             reverse("assignments:resource_link_add", args=[self.assignment.pk]),
-            {"url": "https://youtube.com/watch?v=123", "label": "Math Video"},
+            {"url": "https://youtube.com/watch?v=123", "label": "Math Video", "link_type": "resource"},
         )
         self.assertRedirects(
             response,
@@ -1027,3 +1038,289 @@ class TeacherAssignmentCreationTests(TestCase):
             reverse("assignments:assignment_detail", args=[assignment.pk])
         )
         self.assertContains(response, "(Teacher)")
+
+
+class AssessmentLinkTests(TestCase):
+    """Tests for HH-71: assessment links with typed links, labels, and windows."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from core.models import Family, FamilyMembership
+
+        cls.parent_user = User.objects.create_user(
+            username="al_parent", email="al_parent@test.com", password="testpass123",
+        )
+        cls.teacher_user = User.objects.create_user(
+            username="al_teacher", email="al_teacher@test.com", password="testpass123",
+        )
+        cls.family = Family.objects.create(name="AL Family")
+        FamilyMembership.objects.create(
+            user=cls.parent_user, family=cls.family, role="parent",
+        )
+        FamilyMembership.objects.create(
+            user=cls.teacher_user, family=cls.family, role="teacher",
+        )
+        cls.child = Student.objects.create(
+            parent=cls.parent_user, first_name="ALChild", grade_level="G03",
+            family=cls.family,
+        )
+        cls.curriculum = Curriculum.objects.create(
+            parent=cls.parent_user, name="AL Math", subject="Math",
+            family=cls.family,
+        )
+        cls.parent_assignment = Assignment.objects.create(
+            parent=cls.parent_user,
+            child=cls.child,
+            curriculum=cls.curriculum,
+            title="Parent Assign",
+            due_date=date.today(),
+            family=cls.family,
+            source=Assignment.SOURCE_PARENT,
+            created_by=cls.parent_user,
+        )
+        cls.teacher_assignment = Assignment.objects.create(
+            parent=cls.parent_user,
+            child=cls.child,
+            curriculum=cls.curriculum,
+            title="Teacher Assign",
+            due_date=date.today(),
+            family=cls.family,
+            source=Assignment.SOURCE_TEACHER,
+            created_by=cls.teacher_user,
+        )
+
+    # -- Model tests --
+
+    def test_link_type_default_is_resource(self):
+        link = AssignmentResourceLink.objects.create(
+            assignment=self.parent_assignment,
+            url="https://example.com",
+            label="Test",
+        )
+        self.assertEqual(link.link_type, AssignmentResourceLink.TYPE_RESOURCE)
+
+    def test_window_display_both_dates(self):
+        link = AssignmentResourceLink(
+            window_start=date(2026, 3, 1), window_end=date(2026, 3, 15),
+        )
+        self.assertIn("2026-03-01", link.window_display)
+        self.assertIn("2026-03-15", link.window_display)
+        self.assertTrue(link.window_display.startswith("Window:"))
+
+    def test_window_display_start_only(self):
+        link = AssignmentResourceLink(window_start=date(2026, 3, 1))
+        self.assertEqual(link.window_display, "Window starts: 2026-03-01")
+
+    def test_window_display_end_only(self):
+        link = AssignmentResourceLink(window_end=date(2026, 3, 15))
+        self.assertEqual(link.window_display, "Window ends: 2026-03-15")
+
+    def test_window_display_no_dates(self):
+        link = AssignmentResourceLink()
+        self.assertEqual(link.window_display, "")
+
+    # -- Form tests --
+
+    def test_form_rejects_whitespace_only_label(self):
+        form = ResourceLinkForm(data={
+            "url": "https://example.com", "label": "   ", "link_type": "resource",
+        })
+        self.assertFalse(form.is_valid())
+        self.assertIn("label", form.errors)
+
+    def test_form_rejects_invalid_link_type(self):
+        form = ResourceLinkForm(data={
+            "url": "https://example.com", "label": "Test", "link_type": "invalid",
+        })
+        self.assertFalse(form.is_valid())
+        self.assertIn("link_type", form.errors)
+
+    def test_form_window_start_after_end_rejected(self):
+        form = ResourceLinkForm(data={
+            "url": "https://example.com",
+            "label": "Test",
+            "link_type": "assessment",
+            "window_start": "2026-03-15",
+            "window_end": "2026-03-01",
+        })
+        self.assertFalse(form.is_valid())
+        self.assertIn("__all__", form.errors)
+
+    def test_form_window_dates_individually_optional(self):
+        # Only start date
+        form = ResourceLinkForm(data={
+            "url": "https://example.com",
+            "label": "Test",
+            "link_type": "assessment",
+            "window_start": "2026-03-01",
+        })
+        self.assertTrue(form.is_valid())
+        # Only end date
+        form = ResourceLinkForm(data={
+            "url": "https://example.com",
+            "label": "Test",
+            "link_type": "assessment",
+            "window_end": "2026-03-15",
+        })
+        self.assertTrue(form.is_valid())
+
+    def test_form_window_both_dates_valid(self):
+        form = ResourceLinkForm(data={
+            "url": "https://example.com",
+            "label": "Test",
+            "link_type": "assessment",
+            "window_start": "2026-03-01",
+            "window_end": "2026-03-15",
+        })
+        self.assertTrue(form.is_valid())
+
+    # -- View / permission tests --
+
+    def test_add_assessment_link_success(self):
+        self.client.login(username="al_parent", password="testpass123")
+        response = self.client.post(
+            reverse("assignments:resource_link_add", args=[self.parent_assignment.pk]),
+            {
+                "url": "https://caaspp.cde.ca.gov",
+                "label": "CAASPP ELA",
+                "link_type": "assessment",
+                "window_start": "2026-03-01",
+                "window_end": "2026-03-15",
+            },
+        )
+        self.assertRedirects(
+            response,
+            reverse("assignments:assignment_detail", args=[self.parent_assignment.pk]),
+        )
+        link = AssignmentResourceLink.objects.get(label="CAASPP ELA")
+        self.assertEqual(link.link_type, AssignmentResourceLink.TYPE_ASSESSMENT)
+        self.assertEqual(link.window_start, date(2026, 3, 1))
+        self.assertEqual(link.window_end, date(2026, 3, 15))
+
+    def test_teacher_can_add_link_to_own_assignment(self):
+        self.client.login(username="al_teacher", password="testpass123")
+        response = self.client.post(
+            reverse("assignments:resource_link_add", args=[self.teacher_assignment.pk]),
+            {
+                "url": "https://i-ready.com/test",
+                "label": "i-Ready Diagnostic",
+                "link_type": "assessment",
+            },
+        )
+        self.assertRedirects(
+            response,
+            reverse("assignments:assignment_detail", args=[self.teacher_assignment.pk]),
+        )
+        self.assertTrue(
+            AssignmentResourceLink.objects.filter(
+                assignment=self.teacher_assignment, label="i-Ready Diagnostic",
+            ).exists()
+        )
+
+    def test_teacher_cannot_add_link_to_parent_assignment(self):
+        self.client.login(username="al_teacher", password="testpass123")
+        response = self.client.post(
+            reverse("assignments:resource_link_add", args=[self.parent_assignment.pk]),
+            {
+                "url": "https://example.com",
+                "label": "Sneaky",
+                "link_type": "resource",
+            },
+        )
+        self.assertEqual(response.status_code, 404)
+
+    def test_teacher_can_delete_link_on_own_assignment(self):
+        link = AssignmentResourceLink.objects.create(
+            assignment=self.teacher_assignment,
+            url="https://example.com",
+            label="Deletable",
+            link_type=AssignmentResourceLink.TYPE_RESOURCE,
+        )
+        self.client.login(username="al_teacher", password="testpass123")
+        response = self.client.post(
+            reverse("assignments:resource_link_delete", args=[link.pk])
+        )
+        self.assertRedirects(
+            response,
+            reverse("assignments:assignment_detail", args=[self.teacher_assignment.pk]),
+        )
+        self.assertFalse(AssignmentResourceLink.objects.filter(pk=link.pk).exists())
+
+    def test_teacher_cannot_delete_link_on_parent_assignment(self):
+        link = AssignmentResourceLink.objects.create(
+            assignment=self.parent_assignment,
+            url="https://example.com",
+            label="Protected",
+            link_type=AssignmentResourceLink.TYPE_RESOURCE,
+        )
+        self.client.login(username="al_teacher", password="testpass123")
+        response = self.client.post(
+            reverse("assignments:resource_link_delete", args=[link.pk])
+        )
+        self.assertEqual(response.status_code, 404)
+
+    # -- Template tests --
+
+    def test_detail_groups_assessments_and_resources(self):
+        AssignmentResourceLink.objects.create(
+            assignment=self.parent_assignment,
+            url="https://caaspp.cde.ca.gov",
+            label="CAASPP",
+            link_type=AssignmentResourceLink.TYPE_ASSESSMENT,
+        )
+        AssignmentResourceLink.objects.create(
+            assignment=self.parent_assignment,
+            url="https://youtube.com/math",
+            label="Math Video",
+            link_type=AssignmentResourceLink.TYPE_RESOURCE,
+        )
+        self.client.login(username="al_parent", password="testpass123")
+        response = self.client.get(
+            reverse("assignments:assignment_detail", args=[self.parent_assignment.pk])
+        )
+        content = response.content.decode()
+        # Assessments section appears before Resources section
+        assess_pos = content.index("Take Test: CAASPP")
+        resource_pos = content.index("Math Video")
+        self.assertLess(assess_pos, resource_pos)
+        # Assessment uses button style
+        self.assertContains(response, "Take Test: CAASPP")
+        self.assertContains(response, "btn-outline-primary")
+
+    def test_student_page_groups_links(self):
+        AssignmentResourceLink.objects.create(
+            assignment=self.parent_assignment,
+            url="https://caaspp.cde.ca.gov",
+            label="CAASPP",
+            link_type=AssignmentResourceLink.TYPE_ASSESSMENT,
+        )
+        AssignmentResourceLink.objects.create(
+            assignment=self.parent_assignment,
+            url="https://youtube.com/math",
+            label="Math Video",
+            link_type=AssignmentResourceLink.TYPE_RESOURCE,
+        )
+        token = self.parent_assignment.get_student_status_token()
+        url = reverse("assignments:assignment_student_update", args=[token])
+        response = self.client.get(url)
+        self.assertContains(response, "Assessments")
+        self.assertContains(response, "Take Test: CAASPP")
+        self.assertContains(response, "Resources")
+        self.assertContains(response, "Math Video")
+
+    def test_assessment_shows_window_dates(self):
+        AssignmentResourceLink.objects.create(
+            assignment=self.parent_assignment,
+            url="https://caaspp.cde.ca.gov",
+            label="CAASPP",
+            link_type=AssignmentResourceLink.TYPE_ASSESSMENT,
+            window_start=date(2026, 3, 1),
+            window_end=date(2026, 3, 15),
+        )
+        self.client.login(username="al_parent", password="testpass123")
+        response = self.client.get(
+            reverse("assignments:assignment_detail", args=[self.parent_assignment.pk])
+        )
+        self.assertContains(response, "Window:")
+        self.assertContains(response, "2026-03-01")
+        self.assertContains(response, "2026-03-15")

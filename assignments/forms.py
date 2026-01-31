@@ -6,7 +6,7 @@ from core.permissions import editable_queryset, scoped_queryset, user_can_edit
 from curricula.models import Curriculum
 from students.models import Student
 
-from .models import Assignment
+from .models import Assignment, AssignmentResourceLink
 
 
 class AssignmentForm(forms.ModelForm):
@@ -74,16 +74,33 @@ class AssignmentStatusForm(forms.Form):
 
 
 class ResourceLinkForm(forms.Form):
-    """Form for adding external resource links to an assignment."""
+    """Form for adding external resource/assessment links to an assignment."""
 
-    url = forms.URLField(
-        widget=forms.URLInput(attrs={"placeholder": "https://example.com/resource"})
+    link_type = forms.ChoiceField(
+        choices=AssignmentResourceLink.TYPE_CHOICES,
+        initial=AssignmentResourceLink.TYPE_RESOURCE,
     )
     label = forms.CharField(
         max_length=200,
-        required=False,
-        widget=forms.TextInput(attrs={"placeholder": "Optional label"}),
+        widget=forms.TextInput(attrs={"placeholder": "e.g. CAASPP Practice Test"}),
     )
+    url = forms.URLField(
+        widget=forms.URLInput(attrs={"placeholder": "https://example.com/resource"})
+    )
+    window_start = forms.DateField(
+        required=False,
+        widget=forms.DateInput(attrs={"type": "date"}),
+    )
+    window_end = forms.DateField(
+        required=False,
+        widget=forms.DateInput(attrs={"type": "date"}),
+    )
+
+    def clean_label(self):
+        label = self.cleaned_data.get("label", "").strip()
+        if not label:
+            raise forms.ValidationError("Label is required.")
+        return label
 
     def clean_url(self):
         url = self.cleaned_data.get("url", "")
@@ -97,3 +114,13 @@ class ResourceLinkForm(forms.Form):
                     "Only HTTP and HTTPS URLs are allowed."
                 )
         return url
+
+    def clean(self):
+        cleaned_data = super().clean()
+        window_start = cleaned_data.get("window_start")
+        window_end = cleaned_data.get("window_end")
+        if window_start and window_end and window_start > window_end:
+            raise forms.ValidationError(
+                "Window start date must be on or before the end date."
+            )
+        return cleaned_data

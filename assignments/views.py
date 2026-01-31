@@ -131,6 +131,12 @@ def assignment_detail(request, pk):
     can_edit = is_parent_or_admin or is_own_teacher_assignment
     can_delete = is_parent_or_admin
     resource_form = ResourceLinkForm() if can_edit else None
+    assessment_links = assignment.resource_links.filter(
+        link_type=AssignmentResourceLink.TYPE_ASSESSMENT,
+    )
+    resource_links = assignment.resource_links.filter(
+        link_type=AssignmentResourceLink.TYPE_RESOURCE,
+    )
     return render(
         request,
         "assignments/assignment_detail.html",
@@ -139,6 +145,8 @@ def assignment_detail(request, pk):
             "resource_form": resource_form,
             "can_edit": can_edit,
             "can_delete": can_delete,
+            "assessment_links": assessment_links,
+            "resource_links": resource_links,
         },
     )
 
@@ -210,10 +218,21 @@ def assignment_student_update(request, token):
     else:
         form = AssignmentStatusForm(initial={"status": assignment.status})
 
+    assessment_links = assignment.resource_links.filter(
+        link_type=AssignmentResourceLink.TYPE_ASSESSMENT,
+    )
+    resource_links = assignment.resource_links.filter(
+        link_type=AssignmentResourceLink.TYPE_RESOURCE,
+    )
     return render(
         request,
         "assignments/assignment_student_update.html",
-        {"assignment": assignment, "form": form},
+        {
+            "assignment": assignment,
+            "form": form,
+            "assessment_links": assessment_links,
+            "resource_links": resource_links,
+        },
     )
 
 
@@ -228,9 +247,12 @@ def resource_link_add(request, pk):
             AssignmentResourceLink.objects.create(
                 assignment=assignment,
                 url=form.cleaned_data["url"],
-                label=form.cleaned_data.get("label", ""),
+                label=form.cleaned_data["label"],
+                link_type=form.cleaned_data["link_type"],
+                window_start=form.cleaned_data.get("window_start"),
+                window_end=form.cleaned_data.get("window_end"),
             )
-            messages.success(request, "Resource link added.")
+            messages.success(request, "Link added.")
     return redirect("assignments:assignment_detail", pk=pk)
 
 

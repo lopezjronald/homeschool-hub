@@ -813,3 +813,47 @@ class ScopedQuerysetTests(TestCase):
         from core.permissions import scoped_queryset
         qs = scoped_queryset(Student.objects.all(), self.parent_user, self.family)
         self.assertNotIn(self.student_other_family, qs)
+
+
+# ===========================================================================
+# Invite Teacher Nav Link Tests (HH-73)
+# ===========================================================================
+
+
+class InviteTeacherNavTests(TestCase):
+    """Tests for HH-73: 'Invite Teacher' link visibility in navbar."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.parent_user = CustomUser.objects.create_user(
+            username="nav_parent", email="nav_parent@test.com", password="testpass123",
+        )
+        cls.teacher_user = CustomUser.objects.create_user(
+            username="nav_teacher", email="nav_teacher@test.com", password="testpass123",
+        )
+        cls.no_family_user = CustomUser.objects.create_user(
+            username="nav_nofam", email="nav_nofam@test.com", password="testpass123",
+        )
+        cls.family = Family.objects.create(name="Nav Family")
+        FamilyMembership.objects.create(
+            user=cls.parent_user, family=cls.family, role="parent",
+        )
+        FamilyMembership.objects.create(
+            user=cls.teacher_user, family=cls.family, role="teacher",
+        )
+
+    def test_parent_sees_invite_teacher_link(self):
+        self.client.login(username="nav_parent", password="testpass123")
+        response = self.client.get(reverse("dashboard:dashboard"))
+        self.assertContains(response, "Invite Teacher")
+        self.assertContains(response, reverse("core:invite_teacher"))
+
+    def test_teacher_does_not_see_invite_teacher_link(self):
+        self.client.login(username="nav_teacher", password="testpass123")
+        response = self.client.get(reverse("dashboard:dashboard"))
+        self.assertNotContains(response, "Invite Teacher")
+
+    def test_no_family_user_does_not_see_invite_teacher_link(self):
+        self.client.login(username="nav_nofam", password="testpass123")
+        response = self.client.get(reverse("dashboard:dashboard"))
+        self.assertNotContains(response, "Invite Teacher")

@@ -50,11 +50,27 @@
                 {% endif %}
               </dd>
 
-              {% if assignment.resource_links.all %}
+              {% if assessment_links %}
+                <dt class="col-sm-4">Assessments</dt>
+                <dd class="col-sm-8">
+                  <ul class="list-unstyled mb-0">
+                    {% for link in assessment_links %}
+                      <li class="mb-1">
+                        <a href="{{ link.url }}" target="_blank" rel="noopener noreferrer" class="btn btn-sm btn-outline-primary">Take Test: {{ link.display_label }}</a>
+                        {% if link.window_display %}
+                          <br><span class="text-muted small">{{ link.window_display }}</span>
+                        {% endif %}
+                      </li>
+                    {% endfor %}
+                  </ul>
+                </dd>
+              {% endif %}
+
+              {% if resource_links %}
                 <dt class="col-sm-4">Resources</dt>
                 <dd class="col-sm-8">
                   <ul class="list-unstyled mb-0">
-                    {% for link in assignment.resource_links.all %}
+                    {% for link in resource_links %}
                       <li><a href="{{ link.url }}" target="_blank" rel="noopener noreferrer">{{ link.display_label }}</a></li>
                     {% endfor %}
                   </ul>

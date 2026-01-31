@@ -1,6 +1,6 @@
 from django.utils import timezone
 
-from core.models import Family
+from core.models import Family, FamilyMembership
 
 
 def get_active_family(user):
@@ -17,6 +17,92 @@ def get_active_family(user):
     )
     if membership is not None:
         return membership.family
+    return None
+
+
+def get_user_families(user):
+    """Return queryset of families the user belongs to, ordered by id."""
+    family_ids = FamilyMembership.objects.filter(
+        user=user,
+    ).values_list("family_id", flat=True)
+    return Family.objects.filter(pk__in=family_ids).order_by("id")
+
+
+def get_selected_family(request):
+    """Return the currently selected family for the request user.
+
+    Resolution order:
+    1. GET param ``family_id`` (validated + stored to session)
+    2. Session ``selected_family_id``
+    3. First parent-role family (by id)
+    4. First any-role family (by id)
+    5. None (legacy user with no memberships)
+
+    Result is cached on ``request._selected_family``.
+    """
+    if hasattr(request, "_selected_family"):
+        return request._selected_family
+
+    user = request.user
+    if not user.is_authenticated:
+        request._selected_family = None
+        return None
+
+    from core.permissions import can_view_family
+
+    # 1. GET param
+    family_id_str = request.GET.get("family_id")
+    if family_id_str:
+        try:
+            family = Family.objects.get(pk=int(family_id_str))
+            if can_view_family(user, family):
+                request.session["selected_family_id"] = family.id
+                request._selected_family = family
+                return family
+        except (Family.DoesNotExist, ValueError, TypeError):
+            pass
+
+    # 2. Session
+    session_id = request.session.get("selected_family_id")
+    if session_id is not None:
+        try:
+            family = Family.objects.get(pk=session_id)
+            if can_view_family(user, family):
+                request._selected_family = family
+                return family
+        except Family.DoesNotExist:
+            pass
+        # Stale session value — clear it
+        del request.session["selected_family_id"]
+
+    # 3. First parent-role family
+    membership = (
+        FamilyMembership.objects
+        .filter(user=user, role="parent")
+        .select_related("family")
+        .order_by("id")
+        .first()
+    )
+    if membership:
+        request.session["selected_family_id"] = membership.family.id
+        request._selected_family = membership.family
+        return membership.family
+
+    # 4. First any-role family
+    membership = (
+        FamilyMembership.objects
+        .filter(user=user)
+        .select_related("family")
+        .order_by("id")
+        .first()
+    )
+    if membership:
+        request.session["selected_family_id"] = membership.family.id
+        request._selected_family = membership.family
+        return membership.family
+
+    # 5. Legacy user
+    request._selected_family = None
     return None
 
 

@@ -5,7 +5,8 @@ from django.db.models import Count, Q
 from django.shortcuts import render
 
 from assignments.models import Assignment
-from core.permissions import viewable_queryset
+from core.permissions import scoped_queryset
+from core.utils import get_selected_family
 from curricula.models import Curriculum
 from students.models import Student
 
@@ -14,9 +15,10 @@ from students.models import Student
 def dashboard_view(request):
     today = date.today()
 
-    # Base queryset: assignments the user can view (via family or legacy parent)
-    qs = viewable_queryset(
-        Assignment.objects.all(), request.user,
+    # Base queryset: assignments scoped to the selected family
+    family = get_selected_family(request)
+    qs = scoped_queryset(
+        Assignment.objects.all(), request.user, family,
     ).select_related("child", "curriculum")
 
     # --- Read filter params ---------------------------------------------------
@@ -90,12 +92,12 @@ def dashboard_view(request):
     # --- Assignment list for drill-down ---------------------------------------
     assignments = qs.order_by("due_date", "title")
 
-    # --- Filter dropdown options (scoped to viewable families) ----------------
-    children = viewable_queryset(
-        Student.objects.all(), request.user,
+    # --- Filter dropdown options (scoped to selected family) -----------------
+    children = scoped_queryset(
+        Student.objects.all(), request.user, family,
     ).order_by("first_name")
-    curricula = viewable_queryset(
-        Curriculum.objects.all(), request.user,
+    curricula = scoped_queryset(
+        Curriculum.objects.all(), request.user, family,
     ).order_by("name")
 
     context = {

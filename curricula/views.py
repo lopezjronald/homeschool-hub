@@ -2,8 +2,8 @@ from django.contrib.auth.decorators import login_required
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
 
-from core.permissions import viewable_queryset, editable_queryset, user_can_edit
-from core.utils import get_active_family
+from core.permissions import viewable_queryset, editable_queryset, scoped_queryset, user_can_edit
+from core.utils import get_active_family, get_selected_family
 
 from .models import Curriculum
 from .forms import CurriculumForm
@@ -12,7 +12,8 @@ from .forms import CurriculumForm
 @login_required
 def curriculum_list(request):
     """Display list of curricula the user can view."""
-    curricula = viewable_queryset(Curriculum.objects.all(), request.user)
+    family = get_selected_family(request)
+    curricula = scoped_queryset(Curriculum.objects.all(), request.user, family)
     can_edit = user_can_edit(request.user)
     return render(request, "curricula/curriculum_list.html", {
         "curricula": curricula,

@@ -2,8 +2,8 @@ from django.contrib.auth.decorators import login_required
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
 
-from core.permissions import viewable_queryset, editable_queryset, user_can_edit
-from core.utils import get_active_family
+from core.permissions import viewable_queryset, editable_queryset, scoped_queryset, user_can_edit
+from core.utils import get_active_family, get_selected_family
 
 from .models import Student
 from .forms import StudentForm
@@ -12,7 +12,8 @@ from .forms import StudentForm
 @login_required
 def student_list(request):
     """Display list of children the user can view (via family membership)."""
-    students = viewable_queryset(Student.objects.all(), request.user)
+    family = get_selected_family(request)
+    students = scoped_queryset(Student.objects.all(), request.user, family)
     can_edit = user_can_edit(request.user)
     return render(request, "students/student_list.html", {
         "students": students,

@@ -35,6 +35,27 @@
         </ul>
         <ul class="navbar-nav">
           {% if user.is_authenticated %}
+            {% if user_families|length > 1 %}
+              <li class="nav-item dropdown">
+                <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                  {{ selected_family.name }}
+                </a>
+                <ul class="dropdown-menu dropdown-menu-end">
+                  {% for fam in user_families %}
+                    <li>
+                      <a class="dropdown-item{% if selected_family and fam.id == selected_family.id %} active{% endif %}"
+                         href="{{ request.path }}?family_id={{ fam.id }}">
+                        {{ fam.name }}
+                      </a>
+                    </li>
+                  {% endfor %}
+                </ul>
+              </li>
+            {% elif selected_family %}
+              <li class="nav-item">
+                <span class="nav-link text-light">{{ selected_family.name }}</span>
+              </li>
+            {% endif %}
             <li class="nav-item">
               <span class="nav-link text-light">{{ user.username }}</span>
             </li>

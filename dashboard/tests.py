@@ -267,3 +267,89 @@ class TeacherDashboardViewTests(TestCase):
         response = self.client.get(self.url)
         self.assertEqual(response.context["summary"]["total"], 1)
         self.assertContains(response, "Dash Assignment")
+
+
+class FamilySwitcherDashboardTests(TestCase):
+    """Tests for family-scoped dashboard with family switching."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from core.models import Family, FamilyMembership
+
+        cls.parent_user = CustomUser.objects.create_user(
+            username="sw_parent", email="sw_parent@test.com", password="testpass123",
+        )
+        cls.family_a = Family.objects.create(name="Switcher A Family")
+        cls.family_b = Family.objects.create(name="Switcher B Family")
+        FamilyMembership.objects.create(
+            user=cls.parent_user, family=cls.family_a, role="parent",
+        )
+        FamilyMembership.objects.create(
+            user=cls.parent_user, family=cls.family_b, role="parent",
+        )
+
+        # Data in family A
+        cls.child_a = Student.objects.create(
+            parent=cls.parent_user, first_name="ChildA", grade_level="G03",
+            family=cls.family_a,
+        )
+        cls.curr_a = Curriculum.objects.create(
+            parent=cls.parent_user, name="Math A", subject="Math",
+            family=cls.family_a,
+        )
+        cls.assign_a = Assignment.objects.create(
+            parent=cls.parent_user, child=cls.child_a, curriculum=cls.curr_a,
+            title="Assignment A", due_date=date.today(), family=cls.family_a,
+        )
+
+        # Data in family B
+        cls.child_b = Student.objects.create(
+            parent=cls.parent_user, first_name="ChildB", grade_level="G05",
+            family=cls.family_b,
+        )
+        cls.curr_b = Curriculum.objects.create(
+            parent=cls.parent_user, name="Math B", subject="Math",
+            family=cls.family_b,
+        )
+        cls.assign_b = Assignment.objects.create(
+            parent=cls.parent_user, child=cls.child_b, curriculum=cls.curr_b,
+            title="Assignment B", due_date=date.today(), family=cls.family_b,
+        )
+
+        cls.url = reverse("dashboard:dashboard")
+
+    def test_default_shows_first_family(self):
+        self.client.login(username="sw_parent", password="testpass123")
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["summary"]["total"], 1)
+        self.assertContains(response, "Assignment A")
+        self.assertNotContains(response, "Assignment B")
+
+    def test_switch_family_shows_other_data(self):
+        self.client.login(username="sw_parent", password="testpass123")
+        response = self.client.get(self.url, {"family_id": self.family_b.id})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["summary"]["total"], 1)
+        self.assertContains(response, "Assignment B")
+        self.assertNotContains(response, "Assignment A")
+
+    def test_session_persists_family_selection(self):
+        self.client.login(username="sw_parent", password="testpass123")
+        # First request: switch to family B
+        self.client.get(self.url, {"family_id": self.family_b.id})
+        # Second request: no family_id param
+        response = self.client.get(self.url)
+        self.assertEqual(response.context["summary"]["total"], 1)
+        self.assertContains(response, "Assignment B")
+
+    def test_filter_dropdowns_scoped_to_selected_family(self):
+        self.client.login(username="sw_parent", password="testpass123")
+        # Default: family A selected
+        response = self.client.get(self.url)
+        children = list(response.context["children"])
+        curricula_list = list(response.context["curricula"])
+        self.assertEqual(len(children), 1)
+        self.assertEqual(children[0].first_name, "ChildA")
+        self.assertEqual(len(curricula_list), 1)
+        self.assertEqual(curricula_list[0].name, "Math A")

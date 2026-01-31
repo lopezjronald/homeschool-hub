@@ -764,10 +764,10 @@ class TeacherAssignmentViewTests(TestCase):
         )
         self.assertEqual(response.status_code, 200)
 
-    def test_teacher_cannot_create_assignment(self):
+    def test_teacher_can_access_create_page(self):
         self.client.login(username="ta_teacher", password="testpass123")
         response = self.client.get(reverse("assignments:assignment_create"))
-        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.status_code, 200)
 
     def test_teacher_cannot_update_assignment(self):
         self.client.login(username="ta_teacher", password="testpass123")
@@ -803,10 +803,12 @@ class TeacherAssignmentViewTests(TestCase):
         )
         self.assertEqual(response.status_code, 404)
 
-    def test_teacher_list_hides_edit_buttons(self):
+    def test_teacher_list_shows_create_but_hides_row_actions(self):
         self.client.login(username="ta_teacher", password="testpass123")
         response = self.client.get(reverse("assignments:assignment_list"))
-        self.assertNotContains(response, "Add Assignment")
+        self.assertContains(response, "Add Assignment")
+        # Parent-created row: no Edit or Delete
+        self.assertNotContains(response, "btn-outline-secondary")
         self.assertNotContains(response, "btn-outline-danger")
 
     def test_teacher_detail_hides_edit_controls(self):
@@ -816,3 +818,212 @@ class TeacherAssignmentViewTests(TestCase):
         )
         self.assertNotContains(response, "Student Update Link")
         self.assertNotContains(response, "btn-danger\">Delete")
+
+
+class TeacherAssignmentCreationTests(TestCase):
+    """Tests for HH-70: teacher assignment creation, editing, and audit."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from core.models import Family, FamilyMembership
+
+        cls.parent_user = User.objects.create_user(
+            username="tc_parent", email="tc_parent@test.com", password="testpass123",
+        )
+        cls.teacher_user = User.objects.create_user(
+            username="tc_teacher", email="tc_teacher@test.com", password="testpass123",
+        )
+        cls.family = Family.objects.create(name="TC Family")
+        FamilyMembership.objects.create(
+            user=cls.parent_user, family=cls.family, role="parent",
+        )
+        FamilyMembership.objects.create(
+            user=cls.teacher_user, family=cls.family, role="teacher",
+        )
+        cls.child = Student.objects.create(
+            parent=cls.parent_user, first_name="TCChild", grade_level="G03",
+            family=cls.family,
+        )
+        cls.curriculum = Curriculum.objects.create(
+            parent=cls.parent_user, name="TC Math", subject="Math",
+            family=cls.family,
+        )
+        cls.parent_assignment = Assignment.objects.create(
+            parent=cls.parent_user,
+            child=cls.child,
+            curriculum=cls.curriculum,
+            title="Parent Assignment",
+            due_date=date.today(),
+            family=cls.family,
+            source=Assignment.SOURCE_PARENT,
+            created_by=cls.parent_user,
+        )
+
+    def test_teacher_can_create_assignment_for_assigned_family(self):
+        self.client.login(username="tc_teacher", password="testpass123")
+        response = self.client.post(
+            reverse("assignments:assignment_create"),
+            {
+                "child": self.child.pk,
+                "curriculum": self.curriculum.pk,
+                "title": "Teacher Created",
+                "due_date": date.today().isoformat(),
+                "status": Assignment.PENDING,
+            },
+        )
+        self.assertRedirects(response, reverse("assignments:assignment_list"))
+        assignment = Assignment.objects.get(title="Teacher Created")
+        self.assertEqual(assignment.source, Assignment.SOURCE_TEACHER)
+        self.assertEqual(assignment.created_by, self.teacher_user)
+        self.assertEqual(assignment.family, self.family)
+        self.assertEqual(assignment.parent, self.parent_user)
+
+    def test_teacher_cannot_create_for_unassigned_family(self):
+        from core.models import Family, FamilyMembership
+
+        other_parent = User.objects.create_user(
+            username="tc_other_parent", email="tc_other@test.com",
+            password="testpass123",
+        )
+        other_family = Family.objects.create(name="Other TC Family")
+        FamilyMembership.objects.create(
+            user=other_parent, family=other_family, role="parent",
+        )
+        other_child = Student.objects.create(
+            parent=other_parent, first_name="OtherChild", grade_level="G02",
+            family=other_family,
+        )
+        other_curriculum = Curriculum.objects.create(
+            parent=other_parent, name="Other Math", subject="Math",
+            family=other_family,
+        )
+        # Teacher tries to force-select unassigned family via GET param
+        self.client.login(username="tc_teacher", password="testpass123")
+        response = self.client.post(
+            reverse("assignments:assignment_create")
+            + f"?family={other_family.pk}",
+            {
+                "child": other_child.pk,
+                "curriculum": other_curriculum.pk,
+                "title": "Sneaky Assignment",
+                "due_date": date.today().isoformat(),
+                "status": Assignment.PENDING,
+            },
+        )
+        # Form rejects — child/curriculum not in teacher's allowed querysets
+        self.assertEqual(response.status_code, 200)  # re-renders form
+        self.assertFalse(
+            Assignment.objects.filter(title="Sneaky Assignment").exists()
+        )
+
+    def test_teacher_can_edit_own_assignment(self):
+        teacher_assignment = Assignment.objects.create(
+            parent=self.parent_user,
+            child=self.child,
+            curriculum=self.curriculum,
+            title="Teacher Editable",
+            due_date=date.today(),
+            family=self.family,
+            source=Assignment.SOURCE_TEACHER,
+            created_by=self.teacher_user,
+        )
+        self.client.login(username="tc_teacher", password="testpass123")
+        response = self.client.post(
+            reverse("assignments:assignment_update", args=[teacher_assignment.pk]),
+            {
+                "child": self.child.pk,
+                "curriculum": self.curriculum.pk,
+                "title": "Teacher Updated",
+                "due_date": date.today().isoformat(),
+                "status": Assignment.IN_PROGRESS,
+            },
+        )
+        self.assertRedirects(response, reverse("assignments:assignment_list"))
+        teacher_assignment.refresh_from_db()
+        self.assertEqual(teacher_assignment.title, "Teacher Updated")
+
+    def test_teacher_cannot_edit_parent_created_assignment(self):
+        self.client.login(username="tc_teacher", password="testpass123")
+        response = self.client.get(
+            reverse("assignments:assignment_update", args=[self.parent_assignment.pk])
+        )
+        self.assertEqual(response.status_code, 404)
+
+    def test_teacher_cannot_delete_any_assignment(self):
+        teacher_assignment = Assignment.objects.create(
+            parent=self.parent_user,
+            child=self.child,
+            curriculum=self.curriculum,
+            title="Teacher No Delete",
+            due_date=date.today(),
+            family=self.family,
+            source=Assignment.SOURCE_TEACHER,
+            created_by=self.teacher_user,
+        )
+        self.client.login(username="tc_teacher", password="testpass123")
+        # Cannot delete own teacher-created assignment
+        response = self.client.get(
+            reverse("assignments:assignment_delete", args=[teacher_assignment.pk])
+        )
+        self.assertEqual(response.status_code, 404)
+        # Cannot delete parent-created assignment
+        response = self.client.get(
+            reverse("assignments:assignment_delete", args=[self.parent_assignment.pk])
+        )
+        self.assertEqual(response.status_code, 404)
+
+    def test_parent_can_still_edit_and_delete(self):
+        deletable = Assignment.objects.create(
+            parent=self.parent_user,
+            child=self.child,
+            curriculum=self.curriculum,
+            title="Parent Deletable",
+            due_date=date.today(),
+            family=self.family,
+            source=Assignment.SOURCE_PARENT,
+            created_by=self.parent_user,
+        )
+        self.client.login(username="tc_parent", password="testpass123")
+        # Parent can edit
+        response = self.client.post(
+            reverse("assignments:assignment_update", args=[deletable.pk]),
+            {
+                "child": self.child.pk,
+                "curriculum": self.curriculum.pk,
+                "title": "Parent Updated",
+                "due_date": date.today().isoformat(),
+                "status": Assignment.PENDING,
+            },
+        )
+        self.assertRedirects(response, reverse("assignments:assignment_list"))
+        deletable.refresh_from_db()
+        self.assertEqual(deletable.title, "Parent Updated")
+        # Parent can delete
+        response = self.client.post(
+            reverse("assignments:assignment_delete", args=[deletable.pk])
+        )
+        self.assertRedirects(response, reverse("assignments:assignment_list"))
+        self.assertFalse(
+            Assignment.objects.filter(pk=deletable.pk).exists()
+        )
+
+    def test_assignment_shows_correct_source_and_created_by(self):
+        self.client.login(username="tc_teacher", password="testpass123")
+        self.client.post(
+            reverse("assignments:assignment_create"),
+            {
+                "child": self.child.pk,
+                "curriculum": self.curriculum.pk,
+                "title": "Audit Trail Test",
+                "due_date": date.today().isoformat(),
+                "status": Assignment.PENDING,
+            },
+        )
+        assignment = Assignment.objects.get(title="Audit Trail Test")
+        self.assertEqual(assignment.source, Assignment.SOURCE_TEACHER)
+        self.assertEqual(assignment.created_by, self.teacher_user)
+        # Detail page shows teacher attribution
+        response = self.client.get(
+            reverse("assignments:assignment_detail", args=[assignment.pk])
+        )
+        self.assertContains(response, "(Teacher)")

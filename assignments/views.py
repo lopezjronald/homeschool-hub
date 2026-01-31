@@ -3,6 +3,7 @@ from django.contrib.auth.decorators import login_required
 from django.http import Http404
 from django.shortcuts import get_object_or_404, redirect, render
 
+from core.models import FamilyMembership
 from core.permissions import viewable_queryset, editable_queryset, scoped_queryset, user_can_edit
 from core.utils import get_active_family, get_selected_family
 from curricula.models import Curriculum
@@ -12,28 +13,57 @@ from .forms import AssignmentForm, AssignmentStatusForm, ResourceLinkForm
 from .models import Assignment, AssignmentResourceLink
 
 
+def _user_editable_assignments(user):
+    """Return assignments the user can edit.
+
+    Parents/admins: all assignments in their editable families + legacy.
+    Teachers: only their own teacher-created assignments in viewable families.
+    """
+    if user_can_edit(user):
+        return editable_queryset(Assignment.objects.all(), user)
+    return viewable_queryset(
+        Assignment.objects.filter(
+            source=Assignment.SOURCE_TEACHER, created_by=user,
+        ),
+        user,
+    )
+
+
 @login_required
 def assignment_list(request):
     family = get_selected_family(request)
     assignments = scoped_queryset(
         Assignment.objects.all(), request.user, family,
     ).select_related("child", "curriculum")
-    can_edit = user_can_edit(request.user)
+    is_parent_or_admin = user_can_edit(request.user)
+    can_create = is_parent_or_admin or family is not None
     return render(
         request,
         "assignments/assignment_list.html",
-        {"assignments": assignments, "can_edit": can_edit},
+        {
+            "assignments": assignments,
+            "can_create": can_create,
+            "is_parent_or_admin": is_parent_or_admin,
+        },
     )
 
 
 @login_required
 def assignment_create(request):
-    if not user_can_edit(request.user):
+    family = get_selected_family(request)
+    is_parent_or_admin = user_can_edit(request.user)
+
+    # Allow parents/admins OR teachers with a selected family
+    if not is_parent_or_admin and family is None:
         raise Http404
 
-    # Check if user has children and curricula they can edit
-    has_children = editable_queryset(Student.objects.all(), request.user).exists()
-    has_curricula = editable_queryset(Curriculum.objects.all(), request.user).exists()
+    # Check if user has accessible children and curricula
+    if is_parent_or_admin:
+        has_children = editable_queryset(Student.objects.all(), request.user).exists()
+        has_curricula = editable_queryset(Curriculum.objects.all(), request.user).exists()
+    else:
+        has_children = scoped_queryset(Student.objects.all(), request.user, family).exists()
+        has_curricula = scoped_queryset(Curriculum.objects.all(), request.user, family).exists()
 
     if not has_children or not has_curricula:
         return render(
@@ -44,20 +74,39 @@ def assignment_create(request):
                 "has_children": has_children,
                 "has_curricula": has_curricula,
                 "empty_state": True,
+                "is_parent_or_admin": is_parent_or_admin,
             },
         )
 
     if request.method == "POST":
-        form = AssignmentForm(request.POST, user=request.user)
+        form = AssignmentForm(request.POST, user=request.user, family=family)
         if form.is_valid():
             assignment = form.save(commit=False)
-            assignment.parent = request.user
-            assignment.family = get_active_family(request.user)
+            assignment.created_by = request.user
+
+            if is_parent_or_admin:
+                assignment.parent = request.user
+                assignment.family = get_active_family(request.user)
+                assignment.source = Assignment.SOURCE_PARENT
+            else:
+                # Teacher: set parent to family's first parent member
+                family_parent_id = (
+                    FamilyMembership.objects
+                    .filter(family=family, role="parent")
+                    .values_list("user_id", flat=True)
+                    .first()
+                )
+                if family_parent_id is None:
+                    raise Http404
+                assignment.parent_id = family_parent_id
+                assignment.family = family
+                assignment.source = Assignment.SOURCE_TEACHER
+
             assignment.save()
             messages.success(request, f"Assignment '{assignment.title}' created.")
             return redirect("assignments:assignment_list")
     else:
-        form = AssignmentForm(user=request.user)
+        form = AssignmentForm(user=request.user, family=family)
 
     return render(
         request,
@@ -69,31 +118,44 @@ def assignment_create(request):
 @login_required
 def assignment_detail(request, pk):
     assignment = get_object_or_404(
-        viewable_queryset(Assignment.objects.all(), request.user), pk=pk,
+        viewable_queryset(
+            Assignment.objects.all(), request.user,
+        ).select_related("created_by"),
+        pk=pk,
     )
-    can_edit = user_can_edit(request.user)
+    is_parent_or_admin = user_can_edit(request.user)
+    is_own_teacher_assignment = (
+        assignment.source == Assignment.SOURCE_TEACHER
+        and assignment.created_by == request.user
+    )
+    can_edit = is_parent_or_admin or is_own_teacher_assignment
+    can_delete = is_parent_or_admin
     resource_form = ResourceLinkForm() if can_edit else None
     return render(
         request,
         "assignments/assignment_detail.html",
-        {"assignment": assignment, "resource_form": resource_form, "can_edit": can_edit},
+        {
+            "assignment": assignment,
+            "resource_form": resource_form,
+            "can_edit": can_edit,
+            "can_delete": can_delete,
+        },
     )
 
 
 @login_required
 def assignment_update(request, pk):
-    assignment = get_object_or_404(
-        editable_queryset(Assignment.objects.all(), request.user), pk=pk,
-    )
+    assignment = get_object_or_404(_user_editable_assignments(request.user), pk=pk)
+    family = get_selected_family(request)
 
     if request.method == "POST":
-        form = AssignmentForm(request.POST, instance=assignment, user=request.user)
+        form = AssignmentForm(request.POST, instance=assignment, user=request.user, family=family)
         if form.is_valid():
             form.save()
             messages.success(request, f"Assignment '{assignment.title}' updated.")
             return redirect("assignments:assignment_list")
     else:
-        form = AssignmentForm(instance=assignment, user=request.user)
+        form = AssignmentForm(instance=assignment, user=request.user, family=family)
 
     return render(
         request,
@@ -158,9 +220,7 @@ def assignment_student_update(request, token):
 @login_required
 def resource_link_add(request, pk):
     """Add a resource link to an assignment (editors only)."""
-    assignment = get_object_or_404(
-        editable_queryset(Assignment.objects.all(), request.user), pk=pk,
-    )
+    assignment = get_object_or_404(_user_editable_assignments(request.user), pk=pk)
 
     if request.method == "POST":
         form = ResourceLinkForm(request.POST)
@@ -179,7 +239,7 @@ def resource_link_delete(request, link_pk):
     """Delete a resource link (editors only)."""
     link = get_object_or_404(
         AssignmentResourceLink.objects.filter(
-            assignment__in=editable_queryset(Assignment.objects.all(), request.user)
+            assignment__in=_user_editable_assignments(request.user)
         ),
         pk=link_pk,
     )

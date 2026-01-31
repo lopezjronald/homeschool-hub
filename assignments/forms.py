@@ -2,7 +2,7 @@ from datetime import date
 
 from django import forms
 
-from core.permissions import editable_queryset
+from core.permissions import editable_queryset, scoped_queryset, user_can_edit
 from curricula.models import Curriculum
 from students.models import Student
 
@@ -18,16 +18,31 @@ class AssignmentForm(forms.ModelForm):
             "description": forms.Textarea(attrs={"rows": 3}),
         }
 
-    def __init__(self, *args, user=None, **kwargs):
+    def __init__(self, *args, user=None, family=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.user = user
+        self._family = family
         if user:
-            self.fields["child"].queryset = editable_queryset(
-                Student.objects.all(), user,
-            )
-            self.fields["curriculum"].queryset = editable_queryset(
-                Curriculum.objects.all(), user,
-            )
+            self.fields["child"].queryset = self._allowed_students()
+            self.fields["curriculum"].queryset = self._allowed_curricula()
+
+    def _allowed_students(self):
+        if not self.user:
+            return Student.objects.none()
+        if user_can_edit(self.user):
+            return editable_queryset(Student.objects.all(), self.user)
+        if self._family:
+            return scoped_queryset(Student.objects.all(), self.user, self._family)
+        return Student.objects.none()
+
+    def _allowed_curricula(self):
+        if not self.user:
+            return Curriculum.objects.none()
+        if user_can_edit(self.user):
+            return editable_queryset(Curriculum.objects.all(), self.user)
+        if self._family:
+            return scoped_queryset(Curriculum.objects.all(), self.user, self._family)
+        return Curriculum.objects.none()
 
     def clean_due_date(self):
         due_date = self.cleaned_data.get("due_date")
@@ -40,16 +55,14 @@ class AssignmentForm(forms.ModelForm):
     def clean_child(self):
         child = self.cleaned_data.get("child")
         if child and self.user:
-            allowed = editable_queryset(Student.objects.all(), self.user)
-            if not allowed.filter(pk=child.pk).exists():
+            if not self._allowed_students().filter(pk=child.pk).exists():
                 raise forms.ValidationError("Invalid child selection.")
         return child
 
     def clean_curriculum(self):
         curriculum = self.cleaned_data.get("curriculum")
         if curriculum and self.user:
-            allowed = editable_queryset(Curriculum.objects.all(), self.user)
-            if not allowed.filter(pk=curriculum.pk).exists():
+            if not self._allowed_curricula().filter(pk=curriculum.pk).exists():
                 raise forms.ValidationError("Invalid curriculum selection.")
         return curriculum
 

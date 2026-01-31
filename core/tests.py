@@ -7,9 +7,11 @@ from django.utils import timezone
 
 from accounts.models import CustomUser
 from assignments.models import Assignment
+from django.test import RequestFactory
+
 from core.forms import TeacherInviteForm
 from core.models import Family, FamilyMembership, Invitation
-from core.utils import get_active_family
+from core.utils import get_active_family, get_selected_family
 from curricula.models import Curriculum
 from students.models import Student
 
@@ -638,3 +640,176 @@ class AcceptInviteViewTests(TestCase):
         )
         response = self.client.get(url)
         self.assertEqual(response.status_code, 404)
+
+
+# ===========================================================================
+# Get Selected Family Tests
+# ===========================================================================
+
+
+class GetSelectedFamilyTests(TestCase):
+    """Tests for core.utils.get_selected_family."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.parent_user = CustomUser.objects.create_user(
+            username="sel_parent", email="sel_parent@test.com", password="testpass123",
+        )
+        cls.teacher_user = CustomUser.objects.create_user(
+            username="sel_teacher", email="sel_teacher@test.com", password="testpass123",
+        )
+        cls.legacy_user = CustomUser.objects.create_user(
+            username="sel_legacy", email="sel_legacy@test.com", password="testpass123",
+        )
+        cls.family_a = Family.objects.create(name="Select A Family")
+        cls.family_b = Family.objects.create(name="Select B Family")
+        FamilyMembership.objects.create(
+            user=cls.parent_user, family=cls.family_a, role="parent",
+        )
+        FamilyMembership.objects.create(
+            user=cls.parent_user, family=cls.family_b, role="parent",
+        )
+        FamilyMembership.objects.create(
+            user=cls.teacher_user, family=cls.family_a, role="teacher",
+        )
+
+    def _make_request(self, user, get_params=None, session=None):
+        factory = RequestFactory()
+        request = factory.get("/", get_params or {})
+        request.user = user
+        request.session = session if session is not None else {}
+        return request
+
+    def test_fallback_to_first_parent_family(self):
+        request = self._make_request(self.parent_user)
+        result = get_selected_family(request)
+        self.assertEqual(result, self.family_a)
+
+    def test_fallback_teacher_to_first_any_family(self):
+        request = self._make_request(self.teacher_user)
+        result = get_selected_family(request)
+        self.assertEqual(result, self.family_a)
+
+    def test_legacy_user_returns_none(self):
+        request = self._make_request(self.legacy_user)
+        result = get_selected_family(request)
+        self.assertIsNone(result)
+
+    def test_get_param_overrides_fallback(self):
+        request = self._make_request(
+            self.parent_user, get_params={"family_id": str(self.family_b.id)},
+        )
+        result = get_selected_family(request)
+        self.assertEqual(result, self.family_b)
+
+    def test_session_persists_selection(self):
+        session = {}
+        # First request: select family_b via GET param
+        request1 = self._make_request(
+            self.parent_user, get_params={"family_id": str(self.family_b.id)},
+            session=session,
+        )
+        get_selected_family(request1)
+
+        # Second request: no GET param, same session
+        request2 = self._make_request(self.parent_user, session=session)
+        result = get_selected_family(request2)
+        self.assertEqual(result, self.family_b)
+
+    def test_invalid_family_id_ignored(self):
+        request = self._make_request(
+            self.parent_user, get_params={"family_id": "99999"},
+        )
+        result = get_selected_family(request)
+        self.assertEqual(result, self.family_a)  # Fallback
+
+    def test_teacher_cannot_select_unauthorized_family(self):
+        request = self._make_request(
+            self.teacher_user, get_params={"family_id": str(self.family_b.id)},
+        )
+        result = get_selected_family(request)
+        self.assertEqual(result, self.family_a)  # Falls back to their family
+
+    def test_cached_on_request(self):
+        request = self._make_request(self.parent_user)
+        result1 = get_selected_family(request)
+        result2 = get_selected_family(request)
+        self.assertIs(result1, result2)
+
+
+# ===========================================================================
+# Scoped Queryset Tests
+# ===========================================================================
+
+
+class ScopedQuerysetTests(TestCase):
+    """Tests for core.permissions.scoped_queryset."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.parent_user = CustomUser.objects.create_user(
+            username="scoped_parent", email="scoped_parent@test.com", password="testpass123",
+        )
+        cls.teacher_user = CustomUser.objects.create_user(
+            username="scoped_teacher", email="scoped_teacher@test.com", password="testpass123",
+        )
+        cls.legacy_user = CustomUser.objects.create_user(
+            username="scoped_legacy", email="scoped_legacy@test.com", password="testpass123",
+        )
+
+        cls.family = Family.objects.create(name="Scoped Family")
+        cls.other_family = Family.objects.create(name="Other Scoped Family")
+
+        FamilyMembership.objects.create(
+            user=cls.parent_user, family=cls.family, role="parent",
+        )
+        FamilyMembership.objects.create(
+            user=cls.teacher_user, family=cls.family, role="teacher",
+        )
+
+        # Family-owned student
+        cls.student_in_family = Student.objects.create(
+            parent=cls.parent_user, first_name="FamChild", grade_level="G03",
+            family=cls.family,
+        )
+        # Student in different family
+        cls.student_other_family = Student.objects.create(
+            parent=cls.parent_user, first_name="OtherFamChild", grade_level="G03",
+            family=cls.other_family,
+        )
+        # Legacy student (no family) owned by parent_user
+        cls.student_legacy = Student.objects.create(
+            parent=cls.parent_user, first_name="LegacyChild", grade_level="G01",
+        )
+        # Legacy student owned by legacy_user
+        cls.student_legacy_other = Student.objects.create(
+            parent=cls.legacy_user, first_name="OtherLegacy", grade_level="G01",
+        )
+
+    def test_parent_sees_family_and_legacy_records(self):
+        from core.permissions import scoped_queryset
+        qs = scoped_queryset(Student.objects.all(), self.parent_user, self.family)
+        self.assertIn(self.student_in_family, qs)
+        self.assertIn(self.student_legacy, qs)
+        self.assertNotIn(self.student_other_family, qs)
+        self.assertNotIn(self.student_legacy_other, qs)
+
+    def test_teacher_sees_only_family_records(self):
+        from core.permissions import scoped_queryset
+        qs = scoped_queryset(Student.objects.all(), self.teacher_user, self.family)
+        self.assertIn(self.student_in_family, qs)
+        self.assertNotIn(self.student_legacy, qs)
+        self.assertNotIn(self.student_other_family, qs)
+        self.assertNotIn(self.student_legacy_other, qs)
+
+    def test_legacy_user_no_family_sees_own_null_records(self):
+        from core.permissions import scoped_queryset
+        qs = scoped_queryset(Student.objects.all(), self.legacy_user, None)
+        self.assertIn(self.student_legacy_other, qs)
+        self.assertNotIn(self.student_in_family, qs)
+        self.assertNotIn(self.student_legacy, qs)
+
+    def test_scoped_excludes_other_family_records(self):
+        from core.permissions import scoped_queryset
+        qs = scoped_queryset(Student.objects.all(), self.parent_user, self.family)
+        self.assertNotIn(self.student_other_family, qs)

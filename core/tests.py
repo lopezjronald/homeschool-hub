@@ -1,10 +1,14 @@
-from datetime import date
+from datetime import date, timedelta
 
+from django.core import mail
 from django.test import TestCase
+from django.urls import reverse
+from django.utils import timezone
 
 from accounts.models import CustomUser
 from assignments.models import Assignment
-from core.models import Family, FamilyMembership
+from core.forms import TeacherInviteForm
+from core.models import Family, FamilyMembership, Invitation
 from core.utils import get_active_family
 from curricula.models import Curriculum
 from students.models import Student
@@ -357,3 +361,280 @@ class PermissionHelperTests(TestCase):
         from core.permissions import editable_queryset
         qs = editable_queryset(Student.objects.all(), self.legacy_user)
         self.assertIn(self.student_legacy, qs)
+
+
+# ===========================================================================
+# Invitation Model Tests
+# ===========================================================================
+
+
+class InvitationModelTests(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = CustomUser.objects.create_user(
+            username="inv_parent", email="inv_parent@test.com", password="testpass123",
+        )
+        cls.family = Family.objects.create(name="Invite Family")
+        FamilyMembership.objects.create(
+            user=cls.user, family=cls.family, role="parent",
+        )
+
+    def test_str(self):
+        invite = Invitation.objects.create(
+            email="teacher@test.com", family=self.family,
+            invited_by=self.user, role="teacher",
+        )
+        self.assertIn("teacher@test.com", str(invite))
+        self.assertIn("Invite Family", str(invite))
+
+    def test_default_status_is_pending(self):
+        invite = Invitation.objects.create(
+            email="teacher@test.com", family=self.family,
+            invited_by=self.user,
+        )
+        self.assertEqual(invite.status, Invitation.PENDING)
+
+    def test_is_expired_false_when_recent(self):
+        invite = Invitation.objects.create(
+            email="teacher@test.com", family=self.family,
+            invited_by=self.user,
+        )
+        self.assertFalse(invite.is_expired)
+
+    def test_is_expired_true_when_old(self):
+        invite = Invitation.objects.create(
+            email="teacher@test.com", family=self.family,
+            invited_by=self.user,
+        )
+        # Backdate created_at beyond expiry
+        Invitation.objects.filter(pk=invite.pk).update(
+            created_at=timezone.now() - timedelta(days=8),
+        )
+        invite.refresh_from_db()
+        self.assertTrue(invite.is_expired)
+
+
+# ===========================================================================
+# Teacher Invite Form Tests
+# ===========================================================================
+
+
+class TeacherInviteFormTests(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = CustomUser.objects.create_user(
+            username="form_parent", email="form_parent@test.com", password="testpass123",
+        )
+        cls.family = Family.objects.create(name="Form Family")
+        FamilyMembership.objects.create(
+            user=cls.user, family=cls.family, role="parent",
+        )
+
+    def test_valid_email(self):
+        form = TeacherInviteForm(
+            data={"email": "newteacher@example.com"}, family=self.family,
+        )
+        self.assertTrue(form.is_valid())
+
+    def test_duplicate_pending_rejected(self):
+        Invitation.objects.create(
+            email="dup@example.com", family=self.family,
+            invited_by=self.user,
+        )
+        form = TeacherInviteForm(
+            data={"email": "dup@example.com"}, family=self.family,
+        )
+        self.assertFalse(form.is_valid())
+        self.assertIn("email", form.errors)
+
+    def test_reinvite_after_accepted_ok(self):
+        Invitation.objects.create(
+            email="accepted@example.com", family=self.family,
+            invited_by=self.user, status=Invitation.ACCEPTED,
+        )
+        form = TeacherInviteForm(
+            data={"email": "accepted@example.com"}, family=self.family,
+        )
+        self.assertTrue(form.is_valid())
+
+
+# ===========================================================================
+# Invite Teacher View Tests
+# ===========================================================================
+
+
+class InviteTeacherViewTests(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        cls.parent_user = CustomUser.objects.create_user(
+            username="view_parent", email="view_parent@test.com", password="testpass123",
+        )
+        cls.teacher_user = CustomUser.objects.create_user(
+            username="view_teacher", email="view_teacher@test.com", password="testpass123",
+        )
+        cls.no_family_user = CustomUser.objects.create_user(
+            username="view_nofam", email="view_nofam@test.com", password="testpass123",
+        )
+        cls.family = Family.objects.create(name="View Family")
+        FamilyMembership.objects.create(
+            user=cls.parent_user, family=cls.family, role="parent",
+        )
+        FamilyMembership.objects.create(
+            user=cls.teacher_user, family=cls.family, role="teacher",
+        )
+        cls.url = reverse("core:invite_teacher")
+
+    def test_requires_login(self):
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("login", response.url)
+
+    def test_parent_can_access(self):
+        self.client.login(username="view_parent", password="testpass123")
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Invite a Teacher")
+
+    def test_teacher_cannot_access(self):
+        self.client.login(username="view_teacher", password="testpass123")
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, 404)
+
+    def test_no_family_shows_message(self):
+        self.client.login(username="view_nofam", password="testpass123")
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "No Family Found")
+
+    def test_creates_invitation_and_sends_email(self):
+        self.client.login(username="view_parent", password="testpass123")
+        response = self.client.post(
+            self.url, {"email": "newteacher@example.com"},
+        )
+        self.assertRedirects(response, self.url)
+        self.assertTrue(
+            Invitation.objects.filter(
+                email="newteacher@example.com", family=self.family,
+            ).exists()
+        )
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertIn("newteacher@example.com", mail.outbox[0].to)
+        self.assertIn("invited", mail.outbox[0].subject.lower())
+
+    def test_shows_pending_invites(self):
+        Invitation.objects.create(
+            email="pending@example.com", family=self.family,
+            invited_by=self.parent_user,
+        )
+        self.client.login(username="view_parent", password="testpass123")
+        response = self.client.get(self.url)
+        self.assertContains(response, "pending@example.com")
+
+
+# ===========================================================================
+# Accept Invite View Tests
+# ===========================================================================
+
+
+class AcceptInviteViewTests(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        cls.parent_user = CustomUser.objects.create_user(
+            username="acc_parent", email="acc_parent@test.com", password="testpass123",
+        )
+        cls.teacher_user = CustomUser.objects.create_user(
+            username="acc_teacher", email="acc_teacher@test.com", password="testpass123",
+        )
+        cls.family = Family.objects.create(name="Accept Family")
+        FamilyMembership.objects.create(
+            user=cls.parent_user, family=cls.family, role="parent",
+        )
+
+    def _create_invite(self, **kwargs):
+        defaults = {
+            "email": "acc_teacher@test.com",
+            "family": self.family,
+            "invited_by": self.parent_user,
+            "role": "teacher",
+        }
+        defaults.update(kwargs)
+        return Invitation.objects.create(**defaults)
+
+    def test_not_logged_in_redirects_to_login(self):
+        invite = self._create_invite()
+        url = reverse("core:accept_invite", kwargs={"invite_id": invite.id})
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("login", response.url)
+        self.assertIn(str(invite.id), response.url)
+
+    def test_valid_invite_creates_membership(self):
+        invite = self._create_invite()
+        self.client.login(username="acc_teacher", password="testpass123")
+        url = reverse("core:accept_invite", kwargs={"invite_id": invite.id})
+        response = self.client.get(url)
+        self.assertRedirects(response, reverse("dashboard:dashboard"))
+
+        # Membership created
+        self.assertTrue(
+            FamilyMembership.objects.filter(
+                user=self.teacher_user, family=self.family, role="teacher",
+            ).exists()
+        )
+        # Invite marked accepted
+        invite.refresh_from_db()
+        self.assertEqual(invite.status, Invitation.ACCEPTED)
+        self.assertIsNotNone(invite.accepted_at)
+
+    def test_already_accepted_shows_error(self):
+        invite = self._create_invite(status=Invitation.ACCEPTED)
+        self.client.login(username="acc_teacher", password="testpass123")
+        url = reverse("core:accept_invite", kwargs={"invite_id": invite.id})
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "already been accepted")
+
+    def test_expired_invite_shows_error(self):
+        invite = self._create_invite()
+        # Backdate past expiry
+        Invitation.objects.filter(pk=invite.pk).update(
+            created_at=timezone.now() - timedelta(days=8),
+        )
+        self.client.login(username="acc_teacher", password="testpass123")
+        url = reverse("core:accept_invite", kwargs={"invite_id": invite.id})
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "expired")
+
+        # Status should be updated to expired
+        invite.refresh_from_db()
+        self.assertEqual(invite.status, Invitation.EXPIRED)
+
+    def test_idempotent_accept(self):
+        """Accepting when membership already exists doesn't fail or duplicate."""
+        invite = self._create_invite()
+        # Pre-create the membership
+        FamilyMembership.objects.create(
+            user=self.teacher_user, family=self.family, role="teacher",
+        )
+        self.client.login(username="acc_teacher", password="testpass123")
+        url = reverse("core:accept_invite", kwargs={"invite_id": invite.id})
+        response = self.client.get(url)
+        self.assertRedirects(response, reverse("dashboard:dashboard"))
+
+        # Still only one membership
+        self.assertEqual(
+            FamilyMembership.objects.filter(
+                user=self.teacher_user, family=self.family,
+            ).count(),
+            1,
+        )
+
+    def test_invalid_uuid_returns_404(self):
+        self.client.login(username="acc_teacher", password="testpass123")
+        url = reverse(
+            "core:accept_invite",
+            kwargs={"invite_id": "00000000-0000-0000-0000-000000000000"},
+        )
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 404)

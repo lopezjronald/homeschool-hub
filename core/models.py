@@ -119,6 +119,7 @@ class Invitation(models.Model):
     )
     created_at = models.DateTimeField(auto_now_add=True)
     accepted_at = models.DateTimeField(null=True, blank=True)
+    resent_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         constraints = [
@@ -137,3 +138,8 @@ class Invitation(models.Model):
     def is_expired(self):
         max_age = getattr(settings, "INVITE_MAX_AGE_DAYS", 7)
         return timezone.now() > self.created_at + timedelta(days=max_age)
+
+    @property
+    def is_resendable(self):
+        """True if invite is pending and not expired."""
+        return self.status == self.PENDING and not self.is_expired

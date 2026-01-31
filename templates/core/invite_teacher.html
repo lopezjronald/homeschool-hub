@@ -39,13 +39,54 @@
             </div>
             <ul class="list-group list-group-flush">
               {% for inv in pending_invites %}
-                <li class="list-group-item d-flex justify-content-between align-items-center">
-                  {{ inv.email }}
-                  <small class="text-muted">Sent {{ inv.created_at|date:"M d, Y" }}</small>
+                <li class="list-group-item">
+                  <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                      {{ inv.email }}
+                      <br><small class="text-muted">Sent {{ inv.created_at|date:"M d, Y" }}{% if inv.resent_at %} · Resent {{ inv.resent_at|date:"M d, Y" }}{% endif %}</small>
+                    </div>
+                    <div class="d-flex gap-2">
+                      {% if inv.is_resendable %}
+                        <form method="post" action="{% url 'core:resend_invite' invite_id=inv.id %}" class="d-inline">
+                          {% csrf_token %}
+                          <button type="submit" class="btn btn-outline-primary btn-sm">Resend</button>
+                        </form>
+                        <button type="button" class="btn btn-outline-secondary btn-sm" onclick="copyInviteLink(this, '{% url 'core:accept_invite' invite_id=inv.id %}')">Copy Link</button>
+                      {% elif inv.is_expired %}
+                        <span class="badge bg-warning text-dark">Expired</span>
+                      {% endif %}
+                    </div>
+                  </div>
                 </li>
               {% endfor %}
             </ul>
           </div>
+
+          <script>
+          function copyInviteLink(btn, path) {
+            var url = window.location.origin + path;
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+              navigator.clipboard.writeText(url).then(function() {
+                btn.textContent = 'Copied!';
+                setTimeout(function() { btn.textContent = 'Copy Link'; }, 2000);
+              }, function() {
+                fallbackCopy(btn, url);
+              });
+            } else {
+              fallbackCopy(btn, url);
+            }
+          }
+          function fallbackCopy(btn, url) {
+            var input = document.createElement('input');
+            input.value = url;
+            document.body.appendChild(input);
+            input.select();
+            document.execCommand('copy');
+            document.body.removeChild(input);
+            btn.textContent = 'Copied!';
+            setTimeout(function() { btn.textContent = 'Copy Link'; }, 2000);
+          }
+          </script>
         {% endif %}
       {% endif %}
     </div>

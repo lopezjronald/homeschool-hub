@@ -49,6 +49,11 @@ class Curriculum(models.Model):
         blank=True,
         help_text="Optional grade level for this curriculum",
     )
+    website_url = models.URLField(
+        blank=True,
+        default="",
+        help_text="Optional link to the curriculum's website",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

@@ -261,3 +261,89 @@ class TeacherCurriculumViewTests(TestCase):
         )
         self.assertNotContains(response, "btn-primary\">Edit")
         self.assertNotContains(response, "btn-danger\">Delete")
+
+
+class CurriculumWebsiteUrlTests(TestCase):
+    """Tests for HH-72: optional curriculum website URL."""
+
+    def setUp(self):
+        self.client = Client()
+        self.user = User.objects.create_user(
+            username="wu_parent", email="wu@test.com", password="testpass123",
+        )
+        self.curriculum = Curriculum.objects.create(
+            parent=self.user, name="WU Math", subject="Math",
+        )
+
+    # -- Form validation --
+
+    def test_blank_website_url_allowed(self):
+        from .forms import CurriculumForm
+        form = CurriculumForm(data={
+            "name": "Test", "subject": "Math", "grade_level": "", "website_url": "",
+        })
+        self.assertTrue(form.is_valid())
+
+    def test_valid_https_url_accepted(self):
+        from .forms import CurriculumForm
+        form = CurriculumForm(data={
+            "name": "Test", "subject": "Math", "grade_level": "",
+            "website_url": "https://khanacademy.org",
+        })
+        self.assertTrue(form.is_valid())
+
+    def test_valid_http_url_accepted(self):
+        from .forms import CurriculumForm
+        form = CurriculumForm(data={
+            "name": "Test", "subject": "Math", "grade_level": "",
+            "website_url": "http://example.com",
+        })
+        self.assertTrue(form.is_valid())
+
+    def test_ftp_url_rejected(self):
+        from .forms import CurriculumForm
+        form = CurriculumForm(data={
+            "name": "Test", "subject": "Math", "grade_level": "",
+            "website_url": "ftp://files.example.com",
+        })
+        self.assertFalse(form.is_valid())
+        self.assertIn("website_url", form.errors)
+
+    def test_javascript_url_rejected(self):
+        from .forms import CurriculumForm
+        form = CurriculumForm(data={
+            "name": "Test", "subject": "Math", "grade_level": "",
+            "website_url": "javascript:alert(1)",
+        })
+        self.assertFalse(form.is_valid())
+
+    # -- Template rendering --
+
+    def test_detail_shows_launch_button_when_url_set(self):
+        self.curriculum.website_url = "https://khanacademy.org"
+        self.curriculum.save()
+        self.client.login(username="wu_parent", password="testpass123")
+        response = self.client.get(
+            reverse("curricula:curriculum_detail", kwargs={"pk": self.curriculum.pk})
+        )
+        self.assertContains(response, "Launch curriculum")
+        self.assertContains(response, "https://khanacademy.org")
+
+    def test_detail_hides_launch_button_when_url_blank(self):
+        self.client.login(username="wu_parent", password="testpass123")
+        response = self.client.get(
+            reverse("curricula:curriculum_detail", kwargs={"pk": self.curriculum.pk})
+        )
+        self.assertNotContains(response, "Launch curriculum")
+
+    def test_list_shows_launch_link_when_url_set(self):
+        self.curriculum.website_url = "https://khanacademy.org"
+        self.curriculum.save()
+        self.client.login(username="wu_parent", password="testpass123")
+        response = self.client.get(reverse("curricula:curriculum_list"))
+        self.assertContains(response, ">Launch</a>")
+
+    def test_list_hides_launch_link_when_url_blank(self):
+        self.client.login(username="wu_parent", password="testpass123")
+        response = self.client.get(reverse("curricula:curriculum_list"))
+        self.assertNotContains(response, ">Launch</a>")

@@ -857,3 +857,88 @@ class InviteTeacherNavTests(TestCase):
         self.client.login(username="nav_nofam", password="testpass123")
         response = self.client.get(reverse("dashboard:dashboard"))
         self.assertNotContains(response, "Invite Teacher")
+
+
+# ===========================================================================
+# Resend Invite View Tests (HH-74)
+# ===========================================================================
+
+
+class ResendInviteViewTests(TestCase):
+    """Tests for HH-74: resend pending invitations."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.parent_user = CustomUser.objects.create_user(
+            username="resend_parent", email="resend_parent@test.com",
+            password="testpass123",
+        )
+        cls.teacher_user = CustomUser.objects.create_user(
+            username="resend_teacher", email="resend_teacher@test.com",
+            password="testpass123",
+        )
+        cls.family = Family.objects.create(name="Resend Family")
+        FamilyMembership.objects.create(
+            user=cls.parent_user, family=cls.family, role="parent",
+        )
+        FamilyMembership.objects.create(
+            user=cls.teacher_user, family=cls.family, role="teacher",
+        )
+
+    def _create_invite(self, **kwargs):
+        defaults = {
+            "email": "invited@example.com",
+            "family": self.family,
+            "invited_by": self.parent_user,
+            "role": "teacher",
+        }
+        defaults.update(kwargs)
+        return Invitation.objects.create(**defaults)
+
+    def test_parent_can_resend_pending_invite(self):
+        invite = self._create_invite()
+        self.client.login(username="resend_parent", password="testpass123")
+        url = reverse("core:resend_invite", kwargs={"invite_id": invite.id})
+        response = self.client.post(url)
+        self.assertRedirects(response, reverse("core:invite_teacher"))
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertIn("invited@example.com", mail.outbox[0].to)
+        invite.refresh_from_db()
+        self.assertIsNotNone(invite.resent_at)
+
+    def test_parent_cannot_resend_expired_invite(self):
+        invite = self._create_invite()
+        # Backdate past expiry
+        Invitation.objects.filter(pk=invite.pk).update(
+            created_at=timezone.now() - timedelta(days=8),
+        )
+        self.client.login(username="resend_parent", password="testpass123")
+        url = reverse("core:resend_invite", kwargs={"invite_id": invite.id})
+        response = self.client.post(url)
+        self.assertRedirects(response, reverse("core:invite_teacher"))
+        self.assertEqual(len(mail.outbox), 0)
+
+    def test_teacher_cannot_access_resend(self):
+        invite = self._create_invite()
+        self.client.login(username="resend_teacher", password="testpass123")
+        url = reverse("core:resend_invite", kwargs={"invite_id": invite.id})
+        response = self.client.post(url)
+        self.assertEqual(response.status_code, 404)
+
+    def test_copy_link_only_for_resendable_invites(self):
+        """Resend + Copy Link buttons appear only for pending + not-expired."""
+        pending_invite = self._create_invite()
+        expired_invite = self._create_invite(email="expired@example.com")
+        Invitation.objects.filter(pk=expired_invite.pk).update(
+            created_at=timezone.now() - timedelta(days=8),
+        )
+
+        self.client.login(username="resend_parent", password="testpass123")
+        response = self.client.get(reverse("core:invite_teacher"))
+
+        # Pending invite shows Resend and Copy Link buttons
+        self.assertContains(response, "Resend")
+        self.assertContains(response, "Copy Link")
+
+        # Expired invite shows badge instead
+        self.assertContains(response, "Expired")

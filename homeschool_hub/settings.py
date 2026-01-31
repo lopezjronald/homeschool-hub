@@ -192,6 +192,8 @@ LOGIN_URL = "accounts:login"
 LOGIN_REDIRECT_URL = "/"
 LOGOUT_REDIRECT_URL = "/"
 
+INVITE_MAX_AGE_DAYS = 7
+
 # For dev only; set these True only in prod:
 CSRF_COOKIE_SECURE = False
 SESSION_COOKIE_SECURE = False

@@ -29,6 +29,10 @@
             <dt class="col-sm-4">Last Updated</dt>
             <dd class="col-sm-8">{{ curriculum.updated_at|date:"M d, Y" }}</dd>
           </dl>
+
+          {% if curriculum.website_url %}
+          <a href="{{ curriculum.website_url }}" target="_blank" rel="noopener noreferrer" class="btn btn-outline-primary">Launch curriculum</a>
+          {% endif %}
         </div>
         <div class="card-footer">
           <a href="{% url 'curricula:curriculum_list' %}" class="btn btn-secondary">Back to List</a>

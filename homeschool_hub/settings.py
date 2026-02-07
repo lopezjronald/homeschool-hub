@@ -55,6 +55,20 @@ def _env_list(name: str, default: str = "") -> list:
     return [item.strip() for item in val.split(",") if item.strip()]
 
 
+def _env_int(name: str, default: int) -> int:
+    """
+    Parse integer from environment variable.
+    Returns default if variable is not set or cannot be parsed.
+    """
+    val = os.getenv(name)
+    if val is None:
+        return default
+    try:
+        return int(val)
+    except ValueError:
+        return default
+
+
 # ---------------------------------------------------------------------------
 # Core Settings
 # ---------------------------------------------------------------------------
@@ -195,10 +209,56 @@ LOGOUT_REDIRECT_URL = "/"
 
 INVITE_MAX_AGE_DAYS = 7
 
-# For dev only; set these True only in prod:
-CSRF_COOKIE_SECURE = False
-SESSION_COOKIE_SECURE = False
-SECURE_SSL_REDIRECT = False
+# ---------------------------------------------------------------------------
+# Security Settings (env-driven, safe defaults)
+# ---------------------------------------------------------------------------
+# In production (DEBUG=False), these default to strict/secure values.
+# In development (DEBUG=True), they default to permissive values for localhost.
+#
+# Heroku deployment: Set these env vars in Heroku config:
+#   DEBUG=false
+#   SECURE_SSL_REDIRECT=true
+#   SESSION_COOKIE_SECURE=true
+#   CSRF_COOKIE_SECURE=true
+#   CSRF_TRUSTED_ORIGINS=https://steadfastscholars.com,https://www.steadfastscholars.com
+#   SECURE_HSTS_SECONDS=31536000
+#   SECURE_HSTS_INCLUDE_SUBDOMAINS=true
+#   SECURE_HSTS_PRELOAD=true
+# ---------------------------------------------------------------------------
+
+# SSL/HTTPS redirect (default: False in dev, True in prod)
+SECURE_SSL_REDIRECT = _env_bool("SECURE_SSL_REDIRECT", default=not DEBUG)
+
+# When SSL redirect is enabled, trust Heroku's X-Forwarded-Proto header
+# This is required for Heroku's reverse proxy / load balancer
+if SECURE_SSL_REDIRECT:
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+
+# Secure cookies (default: False in dev, True in prod)
+SESSION_COOKIE_SECURE = _env_bool("SESSION_COOKIE_SECURE", default=not DEBUG)
+CSRF_COOKIE_SECURE = _env_bool("CSRF_COOKIE_SECURE", default=not DEBUG)
+
+# CSRF trusted origins (required in prod for cross-origin form posts)
+# Example: CSRF_TRUSTED_ORIGINS=https://steadfastscholars.com,https://www.steadfastscholars.com
+CSRF_TRUSTED_ORIGINS = _env_list("CSRF_TRUSTED_ORIGINS")
+
+# HTTP Strict Transport Security (HSTS)
+# Default: 0 in dev (disabled), 31536000 (1 year) in prod when explicitly set
+# IMPORTANT: Only enable HSTS after confirming HTTPS works correctly
+_default_hsts_seconds = 0 if DEBUG else _env_int("SECURE_HSTS_SECONDS", 0)
+SECURE_HSTS_SECONDS = _env_int("SECURE_HSTS_SECONDS", _default_hsts_seconds)
+SECURE_HSTS_INCLUDE_SUBDOMAINS = _env_bool("SECURE_HSTS_INCLUDE_SUBDOMAINS", default=not DEBUG)
+SECURE_HSTS_PRELOAD = _env_bool("SECURE_HSTS_PRELOAD", default=not DEBUG)
+
+# Content Security Headers
+# X-Content-Type-Options: nosniff (prevent MIME sniffing attacks)
+SECURE_CONTENT_TYPE_NOSNIFF = _env_bool("SECURE_CONTENT_TYPE_NOSNIFF", default=True)
+
+# X-Frame-Options (prevent clickjacking)
+X_FRAME_OPTIONS = os.getenv("X_FRAME_OPTIONS", "DENY")
+
+# Referrer-Policy (control referrer header leakage)
+SECURE_REFERRER_POLICY = os.getenv("SECURE_REFERRER_POLICY", "same-origin")
 
 # ---------------------------------------------------------------------------
 # Storage Configuration (Static + Media)

@@ -942,3 +942,300 @@ class ResendInviteViewTests(TestCase):
 
         # Expired invite shows badge instead
         self.assertContains(response, "Expired")
+
+
+# ===========================================================================
+# HH-23: Cross-Family Access Control Regression Tests
+# ===========================================================================
+
+
+class CrossFamilyAccessControlTests(TestCase):
+    """
+    Security regression tests for HH-23: Verify family data isolation.
+
+    These tests ensure:
+    - Parent cannot access another family's students/curricula/assignments
+    - Teacher cannot access families they're not assigned to
+    - Teacher cannot access create/update/delete endpoints
+    - Dashboard/dropdowns do not leak cross-family data
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        # ── Family A (parent_a owns it, teacher_a is assigned) ──
+        cls.parent_a = CustomUser.objects.create_user(
+            username="xf_parent_a", email="xf_parent_a@test.com", password="testpass123",
+        )
+        cls.teacher_a = CustomUser.objects.create_user(
+            username="xf_teacher_a", email="xf_teacher_a@test.com", password="testpass123",
+        )
+        cls.family_a = Family.objects.create(name="Cross Family A")
+        FamilyMembership.objects.create(
+            user=cls.parent_a, family=cls.family_a, role="parent",
+        )
+        FamilyMembership.objects.create(
+            user=cls.teacher_a, family=cls.family_a, role="teacher",
+        )
+        cls.student_a = Student.objects.create(
+            parent=cls.parent_a, first_name="ChildA", grade_level="G03",
+            family=cls.family_a,
+        )
+        cls.curriculum_a = Curriculum.objects.create(
+            parent=cls.parent_a, name="Math A", subject="Math",
+            family=cls.family_a,
+        )
+        cls.assignment_a = Assignment.objects.create(
+            parent=cls.parent_a, child=cls.student_a, curriculum=cls.curriculum_a,
+            title="Assignment A", due_date=date.today(), family=cls.family_a,
+        )
+
+        # ── Family B (parent_b owns it, teacher_b is assigned) ──
+        cls.parent_b = CustomUser.objects.create_user(
+            username="xf_parent_b", email="xf_parent_b@test.com", password="testpass123",
+        )
+        cls.teacher_b = CustomUser.objects.create_user(
+            username="xf_teacher_b", email="xf_teacher_b@test.com", password="testpass123",
+        )
+        cls.family_b = Family.objects.create(name="Cross Family B")
+        FamilyMembership.objects.create(
+            user=cls.parent_b, family=cls.family_b, role="parent",
+        )
+        FamilyMembership.objects.create(
+            user=cls.teacher_b, family=cls.family_b, role="teacher",
+        )
+        cls.student_b = Student.objects.create(
+            parent=cls.parent_b, first_name="ChildB", grade_level="G05",
+            family=cls.family_b,
+        )
+        cls.curriculum_b = Curriculum.objects.create(
+            parent=cls.parent_b, name="Math B", subject="Math",
+            family=cls.family_b,
+        )
+        cls.assignment_b = Assignment.objects.create(
+            parent=cls.parent_b, child=cls.student_b, curriculum=cls.curriculum_b,
+            title="Assignment B", due_date=date.today(), family=cls.family_b,
+        )
+
+    # ── Parent A cannot access Family B's data ────────────────────────────
+
+    def test_parent_cannot_view_other_family_student_detail(self):
+        """Parent A cannot view Family B's student detail."""
+        self.client.login(username="xf_parent_a", password="testpass123")
+        response = self.client.get(
+            reverse("students:student_detail", kwargs={"pk": self.student_b.pk})
+        )
+        self.assertEqual(response.status_code, 404)
+
+    def test_parent_cannot_edit_other_family_student(self):
+        """Parent A cannot edit Family B's student."""
+        self.client.login(username="xf_parent_a", password="testpass123")
+        response = self.client.get(
+            reverse("students:student_update", kwargs={"pk": self.student_b.pk})
+        )
+        self.assertEqual(response.status_code, 404)
+
+    def test_parent_cannot_delete_other_family_student(self):
+        """Parent A cannot delete Family B's student."""
+        self.client.login(username="xf_parent_a", password="testpass123")
+        response = self.client.post(
+            reverse("students:student_delete", kwargs={"pk": self.student_b.pk})
+        )
+        self.assertEqual(response.status_code, 404)
+
+    def test_parent_cannot_view_other_family_curriculum_detail(self):
+        """Parent A cannot view Family B's curriculum detail."""
+        self.client.login(username="xf_parent_a", password="testpass123")
+        response = self.client.get(
+            reverse("curricula:curriculum_detail", kwargs={"pk": self.curriculum_b.pk})
+        )
+        self.assertEqual(response.status_code, 404)
+
+    def test_parent_cannot_edit_other_family_curriculum(self):
+        """Parent A cannot edit Family B's curriculum."""
+        self.client.login(username="xf_parent_a", password="testpass123")
+        response = self.client.get(
+            reverse("curricula:curriculum_update", kwargs={"pk": self.curriculum_b.pk})
+        )
+        self.assertEqual(response.status_code, 404)
+
+    def test_parent_cannot_delete_other_family_curriculum(self):
+        """Parent A cannot delete Family B's curriculum."""
+        self.client.login(username="xf_parent_a", password="testpass123")
+        response = self.client.post(
+            reverse("curricula:curriculum_delete", kwargs={"pk": self.curriculum_b.pk})
+        )
+        self.assertEqual(response.status_code, 404)
+
+    def test_parent_cannot_view_other_family_assignment_detail(self):
+        """Parent A cannot view Family B's assignment detail."""
+        self.client.login(username="xf_parent_a", password="testpass123")
+        response = self.client.get(
+            reverse("assignments:assignment_detail", args=[self.assignment_b.pk])
+        )
+        self.assertEqual(response.status_code, 404)
+
+    def test_parent_cannot_edit_other_family_assignment(self):
+        """Parent A cannot edit Family B's assignment."""
+        self.client.login(username="xf_parent_a", password="testpass123")
+        response = self.client.get(
+            reverse("assignments:assignment_update", args=[self.assignment_b.pk])
+        )
+        self.assertEqual(response.status_code, 404)
+
+    def test_parent_cannot_delete_other_family_assignment(self):
+        """Parent A cannot delete Family B's assignment."""
+        self.client.login(username="xf_parent_a", password="testpass123")
+        response = self.client.post(
+            reverse("assignments:assignment_delete", args=[self.assignment_b.pk])
+        )
+        self.assertEqual(response.status_code, 404)
+
+    # ── Teacher A cannot access Family B's data ───────────────────────────
+
+    def test_teacher_cannot_view_unassigned_family_student(self):
+        """Teacher A (assigned to Family A) cannot view Family B's student."""
+        self.client.login(username="xf_teacher_a", password="testpass123")
+        response = self.client.get(
+            reverse("students:student_detail", kwargs={"pk": self.student_b.pk})
+        )
+        self.assertEqual(response.status_code, 404)
+
+    def test_teacher_cannot_view_unassigned_family_curriculum(self):
+        """Teacher A cannot view Family B's curriculum."""
+        self.client.login(username="xf_teacher_a", password="testpass123")
+        response = self.client.get(
+            reverse("curricula:curriculum_detail", kwargs={"pk": self.curriculum_b.pk})
+        )
+        self.assertEqual(response.status_code, 404)
+
+    def test_teacher_cannot_view_unassigned_family_assignment(self):
+        """Teacher A cannot view Family B's assignment."""
+        self.client.login(username="xf_teacher_a", password="testpass123")
+        response = self.client.get(
+            reverse("assignments:assignment_detail", args=[self.assignment_b.pk])
+        )
+        self.assertEqual(response.status_code, 404)
+
+    # ── Teacher cannot access create/update/delete for students/curricula ─
+
+    def test_teacher_cannot_create_student(self):
+        """Teacher (even in assigned family) cannot create students."""
+        self.client.login(username="xf_teacher_a", password="testpass123")
+        response = self.client.get(reverse("students:student_create"))
+        self.assertEqual(response.status_code, 404)
+
+    def test_teacher_cannot_update_student(self):
+        """Teacher cannot update students."""
+        self.client.login(username="xf_teacher_a", password="testpass123")
+        response = self.client.get(
+            reverse("students:student_update", kwargs={"pk": self.student_a.pk})
+        )
+        self.assertEqual(response.status_code, 404)
+
+    def test_teacher_cannot_delete_student(self):
+        """Teacher cannot delete students."""
+        self.client.login(username="xf_teacher_a", password="testpass123")
+        response = self.client.post(
+            reverse("students:student_delete", kwargs={"pk": self.student_a.pk})
+        )
+        self.assertEqual(response.status_code, 404)
+
+    def test_teacher_cannot_create_curriculum(self):
+        """Teacher cannot create curricula."""
+        self.client.login(username="xf_teacher_a", password="testpass123")
+        response = self.client.get(reverse("curricula:curriculum_create"))
+        self.assertEqual(response.status_code, 404)
+
+    def test_teacher_cannot_update_curriculum(self):
+        """Teacher cannot update curricula."""
+        self.client.login(username="xf_teacher_a", password="testpass123")
+        response = self.client.get(
+            reverse("curricula:curriculum_update", kwargs={"pk": self.curriculum_a.pk})
+        )
+        self.assertEqual(response.status_code, 404)
+
+    def test_teacher_cannot_delete_curriculum(self):
+        """Teacher cannot delete curricula."""
+        self.client.login(username="xf_teacher_a", password="testpass123")
+        response = self.client.post(
+            reverse("curricula:curriculum_delete", kwargs={"pk": self.curriculum_a.pk})
+        )
+        self.assertEqual(response.status_code, 404)
+
+    def test_teacher_cannot_delete_assignment(self):
+        """Teacher cannot delete assignments (even their own)."""
+        self.client.login(username="xf_teacher_a", password="testpass123")
+        response = self.client.post(
+            reverse("assignments:assignment_delete", args=[self.assignment_a.pk])
+        )
+        self.assertEqual(response.status_code, 404)
+
+    # ── Dashboard/list views do not leak cross-family data ────────────────
+
+    def test_student_list_does_not_leak_other_family(self):
+        """Student list only shows current family's students."""
+        self.client.login(username="xf_parent_a", password="testpass123")
+        response = self.client.get(reverse("students:student_list"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "ChildA")
+        self.assertNotContains(response, "ChildB")
+
+    def test_curriculum_list_does_not_leak_other_family(self):
+        """Curriculum list only shows current family's curricula."""
+        self.client.login(username="xf_parent_a", password="testpass123")
+        response = self.client.get(reverse("curricula:curriculum_list"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Math A")
+        self.assertNotContains(response, "Math B")
+
+    def test_assignment_list_does_not_leak_other_family(self):
+        """Assignment list only shows current family's assignments."""
+        self.client.login(username="xf_parent_a", password="testpass123")
+        response = self.client.get(reverse("assignments:assignment_list"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Assignment A")
+        self.assertNotContains(response, "Assignment B")
+
+    def test_dashboard_does_not_leak_other_family(self):
+        """Dashboard only shows current family's data."""
+        self.client.login(username="xf_parent_a", password="testpass123")
+        response = self.client.get(reverse("dashboard:dashboard"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Assignment A")
+        self.assertNotContains(response, "Assignment B")
+        # Verify dropdown only contains Family A's child
+        children = list(response.context["children"])
+        self.assertEqual(len(children), 1)
+        self.assertEqual(children[0].first_name, "ChildA")
+
+    def test_dashboard_filter_dropdown_scoped_to_family(self):
+        """Dashboard filter dropdowns only contain current family's data."""
+        self.client.login(username="xf_parent_a", password="testpass123")
+        response = self.client.get(reverse("dashboard:dashboard"))
+        curricula_list = list(response.context["curricula"])
+        self.assertEqual(len(curricula_list), 1)
+        self.assertEqual(curricula_list[0].name, "Math A")
+
+    # ── URL manipulation cannot bypass family scope ──────────────────────
+
+    def test_parent_cannot_force_switch_to_unowned_family(self):
+        """Parent A cannot access Family B data via family_id URL param."""
+        self.client.login(username="xf_parent_a", password="testpass123")
+        response = self.client.get(
+            reverse("dashboard:dashboard"), {"family_id": self.family_b.id}
+        )
+        self.assertEqual(response.status_code, 200)
+        # Should still show Family A data (fallback to owned family)
+        self.assertContains(response, "Assignment A")
+        self.assertNotContains(response, "Assignment B")
+
+    def test_teacher_cannot_force_switch_to_unassigned_family(self):
+        """Teacher A cannot access Family B data via family_id URL param."""
+        self.client.login(username="xf_teacher_a", password="testpass123")
+        response = self.client.get(
+            reverse("dashboard:dashboard"), {"family_id": self.family_b.id}
+        )
+        self.assertEqual(response.status_code, 200)
+        # Should still show Family A data (fallback to assigned family)
+        self.assertContains(response, "Assignment A")
+        self.assertNotContains(response, "Assignment B")

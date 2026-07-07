@@ -1,12 +1,11 @@
 from django.contrib import admin
 from django.urls import path, include
-from django.shortcuts import render  # <-- THIS LINE IS THE FIX
+from django.shortcuts import render
 from django.conf import settings
 from django.conf.urls.static import static
 
 
 def home(request):
-    # Now that 'render' is imported, this line will work correctly.
     return render(request, "home.html")
 
 

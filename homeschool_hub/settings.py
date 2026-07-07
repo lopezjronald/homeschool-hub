@@ -95,6 +95,7 @@ INSTALLED_APPS = [
     "curricula",  # Curriculum management
     "assignments",  # Assignment tracking
     "dashboard",  # Parent progress dashboard
+    "worklog",  # Work log: completed-work records
     "storages",  # django-storages for R2/S3
     "django.contrib.admin",
     "django.contrib.auth",

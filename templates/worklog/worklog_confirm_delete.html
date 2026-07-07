@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}Delete Entry · Work Log{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+  <div class="row justify-content-center">
+    <div class="col-md-6">
+      <div class="card border-danger">
+        <div class="card-header bg-danger text-white">
+          <h4 class="mb-0">Confirm Deletion</h4>
+        </div>
+        <div class="card-body">
+          <p class="lead">
+            Delete the <strong>{{ entry.subject }}</strong> entry for
+            <strong>{{ entry.child.get_full_name }}</strong> on {{ entry.date|date:"M d, Y" }}?
+          </p>
+          <p class="text-muted">This action cannot be undone.</p>
+          <form method="post">
+            {% csrf_token %}
+            <div class="d-flex justify-content-between">
+              <a href="{% url 'worklog:worklog_detail' entry.pk %}" class="btn btn-secondary">Cancel</a>
+              <button type="submit" class="btn btn-danger">Yes, Delete</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

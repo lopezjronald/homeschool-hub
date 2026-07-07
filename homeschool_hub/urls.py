@@ -17,6 +17,7 @@ urlpatterns = [
     path("curricula/", include(("curricula.urls", "curricula"), namespace="curricula")),
     path("assignments/", include(("assignments.urls", "assignments"), namespace="assignments")),
     path("dashboard/", include(("dashboard.urls", "dashboard"), namespace="dashboard")),
+    path("worklog/", include(("worklog.urls", "worklog"), namespace="worklog")),
     path("core/", include(("core.urls", "core"), namespace="core")),
 ]
 

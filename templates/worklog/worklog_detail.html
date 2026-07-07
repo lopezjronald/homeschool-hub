@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}{{ entry.subject }} · Work Log{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+  <div class="row justify-content-center">
+    <div class="col-md-8">
+      <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <h4 class="mb-0">{{ entry.subject }}</h4>
+          <span class="badge bg-primary">{{ entry.date|date:"M d, Y" }}</span>
+        </div>
+        <div class="card-body">
+          <dl class="row">
+            <dt class="col-sm-3">Child</dt>
+            <dd class="col-sm-9">{{ entry.child.get_full_name }}</dd>
+
+            <dt class="col-sm-3">Subject</dt>
+            <dd class="col-sm-9">{{ entry.subject }}</dd>
+
+            <dt class="col-sm-3">Curriculum</dt>
+            <dd class="col-sm-9">{{ entry.curriculum.name|default:"—" }}</dd>
+
+            <dt class="col-sm-3">Notes</dt>
+            <dd class="col-sm-9">{{ entry.description|linebreaksbr|default:"—" }}</dd>
+
+            <dt class="col-sm-3">Work</dt>
+            <dd class="col-sm-9">
+              {% if entry.attachment %}
+                {% if entry.is_image %}
+                  <a href="{{ entry.attachment.url }}" target="_blank" rel="noopener">
+                    <img src="{{ entry.attachment.url }}" alt="{{ entry.subject }} work"
+                         class="img-fluid rounded border" style="max-height: 400px;">
+                  </a>
+                {% else %}
+                  <a href="{{ entry.attachment.url }}" target="_blank" rel="noopener"
+                     class="btn btn-sm btn-outline-primary">📎 {{ entry.attachment_filename }}</a>
+                {% endif %}
+              {% else %}
+                <span class="text-muted">—</span>
+              {% endif %}
+            </dd>
+
+            <dt class="col-sm-3">Logged</dt>
+            <dd class="col-sm-9">{{ entry.created_at|date:"M d, Y" }}{% if entry.created_by %} by {{ entry.created_by.username }}{% endif %}</dd>
+          </dl>
+        </div>
+        <div class="card-footer">
+          <a href="{% url 'worklog:worklog_list' %}" class="btn btn-secondary">Back to Work Log</a>
+          {% if can_edit %}
+          <a href="{% url 'worklog:worklog_update' entry.pk %}" class="btn btn-primary">Edit</a>
+          <a href="{% url 'worklog:worklog_delete' entry.pk %}" class="btn btn-danger">Delete</a>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

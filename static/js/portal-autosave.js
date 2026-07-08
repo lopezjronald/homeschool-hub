@@ -51,6 +51,7 @@
   function save() {
     if (saving) return;
     saving = true;
+    dirty = false; // typing during the request re-marks it dirty
     setStatus("Saving…", "is-saving");
     fetch(url, {
       method: "POST",
@@ -65,15 +66,20 @@
       .then(function (data) {
         saving = false;
         if (data.ok) {
-          dirty = false;
           setStatus("Saved ✓ " + data.saved_at, "is-saved");
         } else {
+          dirty = true;
           setStatus("Couldn't save — check your connection", "is-error");
         }
+        // Anything typed while the request was in flight gets its own save.
+        if (dirty) { clearTimeout(timer); timer = setTimeout(save, 800); }
       })
       .catch(function () {
         saving = false;
+        dirty = true;
         setStatus("Couldn't save — check your connection", "is-error");
+        clearTimeout(timer);
+        timer = setTimeout(save, 5000); // retry while the child keeps working
       });
   }
 

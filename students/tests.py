@@ -107,6 +107,36 @@ class StudentViewsTest(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Child1")
 
+    def test_detail_shows_curricula_and_progress(self):
+        """The detail page lists the curricula the child is currently doing."""
+        from curricula.models import Chapter, Curriculum, CurriculumPlacement, Lesson
+
+        curriculum = Curriculum.objects.create(
+            parent=self.parent1, name="Dimensions Math 3A", subject="Math",
+        )
+        chapter = Chapter.objects.create(curriculum=curriculum, number=1, title="Numbers")
+        Lesson.objects.create(chapter=chapter, order=1, number=1, title="Counting")
+        lesson2 = Lesson.objects.create(chapter=chapter, order=2, number=2, title="Place Value")
+        CurriculumPlacement.objects.create(
+            child=self.student1, curriculum=curriculum, current_lesson=lesson2,
+        )
+
+        self.client.login(username="parent1", password="testpass123")
+        response = self.client.get(
+            reverse("students:student_detail", kwargs={"pk": self.student1.pk})
+        )
+        self.assertContains(response, "Curricula")
+        self.assertContains(response, "Dimensions Math 3A")
+        self.assertContains(response, "Ch 1, L2")  # current lesson code
+
+    def test_detail_empty_state_when_no_curricula(self):
+        """A child with no placement shows a friendly empty message."""
+        self.client.login(username="parent1", password="testpass123")
+        response = self.client.get(
+            reverse("students:student_detail", kwargs={"pk": self.student1.pk})
+        )
+        self.assertContains(response, "isn't placed in any curriculum yet")
+
     def test_update_returns_404_for_non_owner(self):
         """Parent cannot edit another parent's child (404)."""
         self.client.login(username="parent1", password="testpass123")

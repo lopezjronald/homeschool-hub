@@ -45,12 +45,29 @@ def student_create(request):
 
 @login_required
 def student_detail(request, pk):
-    """View details of a single child."""
+    """View a child's profile plus the curricula they're currently doing."""
     student = get_object_or_404(viewable_queryset(Student.objects.all(), request.user), pk=pk)
     can_edit = user_can_edit(request.user)
+
+    placements = (
+        student.placements
+        .select_related("curriculum", "current_lesson", "current_lesson__chapter")
+        .order_by("curriculum__subject", "curriculum__name")
+    )
+    curricula = [
+        {
+            "curriculum": placement.curriculum,
+            "current_lesson": placement.current_lesson,
+            "next_lesson": placement.next_lesson(),
+            "progress": placement.progress(),
+        }
+        for placement in placements
+    ]
+
     return render(request, "students/student_detail.html", {
         "student": student,
         "can_edit": can_edit,
+        "curricula": curricula,
     })
 
 

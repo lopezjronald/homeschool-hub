@@ -128,6 +128,12 @@ class Command(BaseCommand):
                 "status": Material.DRAFT,
             },
         )
+        # Self-heal the child link: an earlier run may have created the material
+        # before the child's profile existed (leaving child NULL).
+        if not created and child and material.child_id is None:
+            material.child = child
+            material.save(update_fields=["child"])
+
         verb = "Created" if created else "Already present"
         self.stdout.write(self.style.SUCCESS(
             f"{verb}: Material #{material.pk} '{material.title}' on {lesson.code} "

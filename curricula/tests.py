@@ -350,12 +350,13 @@ class CurriculumWebsiteUrlTests(TestCase):
         self.curriculum.save()
         self.client.login(username="wu_parent", password="testpass123")
         response = self.client.get(reverse("curricula:curriculum_list"))
-        self.assertContains(response, ">Launch</a>")
+        self.assertContains(response, "https://khanacademy.org")
+        self.assertContains(response, "Launch")
 
     def test_list_hides_launch_link_when_url_blank(self):
         self.client.login(username="wu_parent", password="testpass123")
         response = self.client.get(reverse("curricula:curriculum_list"))
-        self.assertNotContains(response, ">Launch</a>")
+        self.assertNotContains(response, "Launch ↗")
 
 
 class BlueprintTests(TestCase):

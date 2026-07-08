@@ -84,8 +84,14 @@ def _annotated_question_sets(student):
 
 def _visible_activities(student):
     """Active external activities for this child (theirs + whole-family)."""
-    return ExternalActivity.objects.filter(is_active=True).filter(
-        Q(student=student) | Q(student__isnull=True, family=student.family)
+    qs = ExternalActivity.objects.filter(is_active=True)
+    if student.family_id:
+        return qs.filter(Q(student=student) | Q(student__isnull=True, family=student.family))
+    # Null-family child: scope whole-family activities to the owner so a null
+    # family filter can't match every other user's null-family activities.
+    return qs.filter(
+        Q(student=student)
+        | Q(student__isnull=True, family__isnull=True, parent=student.parent)
     )
 
 

@@ -29,13 +29,23 @@ def activity_checkin(request, pk):
     today = timezone.localdate()
 
     if action == "log":
-        # One WorkLogEntry per child (the tagged child, else every child in the family).
-        children = ([activity.student] if activity.student
-                    else list(Student.objects.filter(family=activity.family)))
-        for child in filter(None, children):
+        # Idempotent for the day: a double-click must not duplicate entries.
+        if activity.last_logged_at == today:
+            messages.info(request, f"{activity.display_label} is already logged today.")
+            return redirect("home")
+        # One WorkLogEntry per child: the tagged child, or every child in this
+        # family. A null-family activity falls back to the owner's own
+        # null-family children so the fan-out can never reach another family.
+        if activity.student:
+            children = [activity.student]
+        elif activity.family_id:
+            children = list(Student.objects.filter(family=activity.family))
+        else:
+            children = list(Student.objects.filter(parent=activity.parent, family__isnull=True))
+        for child in children:
             WorkLogEntry.objects.create(
                 parent=request.user, family=activity.family, child=child,
-                subject=activity.title,
+                subject=activity.title[:100],  # WorkLogEntry.subject caps at 100
                 description=f"{activity.display_label} — logged from the activity check-in.",
                 date=today,
             )
@@ -52,7 +62,9 @@ def activity_checkin(request, pk):
         activity.save(update_fields=["is_muted", "updated_at"])
         messages.info(request, f"Muted reminders for {activity.display_label}.")
 
-    return redirect(request.POST.get("next") or "home")
+    # The check-in card only ever lives on the home hub, so home is the only
+    # redirect target — no caller-supplied `next` (which would be an open redirect).
+    return redirect("home")
 
 
 @login_required

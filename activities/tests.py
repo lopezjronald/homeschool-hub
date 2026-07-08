@@ -195,3 +195,73 @@ class ActivityCheckinTests(TestCase):
         self.assertEqual(resp.status_code, 404)
         theirs.refresh_from_db()
         self.assertFalse(theirs.is_muted)
+
+    def test_log_is_idempotent_for_the_day(self):
+        from worklog.models import WorkLogEntry
+
+        activity = self._activity(student=self.violet)
+        self.client.login(username="cp", password="pw")
+        url = reverse("activities:activity_checkin", args=[activity.pk])
+        self.client.post(url, data={"action": "log"})
+        self.client.post(url, data={"action": "log"})   # double-click
+        self.assertEqual(WorkLogEntry.objects.filter(child=self.violet, subject="Guitar").count(), 1)
+
+    def test_log_truncates_long_title_to_worklog_subject(self):
+        from worklog.models import WorkLogEntry
+
+        long_title = "G" * 150
+        activity = self._activity(student=self.violet, title=long_title)
+        self.client.login(username="cp", password="pw")
+        self.client.post(reverse("activities:activity_checkin", args=[activity.pk]), data={"action": "log"})
+        entry = WorkLogEntry.objects.get(child=self.violet)
+        self.assertLessEqual(len(entry.subject), 100)   # WorkLogEntry.subject max_length
+
+    def test_log_ignores_supplied_next_redirect(self):
+        activity = self._activity(student=self.violet)
+        self.client.login(username="cp", password="pw")
+        resp = self.client.post(
+            reverse("activities:activity_checkin", args=[activity.pk]),
+            data={"action": "snooze", "next": "https://evil.example/"},
+        )
+        self.assertEqual(resp.status_code, 302)
+        self.assertNotIn("evil.example", resp["Location"])
+
+
+class NullFamilyCheckinTests(TestCase):
+    """A legacy/no-membership user's null-family activity must never fan out
+    into another user's records (adversarial-review findings #1 and #3)."""
+
+    @classmethod
+    def setUpTestData(cls):
+        # Two legacy users with NO family memberships → get_active_family == None.
+        cls.a = User.objects.create_user(username="lega", email="a@e.com", password="pw")
+        cls.b = User.objects.create_user(username="legb", email="b@e.com", password="pw")
+        cls.a_kid = Student.objects.create(parent=cls.a, first_name="Amy", grade_level="G03")
+        cls.b_kid = Student.objects.create(parent=cls.b, first_name="Bo", grade_level="G03")
+        # A whole-family (student=None) activity owned by A, with no family.
+        cls.a_activity = ExternalActivity.objects.create(
+            parent=cls.a, family=None, student=None, title="Coding",
+            provider="CodaKid", url="https://c.example/",
+            cadence=ExternalActivity.CADENCE_WEEKLY,
+        )
+        # B's own null-family whole-family activity.
+        cls.b_activity = ExternalActivity.objects.create(
+            parent=cls.b, family=None, student=None, title="Piano",
+            url="https://p.example/",
+        )
+
+    def test_log_does_not_reach_other_users_children(self):
+        from worklog.models import WorkLogEntry
+
+        self.client.login(username="lega", password="pw")
+        self.client.post(reverse("activities:activity_checkin", args=[self.a_activity.pk]), data={"action": "log"})
+        # Only A's null-family child gets an entry; B's child is untouched.
+        self.assertTrue(WorkLogEntry.objects.filter(child=self.a_kid, subject="Coding").exists())
+        self.assertFalse(WorkLogEntry.objects.filter(child=self.b_kid).exists())
+
+    def test_portal_null_family_does_not_leak_other_users_activities(self):
+        from portal.views import _visible_activities
+
+        visible = set(_visible_activities(self.a_kid).values_list("pk", flat=True))
+        self.assertIn(self.a_activity.pk, visible)       # A's own whole-family activity
+        self.assertNotIn(self.b_activity.pk, visible)    # NOT B's null-family activity

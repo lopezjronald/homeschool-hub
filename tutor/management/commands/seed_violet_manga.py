@@ -110,11 +110,7 @@ class Command(BaseCommand):
                 "(manage.py apply_blueprint dimensions_math_3a --curriculum <id>)."
             )
 
-        child = None
-        if options.get("child_name") and curriculum.family_id:
-            child = Student.objects.filter(
-                family_id=curriculum.family_id, first_name__iexact=options["child_name"],
-            ).first()
+        child = self._resolve_child(curriculum, options.get("child_name"))
 
         material, created = Material.objects.get_or_create(
             lesson=lesson,
@@ -139,6 +135,25 @@ class Command(BaseCommand):
             f"{verb}: Material #{material.pk} '{material.title}' on {lesson.code} "
             f"(status: {material.get_status_display()})."
         ))
+
+    def _resolve_child(self, curriculum, name):
+        """Find the child this material belongs to, tolerant of legacy data.
+
+        Tries, in order: a same-name child in the curriculum's family, a
+        same-name child owned by the curriculum's parent (family may be unset
+        on older curricula), then whichever child is placed in the curriculum.
+        """
+        if name:
+            by_name = Student.objects.filter(first_name__iexact=name)
+            if curriculum.family_id:
+                child = by_name.filter(family_id=curriculum.family_id).first()
+                if child:
+                    return child
+            child = by_name.filter(parent=curriculum.parent).first()
+            if child:
+                return child
+        placement = curriculum.placements.select_related("child").first()
+        return placement.child if placement else None
 
     def _resolve_curriculum(self, options):
         if options.get("curriculum"):

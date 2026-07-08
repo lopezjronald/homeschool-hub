@@ -1,5 +1,6 @@
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
+from django.db.models import Q
 from django.http import Http404
 from django.shortcuts import render, redirect, get_object_or_404
 from django.views.decorators.http import require_POST
@@ -13,16 +14,53 @@ from .forms import ApplyBlueprintForm, CurriculumDocumentForm, CurriculumForm
 from .models import Curriculum, CurriculumPlacement, Lesson
 from .services import apply_blueprint, get_blueprint
 
+# A gentle subject → emoji map for the tiles; unknown subjects get a book.
+SUBJECT_EMOJI = {
+    "math": "➗", "mathematics": "➗", "literature": "📖", "reading": "📚",
+    "writing": "✍️", "english": "✍️", "language arts": "✍️", "grammar": "✍️",
+    "science": "🔬", "history": "🏛️", "social studies": "🌍", "geography": "🗺️",
+    "art": "🎨", "music": "🎵", "spelling": "🔤", "vocabulary": "🔤",
+    "bible": "✝️", "logic": "🧩", "spanish": "🗣️", "coding": "💻",
+}
+
 
 @login_required
 def curriculum_list(request):
-    """Display list of curricula the user can view."""
+    """Filterable, searchable, tiled list of curricula the user can view."""
     family = get_selected_family(request)
-    curricula = scoped_queryset(Curriculum.objects.all(), request.user, family)
-    can_edit = user_can_edit(request.user)
+    base = scoped_queryset(Curriculum.objects.all(), request.user, family)
+
+    subject = request.GET.get("subject", "").strip()
+    grade = request.GET.get("grade", "").strip()
+    q = request.GET.get("q", "").strip()
+
+    curricula = base
+    if subject:
+        curricula = curricula.filter(subject__iexact=subject)
+    if grade:
+        curricula = curricula.filter(grade_level=grade)
+    if q:
+        curricula = curricula.filter(Q(name__icontains=q) | Q(subject__icontains=q))
+
+    curricula = list(curricula)
+    for c in curricula:
+        c.emoji = SUBJECT_EMOJI.get((c.subject or "").strip().lower(), "📘")
+
+    # Facets derived from the full scoped set (so options don't vanish mid-filter).
+    subjects = sorted({s for s in base.values_list("subject", flat=True) if s})
+    present_grades = set(base.exclude(grade_level="").values_list("grade_level", flat=True))
+    grade_choices = [(v, label) for v, label in Curriculum.GRADE_CHOICES if v in present_grades]
+
     return render(request, "curricula/curriculum_list.html", {
         "curricula": curricula,
-        "can_edit": can_edit,
+        "can_edit": user_can_edit(request.user),
+        "subjects": subjects,
+        "grade_choices": grade_choices,
+        "active_subject": subject,
+        "active_grade": grade,
+        "q": q,
+        "has_filters": bool(subject or grade or q),
+        "total_count": base.count(),
     })
 
 

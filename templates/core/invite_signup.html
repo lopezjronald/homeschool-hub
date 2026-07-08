@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}Join {{ invite.family.name }} · Steadfast Scholars{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+  <div class="row justify-content-center">
+    <div class="col-md-6">
+      <div class="card">
+        <div class="card-header">
+          <h4 class="mb-0">Join {{ invite.family.name }}</h4>
+          <small class="text-muted">You've been invited as a {{ role_label }}. Create your account to join.</small>
+        </div>
+        <div class="card-body">
+          <form method="post" novalidate>
+            {% csrf_token %}
+            <div class="mb-3">
+              <label for="id_username" class="form-label">Username</label>
+              {{ form.username }}
+              {% if form.username.errors %}<div class="invalid-feedback d-block">{% for e in form.username.errors %}{{ e }}{% endfor %}</div>{% endif %}
+            </div>
+            <div class="mb-3">
+              <label for="id_email" class="form-label">Email</label>
+              {{ form.email }}
+              {% if form.email.errors %}<div class="invalid-feedback d-block">{% for e in form.email.errors %}{{ e }}{% endfor %}</div>{% endif %}
+            </div>
+            <div class="mb-3">
+              <label for="id_password1" class="form-label">Password</label>
+              {{ form.password1 }}
+              {% if form.password1.errors %}<div class="invalid-feedback d-block">{% for e in form.password1.errors %}{{ e }}{% endfor %}</div>{% endif %}
+            </div>
+            <div class="mb-3">
+              <label for="id_password2" class="form-label">Confirm password</label>
+              {{ form.password2 }}
+              {% if form.password2.errors %}<div class="invalid-feedback d-block">{% for e in form.password2.errors %}{{ e }}{% endfor %}</div>{% endif %}
+            </div>
+            <button type="submit" class="btn btn-primary w-100">Create account &amp; join</button>
+          </form>
+        </div>
+        <div class="card-footer text-center">
+          <small class="text-muted">Already have an account? <a href="{% url 'accounts:login' %}?next={{ request.path }}">Log in</a> to join.</small>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

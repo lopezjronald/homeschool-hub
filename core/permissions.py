@@ -12,8 +12,10 @@ from django.db.models import Q
 
 from core.models import FamilyMembership
 
-EDIT_ROLES = ("parent", "admin")
-VIEW_ROLES = ("parent", "teacher", "admin")
+# Full add/edit access: parents, co-parents (also "parent"), legal guardians, admins.
+EDIT_ROLES = ("parent", "guardian", "admin")
+# View / oversight (read-only) additionally includes teachers and grandparents.
+VIEW_ROLES = ("parent", "guardian", "admin", "teacher", "grandparent")
 
 
 def viewable_family_ids(user):

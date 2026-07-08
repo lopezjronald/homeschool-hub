@@ -28,7 +28,7 @@ class RegisterForm(forms.ModelForm):
 
     class Meta:
         model = User
-        fields = ("email", "username", "role")
+        fields = ("email", "username")
 
     def clean(self):
         """Ensure password fields match."""

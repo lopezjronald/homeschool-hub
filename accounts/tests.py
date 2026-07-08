@@ -34,7 +34,6 @@ class RegistrationTests(TestCase):
             "email": "newuser@example.com",
             "password1": "securepass123",
             "password2": "securepass123",
-            "role": "parent",
         }
         response = self.client.post(reverse("accounts:register"), data)
         self.assertRedirects(response, reverse("accounts:login"))
@@ -50,7 +49,6 @@ class RegistrationTests(TestCase):
             "email": "emailtest@example.com",
             "password1": "securepass123",
             "password2": "securepass123",
-            "role": "parent",
         }
         self.client.post(reverse("accounts:register"), data)
         self.assertEqual(len(mail.outbox), 1)
@@ -63,7 +61,6 @@ class RegistrationTests(TestCase):
             "email": "mismatch@example.com",
             "password1": "securepass123",
             "password2": "differentpass",
-            "role": "parent",
         }
         response = self.client.post(reverse("accounts:register"), data)
         self.assertEqual(response.status_code, 200)
@@ -76,7 +73,6 @@ class RegistrationTests(TestCase):
             "email": "existing@example.com",
             "password1": "securepass123",
             "password2": "securepass123",
-            "role": "parent",
         }
         response = self.client.post(reverse("accounts:register"), data)
         self.assertEqual(response.status_code, 200)
@@ -91,7 +87,6 @@ class RegistrationTests(TestCase):
             "email": "different@example.com",
             "password1": "securepass123",
             "password2": "securepass123",
-            "role": "parent",
         }
         response = self.client.post(reverse("accounts:register"), data)
         self.assertEqual(response.status_code, 200)

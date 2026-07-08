@@ -25,7 +25,6 @@ class FamilyBackfillMixin:
             email=email,
             password="testpass123",
             last_name="Smith",
-            role="parent",
         )
         student = Student.objects.create(
             parent=user,
@@ -461,7 +460,7 @@ class TeacherInviteFormTests(TestCase):
 
 
 # ===========================================================================
-# Invite Teacher View Tests
+# Invite people View Tests
 # ===========================================================================
 
 
@@ -495,7 +494,7 @@ class InviteTeacherViewTests(TestCase):
         self.client.login(username="view_parent", password="testpass123")
         response = self.client.get(self.url)
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Invite a Teacher")
+        self.assertContains(response, "Invite someone")
 
     def test_teacher_cannot_access(self):
         self.client.login(username="view_teacher", password="testpass123")
@@ -506,7 +505,7 @@ class InviteTeacherViewTests(TestCase):
         self.client.login(username="view_nofam", password="testpass123")
         response = self.client.get(self.url)
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "No Family Found")
+        self.assertContains(response, "No family yet")
 
     def test_creates_invitation_and_sends_email(self):
         self.client.login(username="view_parent", password="testpass123")
@@ -562,13 +561,13 @@ class AcceptInviteViewTests(TestCase):
         defaults.update(kwargs)
         return Invitation.objects.create(**defaults)
 
-    def test_not_logged_in_redirects_to_login(self):
+    def test_not_logged_in_shows_signup_form(self):
+        # Anonymous users can now create an account via the invite link.
         invite = self._create_invite()
         url = reverse("core:accept_invite", kwargs={"invite_id": invite.id})
         response = self.client.get(url)
-        self.assertEqual(response.status_code, 302)
-        self.assertIn("login", response.url)
-        self.assertIn(str(invite.id), response.url)
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Create account")
 
     def test_valid_invite_creates_membership(self):
         invite = self._create_invite()
@@ -816,12 +815,12 @@ class ScopedQuerysetTests(TestCase):
 
 
 # ===========================================================================
-# Invite Teacher Nav Link Tests (HH-73)
+# Invite people Nav Link Tests (HH-73)
 # ===========================================================================
 
 
 class InviteTeacherNavTests(TestCase):
-    """Tests for HH-73: 'Invite Teacher' link visibility in navbar."""
+    """Tests for HH-73: 'Invite people' link visibility in navbar."""
 
     @classmethod
     def setUpTestData(cls):
@@ -845,18 +844,18 @@ class InviteTeacherNavTests(TestCase):
     def test_parent_sees_invite_teacher_link(self):
         self.client.login(username="nav_parent", password="testpass123")
         response = self.client.get(reverse("dashboard:dashboard"))
-        self.assertContains(response, "Invite Teacher")
+        self.assertContains(response, "Invite people")
         self.assertContains(response, reverse("core:invite_teacher"))
 
     def test_teacher_does_not_see_invite_teacher_link(self):
         self.client.login(username="nav_teacher", password="testpass123")
         response = self.client.get(reverse("dashboard:dashboard"))
-        self.assertNotContains(response, "Invite Teacher")
+        self.assertNotContains(response, "Invite people")
 
     def test_no_family_user_does_not_see_invite_teacher_link(self):
         self.client.login(username="nav_nofam", password="testpass123")
         response = self.client.get(reverse("dashboard:dashboard"))
-        self.assertNotContains(response, "Invite Teacher")
+        self.assertNotContains(response, "Invite people")
 
 
 # ===========================================================================
@@ -938,7 +937,7 @@ class ResendInviteViewTests(TestCase):
 
         # Pending invite shows Resend and Copy Link buttons
         self.assertContains(response, "Resend")
-        self.assertContains(response, "Copy Link")
+        self.assertContains(response, "Copy link")
 
         # Expired invite shows badge instead
         self.assertContains(response, "Expired")
@@ -1239,3 +1238,64 @@ class CrossFamilyAccessControlTests(TestCase):
         # Should still show Family A data (fallback to assigned family)
         self.assertContains(response, "Assignment A")
         self.assertNotContains(response, "Assignment B")
+
+
+class CoParentInviteTests(TestCase):
+    """HH-88: invite co-parent/guardian/grandparent; new users sign up via the link."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.owner = CustomUser.objects.create_user(username="owner", email="owner@e.com", password="pw")
+        cls.family = Family.objects.create(name="Invite Home")
+        FamilyMembership.objects.create(user=cls.owner, family=cls.family, role="parent")
+
+    def test_invite_records_chosen_role(self):
+        self.client.login(username="owner", password="pw")
+        self.client.post(reverse("core:invite_teacher"), {"email": "cp@e.com", "role": "parent"})
+        inv = Invitation.objects.get(email="cp@e.com")
+        self.assertEqual(inv.role, "parent")
+        self.assertEqual(inv.role_display, "Co-parent")
+        self.client.post(reverse("core:invite_teacher"), {"email": "gma@e.com", "role": "grandparent"})
+        self.assertEqual(Invitation.objects.get(email="gma@e.com").role, "grandparent")
+
+    def test_new_user_signs_up_via_link_and_joins(self):
+        inv = Invitation.objects.create(
+            email="newco@e.com", family=self.family, invited_by=self.owner, role="parent",
+        )
+        url = reverse("core:accept_invite", kwargs={"invite_id": inv.id})
+        self.assertEqual(self.client.get(url).status_code, 200)  # anon sees signup form
+        resp = self.client.post(url, {
+            "username": "coparent", "email": "newco@e.com",
+            "password1": "Str0ngPass!23", "password2": "Str0ngPass!23",
+        })
+        self.assertEqual(resp.status_code, 302)
+        user = CustomUser.objects.get(username="coparent")
+        self.assertTrue(user.is_active)
+        self.assertTrue(
+            FamilyMembership.objects.filter(user=user, family=self.family, role="parent").exists()
+        )
+        inv.refresh_from_db()
+        self.assertEqual(inv.status, Invitation.ACCEPTED)
+        self.assertIn("_auth_user_id", self.client.session)  # logged in
+
+    def test_signup_password_mismatch_creates_no_user(self):
+        inv = Invitation.objects.create(
+            email="x@e.com", family=self.family, invited_by=self.owner, role="teacher",
+        )
+        url = reverse("core:accept_invite", kwargs={"invite_id": inv.id})
+        resp = self.client.post(url, {
+            "username": "xx", "email": "x@e.com",
+            "password1": "Str0ngPass!23", "password2": "different",
+        })
+        self.assertEqual(resp.status_code, 200)
+        self.assertFalse(CustomUser.objects.filter(username="xx").exists())
+
+    def test_guardian_edits_grandparent_views_only(self):
+        from core.permissions import user_can_edit
+
+        guardian = CustomUser.objects.create_user(username="guard", email="g@e.com", password="pw")
+        grandparent = CustomUser.objects.create_user(username="gp", email="gp@e.com", password="pw")
+        FamilyMembership.objects.create(user=guardian, family=self.family, role="guardian")
+        FamilyMembership.objects.create(user=grandparent, family=self.family, role="grandparent")
+        self.assertTrue(user_can_edit(guardian))
+        self.assertFalse(user_can_edit(grandparent))

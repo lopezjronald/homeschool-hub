@@ -8,9 +8,12 @@
       <h1 class="mb-0">Work Log</h1>
       <small class="text-muted">A record of completed work — ready to share with your teacher.</small>
     </div>
-    {% if can_edit %}
-    <a href="{% url 'worklog:worklog_create' %}" class="btn btn-primary">Log Work</a>
-    {% endif %}
+    <div class="d-flex gap-2">
+      <a href="{% url 'worklog:worklog_report' %}" class="btn btn-outline-primary">Report</a>
+      {% if can_edit %}
+      <a href="{% url 'worklog:worklog_create' %}" class="btn btn-primary">Log Work</a>
+      {% endif %}
+    </div>
   </div>
 
   {% if entries %}

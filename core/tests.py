@@ -1299,3 +1299,36 @@ class CoParentInviteTests(TestCase):
         FamilyMembership.objects.create(user=grandparent, family=self.family, role="grandparent")
         self.assertTrue(user_can_edit(guardian))
         self.assertFalse(user_can_edit(grandparent))
+
+
+class HubNavTests(TestCase):
+    """HH-90: tiled parent hub + slimmed nav + Account dropdown."""
+
+    def setUp(self):
+        self.parent = CustomUser.objects.create_user(
+            username="hubparent", email="hub@e.com", password="pw",
+        )
+        fam = Family.objects.create(name="Hub Family")
+        FamilyMembership.objects.create(user=self.parent, family=fam, role="parent")
+
+    def test_home_is_a_hub_for_signed_in_parent(self):
+        self.client.login(username="hubparent", password="pw")
+        resp = self.client.get(reverse("home"))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "hub-tile")
+        self.assertContains(resp, "Welcome back")
+        self.assertContains(resp, "Work Log &amp; Report")
+        self.assertContains(resp, ">Progress<")
+
+    def test_nav_drops_assignments_and_has_account_dropdown(self):
+        self.client.login(username="hubparent", password="pw")
+        resp = self.client.get(reverse("home"))
+        self.assertNotContains(resp, reverse("assignments:assignment_list"))
+        self.assertContains(resp, "accountMenu")           # Account dropdown
+        self.assertContains(resp, "Log out")               # logout lives inside it
+
+    def test_logged_out_home_shows_marketing(self):
+        resp = self.client.get(reverse("home"))
+        self.assertEqual(resp.status_code, 200)
+        self.assertNotContains(resp, "hub-tile")
+        self.assertContains(resp, "Create account")

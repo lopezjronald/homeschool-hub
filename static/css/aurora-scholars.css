@@ -296,3 +296,13 @@ a:hover { color:var(--ss-green-700); }
 }
 .btn-amber:hover,.btn-amber:focus { color:var(--ss-forest-2); filter:brightness(1.05); }
 .ss-feature-emoji { font-size:1.6rem; line-height:1; }
+
+/* Clickable hub tiles on the parent home */
+.hub-tile { cursor:pointer; height:100%; }
+.hub-tile .card-title { color:var(--ss-forest); }
+a:hover > .hub-tile,
+a:focus-visible > .hub-tile {
+  border-color:rgba(30,122,80,.45);
+  box-shadow:var(--ss-shadow-md);
+  transform:translateY(-3px);
+}

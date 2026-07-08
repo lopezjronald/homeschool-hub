@@ -6,7 +6,22 @@ from django.conf.urls.static import static
 
 
 def home(request):
-    return render(request, "home.html")
+    """Landing page. For a signed-in parent it's a hub of tiles with live counts."""
+    context = {}
+    if request.user.is_authenticated:
+        from core.permissions import scoped_queryset
+        from core.utils import get_selected_family
+        from curricula.models import Curriculum
+        from students.models import Student
+
+        family = get_selected_family(request)
+        context["children_count"] = scoped_queryset(
+            Student.objects.all(), request.user, family,
+        ).count()
+        context["curricula_count"] = scoped_queryset(
+            Curriculum.objects.all(), request.user, family,
+        ).count()
+    return render(request, "home.html", context)
 
 
 urlpatterns = [

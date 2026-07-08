@@ -62,18 +62,23 @@ class Command(BaseCommand):
             user = get_user_model().objects.filter(username=options["for_user"]).first()
             if user is None:
                 raise CommandError(f"User '{options['for_user']}' does not exist.")
-            level = options.get("level") or "G03"
-            family = get_active_family(user)
-            curriculum, _ = Curriculum.objects.get_or_create(
-                parent=user, name=options["name"],
-                defaults={"subject": "Literature", "grade_level": level, "family": family},
-            )
+
+            # Resolve the child first so an omitted --level can fall back to their Level.
+            child = None
             if options.get("child_name"):
                 child = Student.objects.filter(
                     parent=user, first_name__iexact=options["child_name"],
                 ).first()
                 if child is None:
                     raise CommandError(f"No child named '{options['child_name']}' found.")
+
+            level = options.get("level") or (child.grade_level if child else "") or "G03"
+            family = get_active_family(user)
+            curriculum, _ = Curriculum.objects.get_or_create(
+                parent=user, name=options["name"],
+                defaults={"subject": "Literature", "grade_level": level, "family": family},
+            )
+            if child:
                 anchor = literature.ensure_anchor_lesson(curriculum)
                 CurriculumPlacement.objects.get_or_create(
                     child=child, curriculum=curriculum, defaults={"current_lesson": anchor},

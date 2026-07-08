@@ -231,12 +231,17 @@ def apply_literature_standard(curriculum, level_code, *, family=None, anchor_les
     sets += 1
     questions += n
     band = socratic.band_for_level(level_code)
-    n = _make_discussion_set(
-        lesson, family, f"Literary Toolbox ({BAND_LABEL[band]})", TOOLBOX_INTRO,
-        toolbox_questions(level_code),
-    )
+    # Stable title (band label lives in the intro) so re-applying at a different
+    # level updates the single toolbox in place instead of duplicating it.
+    toolbox_intro = f"{TOOLBOX_INTRO} (Tuned for {BAND_LABEL[band]}.)"
+    n = _make_discussion_set(lesson, family, "Literary Toolbox", toolbox_intro, toolbox_questions(level_code))
     sets += 1
     questions += n
+
+    # Clean up any band-labelled toolbox left by an earlier version/run.
+    from tutor.models import QuestionSet
+
+    QuestionSet.objects.filter(lesson=lesson, title__startswith="Literary Toolbox (").delete()
     return sets, questions
 
 

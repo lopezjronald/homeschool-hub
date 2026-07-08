@@ -373,6 +373,37 @@ class LiteratureStandardTests(TestCase):
         sets = QuestionSet.objects.filter(lesson__chapter__curriculum=curriculum)
         self.assertEqual(sets.count(), 2)  # no duplication on re-run
 
+    def test_reapply_at_new_level_does_not_duplicate_toolbox(self):
+        from tutor import literature
+
+        curriculum = Curriculum.objects.create(
+            parent=self.parent, name="Aging Reader", subject="Literature", family=self.family,
+        )
+        literature.apply_literature_standard(curriculum, "G05")   # band 2
+        literature.apply_literature_standard(curriculum, "G07")   # band 3 — a grade bump
+        sets = QuestionSet.objects.filter(lesson__chapter__curriculum=curriculum)
+        toolboxes = sets.filter(title__startswith="Literary Toolbox")
+        self.assertEqual(toolboxes.count(), 1)                    # exactly one, not two
+        # and it now holds the higher-band tool set
+        self.assertEqual(toolboxes.first().questions.count(), len(literature.devices_for("G07")))
+
+    def test_scaffold_uses_childs_level_when_level_omitted(self):
+        kaylin = Student.objects.create(
+            parent=self.parent, first_name="Kaylin", grade_level="G07", family=self.family,
+        )
+        call_command(
+            "seed_literature_standard", "--for-user", "lit", "--child-name", "Kaylin",
+            "--name", "Kaylin Lit", stdout=StringIO(),   # NO --level
+        )
+        from tutor import literature
+
+        curriculum = Curriculum.objects.get(name="Kaylin Lit")
+        self.assertEqual(curriculum.grade_level, "G07")           # inferred from Kaylin
+        toolbox = QuestionSet.objects.get(
+            lesson__chapter__curriculum=curriculum, title="Literary Toolbox",
+        )
+        self.assertEqual(toolbox.questions.count(), len(literature.devices_for("G07")))
+
     def test_toolbox_hidden_from_student_but_in_discussion_guide(self):
         from tutor import literature
 

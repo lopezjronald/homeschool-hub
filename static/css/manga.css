@@ -1,0 +1,211 @@
+/* Manga page: a CSS-Grid comic of ink-bordered panels with overlaid bubbles.
+   Panel art is generated separately; bubbles/captions are positioned here so
+   the text stays crisp and editable. */
+
+.manga-page {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.9rem;
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+.manga-panel {
+  position: relative;
+  margin: 0;
+  border: 3px solid #111;
+  border-radius: 4px;
+  overflow: hidden;
+  background: #fff;
+  min-height: 220px;
+  aspect-ratio: 4 / 3;
+  box-shadow: 3px 3px 0 rgba(17, 17, 17, 0.15);
+}
+
+.manga-span-wide { grid-column: span 2; aspect-ratio: 16 / 7; }
+.manga-span-full { grid-column: 1 / -1; aspect-ratio: 16 / 6; }
+.manga-span-tall { grid-row: span 2; aspect-ratio: 3 / 4; }
+
+.manga-panel > img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* Placeholder shown before the art is generated. */
+.manga-placeholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  text-align: center;
+  padding: 1rem;
+  color: #4a4a4a;
+  background:
+    repeating-linear-gradient(45deg, #f2f2f2 0 6px, #e9e9e9 6px 12px);
+}
+.manga-placeholder span { font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; font-size: 0.8rem; }
+.manga-placeholder small { max-width: 24ch; line-height: 1.25; }
+
+/* Narrator caption — top-left box. */
+.manga-caption {
+  position: absolute;
+  top: 0.5rem;
+  left: 0.5rem;
+  right: 0.5rem;
+  background: rgba(255, 255, 255, 0.92);
+  border: 2px solid #111;
+  padding: 0.3rem 0.5rem;
+  font-size: 0.82rem;
+  line-height: 1.3;
+  font-weight: 600;
+  max-width: 70%;
+}
+
+/* Speech / thought / sfx bubbles, positioned by inline left/top %. */
+.manga-bubble {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  max-width: 46%;
+  padding: 0.4rem 0.6rem;
+  font-size: 0.8rem;
+  line-height: 1.25;
+  text-align: center;
+  z-index: 2;
+}
+.manga-speaker { display: block; font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.05em; opacity: 0.6; }
+
+.manga-bubble.kind-speech,
+.manga-bubble.kind-thought {
+  background: #fff;
+  color: #111;
+  border: 2px solid #111;
+}
+.manga-bubble.kind-speech { border-radius: 1.1rem; }
+.manga-bubble.kind-speech::after {
+  content: "";
+  position: absolute;
+  bottom: -10px;
+  left: 24%;
+  border: 7px solid transparent;
+  border-top-color: #111;
+}
+.manga-bubble.kind-thought { border-radius: 50% / 60%; }
+.manga-bubble.kind-thought::after {
+  content: "";
+  position: absolute;
+  bottom: -12px;
+  left: 22%;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #fff;
+  border: 2px solid #111;
+  box-shadow: -6px 6px 0 -2px #fff, -6px 6px 0 0 #111;
+}
+
+.manga-bubble.kind-caption {
+  background: rgba(255, 255, 255, 0.92);
+  border: 2px solid #111;
+  border-radius: 2px;
+  font-weight: 600;
+}
+
+.manga-bubble.kind-sfx {
+  font-family: "Arial Black", Impact, sans-serif;
+  font-weight: 900;
+  font-style: italic;
+  font-size: 1.6rem;
+  color: #fff;
+  -webkit-text-stroke: 2px #111;
+  text-stroke: 2px #111;
+  letter-spacing: 0.02em;
+  max-width: 60%;
+}
+
+@media (max-width: 640px) {
+  .manga-page { grid-template-columns: 1fr; }
+  .manga-span-wide, .manga-span-full, .manga-span-tall { grid-column: auto; grid-row: auto; aspect-ratio: 4 / 3; }
+  .manga-bubble { font-size: 0.72rem; max-width: 60%; }
+}
+
+/* -----------------------------------------------------------------------
+   "What we're exploring" — a warm, kid-facing intro above the manga
+   --------------------------------------------------------------------- */
+.lesson-intro {
+  background: linear-gradient(180deg, #ffffff 0%, var(--ss-parchment, #F6F3EA) 100%);
+  border: 1px solid rgba(30, 122, 80, 0.25);
+  border-left: 5px solid var(--ss-green, #1E7A50);
+  border-radius: 12px;
+  padding: 1rem 1.25rem;
+  margin-bottom: 1.5rem;
+}
+.lesson-intro-label {
+  display: inline-block;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--ss-green, #1E7A50);
+  margin-bottom: 0.35rem;
+}
+.lesson-intro p {
+  margin: 0;
+  font-size: 1.12rem;
+  line-height: 1.6;
+  color: var(--ss-forest, #0F3D2E);
+}
+
+/* -----------------------------------------------------------------------
+   Teaching guide — formatted Markdown, the outstanding standard
+   --------------------------------------------------------------------- */
+.teaching-guide-badge {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: #fff;
+  background: var(--ss-green, #1E7A50);
+  border-radius: 999px;
+  padding: 0.2rem 0.6rem;
+}
+.teaching-guide { color: #24303a; line-height: 1.65; }
+.teaching-guide > :first-child { margin-top: 0; }
+.teaching-guide h2 {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--ss-forest, #0F3D2E);
+  margin: 1.5rem 0 0.5rem;
+  padding-bottom: 0.3rem;
+  border-bottom: 2px solid rgba(30, 122, 80, 0.2);
+}
+.teaching-guide h3 {
+  font-size: 0.98rem;
+  font-weight: 700;
+  color: var(--ss-green, #1E7A50);
+  margin: 1.1rem 0 0.35rem;
+}
+.teaching-guide p { margin: 0 0 0.7rem; }
+.teaching-guide ul, .teaching-guide ol { margin: 0 0 0.8rem; padding-left: 1.3rem; }
+.teaching-guide li { margin-bottom: 0.3rem; }
+.teaching-guide strong { color: var(--ss-forest, #0F3D2E); }
+.teaching-guide code {
+  background: rgba(30, 122, 80, 0.1);
+  color: var(--ss-forest, #0F3D2E);
+  padding: 0.1rem 0.35rem;
+  border-radius: 5px;
+  font-size: 0.92em;
+}
+.teaching-guide blockquote {
+  margin: 0.8rem 0;
+  padding: 0.7rem 1rem;
+  background: rgba(235, 168, 58, 0.12);
+  border-left: 4px solid var(--ss-amber, #EBA83A);
+  border-radius: 0 8px 8px 0;
+  color: #5b4a1e;
+}
+.teaching-guide blockquote p { margin: 0.2rem 0; }

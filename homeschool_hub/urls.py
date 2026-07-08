@@ -6,7 +6,30 @@ from django.conf.urls.static import static
 
 
 def home(request):
-    return render(request, "home.html")
+    """Landing page. For a signed-in parent it's a hub of tiles with live counts."""
+    context = {}
+    if request.user.is_authenticated:
+        from activities.models import ExternalActivity
+        from core.permissions import scoped_queryset
+        from core.utils import get_selected_family
+        from curricula.models import Curriculum
+        from students.models import Student
+
+        family = get_selected_family(request)
+        context["children_count"] = scoped_queryset(
+            Student.objects.all(), request.user, family,
+        ).count()
+        context["curricula_count"] = scoped_queryset(
+            Curriculum.objects.all(), request.user, family,
+        ).count()
+        activities = scoped_queryset(
+            ExternalActivity.objects.all(), request.user, family,
+        ).select_related("student")
+        context["activities_count"] = activities.count()
+        # `is_due` is a Python property (cadence + last-logged + snooze/mute),
+        # so evaluate in-process rather than in the DB.
+        context["due_activities"] = [a for a in activities if a.is_due]
+    return render(request, "home.html", context)
 
 
 urlpatterns = [
@@ -19,6 +42,8 @@ urlpatterns = [
     path("dashboard/", include(("dashboard.urls", "dashboard"), namespace="dashboard")),
     path("worklog/", include(("worklog.urls", "worklog"), namespace="worklog")),
     path("tutor/", include(("tutor.urls", "tutor"), namespace="tutor")),
+    path("portal/", include(("portal.urls", "portal"), namespace="portal")),
+    path("activities/", include(("activities.urls", "activities"), namespace="activities")),
     path("core/", include(("core.urls", "core"), namespace="core")),
 ]
 

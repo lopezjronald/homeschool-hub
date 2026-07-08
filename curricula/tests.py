@@ -350,12 +350,13 @@ class CurriculumWebsiteUrlTests(TestCase):
         self.curriculum.save()
         self.client.login(username="wu_parent", password="testpass123")
         response = self.client.get(reverse("curricula:curriculum_list"))
-        self.assertContains(response, ">Launch</a>")
+        self.assertContains(response, "https://khanacademy.org")
+        self.assertContains(response, "Launch")
 
     def test_list_hides_launch_link_when_url_blank(self):
         self.client.login(username="wu_parent", password="testpass123")
         response = self.client.get(reverse("curricula:curriculum_list"))
-        self.assertNotContains(response, ">Launch</a>")
+        self.assertNotContains(response, "Launch ↗")
 
 
 class BlueprintTests(TestCase):
@@ -530,3 +531,56 @@ class PlacementTests(TestCase):
         )
         self.assertContains(resp, "Violet")
         self.assertContains(resp, "progress-bar")
+
+
+class CurriculumBrowserTests(TestCase):
+    """HH-91: filter / search / tiled curricula browser."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.parent = User.objects.create_user(username="cb", email="cb@e.com", password="pw")
+        cls.family = Family.objects.create(name="Browse Fam")
+        FamilyMembership.objects.create(user=cls.parent, family=cls.family, role="parent")
+        Curriculum.objects.create(parent=cls.parent, family=cls.family, name="Dimensions Math 3A", subject="Math", grade_level="G03")
+        Curriculum.objects.create(parent=cls.parent, family=cls.family, name="Essentials in Writing 3", subject="Writing", grade_level="G03")
+        Curriculum.objects.create(parent=cls.parent, family=cls.family, name="I Am David", subject="Literature", grade_level="G07")
+
+    def setUp(self):
+        self.client.login(username="cb", password="pw")
+
+    def test_lists_all_with_facets(self):
+        resp = self.client.get(reverse("curricula:curriculum_list"))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "Dimensions Math 3A")
+        self.assertContains(resp, "Essentials in Writing 3")
+        self.assertContains(resp, "I Am David")
+        # subject + grade facets available
+        self.assertContains(resp, ">Math<")
+        self.assertContains(resp, ">Literature<")
+
+    def test_filter_by_subject(self):
+        resp = self.client.get(reverse("curricula:curriculum_list"), {"subject": "Math"})
+        self.assertContains(resp, "Dimensions Math 3A")
+        self.assertNotContains(resp, "I Am David")
+
+    def test_filter_by_grade(self):
+        resp = self.client.get(reverse("curricula:curriculum_list"), {"grade": "G07"})
+        self.assertContains(resp, "I Am David")
+        self.assertNotContains(resp, "Dimensions Math 3A")
+
+    def test_search_query(self):
+        resp = self.client.get(reverse("curricula:curriculum_list"), {"q": "writing"})
+        self.assertContains(resp, "Essentials in Writing 3")
+        self.assertNotContains(resp, "I Am David")
+
+    def test_no_results_state(self):
+        resp = self.client.get(reverse("curricula:curriculum_list"), {"q": "zzzznope"})
+        self.assertContains(resp, "No curricula match")
+
+    def test_scoped_to_family(self):
+        other = User.objects.create_user(username="cb2", email="cb2@e.com", password="pw")
+        fam2 = Family.objects.create(name="Other")
+        FamilyMembership.objects.create(user=other, family=fam2, role="parent")
+        Curriculum.objects.create(parent=other, family=fam2, name="Secret Course", subject="Math")
+        resp = self.client.get(reverse("curricula:curriculum_list"))
+        self.assertNotContains(resp, "Secret Course")

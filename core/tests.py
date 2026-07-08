@@ -1196,24 +1196,24 @@ class CrossFamilyAccessControlTests(TestCase):
         self.assertNotContains(response, "Assignment B")
 
     def test_dashboard_does_not_leak_other_family(self):
-        """Dashboard only shows current family's data."""
+        """Progress dashboard only shows the current family's children."""
         self.client.login(username="xf_parent_a", password="testpass123")
         response = self.client.get(reverse("dashboard:dashboard"))
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Assignment A")
-        self.assertNotContains(response, "Assignment B")
-        # Verify dropdown only contains Family A's child
+        self.assertContains(response, "ChildA")
+        self.assertNotContains(response, "ChildB")
+        # Verify the child dropdown only contains Family A's child
         children = list(response.context["children"])
         self.assertEqual(len(children), 1)
         self.assertEqual(children[0].first_name, "ChildA")
 
     def test_dashboard_filter_dropdown_scoped_to_family(self):
-        """Dashboard filter dropdowns only contain current family's data."""
+        """Dashboard child dropdown only contains the current family's children."""
         self.client.login(username="xf_parent_a", password="testpass123")
         response = self.client.get(reverse("dashboard:dashboard"))
-        curricula_list = list(response.context["curricula"])
-        self.assertEqual(len(curricula_list), 1)
-        self.assertEqual(curricula_list[0].name, "Math A")
+        children = list(response.context["children"])
+        self.assertEqual([c.first_name for c in children], ["ChildA"])
+        self.assertNotContains(response, "ChildB")
 
     # ── URL manipulation cannot bypass family scope ──────────────────────
 
@@ -1225,8 +1225,8 @@ class CrossFamilyAccessControlTests(TestCase):
         )
         self.assertEqual(response.status_code, 200)
         # Should still show Family A data (fallback to owned family)
-        self.assertContains(response, "Assignment A")
-        self.assertNotContains(response, "Assignment B")
+        self.assertContains(response, "ChildA")
+        self.assertNotContains(response, "ChildB")
 
     def test_teacher_cannot_force_switch_to_unassigned_family(self):
         """Teacher A cannot access Family B data via family_id URL param."""
@@ -1236,8 +1236,8 @@ class CrossFamilyAccessControlTests(TestCase):
         )
         self.assertEqual(response.status_code, 200)
         # Should still show Family A data (fallback to assigned family)
-        self.assertContains(response, "Assignment A")
-        self.assertNotContains(response, "Assignment B")
+        self.assertContains(response, "ChildA")
+        self.assertNotContains(response, "ChildB")
 
 
 class CoParentInviteTests(TestCase):
@@ -1299,3 +1299,36 @@ class CoParentInviteTests(TestCase):
         FamilyMembership.objects.create(user=grandparent, family=self.family, role="grandparent")
         self.assertTrue(user_can_edit(guardian))
         self.assertFalse(user_can_edit(grandparent))
+
+
+class HubNavTests(TestCase):
+    """HH-90: tiled parent hub + slimmed nav + Account dropdown."""
+
+    def setUp(self):
+        self.parent = CustomUser.objects.create_user(
+            username="hubparent", email="hub@e.com", password="pw",
+        )
+        fam = Family.objects.create(name="Hub Family")
+        FamilyMembership.objects.create(user=self.parent, family=fam, role="parent")
+
+    def test_home_is_a_hub_for_signed_in_parent(self):
+        self.client.login(username="hubparent", password="pw")
+        resp = self.client.get(reverse("home"))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "hub-tile")
+        self.assertContains(resp, "Welcome back")
+        self.assertContains(resp, "Work Log &amp; Report")
+        self.assertContains(resp, ">Progress<")
+
+    def test_nav_drops_assignments_and_has_account_dropdown(self):
+        self.client.login(username="hubparent", password="pw")
+        resp = self.client.get(reverse("home"))
+        self.assertNotContains(resp, reverse("assignments:assignment_list"))
+        self.assertContains(resp, "accountMenu")           # Account dropdown
+        self.assertContains(resp, "Log out")               # logout lives inside it
+
+    def test_logged_out_home_shows_marketing(self):
+        resp = self.client.get(reverse("home"))
+        self.assertEqual(resp.status_code, 200)
+        self.assertNotContains(resp, "hub-tile")
+        self.assertContains(resp, "Create account")

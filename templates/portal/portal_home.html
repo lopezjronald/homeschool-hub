@@ -1,0 +1,77 @@
+{% extends "portal/base_portal.html" %}
+{% block title %}Hi {{ student.first_name }}! · Steadfast Scholars{% endblock %}
+
+{% block content %}
+<div class="container portal-narrow">
+
+  <div class="portal-hero mb-4">
+    <h1>Hi, {{ student.first_name }}! 👋</h1>
+    <p class="mb-0">Pick a subject to keep going. You've got this. 🌱</p>
+  </div>
+
+  {% if subjects %}
+    <div class="portal-subjects">
+      {% for subject in subjects %}
+        <a href="{% url 'portal:portal_subject' token=token curriculum_id=subject.curriculum.id %}"
+           class="portal-subject-card">
+          <div class="portal-subject-emoji">{{ subject.emoji }}</div>
+          <div class="portal-subject-body">
+            <div class="portal-subject-name">{{ subject.curriculum.name }}</div>
+
+            {% if subject.progress and subject.progress.total %}
+              <div class="portal-mini-progress" role="progressbar"
+                   aria-valuenow="{{ subject.progress.pct }}" aria-valuemin="0" aria-valuemax="100">
+                <span style="width: {{ subject.progress.pct }}%;"></span>
+              </div>
+              <div class="portal-progress-label">Lesson {{ subject.progress.done }} of {{ subject.progress.total }}</div>
+            {% elif subject.sets_total %}
+              <div class="portal-mini-progress" role="progressbar"
+                   aria-valuenow="{{ subject.sets_pct }}" aria-valuemin="0" aria-valuemax="100">
+                <span style="width: {{ subject.sets_pct }}%;"></span>
+              </div>
+              <div class="portal-progress-label">{{ subject.sets_done }} of {{ subject.sets_total }} done</div>
+            {% endif %}
+
+            {% if subject.next_set %}
+              <div class="portal-next-line"><span class="portal-next-label">Next</span> {{ subject.next_set.title }}</div>
+            {% elif subject.sets_total %}
+              <div class="portal-next-line portal-next-done">All caught up! 🎉</div>
+            {% elif subject.materials_count %}
+              <div class="portal-next-line">Open your adventures 🦸</div>
+            {% else %}
+              <div class="portal-next-line">Let's take a look 👀</div>
+            {% endif %}
+          </div>
+          <div class="portal-subject-go">
+            {% if subject.next_set %}Continue{% else %}Open{% endif %} ➜
+          </div>
+        </a>
+      {% endfor %}
+    </div>
+  {% endif %}
+
+  {% if activities %}
+    <h2 class="portal-section-title mt-4">🎸 My activities</h2>
+    <div class="row row-cols-2 row-cols-md-3 g-3 mb-4">
+      {% for activity in activities %}
+        <div class="col">
+          <a href="{{ activity.url }}" target="_blank" rel="noopener noreferrer" class="text-decoration-none">
+            <div class="card portal-card portal-card-link h-100 text-center">
+              <div class="card-body">
+                <div class="ss-feature-emoji mb-1">{{ activity.emoji }}</div>
+                <div class="fw-semibold">{{ activity.title }}</div>
+                {% if activity.provider %}<small class="text-muted">{{ activity.provider }} ↗</small>{% endif %}
+              </div>
+            </div>
+          </a>
+        </div>
+      {% endfor %}
+    </div>
+  {% endif %}
+
+  {% if not subjects and not activities %}
+    <div class="alert alert-info">Nothing here yet — check back soon! 🌱</div>
+  {% endif %}
+
+</div>
+{% endblock %}

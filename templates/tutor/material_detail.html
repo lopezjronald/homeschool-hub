@@ -1,5 +1,8 @@
 {% extends "base.html" %}
+{% load static %}
+{% load tutor_extras %}
 {% block title %}{{ material.title }} · Steadfast Scholars{% endblock %}
+{% block extra_css %}<link href="{% static 'css/manga.css' %}" rel="stylesheet">{% endblock %}
 
 {% block content %}
 <div class="container py-4">
@@ -22,15 +25,51 @@
           {% endif %}
         </div>
         <div class="card-body">
-          <h6 class="text-muted">For the student</h6>
-          <div class="p-3 bg-body-tertiary rounded" style="white-space: pre-wrap;">{{ material.student_content }}</div>
+          {% if material.student_intro %}
+            <div class="lesson-intro">
+              <div class="lesson-intro-label">What we're exploring</div>
+              <p>{{ material.student_intro }}</p>
+            </div>
+          {% endif %}
+          {% if material.has_pages %}
+            <div class="manga-page">
+              {% for panel in material.panels.all %}
+                <figure class="manga-panel manga-span-{{ panel.span }}">
+                  {% if panel.image_path %}
+                    <img src="{% static panel.image_path %}" alt="{{ panel.alt }}">
+                  {% elif panel.image %}
+                    <img src="{{ panel.image.url }}" alt="{{ panel.alt }}">
+                  {% else %}
+                    <div class="manga-placeholder" role="img" aria-label="{{ panel.alt }}">
+                      <span>Panel {{ panel.order }}</span>
+                      <small>{{ panel.alt }}</small>
+                    </div>
+                  {% endif %}
+                  {% if panel.caption %}<figcaption class="manga-caption">{{ panel.caption }}</figcaption>{% endif %}
+                  {% for b in panel.bubbles %}
+                    <div class="manga-bubble kind-{{ b.kind }}" style="left:{{ b.x }}%; top:{{ b.y }}%;">
+                      {% if b.speaker %}<b class="manga-speaker">{{ b.speaker }}</b>{% endif %}{{ b.text }}
+                    </div>
+                  {% endfor %}
+                </figure>
+              {% endfor %}
+            </div>
+          {% else %}
+            <h6 class="text-muted">For the student</h6>
+            <div class="p-3 bg-body-tertiary rounded" style="white-space: pre-wrap;">{{ material.student_content }}</div>
+          {% endif %}
         </div>
       </div>
 
       {% if material.parent_content %}
       <div class="card mb-4">
-        <div class="card-header"><h5 class="mb-0">Teaching guide (for you)</h5></div>
-        <div class="card-body" style="white-space: pre-wrap;">{{ material.parent_content }}</div>
+        <div class="card-header d-flex align-items-center gap-2">
+          <span class="teaching-guide-badge">For the teacher</span>
+          <h5 class="mb-0">Teaching guide</h5>
+        </div>
+        <div class="card-body">
+          <div class="teaching-guide">{{ material.parent_content|markdownify }}</div>
+        </div>
       </div>
       {% endif %}
 

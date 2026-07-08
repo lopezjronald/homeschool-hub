@@ -107,6 +107,36 @@ class StudentViewsTest(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Child1")
 
+    def test_detail_shows_curricula_and_progress(self):
+        """The detail page lists the curricula the child is currently doing."""
+        from curricula.models import Chapter, Curriculum, CurriculumPlacement, Lesson
+
+        curriculum = Curriculum.objects.create(
+            parent=self.parent1, name="Dimensions Math 3A", subject="Math",
+        )
+        chapter = Chapter.objects.create(curriculum=curriculum, number=1, title="Numbers")
+        Lesson.objects.create(chapter=chapter, order=1, number=1, title="Counting")
+        lesson2 = Lesson.objects.create(chapter=chapter, order=2, number=2, title="Place Value")
+        CurriculumPlacement.objects.create(
+            child=self.student1, curriculum=curriculum, current_lesson=lesson2,
+        )
+
+        self.client.login(username="parent1", password="testpass123")
+        response = self.client.get(
+            reverse("students:student_detail", kwargs={"pk": self.student1.pk})
+        )
+        self.assertContains(response, "Curricula")
+        self.assertContains(response, "Dimensions Math 3A")
+        self.assertContains(response, "Ch 1, L2")  # current lesson code
+
+    def test_detail_empty_state_when_no_curricula(self):
+        """A child with no placement shows a friendly empty message."""
+        self.client.login(username="parent1", password="testpass123")
+        response = self.client.get(
+            reverse("students:student_detail", kwargs={"pk": self.student1.pk})
+        )
+        self.assertContains(response, "isn't placed in any curriculum yet")
+
     def test_update_returns_404_for_non_owner(self):
         """Parent cannot edit another parent's child (404)."""
         self.client.login(username="parent1", password="testpass123")
@@ -266,3 +296,42 @@ class TeacherStudentViewTests(TestCase):
         )
         self.assertNotContains(response, "btn-primary\">Edit")
         self.assertNotContains(response, "btn-danger\">Delete")
+
+
+class EnterPortalTests(TestCase):
+    """Parent taps a child -> lands in the child's portal, signed out."""
+
+    def setUp(self):
+        from core.models import Family, FamilyMembership
+        self.parent = User.objects.create_user(
+            username="kp", email="kp@example.com", password="pw", is_active=True,
+        )
+        self.other = User.objects.create_user(
+            username="kp2", email="kp2@example.com", password="pw", is_active=True,
+        )
+        fam = Family.objects.create(name="Kiosk Fam")
+        FamilyMembership.objects.create(user=self.parent, family=fam, role="parent")
+        self.child = Student.objects.create(
+            parent=self.parent, first_name="Violet", grade_level="G03", family=fam,
+        )
+
+    def test_enter_portal_logs_out_and_redirects_to_portal(self):
+        self.client.login(username="kp", password="pw")
+        resp = self.client.post(reverse("students:enter_portal", kwargs={"pk": self.child.pk}))
+        self.assertEqual(resp.status_code, 302)
+        self.assertIn("/portal/", resp.url)
+        # the parent session is gone — a login-required page now redirects to login
+        self.assertNotIn("_auth_user_id", self.client.session)
+        after = self.client.get(reverse("students:student_list"))
+        self.assertEqual(after.status_code, 302)
+        self.assertIn("/accounts/login/", after.url)
+
+    def test_enter_portal_requires_post(self):
+        self.client.login(username="kp", password="pw")
+        resp = self.client.get(reverse("students:enter_portal", kwargs={"pk": self.child.pk}))
+        self.assertEqual(resp.status_code, 405)
+
+    def test_cannot_enter_another_familys_child_portal(self):
+        self.client.login(username="kp2", password="pw")
+        resp = self.client.post(reverse("students:enter_portal", kwargs={"pk": self.child.pk}))
+        self.assertEqual(resp.status_code, 404)

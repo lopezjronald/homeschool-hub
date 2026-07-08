@@ -1,275 +1,135 @@
 {% extends "base.html" %}
-
-{% block title %}Dashboard - Steadfast Scholars{% endblock %}
+{% block title %}Progress · Steadfast Scholars{% endblock %}
 
 {% block content %}
-<div class="container my-4">
-  <h1 class="mb-4" style="color: #002147;">Progress Dashboard</h1>
+<div class="container py-4">
 
-  {# ── Filters ────────────────────────────────────────────────────────── #}
-  <div class="card mb-4" style="border-color: #8FBC8F;">
-    <div class="card-body" style="background-color: #F9F9F9;">
-      <form method="get" class="row g-3 align-items-end">
-        <div class="col-md-3">
-          <label for="child_id" class="form-label" style="color: #333333;">Child</label>
-          <select name="child_id" id="child_id" class="form-select">
-            <option value="">All Children</option>
-            {% for c in children %}
-              <option value="{{ c.id }}" {% if selected_child == c.id|stringformat:"d" %}selected{% endif %}>
-                {{ c }}
-              </option>
-            {% endfor %}
-          </select>
-        </div>
-        <div class="col-md-3">
-          <label for="curriculum_id" class="form-label" style="color: #333333;">Curriculum</label>
-          <select name="curriculum_id" id="curriculum_id" class="form-select">
-            <option value="">All Curricula</option>
-            {% for cur in curricula %}
-              <option value="{{ cur.id }}" {% if selected_curriculum == cur.id|stringformat:"d" %}selected{% endif %}>
-                {{ cur.name }}
-              </option>
-            {% endfor %}
-          </select>
-        </div>
-        <div class="col-md-2">
-          <label for="start_date" class="form-label" style="color: #333333;">From</label>
-          <input type="date" name="start_date" id="start_date" class="form-control" value="{{ start_date }}">
-        </div>
-        <div class="col-md-2">
-          <label for="end_date" class="form-label" style="color: #333333;">To</label>
-          <input type="date" name="end_date" id="end_date" class="form-control" value="{{ end_date }}">
-        </div>
-        <div class="col-md-2">
-          <button type="submit" class="btn w-100" style="background-color: #002147; color: #fff;">Filter</button>
-        </div>
-      </form>
-      {% if has_filters %}
-        <div class="mt-2">
-          <a href="{% url 'dashboard:dashboard' %}" class="text-decoration-none" style="color: #002147;">
-            &times; Clear filters
-          </a>
-        </div>
-      {% endif %}
-    </div>
+  <div class="ss-hero mb-4">
+    <div class="ss-kicker">How it's going</div>
+    <h1>Progress</h1>
+    <p class="lead mb-0">Where each child is in every subject, what they've logged, and how mastery is growing.</p>
   </div>
 
-  {# ── Summary Cards ──────────────────────────────────────────────────── #}
-  <div class="row mb-4">
-    <div class="col-md-3 col-6 mb-3">
-      <div class="card text-center h-100" style="border-color: #002147;">
-        <div class="card-body">
-          <h5 class="card-title" style="color: #333333;">Total</h5>
-          <p class="display-6" style="color: #002147;">{{ summary.total }}</p>
-        </div>
-      </div>
-    </div>
-    <div class="col-md-3 col-6 mb-3">
-      <div class="card text-center h-100" style="border-color: #8FBC8F;">
-        <div class="card-body">
-          <h5 class="card-title" style="color: #333333;">Completed</h5>
-          <p class="display-6" style="color: #8FBC8F;">{{ summary.completed }}</p>
-        </div>
-      </div>
-    </div>
-    <div class="col-md-3 col-6 mb-3">
-      <div class="card text-center h-100" style="border-color: #333333;">
-        <div class="card-body">
-          <h5 class="card-title" style="color: #333333;">Not Completed</h5>
-          <p class="display-6" style="color: #333333;">{{ summary.not_completed }}</p>
-        </div>
-      </div>
-    </div>
-    <div class="col-md-3 col-6 mb-3">
-      <div class="card text-center h-100 border-danger">
-        <div class="card-body">
-          <h5 class="card-title text-danger">Overdue</h5>
-          <p class="display-6 text-danger">{{ summary.overdue }}</p>
-        </div>
-      </div>
-    </div>
+  {# ── Summary strip ─────────────────────────────────────────────────── #}
+  <div class="row row-cols-2 row-cols-md-4 g-3 mb-4">
+    <div class="col"><div class="card h-100 text-center"><div class="card-body">
+      <div class="display-6 ss-stat">{{ summary.subjects }}</div>
+      <div class="text-muted small">Subjects tracked</div>
+    </div></div></div>
+    <div class="col"><div class="card h-100 text-center"><div class="card-body">
+      <div class="display-6 ss-stat">{{ summary.worklog_count }}</div>
+      <div class="text-muted small">Work log entries{% if has_filters %} in range{% endif %}</div>
+    </div></div></div>
+    <div class="col"><div class="card h-100 text-center"><div class="card-body">
+      <div class="display-6 ss-stat">{{ summary.meets_bar }}<span class="ss-stat-sub">/{{ summary.assessed }}</span></div>
+      <div class="text-muted small">Proficient or above</div>
+    </div></div></div>
+    <div class="col"><div class="card h-100 text-center"><div class="card-body">
+      <div class="display-6 ss-stat">{{ summary.children }}</div>
+      <div class="text-muted small">{% if summary.children == 1 %}Child{% else %}Children{% endif %}</div>
+    </div></div></div>
   </div>
 
-  {# ── Progress Bar ───────────────────────────────────────────────────── #}
-  <div class="card mb-4">
-    <div class="card-body">
-      <h6 class="card-title" style="color: #333333;">Overall Progress</h6>
-      <div class="progress" style="height: 25px;">
-        <div class="progress-bar" role="progressbar"
-             style="width: {{ summary.progress_pct }}%; background-color: #8FBC8F;"
-             aria-valuenow="{{ summary.progress_pct }}" aria-valuemin="0" aria-valuemax="100">
-          {{ summary.progress_pct }}%
-        </div>
+  {# ── Filters ───────────────────────────────────────────────────────── #}
+  <form method="get" class="row g-2 align-items-end mb-4">
+    <div class="col-sm-4 col-md-3">
+      <label for="child_id" class="form-label small mb-1">Child</label>
+      <select name="child_id" id="child_id" class="form-select">
+        <option value="">All children</option>
+        {% for c in children %}
+          <option value="{{ c.id }}" {% if selected_child == c.id|stringformat:"d" %}selected{% endif %}>{{ c.first_name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-6 col-sm-3 col-md-2">
+      <label for="start_date" class="form-label small mb-1">From</label>
+      <input type="date" name="start_date" id="start_date" class="form-control" value="{{ start_date }}">
+    </div>
+    <div class="col-6 col-sm-3 col-md-2">
+      <label for="end_date" class="form-label small mb-1">To</label>
+      <input type="date" name="end_date" id="end_date" class="form-control" value="{{ end_date }}">
+    </div>
+    <div class="col-auto">
+      <button type="submit" class="btn btn-amber">Filter</button>
+    </div>
+    {% if has_filters %}
+      <div class="col-auto">
+        <a href="{% url 'dashboard:dashboard' %}" class="btn btn-link text-muted">Clear</a>
       </div>
-      <small class="text-muted">{{ summary.completed }} of {{ summary.total }} assignments complete</small>
-    </div>
-  </div>
+    {% endif %}
+  </form>
 
-  {# ── Breakdown by Child ─────────────────────────────────────────────── #}
-  <div class="card mb-4">
-    <div class="card-header" style="background-color: #002147; color: #fff;">
-      Breakdown by Child
-    </div>
-    <div class="card-body p-0">
-      {% if by_child %}
-        <div class="table-responsive">
-          <table class="table table-hover mb-0">
-            <thead style="background-color: #F9F9F9;">
-              <tr>
-                <th style="color: #333333;">Child</th>
-                <th style="color: #333333;">Total</th>
-                <th style="color: #333333;">Completed</th>
-                <th style="color: #333333;">Overdue</th>
-                <th style="color: #333333;">Progress</th>
-              </tr>
-            </thead>
-            <tbody>
-              {% for row in by_child %}
-                <tr>
-                  <td>
-                    {{ row.child__first_name }}{% if row.child__last_name %} {{ row.child__last_name }}{% endif %}
-                  </td>
-                  <td>{{ row.total }}</td>
-                  <td>{{ row.completed }}</td>
-                  <td>
-                    {% if row.overdue > 0 %}
-                      <span class="badge bg-danger">{{ row.overdue }}</span>
-                    {% else %}
-                      0
-                    {% endif %}
-                  </td>
-                  <td>
-                    {% with pct=row.completed|divisibleby:1 %}
-                      {% widthratio row.completed row.total 100 as child_pct %}
-                      <div class="progress" style="height: 20px;">
-                        <div class="progress-bar" role="progressbar"
-                             style="width: {{ child_pct }}%; background-color: #8FBC8F;"
-                             aria-valuenow="{{ child_pct }}" aria-valuemin="0" aria-valuemax="100">
-                          {{ child_pct }}%
-                        </div>
-                      </div>
-                    {% endwith %}
-                  </td>
-                </tr>
+  {# ── Per-child progress ────────────────────────────────────────────── #}
+  {% for card in child_cards %}
+    <div class="card mb-4">
+      <div class="card-body">
+        <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
+          <h4 class="mb-0" style="color:var(--ss-forest);">{{ card.child.first_name }}</h4>
+          <span class="badge bg-secondary">{{ card.child.get_grade_level_display }}</span>
+        </div>
+
+        <div class="row g-4">
+          {# Subjects + placement progress #}
+          <div class="col-lg-6">
+            <div class="ss-panel-label">📚 Subjects</div>
+            {% if card.subjects %}
+              {% for s in card.subjects %}
+                <div class="mb-3">
+                  <div class="d-flex justify-content-between">
+                    <span class="fw-semibold">{{ s.emoji }} {{ s.curriculum.name }}</span>
+                    <span class="text-muted small">{{ s.progress.done }}/{{ s.progress.total }}</span>
+                  </div>
+                  <div class="progress my-1" style="height:0.6rem;" role="progressbar"
+                       aria-valuenow="{{ s.progress.pct }}" aria-valuemin="0" aria-valuemax="100">
+                    <div class="progress-bar" style="width: {{ s.progress.pct }}%;"></div>
+                  </div>
+                  {% if s.current_lesson %}<small class="text-muted">Now on {{ s.current_lesson.code }}</small>{% endif %}
+                </div>
               {% endfor %}
-            </tbody>
-          </table>
-        </div>
-      {% else %}
-        <p class="p-3 text-muted mb-0">No assignments to display.</p>
-      {% endif %}
-    </div>
-  </div>
+            {% else %}
+              <p class="text-muted small mb-0">No curriculum placements yet.</p>
+            {% endif %}
+          </div>
 
-  {# ── Breakdown by Curriculum ────────────────────────────────────────── #}
-  <div class="card mb-4">
-    <div class="card-header" style="background-color: #002147; color: #fff;">
-      Breakdown by Curriculum
-    </div>
-    <div class="card-body p-0">
-      {% if by_curriculum %}
-        <div class="table-responsive">
-          <table class="table table-hover mb-0">
-            <thead style="background-color: #F9F9F9;">
-              <tr>
-                <th style="color: #333333;">Curriculum</th>
-                <th style="color: #333333;">Total</th>
-                <th style="color: #333333;">Completed</th>
-                <th style="color: #333333;">Overdue</th>
-                <th style="color: #333333;">Progress</th>
-              </tr>
-            </thead>
-            <tbody>
-              {% for row in by_curriculum %}
-                <tr>
-                  <td>{{ row.curriculum__name }}</td>
-                  <td>{{ row.total }}</td>
-                  <td>{{ row.completed }}</td>
-                  <td>
-                    {% if row.overdue > 0 %}
-                      <span class="badge bg-danger">{{ row.overdue }}</span>
-                    {% else %}
-                      0
-                    {% endif %}
-                  </td>
-                  <td>
-                    {% widthratio row.completed row.total 100 as cur_pct %}
-                    <div class="progress" style="height: 20px;">
-                      <div class="progress-bar" role="progressbar"
-                           style="width: {{ cur_pct }}%; background-color: #8FBC8F;"
-                           aria-valuenow="{{ cur_pct }}" aria-valuemin="0" aria-valuemax="100">
-                        {{ cur_pct }}%
-                      </div>
-                    </div>
-                  </td>
-                </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        </div>
-      {% else %}
-        <p class="p-3 text-muted mb-0">No assignments to display.</p>
-      {% endif %}
-    </div>
-  </div>
+          {# Work log + mastery #}
+          <div class="col-lg-6">
+            <div class="ss-panel-label">📝 Work log{% if has_filters %} (in range){% endif %}</div>
+            {% if card.recent_entries %}
+              <p class="small text-muted mb-2">
+                {{ card.worklog_count }} entr{{ card.worklog_count|pluralize:"y,ies" }}{% if card.last_entry %} · last on {{ card.last_entry.date }}{% endif %}
+              </p>
+              <ul class="list-unstyled mb-3">
+                {% for e in card.recent_entries %}
+                  <li class="d-flex justify-content-between border-bottom py-1">
+                    <span>{{ e.subject }}{% if e.curriculum %} <span class="text-muted small">· {{ e.curriculum.name }}</span>{% endif %}</span>
+                    <span class="text-muted small">{{ e.date }}</span>
+                  </li>
+                {% endfor %}
+              </ul>
+            {% else %}
+              <p class="text-muted small mb-3">No work logged{% if has_filters %} in this range{% endif %}.</p>
+            {% endif %}
 
-  {# ── Assignment List ────────────────────────────────────────────────── #}
-  <div class="card mb-4">
-    <div class="card-header" style="background-color: #002147; color: #fff;">
-      Assignments
-    </div>
-    <div class="card-body p-0">
-      {% if assignments %}
-        <div class="table-responsive">
-          <table class="table table-hover mb-0">
-            <thead style="background-color: #F9F9F9;">
-              <tr>
-                <th style="color: #333333;">Title</th>
-                <th style="color: #333333;">Child</th>
-                <th style="color: #333333;">Curriculum</th>
-                <th style="color: #333333;">Due Date</th>
-                <th style="color: #333333;">Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {% for a in assignments %}
-                <tr {% if a.is_overdue %}style="background-color: #fff3f3;"{% endif %}>
-                  <td>
-                    <a href="{% url 'assignments:assignment_detail' a.pk %}" style="color: #002147;">
-                      {{ a.title }}
-                    </a>
-                  </td>
-                  <td>{{ a.child }}</td>
-                  <td>{{ a.curriculum.name }}</td>
-                  <td>
-                    {% if a.due_date %}
-                      {{ a.due_date }}
-                    {% else %}
-                      <span class="text-muted">&mdash;</span>
-                    {% endif %}
-                  </td>
-                  <td>
-                    {% if a.is_overdue %}
-                      <span class="badge bg-danger">Overdue</span>
-                    {% elif a.status == "complete" %}
-                      <span class="badge bg-success">Complete</span>
-                    {% elif a.status == "submitted" %}
-                      <span class="badge bg-info">Submitted</span>
-                    {% elif a.status == "in_progress" %}
-                      <span class="badge bg-primary">In Progress</span>
-                    {% else %}
-                      <span class="badge bg-secondary">Pending</span>
-                    {% endif %}
-                  </td>
-                </tr>
-              {% endfor %}
-            </tbody>
-          </table>
+            <div class="ss-panel-label">✅ Mastery</div>
+            {% if card.mastery_counts %}
+              <div class="d-flex flex-wrap gap-2 mb-1">
+                {% for m in card.mastery_counts %}
+                  <span class="badge {{ m.badge }}">{{ m.label }} · {{ m.count }}</span>
+                {% endfor %}
+              </div>
+              <small class="text-muted">{{ card.meets_bar_count }} of {{ card.assessed_count }} at Proficient or above</small>
+            {% else %}
+              <p class="text-muted small mb-0">No mastery assessments yet.</p>
+            {% endif %}
+          </div>
         </div>
-      {% else %}
-        <p class="p-3 text-muted mb-0">No assignments found{% if has_filters %} matching your filters{% endif %}.</p>
-      {% endif %}
+      </div>
     </div>
-  </div>
+  {% empty %}
+    <div class="alert alert-info">
+      {% if has_filters %}No children match these filters.{% else %}No children on file yet — add a child to start tracking progress.{% endif %}
+    </div>
+  {% endfor %}
+
 </div>
 {% endblock %}

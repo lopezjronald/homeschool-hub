@@ -1,0 +1,491 @@
+/* Student portal — a kid-friendly layer over the Scholar's Grove system.
+   Bigger type, warmer corners, playful chips; still calm and uncluttered. */
+
+.portal-body { background: var(--ss-parchment, #F6F3EA); }
+
+.portal-nav {
+  background: var(--ss-forest-grad, linear-gradient(135deg, #0B2E22 0%, #0F3D2E 100%));
+}
+.portal-nav .navbar-brand { font-weight: 700; letter-spacing: 0.01em; }
+.portal-brand-icon { font-size: 1.1rem; }
+.portal-level-badge {
+  background: var(--ss-amber, #EBA83A);
+  color: var(--ss-forest-2, #0B2E22);
+  font-weight: 700;
+  border-radius: 999px;
+}
+
+.portal-hero {
+  background: #fff;
+  border: 1px solid rgba(30, 122, 80, 0.18);
+  border-radius: 18px;
+  padding: 1.5rem 1.75rem;
+  box-shadow: 0 4px 14px rgba(15, 61, 46, 0.06);
+}
+.portal-hero h1 { font-size: 1.9rem; margin-bottom: 0.25rem; }
+.portal-hero p { color: #5a6a62; }
+
+.portal-section-title {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--ss-forest, #0F3D2E);
+  margin: 0 0 0.75rem;
+}
+
+.portal-card { border-radius: 14px; }
+.portal-card-link { transition: transform 0.12s ease, box-shadow 0.12s ease; }
+.portal-card-link:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 18px rgba(15, 61, 46, 0.12);
+}
+.portal-card-link .card-title { color: var(--ss-forest, #0F3D2E); }
+
+.portal-badge-new {
+  background: var(--ss-amber, #EBA83A);
+  color: var(--ss-forest-2, #0B2E22);
+  font-weight: 700;
+}
+.portal-badge-progress {
+  background: rgba(30, 122, 80, 0.12);
+  color: var(--ss-green, #1E7A50);
+  font-weight: 600;
+}
+
+/* ---- child tiles on the parent "My Children" page ---- */
+.child-tile { border-radius: 16px; overflow: hidden; }
+.child-tile-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  border: none;
+  background: transparent;
+  padding: 1.5rem 1rem 1rem;
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+.child-tile-btn:hover { background: #f2f7f3; }
+.child-avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 84px;
+  height: 84px;
+  border-radius: 50%;
+  background: var(--ss-forest-grad, linear-gradient(135deg, #1E7A50, #0F3D2E));
+  color: #fff;
+  font-size: 2.4rem;
+  font-weight: 700;
+  box-shadow: 0 4px 12px rgba(15, 61, 46, 0.2);
+}
+.child-tile-name { font-size: 1.15rem; font-weight: 700; color: var(--ss-forest, #0F3D2E); }
+.child-tile-go { font-size: 0.85rem; font-weight: 600; color: var(--ss-green, #1E7A50); }
+.child-tile-btn:hover .child-tile-go { text-decoration: underline; }
+
+/* ---- grouped set lists (one group per curriculum section) ---- */
+.portal-group-heading {
+  font-size: 0.82rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--ss-green, #1E7A50);
+  margin-bottom: 0.4rem;
+}
+.portal-set-list { border-radius: 12px; overflow: hidden; }
+.portal-set-list .list-group-item { padding: 0.8rem 1rem; }
+.portal-set-list .list-group-item:hover { background: #f2f7f3; }
+
+/* ---- the reading-first callout ---- */
+.portal-reading-first {
+  background: rgba(235, 168, 58, 0.14);
+  border: 1px solid rgba(235, 168, 58, 0.5);
+  border-radius: 10px;
+  padding: 0.6rem 0.9rem;
+  margin-bottom: 1rem;
+  font-size: 1.02rem;
+}
+
+/* ---- questions ---- */
+.portal-question {
+  padding: 1.1rem 0;
+  border-bottom: 1px dashed rgba(15, 61, 46, 0.15);
+}
+.portal-question:last-of-type { border-bottom: none; }
+
+.portal-qnum {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.7rem;
+  height: 1.7rem;
+  border-radius: 50%;
+  background: var(--ss-forest, #0F3D2E);
+  color: #fff;
+  font-weight: 700;
+  font-size: 0.85rem;
+  flex: none;
+}
+
+.portal-prompt {
+  display: block;
+  font-size: 1.06rem;
+  line-height: 1.55;
+  color: #24303a;
+  margin: 0.25rem 0 0.5rem;
+  font-weight: 500;
+}
+
+.portal-answer {
+  font-size: 1.05rem;
+  line-height: 1.6;
+  border-radius: 10px;
+  border: 1.5px solid rgba(15, 61, 46, 0.25);
+}
+.portal-answer:focus {
+  border-color: var(--ss-green, #1E7A50);
+  box-shadow: 0 0 0 0.2rem rgba(30, 122, 80, 0.15);
+}
+.portal-answer[readonly] { background: #fbfaf5; color: #3a4741; }
+
+.portal-wordcount { font-size: 0.78rem; margin-top: 0.25rem; min-height: 1em; }
+
+.portal-hint { margin: 0 0 0.5rem; }
+.portal-hint summary {
+  cursor: pointer;
+  color: var(--ss-green, #1E7A50);
+  font-size: 0.9rem;
+  font-weight: 600;
+  list-style: none;
+}
+.portal-hint summary::-webkit-details-marker { display: none; }
+.portal-hint p {
+  background: rgba(30, 122, 80, 0.08);
+  border-radius: 8px;
+  padding: 0.5rem 0.75rem;
+  margin-top: 0.35rem;
+  font-size: 0.95rem;
+  color: #2c473b;
+}
+
+/* ---- teacher discussion guide ---- */
+.discussion-list { padding-left: 1.4rem; margin: 0; }
+.discussion-q { margin-bottom: 1.1rem; }
+.discussion-prompt { font-size: 1.05rem; line-height: 1.5; color: #24303a; margin-top: 0.2rem; }
+.discussion-hint {
+  margin-top: 0.35rem;
+  font-size: 0.9rem;
+  color: #5b4a1e;
+  background: rgba(235, 168, 58, 0.12);
+  border-radius: 8px;
+  padding: 0.4rem 0.7rem;
+}
+
+/* ---- markup: draw on the sentence ---- */
+.markup-widget { margin-top: 0.5rem; }
+.markup-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.5rem;
+}
+.markup-tool-label { font-size: 0.8rem; color: #7a8781; font-weight: 600; }
+.markup-tool-sep { width: 1px; height: 22px; background: rgba(15,61,46,0.15); margin: 0 0.3rem; }
+.markup-pen {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 2px solid #fff;
+  background: var(--pen, #333);
+  box-shadow: 0 0 0 1px rgba(0,0,0,0.2);
+  cursor: pointer;
+  padding: 0;
+}
+.markup-pen.is-active { box-shadow: 0 0 0 2px var(--pen, #333); transform: scale(1.12); }
+.markup-btn {
+  border: 1.5px solid rgba(15,61,46,0.3);
+  background: #fff;
+  border-radius: 8px;
+  padding: 0.2rem 0.6rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--ss-forest, #0F3D2E);
+  cursor: pointer;
+}
+.markup-btn:hover { background: #f2f7f3; }
+
+.markup-surface {
+  position: relative;
+  background:
+    repeating-linear-gradient(transparent, transparent 47px, rgba(30,122,80,0.18) 47px, rgba(30,122,80,0.18) 48px),
+    #fffdf7;
+  border: 1.5px solid rgba(15,61,46,0.2);
+  border-radius: 10px;
+  padding: 12px 16px;
+  touch-action: none;
+}
+.markup-passage {
+  font-size: 1.5rem;
+  line-height: 48px;
+  letter-spacing: 0.02em;
+  color: #24303a;
+  word-spacing: 0.35em;
+  font-family: Georgia, "Times New Roman", serif;
+  white-space: pre-wrap;
+  position: relative;
+  z-index: 1;
+}
+.markup-canvas {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  cursor: crosshair;
+  border-radius: 10px;
+}
+
+/* ---- Socratic category chips ---- */
+.portal-chip {
+  display: inline-block;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  padding: 0.15rem 0.55rem;
+  border-radius: 999px;
+  background: #eef0ec;
+  color: #5f6e66;
+}
+.chip-comprehension { background: #E6F1FB; color: #185FA5; }
+.chip-character     { background: #EEEDFE; color: #534AB7; }
+.chip-setting       { background: #E1F5EE; color: #0F6E56; }
+.chip-plot          { background: #FAEEDA; color: #854F0B; }
+.chip-conflict      { background: #FAECE7; color: #993C1D; }
+.chip-theme         { background: #FBEAF0; color: #993556; }
+.chip-style         { background: #F1EFE8; color: #5F5E5A; }
+.chip-context       { background: #E6F1FB; color: #0C447C; }
+.chip-application   { background: #EAF3DE; color: #3B6D11; }
+.chip-vocabulary    { background: #FCEBEB; color: #A32D2D; }
+.chip-grammar       { background: #EEEDFE; color: #534AB7; }
+.chip-editing       { background: #FAEEDA; color: #854F0B; }
+.chip-writing       { background: #E1F5EE; color: #0F6E56; }
+
+/* ---- save status ---- */
+.portal-save-status {
+  font-size: 0.82rem;
+  color: #7a8781;
+  transition: color 0.2s ease;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+/* On narrow screens let the header wrap so the status sits under the title
+   instead of collapsing into a jittery sliver. */
+@media (max-width: 480px) {
+  .portal-card > .card-header { flex-wrap: wrap; gap: 2px 8px; }
+}
+.portal-save-status.is-saving { color: #854F0B; }
+.portal-save-status.is-saved { color: var(--ss-green, #1E7A50); font-weight: 600; }
+.portal-save-status.is-error { color: #A32D2D; font-weight: 600; }
+
+/* ---- submitted celebration ---- */
+.portal-celebrate {
+  background: linear-gradient(180deg, #ffffff 0%, #eef7f1 100%);
+  border: 1px solid rgba(30, 122, 80, 0.3);
+  border-radius: 18px;
+  text-align: center;
+  padding: 1.75rem 1.5rem;
+}
+.portal-celebrate-emoji { font-size: 2.4rem; }
+.portal-celebrate h2 { color: var(--ss-forest, #0F3D2E); margin: 0.35rem 0; }
+.portal-celebrate p { color: #4a5a52; max-width: 46ch; margin-left: auto; margin-right: auto; }
+
+@media (max-width: 640px) {
+  .portal-hero h1 { font-size: 1.5rem; }
+  .portal-prompt { font-size: 1rem; }
+}
+
+/* =====================================================================
+   "What's Next" home — one calm card per subject, one clear next step.
+   Big tap targets, gentle progress, no points or leaderboards (SDT).
+   ===================================================================== */
+.portal-narrow { max-width: 720px; }
+
+.portal-subjects { display: flex; flex-direction: column; gap: 0.85rem; }
+
+.portal-subject-card {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem 1.15rem;
+  background: #fff;
+  border: 1px solid rgba(30, 122, 80, 0.18);
+  border-radius: 16px;
+  text-decoration: none;
+  color: inherit;
+  min-height: 76px;
+  box-shadow: 0 3px 10px rgba(15, 61, 46, 0.05);
+  transition: transform 0.12s ease, box-shadow 0.12s ease, border-color 0.12s ease;
+}
+.portal-subject-card:hover,
+.portal-subject-card:focus-visible {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 22px rgba(15, 61, 46, 0.13);
+  border-color: rgba(30, 122, 80, 0.4);
+  outline: none;
+}
+.portal-subject-emoji { font-size: 2.1rem; line-height: 1; flex: none; }
+.portal-subject-body { flex: 1 1 auto; min-width: 0; }
+.portal-subject-name {
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: var(--ss-forest, #0F3D2E);
+  margin-bottom: 0.3rem;
+}
+
+.portal-mini-progress {
+  height: 8px;
+  background: rgba(30, 122, 80, 0.14);
+  border-radius: 999px;
+  overflow: hidden;
+  margin-bottom: 0.25rem;
+}
+.portal-mini-progress > span {
+  display: block;
+  height: 100%;
+  background: var(--ss-green, #1E7A50);
+  border-radius: 999px;
+}
+.portal-progress-label { font-size: 0.82rem; color: #6a7a72; }
+
+.portal-next-line { font-size: 0.98rem; color: #33413a; margin-top: 0.35rem; }
+.portal-next-label {
+  display: inline-block;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ss-amber-700, #8A5B12);
+  background: rgba(235, 168, 58, 0.18);
+  border-radius: 6px;
+  padding: 0.05rem 0.4rem;
+  margin-right: 0.35rem;
+}
+.portal-next-done { color: var(--ss-green, #1E7A50); font-weight: 600; }
+
+.portal-subject-go {
+  flex: none;
+  font-weight: 700;
+  color: var(--ss-green, #1E7A50);
+  white-space: nowrap;
+}
+.portal-subject-card:hover .portal-subject-go { text-decoration: underline; }
+
+@media (max-width: 480px) {
+  .portal-subject-go { display: none; }   /* the whole card is tappable anyway */
+  .portal-subject-name { font-size: 1.08rem; }
+}
+
+/* ---- subject drill-in ---- */
+.portal-back {
+  display: inline-block;
+  font-weight: 600;
+  color: var(--ss-green, #1E7A50);
+  text-decoration: none;
+}
+.portal-back:hover { text-decoration: underline; }
+
+.portal-subject-hero {
+  background: #fff;
+  border: 1px solid rgba(30, 122, 80, 0.18);
+  border-radius: 18px;
+  padding: 1.4rem 1.6rem;
+  box-shadow: 0 4px 14px rgba(15, 61, 46, 0.06);
+}
+.portal-subject-hero h1 { font-size: 1.7rem; }
+.portal-subject-hero-emoji { font-size: 2.6rem; line-height: 1; }
+.portal-subject-sub {
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ss-green, #1E7A50);
+}
+.portal-hero-progress { height: 0.75rem; border-radius: 999px; }
+
+.portal-continue {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-top: 0.5rem;
+}
+.portal-continue-sub { font-size: 0.85rem; font-weight: 600; opacity: 0.85; }
+.portal-alldone {
+  background: rgba(30, 122, 80, 0.1);
+  border-radius: 12px;
+  padding: 0.8rem 1rem;
+  color: var(--ss-forest, #0F3D2E);
+  font-weight: 600;
+}
+
+/* ---- chapters accordion ---- */
+.portal-chapters { display: flex; flex-direction: column; gap: 0.6rem; }
+.portal-chapter {
+  background: #fff;
+  border: 1px solid rgba(30, 122, 80, 0.16);
+  border-radius: 14px;
+  overflow: hidden;
+}
+.portal-chapter.is-current { border-color: rgba(235, 168, 58, 0.6); }
+.portal-chapter-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  width: 100%;
+  border: none;
+  background: transparent;
+  padding: 0.9rem 1.1rem;
+  cursor: pointer;
+  text-align: left;
+}
+.portal-chapter-head:hover { background: #f2f7f3; }
+.portal-chapter-title { font-weight: 700; color: var(--ss-forest, #0F3D2E); }
+.portal-chapter-count {
+  flex: none;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--ss-green, #1E7A50);
+  background: rgba(30, 122, 80, 0.12);
+  border-radius: 999px;
+  padding: 0.1rem 0.6rem;
+}
+.portal-chapter-body { padding: 0 0.6rem 0.6rem; }
+
+.portal-set-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.75rem 0.9rem;
+  border-radius: 10px;
+  text-decoration: none;
+  color: #24303a;
+}
+.portal-set-row:hover { background: #f2f7f3; }
+.portal-set-row.is-done { opacity: 0.75; }
+.portal-set-title { font-weight: 600; }
+.portal-set-reading { display: block; font-weight: 400; color: #7a8781; }
+
+.portal-finished { margin-top: 0.2rem; }
+.portal-finished > summary {
+  cursor: pointer;
+  list-style: none;
+  padding: 0.55rem 0.9rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #6a7a72;
+}
+.portal-finished > summary::-webkit-details-marker { display: none; }
+.portal-finished > summary::before { content: "▸ "; }
+.portal-finished[open] > summary::before { content: "▾ "; }

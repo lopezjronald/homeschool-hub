@@ -3,15 +3,17 @@
 
 {% block content %}
 <div class="container py-4">
-  <div class="row justify-content-center">
-    <div class="col-md-6">
-      <div class="card">
+  <div class="row justify-content-center g-4">
+    <div class="col-lg-8">
+
+      <!-- Profile -->
+      <div class="card mb-4">
         <div class="card-header d-flex justify-content-between align-items-center">
           <h4 class="mb-0">{{ student.get_full_name }}</h4>
           <span class="badge bg-primary">{{ student.get_grade_level_display }}</span>
         </div>
         <div class="card-body">
-          <dl class="row">
+          <dl class="row mb-0">
             <dt class="col-sm-4">First Name</dt>
             <dd class="col-sm-8">{{ student.first_name }}</dd>
 
@@ -36,6 +38,88 @@
           {% endif %}
         </div>
       </div>
+
+      {% if portal_url %}
+      <!-- Student portal link -->
+      <div class="card mb-4">
+        <div class="card-body d-flex justify-content-between align-items-center flex-wrap gap-2">
+          <div>
+            <h5 class="mb-1">🌱 {{ student.first_name }}'s portal</h5>
+            <small class="text-muted">A login-free page with only {{ student.first_name }}'s work — open it on their device or bookmark it there.</small>
+          </div>
+          <div class="d-flex gap-2">
+            <a href="{{ portal_url }}" class="btn btn-outline-primary" target="_blank" rel="noopener">Open</a>
+            <button type="button" class="btn btn-primary" onclick="copyPortalLink(this)">Copy link</button>
+          </div>
+        </div>
+      </div>
+      <script>
+      function copyPortalLink(btn) {
+        var url = "{{ portal_url|escapejs }}";
+        var done = function () { btn.textContent = "Copied!"; setTimeout(function () { btn.textContent = "Copy link"; }, 2000); };
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(url).then(done);
+        } else {
+          var input = document.createElement("input");
+          input.value = url; document.body.appendChild(input); input.select();
+          document.execCommand("copy"); document.body.removeChild(input); done();
+        }
+      }
+      </script>
+      {% endif %}
+
+      <!-- Curricula & Progress -->
+      <div class="card">
+        <div class="card-header">
+          <h5 class="mb-0">Curricula &amp; Progress</h5>
+          <small class="text-muted">What {{ student.first_name }} is currently working on.</small>
+        </div>
+
+        {% if curricula %}
+          <ul class="list-group list-group-flush">
+            {% for item in curricula %}
+              <li class="list-group-item">
+                <div class="d-flex justify-content-between align-items-start mb-1">
+                  <div>
+                    <a href="{% url 'curricula:curriculum_detail' item.curriculum.pk %}" class="fw-semibold text-decoration-none">
+                      {{ item.curriculum.name }}
+                    </a>
+                    {% if item.curriculum.subject %}
+                      <span class="badge bg-light text-dark ms-1">{{ item.curriculum.subject }}</span>
+                    {% endif %}
+                  </div>
+                  <span class="text-muted small">{{ item.progress.done }}/{{ item.progress.total }} lessons</span>
+                </div>
+
+                <div class="progress" role="progressbar" aria-valuenow="{{ item.progress.pct }}" aria-valuemin="0" aria-valuemax="100" style="height: 0.6rem;">
+                  <div class="progress-bar" style="width: {{ item.progress.pct }}%;"></div>
+                </div>
+
+                <div class="small text-muted mt-2">
+                  {% if item.current_lesson %}
+                    <span class="me-3">Now: <strong>{{ item.current_lesson.code }}</strong>
+                      {% if item.current_lesson.title %}— {{ item.current_lesson.title }}{% endif %}</span>
+                  {% endif %}
+                  {% if item.next_lesson %}
+                    <span>Next: {{ item.next_lesson.code }}</span>
+                  {% endif %}
+                </div>
+                {% if item.has_discussion %}
+                  <a href="{% url 'tutor:discussion_guide' item.curriculum.pk %}" class="btn btn-sm btn-outline-primary mt-2">🗣️ Discussion guide (for you)</a>
+                {% endif %}
+              </li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <div class="card-body">
+            <p class="text-muted mb-0">
+              {{ student.first_name }} isn't placed in any curriculum yet.
+              {% if can_edit %}Open a <a href="{% url 'curricula:curriculum_list' %}">curriculum</a> to set where they're working.{% endif %}
+            </p>
+          </div>
+        {% endif %}
+      </div>
+
     </div>
   </div>
 </div>

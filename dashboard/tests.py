@@ -4,352 +4,177 @@ from django.test import TestCase
 from django.urls import reverse
 
 from accounts.models import CustomUser
-from assignments.models import Assignment
-from curricula.models import Curriculum
+from core.models import Family, FamilyMembership
+from curricula.models import Chapter, Curriculum, CurriculumPlacement, Lesson
 from students.models import Student
+from tutor import mastery
+from tutor.models import MasteryAssessment
+from worklog.models import WorkLogEntry
 
 
-class DashboardViewTests(TestCase):
-    """Tests for the parent progress dashboard."""
+def curriculum_with_lessons(parent, family, name, subject, n=4):
+    cur = Curriculum.objects.create(parent=parent, family=family, name=name, subject=subject)
+    ch = Chapter.objects.create(curriculum=cur, number=1, title="Chapter 1")
+    lessons = [
+        Lesson.objects.create(chapter=ch, order=i, number=i, title=f"L{i}")
+        for i in range(1, n + 1)
+    ]
+    return cur, lessons
+
+
+class ProgressDashboardTests(TestCase):
+    """The dashboard now reflects real signals: placement progress, Work Log,
+    and finalized mastery — not the legacy Assignment model."""
 
     @classmethod
     def setUpTestData(cls):
-        # ── Users ──
-        cls.parent = CustomUser.objects.create_user(
-            username="parent1",
-            email="parent1@test.com",
-            password="testpass123",
-        )
-        cls.other_parent = CustomUser.objects.create_user(
-            username="parent2",
-            email="parent2@test.com",
-            password="testpass123",
-        )
+        cls.parent = CustomUser.objects.create_user(username="p1", email="p1@e.com", password="pw")
+        cls.family = Family.objects.create(name="Fam1")
+        FamilyMembership.objects.create(user=cls.parent, family=cls.family, role="parent")
+        cls.alice = Student.objects.create(parent=cls.parent, first_name="Alice", grade_level="G03", family=cls.family)
+        cls.bob = Student.objects.create(parent=cls.parent, first_name="Bob", grade_level="G05", family=cls.family)
 
-        # ── Students ──
-        cls.child_a = Student.objects.create(
-            parent=cls.parent,
-            first_name="Alice",
-            grade_level="G03",
-        )
-        cls.child_b = Student.objects.create(
-            parent=cls.parent,
-            first_name="Bob",
-            grade_level="G05",
-        )
-        cls.other_child = Student.objects.create(
-            parent=cls.other_parent,
-            first_name="Other",
-            grade_level="G01",
-        )
+        # A second family whose data must never appear.
+        cls.other = CustomUser.objects.create_user(username="p2", email="p2@e.com", password="pw")
+        cls.other_family = Family.objects.create(name="Fam2")
+        FamilyMembership.objects.create(user=cls.other, family=cls.other_family, role="parent")
+        cls.eve = Student.objects.create(parent=cls.other, first_name="Eve", grade_level="G01", family=cls.other_family)
 
-        # ── Curricula ──
-        cls.math = Curriculum.objects.create(
-            parent=cls.parent,
-            name="Math 3A",
-            subject="Math",
-        )
-        cls.science = Curriculum.objects.create(
-            parent=cls.parent,
-            name="Science 5",
-            subject="Science",
-        )
-        cls.other_curriculum = Curriculum.objects.create(
-            parent=cls.other_parent,
-            name="Other Curr",
-            subject="Art",
-        )
+        # Alice: Math placement on lesson 3 of 4 → done=2.
+        cls.math, math_lessons = curriculum_with_lessons(cls.parent, cls.family, "Math 3A", "Math")
+        CurriculumPlacement.objects.create(child=cls.alice, curriculum=cls.math, current_lesson=math_lessons[2])
 
-        today = date.today()
+        other_cur, other_lessons = curriculum_with_lessons(cls.other, cls.other_family, "Secret Math", "Math")
+        CurriculumPlacement.objects.create(child=cls.eve, curriculum=other_cur, current_lesson=other_lessons[1])
 
-        # ── Assignments for parent ──
-        # Completed assignment (Alice, Math, past due)
-        cls.a1 = Assignment.objects.create(
-            parent=cls.parent,
-            child=cls.child_a,
-            curriculum=cls.math,
-            title="Completed Math HW",
-            due_date=today - timedelta(days=3),
-            status=Assignment.COMPLETE,
+        cls.today = date.today()
+        for _ in range(2):
+            WorkLogEntry.objects.create(parent=cls.parent, family=cls.family, child=cls.alice, subject="Math", date=cls.today)
+        cls.old_entry = WorkLogEntry.objects.create(
+            parent=cls.parent, family=cls.family, child=cls.alice, subject="Reading",
+            date=cls.today - timedelta(days=30),
         )
-        # Overdue assignment (Alice, Science, past due, not complete)
-        cls.a2 = Assignment.objects.create(
-            parent=cls.parent,
-            child=cls.child_a,
-            curriculum=cls.science,
-            title="Overdue Science HW",
-            due_date=today - timedelta(days=1),
-            status=Assignment.PENDING,
-        )
-        # Pending assignment (Bob, Math, future due)
-        cls.a3 = Assignment.objects.create(
-            parent=cls.parent,
-            child=cls.child_b,
-            curriculum=cls.math,
-            title="Future Math HW",
-            due_date=today + timedelta(days=7),
-            status=Assignment.PENDING,
-        )
-        # In-progress assignment (Bob, Science, future due)
-        cls.a4 = Assignment.objects.create(
-            parent=cls.parent,
-            child=cls.child_b,
-            curriculum=cls.science,
-            title="InProgress Science HW",
-            due_date=today + timedelta(days=14),
-            status=Assignment.IN_PROGRESS,
-        )
+        WorkLogEntry.objects.create(parent=cls.other, family=cls.other_family, child=cls.eve, subject="SecretWork", date=cls.today)
 
-        # ── Assignment for OTHER parent (should never appear) ──
-        cls.other_assignment = Assignment.objects.create(
-            parent=cls.other_parent,
-            child=cls.other_child,
-            curriculum=cls.other_curriculum,
-            title="Other Parent HW",
-            due_date=today,
-            status=Assignment.PENDING,
-        )
+        # Alice mastery: one Proficient (meets bar), one Beginning (doesn't).
+        e = WorkLogEntry.objects.filter(child=cls.alice).first()
+        MasteryAssessment.objects.create(work_entry=e, rubric="r", answers="a", final_level=mastery.PROFICIENT, status=MasteryAssessment.FINALIZED)
+        MasteryAssessment.objects.create(work_entry=e, rubric="r", answers="a", final_level=mastery.BEGINNING, status=MasteryAssessment.FINALIZED)
 
         cls.url = reverse("dashboard:dashboard")
 
-    # ── 1. Requires login ─────────────────────────────────────────────────
+    def test_requires_login(self):
+        resp = self.client.get(self.url)
+        self.assertEqual(resp.status_code, 302)
+        self.assertIn("login", resp.url)
 
-    def test_redirect_when_not_logged_in(self):
-        response = self.client.get(self.url)
-        self.assertEqual(response.status_code, 302)
-        self.assertIn("login", response.url)
+    def test_shows_placement_progress(self):
+        self.client.login(username="p1", password="pw")
+        resp = self.client.get(self.url)
+        self.assertEqual(resp.status_code, 200)
+        cards = {c["child"].first_name: c for c in resp.context["child_cards"]}
+        prog = cards["Alice"]["subjects"][0]["progress"]
+        self.assertEqual((prog["done"], prog["total"]), (2, 4))
+        self.assertContains(resp, "Math 3A")
 
-    # ── 2. Only shows logged-in user's data ───────────────────────────────
+    def test_worklog_count_and_family_scoping(self):
+        self.client.login(username="p1", password="pw")
+        resp = self.client.get(self.url)
+        self.assertEqual(resp.context["summary"]["worklog_count"], 3)   # Alice's 3, Bob's 0
+        self.assertNotContains(resp, "SecretWork")                      # other family hidden
+        self.assertNotContains(resp, "Eve")
 
-    def test_only_own_assignments_shown(self):
-        self.client.login(username="parent1", password="testpass123")
-        response = self.client.get(self.url)
-        self.assertEqual(response.status_code, 200)
+    def test_date_range_excludes_old_entries(self):
+        self.client.login(username="p1", password="pw")
+        resp = self.client.get(self.url, {"start_date": (self.today - timedelta(days=7)).isoformat()})
+        self.assertEqual(resp.context["summary"]["worklog_count"], 2)   # the 30-day-old one drops
 
-        # Summary should reflect parent1's 4 assignments
-        self.assertEqual(response.context["summary"]["total"], 4)
-        self.assertEqual(response.context["summary"]["completed"], 1)
-        self.assertEqual(response.context["summary"]["not_completed"], 3)
-        self.assertEqual(response.context["summary"]["overdue"], 1)
-
-        # Other parent's assignment title must not appear in HTML
-        self.assertNotContains(response, "Other Parent HW")
-
-    # ── 3. Filter by child_id ─────────────────────────────────────────────
+    def test_mastery_surfaced(self):
+        self.client.login(username="p1", password="pw")
+        resp = self.client.get(self.url)
+        self.assertEqual(resp.context["summary"]["assessed"], 2)
+        self.assertEqual(resp.context["summary"]["meets_bar"], 1)       # only the Proficient one
+        self.assertContains(resp, "Proficient")
 
     def test_filter_by_child(self):
-        self.client.login(username="parent1", password="testpass123")
-        response = self.client.get(self.url, {"child_id": self.child_a.id})
-        self.assertEqual(response.status_code, 200)
+        self.client.login(username="p1", password="pw")
+        resp = self.client.get(self.url, {"child_id": self.bob.id})
+        self.assertEqual(resp.context["summary"]["children"], 1)
+        self.assertEqual([c["child"].first_name for c in resp.context["child_cards"]], ["Bob"])
 
-        # Alice has 2 assignments (a1 complete, a2 overdue)
-        self.assertEqual(response.context["summary"]["total"], 2)
-        self.assertEqual(response.context["summary"]["completed"], 1)
-        self.assertEqual(response.context["summary"]["overdue"], 1)
+    def test_filter_other_family_child_is_empty(self):
+        self.client.login(username="p1", password="pw")
+        resp = self.client.get(self.url, {"child_id": self.eve.id})
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.context["summary"]["children"], 0)
 
-    # ── 4. Filter by curriculum_id ────────────────────────────────────────
-
-    def test_filter_by_curriculum(self):
-        self.client.login(username="parent1", password="testpass123")
-        response = self.client.get(
-            self.url, {"curriculum_id": self.math.id}
+    def test_draft_assessment_not_counted(self):
+        # An unreviewed AI draft must NOT inflate the mastery numbers.
+        e = WorkLogEntry.objects.filter(child=self.alice).first()
+        MasteryAssessment.objects.create(
+            work_entry=e, rubric="r", answers="a",
+            ai_level=mastery.MASTERED, status=MasteryAssessment.DRAFT,
         )
-        self.assertEqual(response.status_code, 200)
+        self.client.login(username="p1", password="pw")
+        resp = self.client.get(self.url)
+        self.assertEqual(resp.context["summary"]["assessed"], 2)   # still just the 2 finalized
+        self.assertEqual(resp.context["summary"]["meets_bar"], 1)
 
-        # Math has 2 assignments (a1 complete, a3 pending future)
-        self.assertEqual(response.context["summary"]["total"], 2)
-        self.assertEqual(response.context["summary"]["completed"], 1)
-        self.assertEqual(response.context["summary"]["overdue"], 0)
+    def test_malformed_params_do_not_500(self):
+        self.client.login(username="p1", password="pw")
+        resp = self.client.get(self.url, {"child_id": "abc", "start_date": "notadate", "end_date": "x"})
+        self.assertEqual(resp.status_code, 200)
+        self.assertFalse(resp.context["has_filters"])              # junk params ignored
+        self.assertEqual(resp.context["summary"]["worklog_count"], 3)
 
-    # ── 5. Date range filter ──────────────────────────────────────────────
-
-    def test_date_range_filter(self):
-        self.client.login(username="parent1", password="testpass123")
-        today = date.today()
-        # Range that only includes a2 (overdue, yesterday) and a1 (3 days ago)
-        start = (today - timedelta(days=5)).isoformat()
-        end = (today - timedelta(days=1)).isoformat()
-        response = self.client.get(
-            self.url, {"start_date": start, "end_date": end}
-        )
-        self.assertEqual(response.status_code, 200)
-
-        self.assertEqual(response.context["summary"]["total"], 2)
-        self.assertEqual(response.context["summary"]["completed"], 1)
-        self.assertEqual(response.context["summary"]["overdue"], 1)
-
-    # ── 6. Overdue logic correct ──────────────────────────────────────────
-
-    def test_overdue_logic(self):
-        self.client.login(username="parent1", password="testpass123")
-        response = self.client.get(self.url)
-
-        # Only a2 is overdue (past due + not complete)
-        self.assertEqual(response.context["summary"]["overdue"], 1)
-
-        # a1 is past due but COMPLETE, so not overdue
-        # a3, a4 are future, so not overdue
-        assignments = list(response.context["assignments"])
-        overdue_assignments = [a for a in assignments if a.is_overdue]
-        self.assertEqual(len(overdue_assignments), 1)
-        self.assertEqual(overdue_assignments[0].title, "Overdue Science HW")
-
-    # ── 7. Assignment detail links in rendered HTML ───────────────────────
-
-    def test_assignment_detail_links(self):
-        self.client.login(username="parent1", password="testpass123")
-        response = self.client.get(self.url)
-        self.assertEqual(response.status_code, 200)
-
-        # Each of parent1's assignments should have a detail link
-        for assignment in [self.a1, self.a2, self.a3, self.a4]:
-            detail_url = reverse(
-                "assignments:assignment_detail", args=[assignment.pk]
-            )
-            self.assertContains(response, detail_url)
-
-    # ── 8. Other user filter IDs produce empty results (no crash) ─────────
-
-    def test_filter_other_users_child_returns_empty(self):
-        self.client.login(username="parent1", password="testpass123")
-        response = self.client.get(
-            self.url, {"child_id": self.other_child.id}
-        )
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.context["summary"]["total"], 0)
+    def test_no_assignment_dependency(self):
+        # The Progress page must render even with zero Assignment rows.
+        from assignments.models import Assignment
+        self.assertEqual(Assignment.objects.count(), 0)
+        self.client.login(username="p1", password="pw")
+        self.assertEqual(self.client.get(self.url).status_code, 200)
 
 
-class TeacherDashboardViewTests(TestCase):
-    """Tests that teachers can view the dashboard for their family."""
-
+class TeacherProgressTests(TestCase):
     @classmethod
     def setUpTestData(cls):
-        from core.models import Family, FamilyMembership
-
-        cls.parent_user = CustomUser.objects.create_user(
-            username="td_parent", email="td_parent@test.com", password="testpass123",
-        )
-        cls.teacher_user = CustomUser.objects.create_user(
-            username="td_teacher", email="td_teacher@test.com", password="testpass123",
-        )
-        cls.family = Family.objects.create(name="Teacher Dash Family")
-        FamilyMembership.objects.create(
-            user=cls.parent_user, family=cls.family, role="parent",
-        )
-        FamilyMembership.objects.create(
-            user=cls.teacher_user, family=cls.family, role="teacher",
-        )
-        cls.child = Student.objects.create(
-            parent=cls.parent_user, first_name="DashChild", grade_level="G03",
-            family=cls.family,
-        )
-        cls.curriculum = Curriculum.objects.create(
-            parent=cls.parent_user, name="Dash Math", subject="Math",
-            family=cls.family,
-        )
-        cls.assignment = Assignment.objects.create(
-            parent=cls.parent_user,
-            child=cls.child,
-            curriculum=cls.curriculum,
-            title="Dash Assignment",
-            due_date=date.today(),
-            family=cls.family,
-        )
+        cls.parent = CustomUser.objects.create_user(username="tp", email="tp@e.com", password="pw")
+        cls.teacher = CustomUser.objects.create_user(username="tt", email="tt@e.com", password="pw")
+        cls.family = Family.objects.create(name="TFam")
+        FamilyMembership.objects.create(user=cls.parent, family=cls.family, role="parent")
+        FamilyMembership.objects.create(user=cls.teacher, family=cls.family, role="teacher")
+        cls.child = Student.objects.create(parent=cls.parent, first_name="Dash", grade_level="G03", family=cls.family)
+        WorkLogEntry.objects.create(parent=cls.parent, family=cls.family, child=cls.child, subject="Math", date=date.today())
         cls.url = reverse("dashboard:dashboard")
 
-    def test_teacher_can_view_dashboard(self):
-        self.client.login(username="td_teacher", password="testpass123")
-        response = self.client.get(self.url)
-        self.assertEqual(response.status_code, 200)
-
-    def test_teacher_sees_family_assignments(self):
-        self.client.login(username="td_teacher", password="testpass123")
-        response = self.client.get(self.url)
-        self.assertEqual(response.context["summary"]["total"], 1)
-        self.assertContains(response, "Dash Assignment")
+    def test_teacher_sees_family_progress(self):
+        self.client.login(username="tt", password="pw")
+        resp = self.client.get(self.url)
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.context["summary"]["worklog_count"], 1)
+        self.assertContains(resp, "Dash")
 
 
-class FamilySwitcherDashboardTests(TestCase):
-    """Tests for family-scoped dashboard with family switching."""
-
+class FamilySwitcherProgressTests(TestCase):
     @classmethod
     def setUpTestData(cls):
-        from core.models import Family, FamilyMembership
-
-        cls.parent_user = CustomUser.objects.create_user(
-            username="sw_parent", email="sw_parent@test.com", password="testpass123",
-        )
-        cls.family_a = Family.objects.create(name="Switcher A Family")
-        cls.family_b = Family.objects.create(name="Switcher B Family")
-        FamilyMembership.objects.create(
-            user=cls.parent_user, family=cls.family_a, role="parent",
-        )
-        FamilyMembership.objects.create(
-            user=cls.parent_user, family=cls.family_b, role="parent",
-        )
-
-        # Data in family A
-        cls.child_a = Student.objects.create(
-            parent=cls.parent_user, first_name="ChildA", grade_level="G03",
-            family=cls.family_a,
-        )
-        cls.curr_a = Curriculum.objects.create(
-            parent=cls.parent_user, name="Math A", subject="Math",
-            family=cls.family_a,
-        )
-        cls.assign_a = Assignment.objects.create(
-            parent=cls.parent_user, child=cls.child_a, curriculum=cls.curr_a,
-            title="Assignment A", due_date=date.today(), family=cls.family_a,
-        )
-
-        # Data in family B
-        cls.child_b = Student.objects.create(
-            parent=cls.parent_user, first_name="ChildB", grade_level="G05",
-            family=cls.family_b,
-        )
-        cls.curr_b = Curriculum.objects.create(
-            parent=cls.parent_user, name="Math B", subject="Math",
-            family=cls.family_b,
-        )
-        cls.assign_b = Assignment.objects.create(
-            parent=cls.parent_user, child=cls.child_b, curriculum=cls.curr_b,
-            title="Assignment B", due_date=date.today(), family=cls.family_b,
-        )
-
+        cls.parent = CustomUser.objects.create_user(username="sw", email="sw@e.com", password="pw")
+        cls.fam_a = Family.objects.create(name="A Fam")
+        cls.fam_b = Family.objects.create(name="B Fam")
+        FamilyMembership.objects.create(user=cls.parent, family=cls.fam_a, role="parent")
+        FamilyMembership.objects.create(user=cls.parent, family=cls.fam_b, role="parent")
+        cls.child_a = Student.objects.create(parent=cls.parent, first_name="ChildA", grade_level="G03", family=cls.fam_a)
+        cls.child_b = Student.objects.create(parent=cls.parent, first_name="ChildB", grade_level="G05", family=cls.fam_b)
         cls.url = reverse("dashboard:dashboard")
 
     def test_default_shows_first_family(self):
-        self.client.login(username="sw_parent", password="testpass123")
-        response = self.client.get(self.url)
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.context["summary"]["total"], 1)
-        self.assertContains(response, "Assignment A")
-        self.assertNotContains(response, "Assignment B")
+        self.client.login(username="sw", password="pw")
+        resp = self.client.get(self.url)
+        self.assertContains(resp, "ChildA")
+        self.assertNotContains(resp, "ChildB")
 
-    def test_switch_family_shows_other_data(self):
-        self.client.login(username="sw_parent", password="testpass123")
-        response = self.client.get(self.url, {"family_id": self.family_b.id})
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.context["summary"]["total"], 1)
-        self.assertContains(response, "Assignment B")
-        self.assertNotContains(response, "Assignment A")
-
-    def test_session_persists_family_selection(self):
-        self.client.login(username="sw_parent", password="testpass123")
-        # First request: switch to family B
-        self.client.get(self.url, {"family_id": self.family_b.id})
-        # Second request: no family_id param
-        response = self.client.get(self.url)
-        self.assertEqual(response.context["summary"]["total"], 1)
-        self.assertContains(response, "Assignment B")
-
-    def test_filter_dropdowns_scoped_to_selected_family(self):
-        self.client.login(username="sw_parent", password="testpass123")
-        # Default: family A selected
-        response = self.client.get(self.url)
-        children = list(response.context["children"])
-        curricula_list = list(response.context["curricula"])
-        self.assertEqual(len(children), 1)
-        self.assertEqual(children[0].first_name, "ChildA")
-        self.assertEqual(len(curricula_list), 1)
-        self.assertEqual(curricula_list[0].name, "Math A")
+    def test_switch_family(self):
+        self.client.login(username="sw", password="pw")
+        resp = self.client.get(self.url, {"family_id": self.fam_b.id})
+        self.assertContains(resp, "ChildB")
+        self.assertNotContains(resp, "ChildA")

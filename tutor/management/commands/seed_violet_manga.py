@@ -64,29 +64,53 @@ When a number is 1, 2, or 3 away from a hundred —
 borrow its bestie to make the hundred, do the easy math, then return the bestie.
 NINETY-EIGHT: Never underestimate a number close to a hundred.  To be continued →"""
 
-PARENT_CONTENT = """Goal: flexible mental math for numbers just below a hundred (1-3 less), like 98,
-197, or 397. The child should see that adding or subtracting such a number can be
-done by using the nearby hundred and then adjusting.
+STUDENT_INTRO = (
+    "Some numbers are SO close to 100 — like 98, 99, or 97. Adding or subtracting "
+    "them can feel tricky. But here's a secret: it's much easier to use 100! Jump to "
+    "the nearby hundred first, then fix your answer by a tiny bit. In this manga, "
+    "Ninety-Eight and his besties show you exactly how. Read along, then try the "
+    "trick yourself!"
+)
 
-Two valid orders (both correct — encourage flexibility):
-  - Use the hundred, then adjust:  234 + 98  ->  234 + 100 = 334  ->  334 - 2 = 332
-  - Adjust first, then the hundred: 234 + 98  ->  (234 - 2) + 100 = 332
+PARENT_CONTENT = """## The big idea
 
-The classic misconception: confusing whether to GIVE BACK or TAKE BACK the
-adjustment after using the hundred.
-  - Adding 98 = adding 100 but 2 too many, so SUBTRACT 2.
-  - Subtracting 98 = subtracting 100 but 2 too many, so ADD 2 back:
-    234 - 98  ->  234 - 100 + 2 = 136.
-  Ask: "Did we use too much or too little? So do we give it back or take it back?"
+Flexible mental math for numbers just **below a hundred** (1–3 less) — like **98,
+197, or 397**. Your child should see that adding or subtracting such a number is
+easy if you lean on the nearby hundred and then adjust.
 
-If she's stuck: model it with base-ten blocks — trade up to the full hundred,
-then physically add or remove the small "bestie" amount. Then do the matching
-workbook exercise for this lesson.
+## Two ways to do it — both are correct
 
-Extend: three-away numbers (397 -> 400, bestie 3). Same idea, bigger hundred.
+Encourage flexibility; either order works.
 
-Manga note: the "Number Besties" is her world — same warm, playful, triumphant
-tone across future chapters. Keep the math exact; let the story carry the drama."""
+**1. Use the hundred, then adjust**
+`234 + 98` → `234 + 100 = 334` → `334 − 2 = 332`
+
+**2. Adjust first, then the hundred**
+`234 + 98` → `(234 − 2) + 100 = 332`
+
+## The classic mix-up
+
+The tricky part is knowing whether to *give back* or *take back* the adjustment.
+
+> **Adding 98** = adding 100 but **2 too many**, so **subtract 2**.
+> **Subtracting 98** = subtracting 100 but **2 too many**, so **add 2 back**:
+> `234 − 98` → `234 − 100 + 2 = 136`.
+
+Ask: *"Did we use too much or too little? So do we give it back or take it back?"*
+
+## If she's stuck
+
+Model it with base-ten blocks — trade up to the full hundred, then physically add
+or remove the small "bestie" amount. Then do the matching workbook exercise.
+
+## Extend it
+
+Three-away numbers (**397 → 400**, bestie **3**). Same idea, bigger hundred.
+
+## Manga note
+
+The "Number Besties" is her world — keep the warm, playful, triumphant tone across
+future chapters. Keep the math exact; let the story carry the drama."""
 
 
 class Command(BaseCommand):
@@ -110,17 +134,14 @@ class Command(BaseCommand):
                 "(manage.py apply_blueprint dimensions_math_3a --curriculum <id>)."
             )
 
-        child = None
-        if options.get("child_name") and curriculum.family_id:
-            child = Student.objects.filter(
-                family_id=curriculum.family_id, first_name__iexact=options["child_name"],
-            ).first()
+        child = self._resolve_child(curriculum, options.get("child_name"))
 
         material, created = Material.objects.get_or_create(
             lesson=lesson,
             title=TITLE,
             skill_type=Material.SKILL_MANGA,
             defaults={
+                "student_intro": STUDENT_INTRO,
                 "student_content": STUDENT_CONTENT,
                 "parent_content": PARENT_CONTENT,
                 "child": child,
@@ -128,11 +149,46 @@ class Command(BaseCommand):
                 "status": Material.DRAFT,
             },
         )
+        # Refresh authored text on existing materials so re-running ships content
+        # updates (intro + formatted teaching guide), and self-heal the child link.
+        updates = []
+        if not created:
+            if material.student_intro != STUDENT_INTRO:
+                material.student_intro = STUDENT_INTRO
+                updates.append("student_intro")
+            if material.parent_content != PARENT_CONTENT:
+                material.parent_content = PARENT_CONTENT
+                updates.append("parent_content")
+            if child and material.child_id is None:
+                material.child = child
+                updates.append("child")
+            if updates:
+                material.save(update_fields=updates)
+
         verb = "Created" if created else "Already present"
         self.stdout.write(self.style.SUCCESS(
             f"{verb}: Material #{material.pk} '{material.title}' on {lesson.code} "
             f"(status: {material.get_status_display()})."
         ))
+
+    def _resolve_child(self, curriculum, name):
+        """Find the child this material belongs to, tolerant of legacy data.
+
+        Tries, in order: a same-name child in the curriculum's family, a
+        same-name child owned by the curriculum's parent (family may be unset
+        on older curricula), then whichever child is placed in the curriculum.
+        """
+        if name:
+            by_name = Student.objects.filter(first_name__iexact=name)
+            if curriculum.family_id:
+                child = by_name.filter(family_id=curriculum.family_id).first()
+                if child:
+                    return child
+            child = by_name.filter(parent=curriculum.parent).first()
+            if child:
+                return child
+        placement = curriculum.placements.select_related("child").first()
+        return placement.child if placement else None
 
     def _resolve_curriculum(self, options):
         if options.get("curriculum"):

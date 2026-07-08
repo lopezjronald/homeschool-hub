@@ -1,0 +1,107 @@
+{% extends "portal/base_portal.html" %}
+{% block title %}{{ curriculum.name }} · {{ student.first_name }}{% endblock %}
+
+{% block content %}
+<div class="container portal-narrow">
+
+  <a href="{% url 'portal:portal_home' token=token %}" class="portal-back">← All subjects</a>
+
+  <div class="portal-subject-hero mt-2 mb-4">
+    <div class="d-flex align-items-center gap-3 mb-2">
+      <div class="portal-subject-hero-emoji">{{ emoji }}</div>
+      <div>
+        <h1 class="mb-0">{{ curriculum.name }}</h1>
+        {% if curriculum.subject %}<div class="portal-subject-sub">{{ curriculum.subject }}</div>{% endif %}
+      </div>
+    </div>
+
+    {% if progress and progress.total %}
+      <div class="progress portal-hero-progress my-2" role="progressbar"
+           aria-valuenow="{{ progress.pct }}" aria-valuemin="0" aria-valuemax="100">
+        <div class="progress-bar" style="width: {{ progress.pct }}%;"></div>
+      </div>
+      <div class="portal-progress-label mb-3">Lesson {{ progress.done }} of {{ progress.total }}
+        {% if current_lesson %}· now on <strong>{{ current_lesson.code }}</strong>{% endif %}</div>
+    {% endif %}
+
+    {% if next_set %}
+      <a href="{% url 'portal:portal_questions' token=token set_pk=next_set.pk %}" class="btn btn-amber btn-lg portal-continue">
+        Continue ➜ <span class="portal-continue-sub">{{ next_set.title }}</span>
+      </a>
+    {% elif chapters %}
+      <div class="portal-alldone">🎉 You finished everything here! You can review anything below.</div>
+    {% endif %}
+  </div>
+
+  {% if materials %}
+    <h2 class="portal-section-title">🦸 Adventures</h2>
+    <div class="row row-cols-1 row-cols-md-2 g-3 mb-4">
+      {% for m in materials %}
+        <div class="col">
+          <a href="{% url 'portal:portal_material' token=token pk=m.pk %}" class="text-decoration-none">
+            <div class="card portal-card portal-card-link h-100">
+              <div class="card-body">
+                <h5 class="card-title mb-1">{{ m.title }}</h5>
+                <small class="text-muted">{{ m.get_skill_type_display }} · {{ m.lesson.code }}</small>
+              </div>
+            </div>
+          </a>
+        </div>
+      {% endfor %}
+    </div>
+  {% endif %}
+
+  {% if chapters %}
+    <h2 class="portal-section-title">✍️ Lessons</h2>
+    <div class="portal-chapters">
+      {% for ch in chapters %}
+        <div class="portal-chapter {% if ch.is_current %}is-current{% endif %}">
+          <button class="portal-chapter-head" type="button" data-bs-toggle="collapse"
+                  data-bs-target="#chapter{{ ch.number }}"
+                  aria-expanded="{{ ch.is_current|yesno:'true,false' }}" aria-controls="chapter{{ ch.number }}">
+            <span class="portal-chapter-title">Chapter {{ ch.number }} · {{ ch.title }}</span>
+            <span class="portal-chapter-count">{{ ch.done }}/{{ ch.total }}</span>
+          </button>
+          <div id="chapter{{ ch.number }}" class="collapse {% if ch.is_current %}show{% endif %}">
+            <div class="portal-chapter-body">
+              {# Unfinished first — the work that's actually next. #}
+              {% for qs in ch.sets %}
+                {% if not qs.my_response.is_submitted %}
+                  <a href="{% url 'portal:portal_questions' token=token set_pk=qs.pk %}" class="portal-set-row">
+                    <span class="portal-set-title">
+                      {{ qs.title }}
+                      {% if qs.reading %}<small class="portal-set-reading">📖 Read {{ qs.reading }} first</small>{% endif %}
+                    </span>
+                    {% if qs.my_response and qs.my_response.answered_count %}
+                      <span class="badge portal-badge-progress">{{ qs.my_response.answered_count }} answered</span>
+                    {% else %}
+                      <span class="badge portal-badge-new">Start ➜</span>
+                    {% endif %}
+                  </a>
+                {% endif %}
+              {% endfor %}
+              {# Finished, folded away so it never crowds what's next. #}
+              {% if ch.done %}
+                <details class="portal-finished">
+                  <summary>Finished ✓ ({{ ch.done }})</summary>
+                  {% for qs in ch.sets %}
+                    {% if qs.my_response.is_submitted %}
+                      <a href="{% url 'portal:portal_questions' token=token set_pk=qs.pk %}" class="portal-set-row is-done">
+                        <span class="portal-set-title">{{ qs.title }}</span>
+                        <span class="badge bg-success">Turned in ✓</span>
+                      </a>
+                    {% endif %}
+                  {% endfor %}
+                </details>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  {% elif not materials %}
+    <div class="alert alert-info">No lessons here yet — check back soon! 🌱</div>
+  {% endif %}
+
+</div>
+{% endblock %}

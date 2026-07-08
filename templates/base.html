@@ -11,34 +11,21 @@
 <body>
   <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
     <div class="container">
-      <a class="navbar-brand" href="{% url 'home' %}">Steadfast Scholars</a>
+      <a class="navbar-brand" href="{% url 'home' %}">🌱 Steadfast Scholars</a>
       <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
         <span class="navbar-toggler-icon"></span>
       </button>
       <div class="collapse navbar-collapse" id="navbarNav">
+        {% if user.is_authenticated %}
         <ul class="navbar-nav me-auto">
-          <li class="nav-item">
-            <a class="nav-link" href="{% url 'home' %}">Home</a>
-          </li>
-          {% if user.is_authenticated %}
-            <li class="nav-item">
-              <a class="nav-link" href="{% url 'students:student_list' %}">My Children</a>
-            </li>
-            <li class="nav-item">
-              <a class="nav-link" href="{% url 'curricula:curriculum_list' %}">Curricula</a>
-            </li>
-            <li class="nav-item">
-              <a class="nav-link" href="{% url 'assignments:assignment_list' %}">Assignments</a>
-            </li>
-            <li class="nav-item">
-              <a class="nav-link" href="{% url 'worklog:worklog_list' %}">Work Log</a>
-            </li>
-            <li class="nav-item">
-              <a class="nav-link" href="{% url 'dashboard:dashboard' %}">Dashboard</a>
-            </li>
-          {% endif %}
+          <li class="nav-item"><a class="nav-link" href="{% url 'students:student_list' %}">My Children</a></li>
+          <li class="nav-item"><a class="nav-link" href="{% url 'curricula:curriculum_list' %}">Curricula</a></li>
+          <li class="nav-item"><a class="nav-link" href="{% url 'worklog:worklog_list' %}">Work Log</a></li>
+          <li class="nav-item"><a class="nav-link" href="{% url 'activities:activity_list' %}">Activities</a></li>
+          <li class="nav-item"><a class="nav-link" href="{% url 'dashboard:dashboard' %}">Progress</a></li>
         </ul>
-        <ul class="navbar-nav">
+        {% endif %}
+        <ul class="navbar-nav ms-auto align-items-lg-center">
           {% if user.is_authenticated %}
             {% if user_families|length > 1 %}
               <li class="nav-item dropdown">
@@ -49,49 +36,34 @@
                   {% for fam in user_families %}
                     <li>
                       <a class="dropdown-item{% if selected_family and fam.id == selected_family.id %} active{% endif %}"
-                         href="{{ request.path }}?family_id={{ fam.id }}">
-                        {{ fam.name }}
-                      </a>
+                         href="{{ request.path }}?family_id={{ fam.id }}">{{ fam.name }}</a>
                     </li>
                   {% endfor %}
-                  {% if can_invite_teacher %}
-                    <li><hr class="dropdown-divider"></li>
-                    <li><a class="dropdown-item" href="{% url 'core:invite_teacher' %}">Invite people</a></li>
-                  {% endif %}
                 </ul>
               </li>
-            {% elif selected_family %}
-              {% if can_invite_teacher %}
-              <li class="nav-item dropdown">
-                <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">
-                  {{ selected_family.name }}
-                </a>
-                <ul class="dropdown-menu dropdown-menu-end">
-                  <li><a class="dropdown-item" href="{% url 'core:invite_teacher' %}">Invite people</a></li>
-                </ul>
-              </li>
-              {% else %}
-              <li class="nav-item">
-                <span class="nav-link text-light">{{ selected_family.name }}</span>
-              </li>
-              {% endif %}
             {% endif %}
-            <li class="nav-item">
-              <span class="nav-link text-light">{{ user.username }}</span>
-            </li>
-            <li class="nav-item">
-              <form method="post" action="{% url 'accounts:logout' %}" class="d-inline">
-                {% csrf_token %}
-                <button type="submit" class="btn btn-outline-light btn-sm">Logout</button>
-              </form>
+            <li class="nav-item dropdown">
+              <a class="nav-link dropdown-toggle" href="#" id="accountMenu" role="button" data-bs-toggle="dropdown" aria-expanded="false">
+                <span class="d-lg-none">Account</span>
+                <span class="d-none d-lg-inline">👤 {{ user.username }}</span>
+              </a>
+              <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="accountMenu">
+                <li><span class="dropdown-header">Signed in as {{ user.username }}</span></li>
+                {% if can_invite_teacher %}
+                  <li><a class="dropdown-item" href="{% url 'core:invite_teacher' %}">Invite people</a></li>
+                {% endif %}
+                <li><hr class="dropdown-divider"></li>
+                <li>
+                  <form method="post" action="{% url 'accounts:logout' %}">
+                    {% csrf_token %}
+                    <button type="submit" class="dropdown-item">Log out</button>
+                  </form>
+                </li>
+              </ul>
             </li>
           {% else %}
-            <li class="nav-item">
-              <a class="nav-link" href="{% url 'accounts:login' %}">Login</a>
-            </li>
-            <li class="nav-item">
-              <a class="nav-link" href="{% url 'accounts:register' %}">Register</a>
-            </li>
+            <li class="nav-item"><a class="nav-link" href="{% url 'accounts:login' %}">Login</a></li>
+            <li class="nav-item"><a class="nav-link" href="{% url 'accounts:register' %}">Register</a></li>
           {% endif %}
         </ul>
       </div>

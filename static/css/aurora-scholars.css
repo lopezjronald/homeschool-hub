@@ -296,3 +296,36 @@ a:hover { color:var(--ss-green-700); }
 }
 .btn-amber:hover,.btn-amber:focus { color:var(--ss-forest-2); filter:brightness(1.05); }
 .ss-feature-emoji { font-size:1.6rem; line-height:1; }
+
+/* Clickable hub tiles on the parent home */
+.hub-tile { cursor:pointer; height:100%; }
+.hub-tile .card-title { color:var(--ss-forest); }
+a:hover > .hub-tile,
+a:focus-visible > .hub-tile {
+  border-color:rgba(30,122,80,.45);
+  box-shadow:var(--ss-shadow-md);
+  transform:translateY(-3px);
+}
+
+/* Login-time activity check-in nudge */
+.ss-checkin { border-left:4px solid var(--ss-amber); background:#fbf6ec; }
+.ss-checkin .card-title { color:var(--ss-forest); }
+.ss-checkin-row {
+  padding:.6rem .75rem;
+  background:#fff;
+  border:1px solid var(--ss-border,#e7e1d3);
+  border-radius:.6rem;
+}
+.ss-feature-emoji-inline { font-size:1.15rem; margin-right:.35rem; }
+
+/* Progress page: stat tiles + panel labels */
+.ss-stat { color:var(--ss-forest); font-weight:700; line-height:1; }
+.ss-stat-sub { font-size:1.4rem; color:#8a978f; font-weight:600; }
+.ss-panel-label {
+  font-size:.8rem;
+  font-weight:700;
+  text-transform:uppercase;
+  letter-spacing:.06em;
+  color:var(--ss-green);
+  margin-bottom:.5rem;
+}

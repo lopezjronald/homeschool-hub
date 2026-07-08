@@ -1,0 +1,125 @@
+{% extends "portal/base_portal.html" %}
+{% load static %}
+{% block title %}{{ question_set.title }} · Steadfast Scholars{% endblock %}
+
+{% block content %}
+<div class="container">
+  <div class="row justify-content-center">
+    <div class="col-lg-8">
+
+      <a href="{% url 'portal:portal_home' token=token %}" class="btn btn-outline-secondary btn-sm mb-3">← Back to my portal</a>
+
+      {% if sheet.is_submitted %}
+        <div class="portal-celebrate mb-4">
+          <div class="portal-celebrate-emoji">🎉</div>
+          <h2>Turned in!</h2>
+          <p class="mb-0">Great work, {{ student.first_name }} — you turned this in on {{ sheet.submitted_at|date:"M d" }} at {{ sheet.submitted_at|time:"g:i A" }}. Your teacher will take a look!</p>
+        </div>
+      {% endif %}
+
+      <div class="card portal-card mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <div>
+            <h4 class="mb-0">{{ question_set.title }}</h4>
+            <small class="text-muted">{{ question_set.lesson.chapter.curriculum.name }}</small>
+          </div>
+          {% if not sheet.is_submitted %}
+            <span id="save-status" class="portal-save-status" aria-live="polite">All changes save automatically</span>
+          {% endif %}
+        </div>
+        <div class="card-body">
+
+          {% if question_set.reading %}
+            <div class="portal-reading-first">
+              📖 <strong>Read first:</strong> {{ question_set.reading }}
+            </div>
+          {% endif %}
+
+          {% if question_set.intro %}
+            <div class="lesson-intro">
+              <div class="lesson-intro-label">Before you start</div>
+              <p>{{ question_set.intro|linebreaksbr }}</p>
+            </div>
+          {% endif %}
+
+          <form method="post" id="response-form"
+                data-autosave-url="{% url 'portal:portal_autosave' token=token set_pk=question_set.pk %}"
+                {% if sheet.is_submitted %}data-submitted="1"{% endif %}>
+            {% csrf_token %}
+
+            {% for q in questions %}
+              <div class="portal-question">
+                <div class="d-flex align-items-center gap-2 mb-1">
+                  <span class="portal-qnum">{{ q.order }}</span>
+                  <span class="portal-chip chip-{{ q.category }}">{{ q.get_category_display }}</span>
+                </div>
+                {% if q.prompt %}
+                  <label class="portal-prompt" {% if not q.is_markup %}for="q{{ q.pk }}"{% endif %}>{{ q.prompt|linebreaksbr }}</label>
+                {% endif %}
+                {% if q.hint %}
+                  <details class="portal-hint">
+                    <summary>Need a nudge? 💡</summary>
+                    <p class="mb-0">{{ q.hint }}</p>
+                  </details>
+                {% endif %}
+
+                {% if q.is_markup %}
+                  <div class="markup-widget">
+                    <div class="markup-toolbar" role="toolbar" aria-label="Drawing tools">
+                      <span class="markup-tool-label">Pens:</span>
+                      <button type="button" class="markup-pen is-active" data-color="#333333" style="--pen:#333333" title="Pencil" aria-label="Pencil"></button>
+                      <button type="button" class="markup-pen" data-color="#d64545" style="--pen:#d64545" title="Red pen" aria-label="Red pen"></button>
+                      <button type="button" class="markup-pen" data-color="#2b6cb0" style="--pen:#2b6cb0" title="Blue pen" aria-label="Blue pen"></button>
+                      <button type="button" class="markup-pen" data-color="#1E7A50" style="--pen:#1E7A50" title="Green pen" aria-label="Green pen"></button>
+                      <span class="markup-tool-sep"></span>
+                      <button type="button" class="markup-btn" data-tool="undo">↶ Undo</button>
+                      <button type="button" class="markup-btn" data-tool="clear">Erase all</button>
+                    </div>
+                    <div class="markup-surface">
+                      <div class="markup-passage">{{ q.passage|linebreaksbr }}</div>
+                      <canvas class="markup-canvas"></canvas>
+                    </div>
+                    <input type="hidden" name="answer_{{ q.pk }}" data-question="{{ q.pk }}" value="{{ q.my_answer }}">
+                  </div>
+                {% else %}
+                  <textarea
+                    id="q{{ q.pk }}"
+                    name="answer_{{ q.pk }}"
+                    data-question="{{ q.pk }}"
+                    rows="4"
+                    class="form-control portal-answer"
+                    placeholder="Type your answer here…"
+                    autocomplete="off" autocorrect="off" autocapitalize="off"
+                    spellcheck="false" data-gramm="false"
+                    {% if sheet.is_submitted %}readonly{% endif %}>
+{{ q.my_answer }}</textarea>
+                  <div class="portal-wordcount text-muted" data-count-for="{{ q.pk }}"></div>
+                {% endif %}
+              </div>
+            {% endfor %}
+
+            {% if not sheet.is_submitted %}
+              <div class="d-flex justify-content-between align-items-center mt-4">
+                <span class="text-muted small" id="answered-progress" data-total="{{ questions|length }}">
+                  {{ sheet.answered_count }} of {{ questions|length }} answered
+                </span>
+                <button type="submit" class="btn btn-amber btn-lg"
+                        onclick="return confirm('Turn in your work? You won\'t be able to change it after.');">
+                  Turn it in 🚀
+                </button>
+              </div>
+            {% endif %}
+          </form>
+
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'js/portal-autosave.js' %}"></script>
+<script src="{% static 'js/portal-markup.js' %}"></script>
+{% endblock %}

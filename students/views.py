@@ -1,9 +1,14 @@
+from django.contrib.auth import logout
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
+from django.urls import reverse
+from django.views.decorators.http import require_POST
 
 from core.permissions import viewable_queryset, editable_queryset, scoped_queryset, user_can_edit
 from core.utils import get_active_family, get_selected_family
+
+from portal.tokens import make_portal_token
 
 from .models import Student
 from .forms import StudentForm
@@ -19,6 +24,21 @@ def student_list(request):
         "students": students,
         "can_edit": can_edit,
     })
+
+
+@login_required
+@require_POST
+def enter_portal(request, pk):
+    """Hand the device to a child: drop into their portal and sign the parent out.
+
+    POST-only (it's a state change). Signing the parent out is deliberate — it
+    means the child can't wander back into the parent app, and returning
+    requires re-entering the login credentials, exactly as intended.
+    """
+    student = get_object_or_404(editable_queryset(Student.objects.all(), request.user), pk=pk)
+    url = reverse("portal:portal_home", kwargs={"token": make_portal_token(student)})
+    logout(request)
+    return redirect(url)
 
 
 @login_required
@@ -45,12 +65,49 @@ def student_create(request):
 
 @login_required
 def student_detail(request, pk):
-    """View details of a single child."""
+    """View a child's profile plus the curricula they're currently doing."""
     student = get_object_or_404(viewable_queryset(Student.objects.all(), request.user), pk=pk)
     can_edit = user_can_edit(request.user)
+
+    placements = (
+        student.placements
+        .select_related("curriculum", "current_lesson", "current_lesson__chapter")
+        .order_by("curriculum__subject", "curriculum__name")
+    )
+    from tutor.models import QuestionSet
+
+    discussion_curriculum_ids = set(
+        QuestionSet.objects.filter(
+            lesson__chapter__curriculum__in=[p.curriculum_id for p in placements],
+            mode=QuestionSet.MODE_DISCUSSION,
+        ).values_list("lesson__chapter__curriculum_id", flat=True)
+    )
+    curricula = [
+        {
+            "curriculum": placement.curriculum,
+            "current_lesson": placement.current_lesson,
+            "next_lesson": placement.next_lesson(),
+            "progress": placement.progress(),
+            "has_discussion": placement.curriculum_id in discussion_curriculum_ids,
+        }
+        for placement in placements
+    ]
+
+    portal_url = None
+    if can_edit:
+        from django.urls import reverse
+
+        from portal.tokens import make_portal_token
+
+        portal_url = request.build_absolute_uri(
+            reverse("portal:portal_home", kwargs={"token": make_portal_token(student)})
+        )
+
     return render(request, "students/student_detail.html", {
         "student": student,
         "can_edit": can_edit,
+        "curricula": curricula,
+        "portal_url": portal_url,
     })
 
 

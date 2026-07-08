@@ -134,8 +134,13 @@ class Material(models.Model):
     )
     title = models.CharField(max_length=200)
     skill_type = models.CharField(max_length=20, choices=SKILL_CHOICES, default=SKILL_MANGA)
+    student_intro = models.TextField(
+        blank=True,
+        help_text="A short, grade-level explanation for the child of what this lesson is "
+                  "about — shown with the manga.",
+    )
     student_content = models.TextField(help_text="What the child sees (e.g. a comic script).")
-    parent_content = models.TextField(blank=True, help_text="Teaching guide for the parent.")
+    parent_content = models.TextField(blank=True, help_text="Teaching guide (Markdown) for the parent.")
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=DRAFT)
     approved_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -155,3 +160,296 @@ class Material(models.Model):
     def visible_to_student(self):
         """A material only reaches the student once approved."""
         return self.is_approved
+
+    @property
+    def has_pages(self):
+        """True once the material has illustrated panels (a real visual manga)."""
+        return self.panels.exists()
+
+
+class MangaPanel(models.Model):
+    """One illustrated panel of a Material's manga page.
+
+    The artwork is an AI-generated image (Replicate), stored durably as a
+    committed static file (``image_path``) for authored curriculum manga, or in
+    media/object storage (``image``) for uploads. ``bubbles`` is a list of
+    speech/thought/caption/sfx overlays positioned as percentages over the art,
+    so the page renders with CSS — no plain-text script.
+    """
+
+    SPAN_NORMAL = "normal"
+    SPAN_WIDE = "wide"
+    SPAN_TALL = "tall"
+    SPAN_FULL = "full"
+    SPAN_CHOICES = [
+        (SPAN_NORMAL, "Normal"),
+        (SPAN_WIDE, "Wide (2 columns)"),
+        (SPAN_TALL, "Tall (2 rows)"),
+        (SPAN_FULL, "Full width"),
+    ]
+
+    material = models.ForeignKey(
+        Material,
+        on_delete=models.CASCADE,
+        related_name="panels",
+    )
+    order = models.PositiveIntegerField(help_text="Reading order within the page.")
+    image = models.FileField(upload_to="manga/%Y/%m/", blank=True)
+    image_path = models.CharField(
+        max_length=300,
+        blank=True,
+        help_text="Path under static/ for committed panel art (e.g. 'manga/number-besties/p1.png').",
+    )
+    alt = models.CharField(max_length=300, blank=True, help_text="Accessible description of the art.")
+    span = models.CharField(max_length=10, choices=SPAN_CHOICES, default=SPAN_NORMAL)
+    caption = models.CharField(max_length=400, blank=True, help_text="Narrator caption box.")
+    bubbles = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="List of {speaker, text, kind, x, y} overlays (x/y are 0-100 percentages).",
+    )
+    prompt = models.TextField(blank=True, help_text="The image-gen prompt used to draw this panel.")
+
+    class Meta:
+        ordering = ["order"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["material", "order"],
+                name="unique_panel_order_per_material",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.material.title} — panel {self.order}"
+
+    @property
+    def has_art(self):
+        return bool(self.image_path or self.image)
+
+
+class QuestionSet(models.Model):
+    """A set of Socratic/comprehension questions a child answers for a lesson.
+
+    Authored per-lesson (e.g. a Blackbird & Company reading session). The
+    ``rubric`` (Markdown) travels with the set so the parent — or the AI
+    grader — assesses submissions against the curriculum's own standard.
+    Like ``Material``, a set only reaches the student once approved.
+    """
+
+    DRAFT = "draft"
+    APPROVED = "approved"
+    STATUS_CHOICES = [
+        (DRAFT, "Draft"),
+        (APPROVED, "Approved"),
+    ]
+
+    MODE_STUDENT = "student"
+    MODE_DISCUSSION = "discussion"
+    MODE_CHOICES = [
+        (MODE_STUDENT, "Student form (child fills out)"),
+        (MODE_DISCUSSION, "Teacher-led discussion (oral; not submitted)"),
+    ]
+
+    lesson = models.ForeignKey(
+        "curricula.Lesson",
+        on_delete=models.CASCADE,
+        related_name="question_sets",
+    )
+    mode = models.CharField(
+        max_length=12,
+        choices=MODE_CHOICES,
+        default=MODE_STUDENT,
+        help_text="Student forms appear in the child's portal; discussion sets appear "
+                  "only in the parent/teacher discussion guide.",
+    )
+    child = models.ForeignKey(
+        "students.Student",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="question_sets",
+        help_text="Optional: pin this set to one child; blank = any child placed in the curriculum.",
+    )
+    family = models.ForeignKey(
+        "core.Family",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="question_sets",
+    )
+    title = models.CharField(max_length=200)
+    intro = models.TextField(
+        blank=True,
+        help_text="Kid-facing instructions shown above the questions.",
+    )
+    reading = models.CharField(
+        max_length=200,
+        blank=True,
+        help_text="What to read first, e.g. 'Chapters 3–4'.",
+    )
+    rubric = models.TextField(
+        blank=True,
+        help_text="Markdown rubric used when assessing responses.",
+    )
+    answer_key = models.TextField(
+        blank=True,
+        help_text="Reference answers (Markdown) the AI grader checks against; never "
+                  "shown to the student.",
+    )
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=DRAFT)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["lesson__chapter__number", "lesson__order", "id"]
+
+    def __str__(self):
+        return self.title
+
+    @property
+    def is_approved(self):
+        return self.status == self.APPROVED
+
+
+class Question(models.Model):
+    """One question in a QuestionSet, tagged with its Socratic category."""
+
+    # CenterForLit-style story-grammar categories + plain comprehension.
+    CATEGORY_CHOICES = [
+        ("comprehension", "Comprehension"),
+        ("context", "Context"),
+        ("conflict", "Conflict"),
+        ("plot", "Plot"),
+        ("setting", "Setting"),
+        ("character", "Character"),
+        ("theme", "Theme"),
+        ("style", "Style"),
+        ("application", "Application"),
+        ("vocabulary", "Vocabulary"),
+        # writing-curriculum categories (Essentials in Writing)
+        ("grammar", "Grammar"),
+        ("editing", "Editing"),
+        ("writing", "Writing"),
+    ]
+
+    TYPE_TEXT = "text"
+    TYPE_MARKUP = "markup"
+    RESPONSE_TYPES = [
+        (TYPE_TEXT, "Typed answer"),
+        (TYPE_MARKUP, "Mark up the sentence (draw)"),
+    ]
+
+    question_set = models.ForeignKey(
+        QuestionSet,
+        on_delete=models.CASCADE,
+        related_name="questions",
+    )
+    order = models.PositiveIntegerField()
+    category = models.CharField(max_length=20, choices=CATEGORY_CHOICES, default="comprehension")
+    prompt = models.TextField()
+    response_type = models.CharField(max_length=10, choices=RESPONSE_TYPES, default=TYPE_TEXT)
+    passage = models.TextField(
+        blank=True,
+        help_text="For markup questions: the sentence/text the child draws on.",
+    )
+    hint = models.TextField(
+        blank=True,
+        help_text="A gentle scaffold shown to the child on demand.",
+    )
+
+    @property
+    def is_markup(self):
+        return self.response_type == self.TYPE_MARKUP
+
+    class Meta:
+        ordering = ["order"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["question_set", "order"],
+                name="unique_question_order_per_set",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.question_set.title} — Q{self.order}"
+
+
+class ResponseSheet(models.Model):
+    """A child's answers to a QuestionSet — autosaved as they type, then submitted.
+
+    ``answers`` maps question id (as a string) to the child's text. On submit a
+    WorkLogEntry is created so the response lands in the family's durable
+    record and can be assessed via the existing mastery flow.
+    """
+
+    DRAFT = "draft"
+    SUBMITTED = "submitted"
+    STATUS_CHOICES = [
+        (DRAFT, "Draft"),
+        (SUBMITTED, "Submitted"),
+    ]
+
+    question_set = models.ForeignKey(
+        QuestionSet,
+        on_delete=models.CASCADE,
+        related_name="responses",
+    )
+    child = models.ForeignKey(
+        "students.Student",
+        on_delete=models.CASCADE,
+        related_name="response_sheets",
+    )
+    answers = models.JSONField(default=dict, blank=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=DRAFT)
+    work_entry = models.ForeignKey(
+        "worklog.WorkLogEntry",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="response_sheets",
+    )
+    started_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    submitted_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["question_set", "child"],
+                name="unique_response_sheet_per_child_set",
+            ),
+        ]
+        ordering = ["-updated_at"]
+
+    def __str__(self):
+        return f"{self.child} — {self.question_set.title} ({self.get_status_display()})"
+
+    @property
+    def is_submitted(self):
+        return self.status == self.SUBMITTED
+
+    def answer_for(self, question):
+        return (self.answers or {}).get(str(question.pk), "")
+
+    @property
+    def answered_count(self):
+        return sum(1 for v in (self.answers or {}).values() if str(v).strip())
+
+    def as_worklog_text(self):
+        """Format the Q&A as readable text for the work log / grader.
+
+        Markup answers are drawing strokes, not prose, so they're summarized as
+        the sentence plus whether the child annotated it.
+        """
+        lines = []
+        for q in self.question_set.questions.all():
+            raw = str(self.answer_for(q)).strip()
+            if q.is_markup:
+                marked = "yes" if raw and raw != "[]" else "no"
+                answer = f'[marked up the sentence "{q.passage}" — annotated: {marked}]'
+            else:
+                answer = raw or "(no answer)"
+            lines.append(f"Q{q.order} [{q.get_category_display()}]: {q.prompt}")
+            lines.append(f"A: {answer}")
+            lines.append("")
+        return "\n".join(lines).strip()

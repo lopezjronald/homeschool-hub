@@ -6,6 +6,7 @@ theirs. Parents generate the link from the child's profile page.
 """
 
 import json
+from collections import defaultdict
 from itertools import groupby
 
 from django.db.models import Q
@@ -17,7 +18,8 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 
 from activities.models import ExternalActivity
-from curricula.models import CurriculumPlacement
+from curricula.models import Curriculum, CurriculumPlacement
+from curricula.subjects import emoji_for
 from tutor.models import Material, QuestionSet, ResponseSheet
 from worklog.models import WorkLogEntry
 
@@ -95,48 +97,145 @@ def _visible_activities(student):
     )
 
 
-def portal_home(request, token):
-    """The kid's dashboard: their curricula, their adventures, their writing."""
-    student = _resolve_student(token)
+def _set_is_done(qs):
+    """True if this child has already turned in the set."""
+    return bool(getattr(qs, "my_response", None) and qs.my_response.is_submitted)
 
-    placements = (
-        CurriculumPlacement.objects.filter(child=student)
-        .select_related("curriculum", "current_lesson", "current_lesson__chapter")
-    )
-    progress = [
-        {
-            "curriculum": p.curriculum,
-            "current_lesson": p.current_lesson,
-            "progress": p.progress(),
-        }
-        for p in placements
-    ]
 
-    # Group the writing work by curriculum section so a 5-week course reads as
-    # five tidy groups instead of a wall of cards.
-    sets = _annotated_question_sets(student)
-    # Key the grouping on (curriculum, chapter number) — the same discriminator
-    # the queryset is ordered by — so distinct chapters never merge and a
-    # chapter never splits into two groups. Use the title only for display.
-    set_groups = [
-        {
-            "heading": f"{items[0].lesson.chapter.curriculum.name} — {items[0].lesson.chapter.title}",
-            "sets": items,
-        }
-        for _key, group in groupby(
-            sets,
-            key=lambda s: (s.lesson.chapter.curriculum_id, s.lesson.chapter.number),
+def _subject_cards(student):
+    """One card per subject the child is in: progress + the single next thing.
+
+    Unions the child's curriculum placements with any curriculum that owns work
+    they can see (question sets or materials), so nothing is hidden — but each
+    subject collapses to one calm card, never a wall of rows. This is the
+    "what's next, tap-a-subject" surface (autonomy to choose, one clear step).
+    """
+    annotated = _annotated_question_sets(student)
+    materials = list(_visible_materials(student))
+
+    sets_by_curr = defaultdict(list)
+    for qs in annotated:
+        sets_by_curr[qs.lesson.chapter.curriculum_id].append(qs)
+    materials_by_curr = defaultdict(list)
+    for m in materials:
+        materials_by_curr[m.lesson.chapter.curriculum_id].append(m)
+
+    placements = {
+        p.curriculum_id: p
+        for p in CurriculumPlacement.objects.filter(child=student).select_related(
+            "curriculum", "current_lesson", "current_lesson__chapter",
         )
-        for items in [list(group)]
-    ]
+    }
 
+    # Placements first (stable order), then any other curriculum owning work.
+    curr_ids = list(placements)
+    for cid in list(sets_by_curr) + list(materials_by_curr):
+        if cid not in curr_ids:
+            curr_ids.append(cid)
+
+    curricula = {p.curriculum_id: p.curriculum for p in placements.values()}
+    missing = [cid for cid in curr_ids if cid not in curricula]
+    if missing:
+        for c in Curriculum.objects.filter(id__in=missing):
+            curricula[c.id] = c
+
+    cards = []
+    for cid in curr_ids:
+        curriculum = curricula.get(cid)
+        if curriculum is None:
+            continue
+        placement = placements.get(cid)
+        curr_sets = sets_by_curr.get(cid, [])
+        sets_total = len(curr_sets)
+        sets_done = sum(1 for qs in curr_sets if _set_is_done(qs))
+        cards.append({
+            "curriculum": curriculum,
+            "emoji": emoji_for(curriculum.subject),
+            "placement": placement,
+            "progress": placement.progress() if placement else None,
+            "current_lesson": placement.current_lesson if placement else None,
+            "next_set": next((qs for qs in curr_sets if not _set_is_done(qs)), None),
+            "sets_done": sets_done,
+            "sets_total": sets_total,
+            "sets_pct": round(sets_done / sets_total * 100) if sets_total else 0,
+            "materials_count": len(materials_by_curr.get(cid, [])),
+        })
+
+    cards.sort(key=lambda c: (c["curriculum"].subject or "", c["curriculum"].name))
+    return cards
+
+
+def portal_home(request, token):
+    """The kid's 'Today' surface: one calm card per subject, one next step each."""
+    student = _resolve_student(token)
     return render(request, "portal/portal_home.html", {
         "student": student,
         "token": token,
-        "progress": progress,
-        "materials": _visible_materials(student),
-        "set_groups": set_groups,
+        "subjects": _subject_cards(student),
         "activities": _visible_activities(student),
+    })
+
+
+def portal_subject(request, token, curriculum_id):
+    """Drill into one subject: chapters, the current one open, finished folded."""
+    student = _resolve_student(token)
+
+    sets = [
+        qs for qs in _annotated_question_sets(student)
+        if qs.lesson.chapter.curriculum_id == curriculum_id
+    ]
+    materials = [
+        m for m in _visible_materials(student)
+        if m.lesson.chapter.curriculum_id == curriculum_id
+    ]
+    placement = (
+        CurriculumPlacement.objects
+        .filter(child=student, curriculum_id=curriculum_id)
+        .select_related("curriculum", "current_lesson", "current_lesson__chapter")
+        .first()
+    )
+    # Authorize: the child must be placed in this subject or own work in it.
+    if placement is None and not sets and not materials:
+        raise Http404
+    curriculum = placement.curriculum if placement else get_object_or_404(Curriculum, pk=curriculum_id)
+
+    next_set = next((qs for qs in sets if not _set_is_done(qs)), None)
+    if next_set is not None:
+        current_chapter = next_set.lesson.chapter.number
+    elif placement and placement.current_lesson:
+        current_chapter = placement.current_lesson.chapter.number
+    else:
+        current_chapter = None
+
+    # Sets arrive ordered curriculum→chapter→lesson, so group by chapter number.
+    chapters = []
+    for (number, title), group in groupby(
+        sets, key=lambda s: (s.lesson.chapter.number, s.lesson.chapter.title),
+    ):
+        items = list(group)
+        chapters.append({
+            "number": number,
+            "title": title,
+            "sets": items,
+            "done": sum(1 for qs in items if _set_is_done(qs)),
+            "total": len(items),
+            "is_current": number == current_chapter,
+        })
+    # If nothing is flagged current (e.g. all finished), open the first chapter.
+    if chapters and not any(ch["is_current"] for ch in chapters):
+        chapters[0]["is_current"] = True
+
+    return render(request, "portal/portal_subject.html", {
+        "student": student,
+        "token": token,
+        "curriculum": curriculum,
+        "emoji": emoji_for(curriculum.subject),
+        "placement": placement,
+        "progress": placement.progress() if placement else None,
+        "current_lesson": placement.current_lesson if placement else None,
+        "next_set": next_set,
+        "chapters": chapters,
+        "materials": materials,
     })
 
 

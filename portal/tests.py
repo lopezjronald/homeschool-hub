@@ -105,12 +105,48 @@ class PortalCourseTests(TestCase):
         self.assertEqual(QuestionSet.objects.count(), 27)
         self.assertEqual(Question.objects.count(), 232)
 
-    def test_portal_home_groups_by_section(self):
+    def test_portal_home_shows_one_calm_subject_card(self):
+        # The "What's Next" home shows a subject CARD (curriculum name), not the
+        # old wall of 27 set titles / section headings — those move to the drill-in.
         resp = self.client.get(self._url("portal_home"))
         self.assertEqual(resp.status_code, 200)
         self.assertContains(resp, "Kaylin")
-        self.assertContains(resp, "Section 1: Chapters 1–2")
-        self.assertContains(resp, "Comprehension")
+        self.assertContains(resp, "I Am David")                 # the subject card
+        self.assertContains(resp, "portal-subject-card")
+        self.assertNotContains(resp, "Section 1: Chapters 1–2")  # no chapter dump on home
+        self.assertNotContains(resp, "Comprehension")            # no set titles on home
+
+    def test_portal_subject_drilldown_groups_by_chapter(self):
+        curriculum = Curriculum.objects.get(name__contains="I Am David")
+        resp = self.client.get(self._url("portal_subject", curriculum_id=curriculum.pk))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "Section 1: Chapters 1–2")     # chapter heading here
+        self.assertContains(resp, "Comprehension")               # set titles here
+        # the current chapter is expanded on load
+        self.assertContains(resp, 'class="collapse show"')
+        # and a big Continue points at the next unstarted set
+        self.assertContains(resp, "Continue")
+
+    def test_portal_subject_rejects_sibling(self):
+        curriculum = Curriculum.objects.get(name__contains="I Am David")
+        violet_token = make_portal_token(self.violet)
+        resp = self.client.get(reverse("portal:portal_subject", kwargs={
+            "token": violet_token, "curriculum_id": curriculum.pk,
+        }))
+        self.assertEqual(resp.status_code, 404)
+
+    def test_next_set_advances_after_submit(self):
+        from portal.views import _subject_cards
+
+        first_next = _subject_cards(self.kaylin)[0]["next_set"]
+        self.assertIsNotNone(first_next)
+        # turn in the first set
+        q = first_next.questions.first()
+        data = {f"answer_{q.pk}": "done."} if q else {}
+        self.client.post(self._url("portal_questions", set_pk=first_next.pk), data=data)
+        second_next = _subject_cards(self.kaylin)[0]["next_set"]
+        self.assertIsNotNone(second_next)
+        self.assertNotEqual(second_next.pk, first_next.pk)       # skips the submitted one
 
     def test_discussion_sets_hidden_from_student_portal(self):
         # Socratic + Discussion are teacher-led — never shown to the child.

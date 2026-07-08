@@ -13,16 +13,7 @@ from .blueprints import BLUEPRINTS
 from .forms import ApplyBlueprintForm, CurriculumDocumentForm, CurriculumForm
 from .models import Curriculum, CurriculumPlacement, Lesson
 from .services import apply_blueprint, get_blueprint
-
-# A gentle subject → emoji map for the tiles; unknown subjects get a book.
-SUBJECT_EMOJI = {
-    "math": "➗", "mathematics": "➗", "literature": "📖", "reading": "📚",
-    "writing": "✍️", "english": "✍️", "language arts": "✍️", "grammar": "✍️",
-    "science": "🔬", "history": "🏛️", "social studies": "🌍", "geography": "🗺️",
-    "art": "🎨", "music": "🎵", "spelling": "🔤", "vocabulary": "🔤",
-    "bible": "✝️", "logic": "🧩", "spanish": "🗣️", "coding": "💻",
-}
-
+from .subjects import emoji_for
 
 @login_required
 def curriculum_list(request):
@@ -44,7 +35,7 @@ def curriculum_list(request):
 
     curricula = list(curricula)
     for c in curricula:
-        c.emoji = SUBJECT_EMOJI.get((c.subject or "").strip().lower(), "📘")
+        c.emoji = emoji_for(c.subject)
 
     # Facets derived from the full scoped set (so options don't vanish mid-filter).
     subjects = sorted({s for s in base.values_list("subject", flat=True) if s})

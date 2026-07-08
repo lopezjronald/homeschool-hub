@@ -1,11 +1,14 @@
 {% extends "base.html" %}
+{% load crispy_forms_tags %}
 {% block title %}{{ curriculum.name }} · Steadfast Scholars{% endblock %}
 
 {% block content %}
 <div class="container py-4">
   <div class="row justify-content-center">
-    <div class="col-md-6">
-      <div class="card">
+    <div class="col-lg-9">
+
+      <!-- Overview -->
+      <div class="card mb-4">
         <div class="card-header d-flex justify-content-between align-items-center">
           <h4 class="mb-0">{{ curriculum.name }}</h4>
           {% if curriculum.grade_level %}
@@ -13,35 +16,167 @@
           {% endif %}
         </div>
         <div class="card-body">
-          <dl class="row">
-            <dt class="col-sm-4">Name</dt>
-            <dd class="col-sm-8">{{ curriculum.name }}</dd>
-
-            <dt class="col-sm-4">Subject</dt>
-            <dd class="col-sm-8">{{ curriculum.subject }}</dd>
-
-            <dt class="col-sm-4">Grade Level</dt>
-            <dd class="col-sm-8">{{ curriculum.get_grade_level_display|default:"—" }}</dd>
-
-            <dt class="col-sm-4">Created</dt>
-            <dd class="col-sm-8">{{ curriculum.created_at|date:"M d, Y" }}</dd>
-
-            <dt class="col-sm-4">Last Updated</dt>
-            <dd class="col-sm-8">{{ curriculum.updated_at|date:"M d, Y" }}</dd>
+          <dl class="row mb-0">
+            <dt class="col-sm-3">Subject</dt>
+            <dd class="col-sm-9">{{ curriculum.subject }}</dd>
+            <dt class="col-sm-3">Grade Level</dt>
+            <dd class="col-sm-9">{{ curriculum.get_grade_level_display|default:"—" }}</dd>
           </dl>
-
           {% if curriculum.website_url %}
-          <a href="{{ curriculum.website_url }}" target="_blank" rel="noopener noreferrer" class="btn btn-outline-primary">Launch curriculum</a>
-          {% endif %}
-        </div>
-        <div class="card-footer">
-          <a href="{% url 'curricula:curriculum_list' %}" class="btn btn-secondary">Back to List</a>
-          {% if can_edit %}
-          <a href="{% url 'curricula:curriculum_update' curriculum.pk %}" class="btn btn-primary">Edit</a>
-          <a href="{% url 'curricula:curriculum_delete' curriculum.pk %}" class="btn btn-danger">Delete</a>
+          <a href="{{ curriculum.website_url }}" target="_blank" rel="noopener noreferrer" class="btn btn-outline-primary mt-2">Launch curriculum</a>
           {% endif %}
         </div>
       </div>
+
+      <!-- Progress by child -->
+      {% if child_rows %}
+      <div class="card mb-4">
+        <div class="card-header"><h5 class="mb-0">Progress</h5></div>
+        <div class="card-body">
+          {% for row in child_rows %}
+            <div class="mb-4">
+              <div class="d-flex justify-content-between align-items-center mb-1">
+                <strong>{{ row.child.get_full_name }}</strong>
+                {% if row.progress %}
+                  <small class="text-muted">{{ row.progress.done }} of {{ row.progress.total }} lessons</small>
+                {% endif %}
+              </div>
+              <div class="progress" role="progressbar" style="height: 12px;">
+                <div class="progress-bar bg-success" style="width: {% if row.progress %}{{ row.progress.pct }}{% else %}0{% endif %}%;"></div>
+              </div>
+              <div class="small text-muted mt-1">
+                {% if row.placement.current_lesson %}
+                  Current: <strong>{{ row.placement.current_lesson.code }}</strong> — {{ row.placement.current_lesson.title }}
+                  {% if row.next %} · Next: {{ row.next.code }} — {{ row.next.title }}{% endif %}
+                {% else %}
+                  Not started yet.
+                {% endif %}
+              </div>
+              {% if can_edit and ordered_lessons %}
+                <form method="post" action="{% url 'curricula:curriculum_set_placement' curriculum.pk row.child.pk %}" class="row g-2 mt-2">
+                  {% csrf_token %}
+                  <div class="col-sm-9">
+                    <select name="current_lesson" class="form-select form-select-sm">
+                      <option value="">— Not started —</option>
+                      {% for lesson in ordered_lessons %}
+                        <option value="{{ lesson.pk }}"{% if row.placement and row.placement.current_lesson_id == lesson.pk %} selected{% endif %}>
+                          {{ lesson.code }} — {{ lesson.title }}
+                        </option>
+                      {% endfor %}
+                    </select>
+                  </div>
+                  <div class="col-sm-3">
+                    <button type="submit" class="btn btn-sm btn-outline-primary w-100">Set current</button>
+                  </div>
+                </form>
+              {% endif %}
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+      {% endif %}
+
+      <!-- Structure -->
+      <div class="card mb-4">
+        <div class="card-header"><h5 class="mb-0">Chapters &amp; Lessons</h5></div>
+        <div class="card-body">
+          {% if chapters %}
+            <div class="accordion" id="chaptersAccordion">
+              {% for chapter in chapters %}
+                <div class="accordion-item">
+                  <h2 class="accordion-header">
+                    <button class="accordion-button {% if not forloop.first %}collapsed{% endif %}" type="button"
+                            data-bs-toggle="collapse" data-bs-target="#chapter{{ chapter.pk }}">
+                      Chapter {{ chapter.number }}: {{ chapter.title }}
+                      <span class="badge bg-light text-dark ms-2">{{ chapter.lessons.count }} lessons</span>
+                    </button>
+                  </h2>
+                  <div id="chapter{{ chapter.pk }}" class="accordion-collapse collapse {% if forloop.first %}show{% endif %}"
+                       data-bs-parent="#chaptersAccordion">
+                    <div class="accordion-body p-0">
+                      <ul class="list-group list-group-flush">
+                        {% for lesson in chapter.lessons.all %}
+                          <li class="list-group-item">
+                            <div class="d-flex justify-content-between">
+                              <span>
+                                {% if lesson.number %}<strong>{{ lesson.number }}.</strong> {% endif %}{{ lesson.title }}
+                              </span>
+                              {% if lesson.lesson_type == 'opener' %}<span class="badge bg-secondary">Opener</span>
+                              {% elif lesson.lesson_type == 'practice' %}<span class="badge bg-info text-dark">Practice</span>
+                              {% elif lesson.lesson_type == 'review' %}<span class="badge bg-warning text-dark">Review</span>
+                              {% endif %}
+                            </div>
+                            {% if lesson.objectives %}
+                              <small class="text-muted d-block mt-1">{{ lesson.objectives }}</small>
+                            {% endif %}
+                          </li>
+                        {% endfor %}
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+              {% endfor %}
+            </div>
+          {% elif can_edit %}
+            <p class="text-muted">This curriculum has no structure yet. Load a built-in scope &amp; sequence:</p>
+            <form method="post" action="{% url 'curricula:curriculum_apply_blueprint' curriculum.pk %}" class="row g-2">
+              {% csrf_token %}
+              <div class="col-sm-8">{{ apply_form.blueprint }}</div>
+              <div class="col-sm-4">
+                <button type="submit" class="btn btn-primary w-100">Load structure</button>
+              </div>
+            </form>
+          {% else %}
+            <p class="text-muted mb-0">No chapters or lessons have been added yet.</p>
+          {% endif %}
+        </div>
+      </div>
+
+      <!-- Documents -->
+      <div class="card mb-4">
+        <div class="card-header"><h5 class="mb-0">Source Documents</h5></div>
+        <div class="card-body">
+          {% if documents %}
+            <ul class="list-group mb-3">
+              {% for doc in documents %}
+                <li class="list-group-item d-flex justify-content-between align-items-center">
+                  <span>
+                    <a href="{{ doc.file.url }}" target="_blank" rel="noopener">📄 {{ doc.title }}</a>
+                    <span class="badge bg-light text-dark ms-1">{{ doc.get_doc_type_display }}</span>
+                  </span>
+                  {% if can_edit %}
+                    <form method="post" action="{% url 'curricula:curriculum_document_delete' curriculum.pk doc.pk %}" class="d-inline">
+                      {% csrf_token %}
+                      <button type="submit" class="btn btn-sm btn-outline-danger">Remove</button>
+                    </form>
+                  {% endif %}
+                </li>
+              {% endfor %}
+            </ul>
+          {% else %}
+            <p class="text-muted">No documents attached yet.</p>
+          {% endif %}
+
+          {% if can_edit %}
+            <form method="post" action="{% url 'curricula:curriculum_document_add' curriculum.pk %}" enctype="multipart/form-data" novalidate>
+              {% csrf_token %}
+              {{ doc_form|crispy }}
+              <button type="submit" class="btn btn-outline-primary">Add document</button>
+            </form>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="d-flex justify-content-between">
+        <a href="{% url 'curricula:curriculum_list' %}" class="btn btn-secondary">Back to List</a>
+        {% if can_edit %}
+        <div>
+          <a href="{% url 'curricula:curriculum_update' curriculum.pk %}" class="btn btn-primary">Edit</a>
+          <a href="{% url 'curricula:curriculum_delete' curriculum.pk %}" class="btn btn-danger">Delete</a>
+        </div>
+        {% endif %}
+      </div>
+
     </div>
   </div>
 </div>

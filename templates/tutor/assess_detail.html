@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+{% block title %}Mastery Assessment · Steadfast Scholars{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+  <div class="row justify-content-center">
+    <div class="col-md-8">
+      <div class="card mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <div>
+            <h4 class="mb-0">Mastery Assessment</h4>
+            <small class="text-muted">{{ assessment.work_entry.child.get_full_name }} · {{ assessment.work_entry.subject }}</small>
+          </div>
+          {% if assessment.status == 'finalized' %}
+            <span class="badge {{ assessment.badge_class }}">Final: {{ assessment.get_final_level_display }}</span>
+          {% else %}
+            <span class="badge bg-light text-dark">Draft</span>
+          {% endif %}
+        </div>
+        <div class="card-body">
+          <h6 class="text-muted">AI assessment</h6>
+          <p>
+            <span class="badge {{ assessment.ai_badge_class }}">{{ assessment.get_ai_level_display }}</span>
+            {% if assessment.meets_bar %}<span class="badge bg-success-subtle text-success-emphasis">Meets the bar</span>{% endif %}
+          </p>
+          <p>{{ assessment.ai_summary }}</p>
+
+          {% if assessment.ai_criteria %}
+            <ul class="list-group mb-3">
+              {% for c in assessment.ai_criteria %}
+                <li class="list-group-item d-flex justify-content-between align-items-start">
+                  <span>
+                    {% if c.met %}<span class="text-success">✓</span>{% else %}<span class="text-danger">✗</span>{% endif %}
+                    <strong>{{ c.criterion }}</strong><br>
+                    <small class="text-muted">{{ c.comment }}</small>
+                  </span>
+                </li>
+              {% endfor %}
+            </ul>
+          {% endif %}
+
+          {% if assessment.ai_encouragement %}
+            <div class="alert alert-info">💬 {{ assessment.ai_encouragement }}</div>
+          {% endif %}
+        </div>
+      </div>
+
+      {% if finalize_form %}
+      <div class="card mb-4">
+        <div class="card-header"><h5 class="mb-0">Your decision</h5></div>
+        <div class="card-body">
+          <p class="text-muted">Accept the AI's level or override it, then finalize. Finalizing records the mastery result.</p>
+          <form method="post" action="{% url 'tutor:assess_finalize' assessment.pk %}" class="row g-2">
+            {% csrf_token %}
+            <div class="col-sm-8">
+              <select name="final_level" class="form-select">
+                {% for value, label in levels %}
+                  <option value="{{ value }}"{% if value == assessment.ai_level %} selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-sm-4">
+              <button type="submit" class="btn btn-primary w-100">Finalize</button>
+            </div>
+          </form>
+        </div>
+      </div>
+      {% elif assessment.status == 'finalized' %}
+        <div class="alert alert-success">
+          Finalized as <strong>{{ assessment.get_final_level_display }}</strong>
+          {% if assessment.parent_override_level %}(you overrode the AI's {{ assessment.get_ai_level_display }}){% endif %}
+          on {{ assessment.finalized_at|date:"M d, Y" }}.
+        </div>
+      {% endif %}
+
+      <div class="card">
+        <div class="card-header"><h6 class="mb-0">What was assessed</h6></div>
+        <div class="card-body">
+          <p><strong>Rubric</strong></p>
+          <p class="text-muted" style="white-space: pre-wrap;">{{ assessment.rubric }}</p>
+          <p><strong>The child's work</strong></p>
+          <p class="text-muted" style="white-space: pre-wrap;">{{ assessment.answers }}</p>
+        </div>
+        <div class="card-footer">
+          <a href="{% url 'worklog:worklog_detail' assessment.work_entry.pk %}" class="btn btn-secondary">Back to Work Log entry</a>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+{% endblock %}

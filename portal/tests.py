@@ -74,15 +74,18 @@ class PortalCourseTests(TestCase):
         curriculum = Curriculum.objects.get(name__contains="I Am David")
         self.assertEqual(curriculum.grade_level, "G07")
         sets = QuestionSet.objects.filter(lesson__chapter__curriculum=curriculum)
-        self.assertEqual(sets.count(), 26)  # 6/section x 4 + Glean + whole-book standard
+        self.assertEqual(sets.count(), 27)  # 6/section x 4 + Glean + seminar + toolbox
         self.assertEqual(
-            Question.objects.filter(question_set__in=sets).count(), 209,
+            Question.objects.filter(question_set__in=sets).count(), 232,
         )
         # comprehension sets carry the answer key (grader reference, never shown)
         self.assertTrue(sets.filter(title__contains="Comprehension").exclude(answer_key="").exists())
-        # the reusable Story-Grammar standard set exists (teacher-led)
+        # the reusable literature standard sets exist (teacher-led)
         self.assertTrue(
             sets.filter(title__contains="Story-Grammar", mode=QuestionSet.MODE_DISCUSSION).exists()
+        )
+        self.assertTrue(
+            sets.filter(title__contains="Literary Toolbox", mode=QuestionSet.MODE_DISCUSSION).exists()
         )
         # Socratic sets exist per section with story-grammar categories
         socratic = sets.filter(title__contains="Socratic")
@@ -99,8 +102,8 @@ class PortalCourseTests(TestCase):
 
     def test_seed_is_idempotent(self):
         call_command("seed_i_am_david", "--for-user", "dad", stdout=StringIO())
-        self.assertEqual(QuestionSet.objects.count(), 26)
-        self.assertEqual(Question.objects.count(), 209)
+        self.assertEqual(QuestionSet.objects.count(), 27)
+        self.assertEqual(Question.objects.count(), 232)
 
     def test_portal_home_groups_by_section(self):
         resp = self.client.get(self._url("portal_home"))
@@ -317,3 +320,75 @@ class SocraticStandardTests(TestCase):
         self.assertEqual(socratic.band_for_level("G02"), 1)
         self.assertEqual(socratic.band_for_level("G05"), 2)
         self.assertEqual(socratic.band_for_level("G09"), 3)
+
+
+class LiteratureStandardTests(TestCase):
+    """The reusable framework ties any literature curriculum to Socratic + tools."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.parent = User.objects.create_user(username="lit", email="lit@e.com", password="pw")
+        cls.family = Family.objects.create(name="Lit Fam")
+        FamilyMembership.objects.create(user=cls.parent, family=cls.family, role="parent")
+        cls.child = Student.objects.create(
+            parent=cls.parent, first_name="Violet", grade_level="G03", family=cls.family,
+        )
+
+    def test_devices_scale_by_level(self):
+        from tutor import literature
+
+        self.assertLess(len(literature.devices_for("G03")), len(literature.devices_for("G07")))
+        names_g3 = {d["name"] for d in literature.devices_for("G03")}
+        self.assertIn("Onomatopoeia", names_g3)         # band-1 tool for a 3rd grader
+        self.assertNotIn("Irony", names_g3)             # band-3 tool held back
+        self.assertIn("Irony", {d["name"] for d in literature.devices_for("G07")})
+
+    def test_command_scaffolds_and_applies(self):
+        call_command(
+            "seed_literature_standard", "--for-user", "lit", "--child-name", "Violet",
+            "--name", "Blackbird Literature (Grade 3)", "--level", "G03", stdout=StringIO(),
+        )
+        curriculum = Curriculum.objects.get(name="Blackbird Literature (Grade 3)")
+        self.assertEqual(curriculum.subject, "Literature")
+        sets = QuestionSet.objects.filter(lesson__chapter__curriculum=curriculum)
+        # exactly the two teacher-led standard sets, both discussion mode
+        self.assertEqual(sets.count(), 2)
+        self.assertTrue(all(s.mode == QuestionSet.MODE_DISCUSSION for s in sets))
+        self.assertTrue(sets.filter(title__contains="Story-Grammar").exists())
+        self.assertTrue(sets.filter(title__contains="Literary Toolbox").exists())
+        # child is placed
+        self.assertTrue(
+            CurriculumPlacement.objects.filter(child=self.child, curriculum=curriculum).exists()
+        )
+
+    def test_apply_is_idempotent(self):
+        from tutor import literature
+
+        curriculum = Curriculum.objects.create(
+            parent=self.parent, name="Some Novel", subject="Literature",
+            grade_level="G05", family=self.family,
+        )
+        literature.apply_literature_standard(curriculum, "G05")
+        literature.apply_literature_standard(curriculum, "G05")
+        sets = QuestionSet.objects.filter(lesson__chapter__curriculum=curriculum)
+        self.assertEqual(sets.count(), 2)  # no duplication on re-run
+
+    def test_toolbox_hidden_from_student_but_in_discussion_guide(self):
+        from tutor import literature
+
+        curriculum = Curriculum.objects.create(
+            parent=self.parent, name="Novel 2", subject="Literature",
+            grade_level="G03", family=self.family,
+        )
+        anchor = literature.ensure_anchor_lesson(curriculum)
+        CurriculumPlacement.objects.create(child=self.child, curriculum=curriculum, current_lesson=anchor)
+        literature.apply_literature_standard(curriculum, "G03")
+        # not in the student's portal
+        token = make_portal_token(self.child)
+        home = self.client.get(reverse("portal:portal_home", kwargs={"token": token}))
+        self.assertNotContains(home, "Literary Toolbox")
+        # but present in the parent discussion guide
+        self.client.login(username="lit", password="pw")
+        guide = self.client.get(reverse("tutor:discussion_guide", kwargs={"curriculum_pk": curriculum.pk}))
+        self.assertContains(guide, "Literary Toolbox")
+        self.assertContains(guide, "Onomatopoeia")

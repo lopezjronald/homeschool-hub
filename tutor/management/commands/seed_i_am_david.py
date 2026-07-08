@@ -658,25 +658,16 @@ class Command(BaseCommand):
             )
             set_count += s; q_count += q
 
-        # -- Story-Grammar Standard (reusable CenterForLit ladder, at this
-        #    child's level) — a whole-book seminar the teacher can use anytime.
-        from tutor import socratic
+        # -- Whole-book literature standard: Socratic Story-Grammar Seminar +
+        #    the grade-level Literary Toolbox (reusable framework, one call).
+        from tutor import literature
 
-        standard_qs = [
-            (category, text, hint)
-            for category, text, hint in socratic.questions_for(child.grade_level)
-        ]
-        s, q = self._seed_set(
-            self._lesson(curriculum, 4, 5), family,
+        # Remove the earlier inline seminar location if a prior run created it.
+        QuestionSet.objects.filter(
+            lesson__chapter__curriculum=curriculum,
             title="Whole-Book · Story-Grammar Seminar",
-            reading="the whole book",
-            intro="The Teaching-the-Classics ladder for the whole story — context, setting, "
-                  "characters, conflict, plot, theme, and literary devices — at your student's "
-                  "level. Use it as a capstone discussion or dip into any element anytime.",
-            rubric=SOCRATIC_RUBRIC,
-            questions=standard_qs,
-            mode=QuestionSet.MODE_DISCUSSION,
-        )
+        ).delete()
+        s, q = literature.apply_literature_standard(curriculum, child.grade_level, family=family)
         set_count += s; q_count += q
 
         # -- Glean ----------------------------------------------------------

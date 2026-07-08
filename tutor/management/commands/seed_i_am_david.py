@@ -532,20 +532,21 @@ class Command(BaseCommand):
             )
             set_count += s; q_count += q
 
-            # -- Explore: Discussion (Blackbird's own questions) -------------
+            # -- Explore: Discussion (Blackbird's own questions) — teacher-led
             s, q = self._seed_set(
                 explore, family,
                 title=f"Section {n} · Discussion",
                 reading=chs,
-                intro="Think about the following questions, then write what YOU really think — "
-                      "and talk them over with your teacher too. There are no wrong opinions, "
-                      "only unsupported ones!",
+                intro="Lead these aloud with your student — no writing required. Springboard "
+                      "questions with no single right answer; press for reasons and examples "
+                      "from the book.",
                 rubric=DISCUSSION_RUBRIC,
                 questions=[(cat, prompt, "") for cat, prompt in section["discussion"]],
+                mode=QuestionSet.MODE_DISCUSSION,
             )
             set_count += s; q_count += q
 
-            # -- Socratic seminar (authored, CenterForLit story-grammar) -----
+            # -- Socratic seminar (authored, CenterForLit story-grammar) — teacher-led
             s, q = self._seed_set(
                 explore, family,
                 title=f"Section {n} · Socratic Seminar",
@@ -553,6 +554,7 @@ class Command(BaseCommand):
                 intro=SOCRATIC_INTRO,
                 rubric=SOCRATIC_RUBRIC,
                 questions=section["socratic"],
+                mode=QuestionSet.MODE_DISCUSSION,
             )
             set_count += s; q_count += q
 
@@ -590,7 +592,8 @@ class Command(BaseCommand):
             chapter__curriculum=curriculum, chapter__number=chapter_number, order=order,
         )
 
-    def _seed_set(self, lesson, family, *, title, reading, intro, rubric, questions):
+    def _seed_set(self, lesson, family, *, title, reading, intro, rubric, questions,
+                  mode=QuestionSet.MODE_STUDENT):
         qset, _ = QuestionSet.objects.update_or_create(
             lesson=lesson,
             title=title,
@@ -600,6 +603,7 @@ class Command(BaseCommand):
                 "reading": reading,
                 "rubric": rubric,
                 "status": QuestionSet.APPROVED,
+                "mode": mode,
             },
         )
         count = 0

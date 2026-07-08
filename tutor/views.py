@@ -5,13 +5,15 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 
+from itertools import groupby
+
 from core.permissions import editable_queryset, user_can_edit, viewable_queryset
 from curricula.models import Curriculum
 from worklog.models import WorkLogEntry
 
 from . import ai, mastery
 from .forms import AssessmentRequestForm, FinalizeForm
-from .models import MasteryAssessment, Material
+from .models import MasteryAssessment, Material, QuestionSet
 
 
 @login_required
@@ -131,6 +133,36 @@ def _materials_for(user, editable=False):
     scope = editable_queryset if editable else viewable_queryset
     curricula = scope(Curriculum.objects.all(), user)
     return Material.objects.filter(lesson__chapter__curriculum__in=curricula)
+
+
+@login_required
+def discussion_guide(request, curriculum_pk):
+    """Teacher-facing discussion guide: the oral, Socratic sets for a curriculum.
+
+    These sets are never shown to the student — they're for the parent/teacher to
+    lead a discussion. Grouped by section, with each question's facilitation hint.
+    """
+    curriculum = get_object_or_404(
+        viewable_queryset(Curriculum.objects.all(), request.user), pk=curriculum_pk,
+    )
+    sets = (
+        QuestionSet.objects.filter(
+            lesson__chapter__curriculum=curriculum, mode=QuestionSet.MODE_DISCUSSION,
+        )
+        .prefetch_related("questions")
+        .select_related("lesson", "lesson__chapter")
+        .order_by("lesson__chapter__number", "lesson__order", "id")
+    )
+    groups = [
+        {"heading": chapter_title, "sets": list(items)}
+        for (_num, chapter_title), items in groupby(
+            sets, key=lambda s: (s.lesson.chapter.number, s.lesson.chapter.title),
+        )
+    ]
+    return render(request, "tutor/discussion_guide.html", {
+        "curriculum": curriculum,
+        "groups": groups,
+    })
 
 
 @login_required

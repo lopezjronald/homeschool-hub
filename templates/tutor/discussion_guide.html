@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% load static %}
+{% load tutor_extras %}
+{% block title %}Discussion Guide · {{ curriculum.name }}{% endblock %}
+{% block extra_css %}<link href="{% static 'css/portal.css' %}" rel="stylesheet">{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+  <div class="row justify-content-center">
+    <div class="col-lg-9">
+
+      <div class="d-flex justify-content-between align-items-start mb-3">
+        <div>
+          <h1 class="mb-1">Discussion Guide</h1>
+          <div class="text-muted">{{ curriculum.name }} · for the teacher to lead aloud</div>
+        </div>
+        <a href="{% url 'curricula:curriculum_detail' curriculum.pk %}" class="btn btn-outline-secondary btn-sm">Back</a>
+      </div>
+
+      <div class="lesson-intro mb-4">
+        <div class="lesson-intro-label">How to lead a Socratic discussion</div>
+        <p class="mb-0">These questions are <strong>spoken, not written</strong> — the student never fills them out.
+        Ask, then listen. Don't settle for "I dunno" — rephrase and wait. There are no wrong opinions,
+        only unsupported ones, so keep asking <em>"What in the book makes you think that?"</em> Let the
+        talk wander where it naturally wants to go; you don't have to get through every question.</p>
+      </div>
+
+      {% for group in groups %}
+        <h2 class="portal-section-title">{{ group.heading }}</h2>
+        {% for qset in group.sets %}
+          <div class="card portal-card mb-4">
+            <div class="card-header">
+              <h5 class="mb-0">{{ qset.title }}</h5>
+              {% if qset.reading %}<small class="text-muted">📖 After reading {{ qset.reading }}</small>{% endif %}
+            </div>
+            <div class="card-body">
+              <ol class="discussion-list">
+                {% for q in qset.questions.all %}
+                  <li class="discussion-q">
+                    <span class="portal-chip chip-{{ q.category }}">{{ q.get_category_display }}</span>
+                    <div class="discussion-prompt">{{ q.prompt|linebreaksbr }}</div>
+                    {% if q.hint %}<div class="discussion-hint">💡 If they're stuck: {{ q.hint }}</div>{% endif %}
+                  </li>
+                {% endfor %}
+              </ol>
+            </div>
+          </div>
+        {% endfor %}
+      {% empty %}
+        <div class="alert alert-info">No discussion sets for this curriculum yet.</div>
+      {% endfor %}
+
+    </div>
+  </div>
+</div>
+{% endblock %}

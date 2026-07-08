@@ -104,6 +104,9 @@
                     <span>Next: {{ item.next_lesson.code }}</span>
                   {% endif %}
                 </div>
+                {% if item.has_discussion %}
+                  <a href="{% url 'tutor:discussion_guide' item.curriculum.pk %}" class="btn btn-sm btn-outline-primary mt-2">🗣️ Discussion guide (for you)</a>
+                {% endif %}
               </li>
             {% endfor %}
           </ul>

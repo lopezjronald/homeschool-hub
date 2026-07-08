@@ -168,6 +168,19 @@
   color: #2c473b;
 }
 
+/* ---- teacher discussion guide ---- */
+.discussion-list { padding-left: 1.4rem; margin: 0; }
+.discussion-q { margin-bottom: 1.1rem; }
+.discussion-prompt { font-size: 1.05rem; line-height: 1.5; color: #24303a; margin-top: 0.2rem; }
+.discussion-hint {
+  margin-top: 0.35rem;
+  font-size: 0.9rem;
+  color: #5b4a1e;
+  background: rgba(235, 168, 58, 0.12);
+  border-radius: 8px;
+  padding: 0.4rem 0.7rem;
+}
+
 /* ---- markup: draw on the sentence ---- */
 .markup-widget { margin-top: 0.5rem; }
 .markup-toolbar {

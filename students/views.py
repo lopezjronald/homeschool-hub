@@ -74,12 +74,21 @@ def student_detail(request, pk):
         .select_related("curriculum", "current_lesson", "current_lesson__chapter")
         .order_by("curriculum__subject", "curriculum__name")
     )
+    from tutor.models import QuestionSet
+
+    discussion_curriculum_ids = set(
+        QuestionSet.objects.filter(
+            lesson__chapter__curriculum__in=[p.curriculum_id for p in placements],
+            mode=QuestionSet.MODE_DISCUSSION,
+        ).values_list("lesson__chapter__curriculum_id", flat=True)
+    )
     curricula = [
         {
             "curriculum": placement.curriculum,
             "current_lesson": placement.current_lesson,
             "next_lesson": placement.next_lesson(),
             "progress": placement.progress(),
+            "has_discussion": placement.curriculum_id in discussion_curriculum_ids,
         }
         for placement in placements
     ]

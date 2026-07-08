@@ -49,10 +49,14 @@ def _visible_materials(student):
 
 
 def _visible_question_sets(student):
-    """Queryset of approved question sets this child may open."""
+    """Approved STUDENT-form question sets this child may open.
+
+    Teacher-led discussion sets are intentionally excluded — those are for the
+    parent to lead orally, not for the child to fill out.
+    """
     curriculum_ids = _placed_curriculum_ids(student)
     return (
-        QuestionSet.objects.filter(status=QuestionSet.APPROVED)
+        QuestionSet.objects.filter(status=QuestionSet.APPROVED, mode=QuestionSet.MODE_STUDENT)
         .filter(
             Q(child=student)
             | Q(child__isnull=True, lesson__chapter__curriculum_id__in=curriculum_ids)

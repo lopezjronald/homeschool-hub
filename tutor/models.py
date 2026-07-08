@@ -243,10 +243,24 @@ class QuestionSet(models.Model):
         (APPROVED, "Approved"),
     ]
 
+    MODE_STUDENT = "student"
+    MODE_DISCUSSION = "discussion"
+    MODE_CHOICES = [
+        (MODE_STUDENT, "Student form (child fills out)"),
+        (MODE_DISCUSSION, "Teacher-led discussion (oral; not submitted)"),
+    ]
+
     lesson = models.ForeignKey(
         "curricula.Lesson",
         on_delete=models.CASCADE,
         related_name="question_sets",
+    )
+    mode = models.CharField(
+        max_length=12,
+        choices=MODE_CHOICES,
+        default=MODE_STUDENT,
+        help_text="Student forms appear in the child's portal; discussion sets appear "
+                  "only in the parent/teacher discussion guide.",
     )
     child = models.ForeignKey(
         "students.Student",

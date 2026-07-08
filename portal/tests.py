@@ -101,7 +101,24 @@ class PortalCourseTests(TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertContains(resp, "Kaylin")
         self.assertContains(resp, "Section 1: Chapters 1–2")
+        self.assertContains(resp, "Comprehension")
+
+    def test_discussion_sets_hidden_from_student_portal(self):
+        # Socratic + Discussion are teacher-led — never shown to the child.
+        resp = self.client.get(self._url("portal_home"))
+        self.assertNotContains(resp, "Socratic Seminar")
+        socratic = QuestionSet.objects.filter(title__contains="Socratic").first()
+        opened = self.client.get(self._url("portal_questions", set_pk=socratic.pk))
+        self.assertEqual(opened.status_code, 404)  # not openable as a student form
+
+    def test_discussion_guide_shows_socratic_to_parent(self):
+        curriculum = Curriculum.objects.get(name__contains="I Am David")
+        self.client.login(username="dad", password="pw")
+        resp = self.client.get(reverse("tutor:discussion_guide", kwargs={"curriculum_pk": curriculum.pk}))
+        self.assertEqual(resp.status_code, 200)
         self.assertContains(resp, "Socratic Seminar")
+        self.assertContains(resp, "Discussion")
+        self.assertContains(resp, "lead")  # facilitation guidance
 
     def test_form_disables_autocorrect(self):
         resp = self.client.get(self._url("portal_questions", set_pk=self.first_set.pk))

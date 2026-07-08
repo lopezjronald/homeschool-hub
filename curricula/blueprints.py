@@ -227,7 +227,90 @@ BLACKBIRD_I_AM_DAVID = {
 }
 
 
+# Essentials in Writing — Grade 3 (2nd ed). Scope & sequence transcribed from the
+# family's Teacher Handbook; lesson titles come from tutor._eiw_content.
+_EIW_SECTIONS = [
+    (1, "Writing Sentences", [
+        (1, "Introduction to Writing"), (2, "Complete Subjects"), (3, "Simple Subjects"),
+        (4, "Complete Predicates"), (5, "Simple Predicates"),
+        (6, "Complete and Incomplete Sentences"), (7, "Types of Sentences and Punctuation"),
+    ]),
+    (2, "Parts of Speech", [
+        (8, "Common and Proper Nouns"), (9, "Singular and Plural Nouns"),
+        (10, "Pronouns and Antecedents"), (11, "Singular Possessive Nouns"),
+        (12, "Plural Possessive Nouns"), (13, "More Plural Possessive Nouns"),
+        (14, "Adjectives"), (15, "Action Verbs"),
+        (16, "Present, Past, and Future Tense Action Verbs"), (17, "Irregular Action Verbs"),
+        (18, "Linking Verbs"), (19, "Present, Past, and Future Tense Linking Verbs"),
+        (20, "Adverbs That Modify Verbs"),
+    ]),
+    (3, "Common Problems", [
+        (21, "Pronoun/Antecedent Agreement"), (22, "Subject/Verb Agreement"),
+        (23, "Contractions"), (24, "Don't/Doesn't Problem"),
+    ]),
+    (4, "Applying Grammar", [
+        (25, "Adjectives in Action"), (26, "Action Verbs in Action"), (27, "Adverbs in Action"),
+        (28, "Writing Items in a Series"), (29, "Simple and Compound Sentences"),
+        (30, "Incomplete Sentences (Fragments)"), (31, "Run-On Sentences"),
+    ]),
+    (5, "The Writing Process", [
+        (32, "The Writing Process"), (33, "Brainstorm"), (34, "Organize"),
+        (35, "Draft"), (36, "Revise"), (37, "Final Draft"),
+    ]),
+    (6, "Paragraphs", [
+        (38, "Parts of a Paragraph"), (39, "Staying on Topic"),
+        (40, "Paragraph Practice — Brainstorm & Organize"), (41, "Paragraph Practice — Draft"),
+        (42, "Paragraph Practice — Revise"), (43, "Paragraph Practice — Final Draft"),
+    ]),
+    (7, "Expository Writing", [
+        (44, "Expository Paragraph — Brainstorm"), (45, "Organize"), (46, "Draft"),
+        (47, "Revise"), (48, "Final Draft"), (49, "Expository Letter — Brainstorm"),
+        (50, "Organize"), (51, "Draft"), (52, "Revise"), (53, "Final Draft"),
+    ]),
+    (8, "Persuasive Writing", [
+        (54, "Persuasive Paragraph — Brainstorm"), (55, "Organize"), (56, "Draft"),
+        (57, "Revise"), (58, "Final Draft"), (59, "Persuasive Letter — Brainstorm"),
+        (60, "Organize"), (61, "Draft"), (62, "Revise"), (63, "Final Draft"),
+    ]),
+    (9, "Descriptive & Narrative", [
+        (64, "Descriptive Paragraph — Brainstorm"), (65, "Organize"), (66, "Draft"),
+        (67, "Revise"), (68, "Final Draft"), (69, "Narrative — Order & Transitions"),
+        (70, "Brainstorm & Organize"), (71, "Draft"), (72, "Revise"), (73, "Final Draft"),
+    ]),
+    (10, "Research Project", [
+        (74, "Research Process"), (75, "Brainstorm"), (76, "Gather Information"),
+        (77, "Organize"), (78, "Draft"), (79, "Revise"), (80, "Final Draft"),
+        (81, "Visual Presentation"), (82, "Writing a Bibliography"),
+    ]),
+]
+
+
+def _eiw_chapters():
+    chapters = []
+    for number, title, lessons in _EIW_SECTIONS:
+        chapters.append({
+            "number": number,
+            "title": title,
+            "lessons": [
+                _ls(order, num, f"Lesson {num}: {name}")
+                for order, (num, name) in enumerate(lessons, start=1)
+            ],
+        })
+    return chapters
+
+
+ESSENTIALS_IN_WRITING_3 = {
+    "slug": "essentials_in_writing_3",
+    "name": "Essentials in Writing 3",
+    "subject": "Writing",
+    "grade_level": "G03",
+    "source": "Essentials in Writing Level 3, 2nd Edition (Matthew Stephens)",
+    "chapters": _eiw_chapters(),
+}
+
+
 BLUEPRINTS = {
     DIMENSIONS_MATH_3A["slug"]: DIMENSIONS_MATH_3A,
     BLACKBIRD_I_AM_DAVID["slug"]: BLACKBIRD_I_AM_DAVID,
+    ESSENTIALS_IN_WRITING_3["slug"]: ESSENTIALS_IN_WRITING_3,
 }

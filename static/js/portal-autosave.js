@@ -11,7 +11,10 @@
   var csrf = form.querySelector("input[name=csrfmiddlewaretoken]");
   var statusEl = document.getElementById("save-status");
   var progressEl = document.getElementById("answered-progress");
-  var areas = Array.prototype.slice.call(form.querySelectorAll("textarea[data-question]"));
+  // Every answerable field: textareas AND the markup widget's hidden input.
+  var fields = Array.prototype.slice.call(form.querySelectorAll("[data-question]"));
+  // Only textareas get typing listeners; markup notifies us via portalMarkDirty.
+  var areas = fields.filter(function (f) { return f.tagName === "TEXTAREA"; });
 
   var IDLE_MS = 3000; // save 3s after the child stops typing
   var timer = null;
@@ -27,7 +30,7 @@
 
   function collect() {
     var answers = {};
-    areas.forEach(function (t) { answers[t.dataset.question] = t.value; });
+    fields.forEach(function (t) { answers[t.dataset.question] = t.value; });
     return answers;
   }
 
@@ -38,16 +41,28 @@
 
   function refreshCounts() {
     var answered = 0;
-    areas.forEach(function (t) {
-      var el = document.querySelector('[data-count-for="' + t.dataset.question + '"]');
-      var n = wordCount(t.value);
-      if (el) el.textContent = n ? n + (n === 1 ? " word" : " words") : "";
-      if (t.value.trim()) answered += 1;
+    fields.forEach(function (t) {
+      if (t.tagName === "TEXTAREA") {
+        var el = document.querySelector('[data-count-for="' + t.dataset.question + '"]');
+        var n = wordCount(t.value);
+        if (el) el.textContent = n ? n + (n === 1 ? " word" : " words") : "";
+      }
+      if (t.value.trim() && t.value.trim() !== "[]") answered += 1;
     });
     if (progressEl) {
       progressEl.textContent = answered + " of " + progressEl.dataset.total + " answered";
     }
   }
+
+  // Called by the markup canvas after each stroke so drawings autosave too.
+  window.portalMarkDirty = function () {
+    if (submitting) return;
+    dirty = true;
+    setStatus("Drawing…", "");
+    refreshCounts();
+    clearTimeout(timer);
+    timer = setTimeout(save, IDLE_MS);
+  };
 
   function save() {
     if (saving) return;

@@ -53,25 +53,48 @@
                   <span class="portal-qnum">{{ q.order }}</span>
                   <span class="portal-chip chip-{{ q.category }}">{{ q.get_category_display }}</span>
                 </div>
-                <label class="portal-prompt" for="q{{ q.pk }}">{{ q.prompt|linebreaksbr }}</label>
+                {% if q.prompt %}
+                  <label class="portal-prompt" {% if not q.is_markup %}for="q{{ q.pk }}"{% endif %}>{{ q.prompt|linebreaksbr }}</label>
+                {% endif %}
                 {% if q.hint %}
                   <details class="portal-hint">
                     <summary>Need a nudge? 💡</summary>
                     <p class="mb-0">{{ q.hint }}</p>
                   </details>
                 {% endif %}
-                <textarea
-                  id="q{{ q.pk }}"
-                  name="answer_{{ q.pk }}"
-                  data-question="{{ q.pk }}"
-                  rows="4"
-                  class="form-control portal-answer"
-                  placeholder="Type your answer here…"
-                  autocomplete="off" autocorrect="off" autocapitalize="off"
-                  spellcheck="false" data-gramm="false"
-                  {% if sheet.is_submitted %}readonly{% endif %}>
+
+                {% if q.is_markup %}
+                  <div class="markup-widget">
+                    <div class="markup-toolbar" role="toolbar" aria-label="Drawing tools">
+                      <span class="markup-tool-label">Pens:</span>
+                      <button type="button" class="markup-pen is-active" data-color="#333333" style="--pen:#333333" title="Pencil" aria-label="Pencil"></button>
+                      <button type="button" class="markup-pen" data-color="#d64545" style="--pen:#d64545" title="Red pen" aria-label="Red pen"></button>
+                      <button type="button" class="markup-pen" data-color="#2b6cb0" style="--pen:#2b6cb0" title="Blue pen" aria-label="Blue pen"></button>
+                      <button type="button" class="markup-pen" data-color="#1E7A50" style="--pen:#1E7A50" title="Green pen" aria-label="Green pen"></button>
+                      <span class="markup-tool-sep"></span>
+                      <button type="button" class="markup-btn" data-tool="undo">↶ Undo</button>
+                      <button type="button" class="markup-btn" data-tool="clear">Erase all</button>
+                    </div>
+                    <div class="markup-surface">
+                      <div class="markup-passage">{{ q.passage|linebreaksbr }}</div>
+                      <canvas class="markup-canvas"></canvas>
+                    </div>
+                    <input type="hidden" name="answer_{{ q.pk }}" data-question="{{ q.pk }}" value="{{ q.my_answer }}">
+                  </div>
+                {% else %}
+                  <textarea
+                    id="q{{ q.pk }}"
+                    name="answer_{{ q.pk }}"
+                    data-question="{{ q.pk }}"
+                    rows="4"
+                    class="form-control portal-answer"
+                    placeholder="Type your answer here…"
+                    autocomplete="off" autocorrect="off" autocapitalize="off"
+                    spellcheck="false" data-gramm="false"
+                    {% if sheet.is_submitted %}readonly{% endif %}>
 {{ q.my_answer }}</textarea>
-                <div class="portal-wordcount text-muted" data-count-for="{{ q.pk }}"></div>
+                  <div class="portal-wordcount text-muted" data-count-for="{{ q.pk }}"></div>
+                {% endif %}
               </div>
             {% endfor %}
 
@@ -98,4 +121,5 @@
 
 {% block extra_js %}
 <script src="{% static 'js/portal-autosave.js' %}"></script>
+<script src="{% static 'js/portal-markup.js' %}"></script>
 {% endblock %}

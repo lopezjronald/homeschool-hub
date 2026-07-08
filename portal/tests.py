@@ -7,7 +7,7 @@ from django.test import TestCase
 from django.urls import reverse
 
 from core.models import Family, FamilyMembership
-from curricula.models import Curriculum, CurriculumPlacement, Lesson
+from curricula.models import Chapter, Curriculum, CurriculumPlacement, Lesson
 from curricula.services import apply_blueprint, get_blueprint
 from students.models import Student
 from tutor.models import Question, QuestionSet, ResponseSheet
@@ -205,3 +205,70 @@ class PortalCourseTests(TestCase):
         )
         self.assertContains(resp, "Blackbird grading")     # rubric prefilled
         self.assertContains(resp, "My journal notes.")     # answers prefilled
+
+
+class MarkupTests(TestCase):
+    """Draw-on-the-sentence markup questions (Essentials in Writing)."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.parent = User.objects.create_user(username="mup", email="mup@e.com", password="pw")
+        cls.family = Family.objects.create(name="Markup Fam")
+        FamilyMembership.objects.create(user=cls.parent, family=cls.family, role="parent")
+        cls.violet = Student.objects.create(
+            parent=cls.parent, first_name="Violet", grade_level="G03", family=cls.family,
+        )
+        cls.cur = Curriculum.objects.create(
+            parent=cls.parent, name="Essentials in Writing 3", subject="Writing", family=cls.family,
+        )
+        ch = Chapter.objects.create(curriculum=cls.cur, number=1, title="Writing Sentences")
+        cls.lesson = Lesson.objects.create(chapter=ch, order=1, number=1, title="L1")
+        CurriculumPlacement.objects.create(child=cls.violet, curriculum=cls.cur, current_lesson=cls.lesson)
+        cls.qset = QuestionSet.objects.create(
+            lesson=cls.lesson, title="Mark it", family=cls.family,
+            status=QuestionSet.APPROVED, intro="Underline the subject.",
+        )
+        cls.q = Question.objects.create(
+            question_set=cls.qset, order=1, category="editing",
+            response_type=Question.TYPE_MARKUP, passage="The dog ran.", prompt="",
+        )
+        cls.token = make_portal_token(cls.violet)
+
+    def _url(self, name, **kw):
+        return reverse(f"portal:{name}", kwargs={"token": self.token, **kw})
+
+    def test_markup_renders_canvas_and_passage(self):
+        resp = self.client.get(self._url("portal_questions", set_pk=self.qset.pk))
+        self.assertContains(resp, "markup-widget")
+        self.assertContains(resp, "markup-canvas")
+        self.assertContains(resp, "The dog ran.")
+        self.assertContains(resp, "portal-markup")
+
+    def test_markup_strokes_autosave_and_submit(self):
+        strokes = '[{"c":"#333333","w":3,"p":[[0.1,0.5],[0.4,0.5]]}]'
+        resp = self.client.post(
+            self._url("portal_autosave", set_pk=self.qset.pk),
+            data=json.dumps({"answers": {str(self.q.pk): strokes}}),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 200)
+        sheet = ResponseSheet.objects.get(question_set=self.qset, child=self.violet)
+        self.assertEqual(sheet.answers[str(self.q.pk)], strokes)
+
+        self.client.post(
+            self._url("portal_questions", set_pk=self.qset.pk),
+            data={f"answer_{self.q.pk}": strokes},
+        )
+        sheet.refresh_from_db()
+        self.assertTrue(sheet.is_submitted)
+        self.assertIn("marked up", sheet.work_entry.description)
+
+    def test_eiw_seed_builds_markup_forms(self):
+        call_command("seed_eiw_violet", "--for-user", "mup", stdout=StringIO())
+        markup = Question.objects.filter(response_type=Question.TYPE_MARKUP)
+        self.assertGreater(markup.count(), 100)
+        self.assertTrue(markup.exclude(passage="").exists())
+        # re-running is idempotent (no duplicate sets)
+        before = QuestionSet.objects.count()
+        call_command("seed_eiw_violet", "--for-user", "mup", stdout=StringIO())
+        self.assertEqual(QuestionSet.objects.count(), before)

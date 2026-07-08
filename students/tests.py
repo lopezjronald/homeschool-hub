@@ -296,3 +296,42 @@ class TeacherStudentViewTests(TestCase):
         )
         self.assertNotContains(response, "btn-primary\">Edit")
         self.assertNotContains(response, "btn-danger\">Delete")
+
+
+class EnterPortalTests(TestCase):
+    """Parent taps a child -> lands in the child's portal, signed out."""
+
+    def setUp(self):
+        from core.models import Family, FamilyMembership
+        self.parent = User.objects.create_user(
+            username="kp", email="kp@example.com", password="pw", is_active=True,
+        )
+        self.other = User.objects.create_user(
+            username="kp2", email="kp2@example.com", password="pw", is_active=True,
+        )
+        fam = Family.objects.create(name="Kiosk Fam")
+        FamilyMembership.objects.create(user=self.parent, family=fam, role="parent")
+        self.child = Student.objects.create(
+            parent=self.parent, first_name="Violet", grade_level="G03", family=fam,
+        )
+
+    def test_enter_portal_logs_out_and_redirects_to_portal(self):
+        self.client.login(username="kp", password="pw")
+        resp = self.client.post(reverse("students:enter_portal", kwargs={"pk": self.child.pk}))
+        self.assertEqual(resp.status_code, 302)
+        self.assertIn("/portal/", resp.url)
+        # the parent session is gone — a login-required page now redirects to login
+        self.assertNotIn("_auth_user_id", self.client.session)
+        after = self.client.get(reverse("students:student_list"))
+        self.assertEqual(after.status_code, 302)
+        self.assertIn("/accounts/login/", after.url)
+
+    def test_enter_portal_requires_post(self):
+        self.client.login(username="kp", password="pw")
+        resp = self.client.get(reverse("students:enter_portal", kwargs={"pk": self.child.pk}))
+        self.assertEqual(resp.status_code, 405)
+
+    def test_cannot_enter_another_familys_child_portal(self):
+        self.client.login(username="kp2", password="pw")
+        resp = self.client.post(reverse("students:enter_portal", kwargs={"pk": self.child.pk}))
+        self.assertEqual(resp.status_code, 404)

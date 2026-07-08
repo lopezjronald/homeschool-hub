@@ -51,6 +51,38 @@
   font-weight: 600;
 }
 
+/* ---- child tiles on the parent "My Children" page ---- */
+.child-tile { border-radius: 16px; overflow: hidden; }
+.child-tile-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  border: none;
+  background: transparent;
+  padding: 1.5rem 1rem 1rem;
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+.child-tile-btn:hover { background: #f2f7f3; }
+.child-avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 84px;
+  height: 84px;
+  border-radius: 50%;
+  background: var(--ss-forest-grad, linear-gradient(135deg, #1E7A50, #0F3D2E));
+  color: #fff;
+  font-size: 2.4rem;
+  font-weight: 700;
+  box-shadow: 0 4px 12px rgba(15, 61, 46, 0.2);
+}
+.child-tile-name { font-size: 1.15rem; font-weight: 700; color: var(--ss-forest, #0F3D2E); }
+.child-tile-go { font-size: 0.85rem; font-weight: 600; color: var(--ss-green, #1E7A50); }
+.child-tile-btn:hover .child-tile-go { text-decoration: underline; }
+
 /* ---- grouped set lists (one group per curriculum section) ---- */
 .portal-group-heading {
   font-size: 0.82rem;
@@ -136,6 +168,69 @@
   color: #2c473b;
 }
 
+/* ---- markup: draw on the sentence ---- */
+.markup-widget { margin-top: 0.5rem; }
+.markup-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.5rem;
+}
+.markup-tool-label { font-size: 0.8rem; color: #7a8781; font-weight: 600; }
+.markup-tool-sep { width: 1px; height: 22px; background: rgba(15,61,46,0.15); margin: 0 0.3rem; }
+.markup-pen {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 2px solid #fff;
+  background: var(--pen, #333);
+  box-shadow: 0 0 0 1px rgba(0,0,0,0.2);
+  cursor: pointer;
+  padding: 0;
+}
+.markup-pen.is-active { box-shadow: 0 0 0 2px var(--pen, #333); transform: scale(1.12); }
+.markup-btn {
+  border: 1.5px solid rgba(15,61,46,0.3);
+  background: #fff;
+  border-radius: 8px;
+  padding: 0.2rem 0.6rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--ss-forest, #0F3D2E);
+  cursor: pointer;
+}
+.markup-btn:hover { background: #f2f7f3; }
+
+.markup-surface {
+  position: relative;
+  background:
+    repeating-linear-gradient(transparent, transparent 47px, rgba(30,122,80,0.18) 47px, rgba(30,122,80,0.18) 48px),
+    #fffdf7;
+  border: 1.5px solid rgba(15,61,46,0.2);
+  border-radius: 10px;
+  padding: 12px 16px;
+  touch-action: none;
+}
+.markup-passage {
+  font-size: 1.5rem;
+  line-height: 48px;
+  letter-spacing: 0.02em;
+  color: #24303a;
+  word-spacing: 0.35em;
+  font-family: Georgia, "Times New Roman", serif;
+  white-space: pre-wrap;
+  position: relative;
+  z-index: 1;
+}
+.markup-canvas {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  cursor: crosshair;
+  border-radius: 10px;
+}
+
 /* ---- Socratic category chips ---- */
 .portal-chip {
   display: inline-block;
@@ -158,6 +253,9 @@
 .chip-context       { background: #E6F1FB; color: #0C447C; }
 .chip-application   { background: #EAF3DE; color: #3B6D11; }
 .chip-vocabulary    { background: #FCEBEB; color: #A32D2D; }
+.chip-grammar       { background: #EEEDFE; color: #534AB7; }
+.chip-editing       { background: #FAEEDA; color: #854F0B; }
+.chip-writing       { background: #E1F5EE; color: #0F6E56; }
 
 /* ---- save status ---- */
 .portal-save-status {

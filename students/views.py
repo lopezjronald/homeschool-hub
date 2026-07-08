@@ -1,9 +1,14 @@
+from django.contrib.auth import logout
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
+from django.urls import reverse
+from django.views.decorators.http import require_POST
 
 from core.permissions import viewable_queryset, editable_queryset, scoped_queryset, user_can_edit
 from core.utils import get_active_family, get_selected_family
+
+from portal.tokens import make_portal_token
 
 from .models import Student
 from .forms import StudentForm
@@ -19,6 +24,21 @@ def student_list(request):
         "students": students,
         "can_edit": can_edit,
     })
+
+
+@login_required
+@require_POST
+def enter_portal(request, pk):
+    """Hand the device to a child: drop into their portal and sign the parent out.
+
+    POST-only (it's a state change). Signing the parent out is deliberate — it
+    means the child can't wander back into the parent app, and returning
+    requires re-entering the login credentials, exactly as intended.
+    """
+    student = get_object_or_404(editable_queryset(Student.objects.all(), request.user), pk=pk)
+    url = reverse("portal:portal_home", kwargs={"token": make_portal_token(student)})
+    logout(request)
+    return redirect(url)
 
 
 @login_required

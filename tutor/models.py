@@ -307,6 +307,17 @@ class Question(models.Model):
         ("style", "Style"),
         ("application", "Application"),
         ("vocabulary", "Vocabulary"),
+        # writing-curriculum categories (Essentials in Writing)
+        ("grammar", "Grammar"),
+        ("editing", "Editing"),
+        ("writing", "Writing"),
+    ]
+
+    TYPE_TEXT = "text"
+    TYPE_MARKUP = "markup"
+    RESPONSE_TYPES = [
+        (TYPE_TEXT, "Typed answer"),
+        (TYPE_MARKUP, "Mark up the sentence (draw)"),
     ]
 
     question_set = models.ForeignKey(
@@ -317,10 +328,19 @@ class Question(models.Model):
     order = models.PositiveIntegerField()
     category = models.CharField(max_length=20, choices=CATEGORY_CHOICES, default="comprehension")
     prompt = models.TextField()
+    response_type = models.CharField(max_length=10, choices=RESPONSE_TYPES, default=TYPE_TEXT)
+    passage = models.TextField(
+        blank=True,
+        help_text="For markup questions: the sentence/text the child draws on.",
+    )
     hint = models.TextField(
         blank=True,
         help_text="A gentle scaffold shown to the child on demand.",
     )
+
+    @property
+    def is_markup(self):
+        return self.response_type == self.TYPE_MARKUP
 
     class Meta:
         ordering = ["order"]
@@ -397,10 +417,19 @@ class ResponseSheet(models.Model):
         return sum(1 for v in (self.answers or {}).values() if str(v).strip())
 
     def as_worklog_text(self):
-        """Format the Q&A as readable text for the work log / grader."""
+        """Format the Q&A as readable text for the work log / grader.
+
+        Markup answers are drawing strokes, not prose, so they're summarized as
+        the sentence plus whether the child annotated it.
+        """
         lines = []
         for q in self.question_set.questions.all():
-            answer = self.answer_for(q).strip() or "(no answer)"
+            raw = str(self.answer_for(q)).strip()
+            if q.is_markup:
+                marked = "yes" if raw and raw != "[]" else "no"
+                answer = f'[marked up the sentence "{q.passage}" — annotated: {marked}]'
+            else:
+                answer = raw or "(no answer)"
             lines.append(f"Q{q.order} [{q.get_category_display()}]: {q.prompt}")
             lines.append(f"A: {answer}")
             lines.append("")

@@ -16,4 +16,9 @@ urlpatterns = [
         views.accept_invite,
         name="accept_invite",
     ),
+    path(
+        "families/members/<int:membership_id>/remove/",
+        views.remove_member,
+        name="remove_member",
+    ),
 ]

@@ -1332,3 +1332,109 @@ class HubNavTests(TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertNotContains(resp, "hub-tile")
         self.assertContains(resp, "Create account")
+
+
+# ===========================================================================
+# HH-47: Remove Family Member View Tests
+# ===========================================================================
+
+
+class RemoveMemberViewTests(TestCase):
+    """HH-47: parents revoke family members; the primary parent is protected."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.family = Family.objects.create(name="Remove Family")
+
+        # Primary parent = earliest parent-role membership (created first).
+        cls.primary_parent = CustomUser.objects.create_user(
+            username="rm_primary", email="rm_primary@test.com", password="testpass123",
+        )
+        cls.primary_membership = FamilyMembership.objects.create(
+            user=cls.primary_parent, family=cls.family, role="parent",
+        )
+        # A second, non-primary parent.
+        cls.second_parent = CustomUser.objects.create_user(
+            username="rm_second", email="rm_second@test.com", password="testpass123",
+        )
+        cls.second_membership = FamilyMembership.objects.create(
+            user=cls.second_parent, family=cls.family, role="parent",
+        )
+        # A grandparent member (removable).
+        cls.grandparent = CustomUser.objects.create_user(
+            username="rm_grandparent", email="rm_gp@test.com", password="testpass123",
+        )
+        cls.grandparent_membership = FamilyMembership.objects.create(
+            user=cls.grandparent, family=cls.family, role="grandparent",
+        )
+        # A teacher (non-parent → no active family).
+        cls.teacher = CustomUser.objects.create_user(
+            username="rm_teacher", email="rm_teacher@test.com", password="testpass123",
+        )
+        cls.teacher_membership = FamilyMembership.objects.create(
+            user=cls.teacher, family=cls.family, role="teacher",
+        )
+
+        # A separate family with its own member.
+        cls.other_family = Family.objects.create(name="Other Remove Family")
+        cls.other_parent = CustomUser.objects.create_user(
+            username="rm_other_parent", email="rm_other@test.com", password="testpass123",
+        )
+        FamilyMembership.objects.create(
+            user=cls.other_parent, family=cls.other_family, role="parent",
+        )
+        cls.other_member = CustomUser.objects.create_user(
+            username="rm_other_member", email="rm_other_m@test.com", password="testpass123",
+        )
+        cls.other_membership = FamilyMembership.objects.create(
+            user=cls.other_member, family=cls.other_family, role="grandparent",
+        )
+
+    def _url(self, membership_id):
+        return reverse("core:remove_member", kwargs={"membership_id": membership_id})
+
+    def test_primary_parent_removes_non_primary_member(self):
+        self.client.login(username="rm_primary", password="testpass123")
+        response = self.client.post(self._url(self.grandparent_membership.pk))
+        self.assertEqual(response.status_code, 302)
+        self.assertFalse(
+            FamilyMembership.objects.filter(pk=self.grandparent_membership.pk).exists()
+        )
+
+    def test_removing_primary_parent_is_blocked(self):
+        self.client.login(username="rm_primary", password="testpass123")
+        response = self.client.post(self._url(self.primary_membership.pk), follow=True)
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(
+            FamilyMembership.objects.filter(pk=self.primary_membership.pk).exists()
+        )
+        self.assertContains(response, "be removed from the family")
+
+    def test_teacher_post_returns_404(self):
+        self.client.login(username="rm_teacher", password="testpass123")
+        response = self.client.post(self._url(self.grandparent_membership.pk))
+        self.assertEqual(response.status_code, 404)
+        self.assertTrue(
+            FamilyMembership.objects.filter(pk=self.grandparent_membership.pk).exists()
+        )
+
+    def test_get_returns_405(self):
+        self.client.login(username="rm_primary", password="testpass123")
+        response = self.client.get(self._url(self.grandparent_membership.pk))
+        self.assertEqual(response.status_code, 405)
+
+    def test_member_in_another_family_returns_404(self):
+        self.client.login(username="rm_primary", password="testpass123")
+        response = self.client.post(self._url(self.other_membership.pk))
+        self.assertEqual(response.status_code, 404)
+        self.assertTrue(
+            FamilyMembership.objects.filter(pk=self.other_membership.pk).exists()
+        )
+
+    def test_non_primary_parent_can_leave(self):
+        self.client.login(username="rm_second", password="testpass123")
+        response = self.client.post(self._url(self.second_membership.pk))
+        self.assertEqual(response.status_code, 302)
+        self.assertFalse(
+            FamilyMembership.objects.filter(pk=self.second_membership.pk).exists()
+        )

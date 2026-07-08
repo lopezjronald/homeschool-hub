@@ -19,6 +19,7 @@ from django.core.management.base import BaseCommand
 from django.db import transaction
 
 from core.models import Family, FamilyMembership
+from core.utils import get_active_family
 from curricula.models import Curriculum, CurriculumPlacement, Lesson
 from students.models import Student
 
@@ -53,26 +54,36 @@ class Command(BaseCommand):
     @transaction.atomic
     def handle(self, *args, **options):
         username = options["username"]
+        email = options["email"]
         temp_password = None
 
-        # 1. Parent account (never reset an existing password).
-        parent, user_created = User.objects.get_or_create(
-            username=username,
-            defaults={"email": options["email"]},
+        # 1. Parent account — adopt an existing one (email is unique, so match on
+        #    it first, then username), otherwise create. An existing password is
+        #    never reset.
+        parent = (
+            User.objects.filter(email__iexact=email).first()
+            or User.objects.filter(username=username).first()
         )
-        if user_created:
+        if parent is None:
             temp_password = options.get("password") or secrets.token_urlsafe(9)
+            parent = User(username=username, email=email)
             parent.set_password(temp_password)
         if options["superuser"] and not (parent.is_staff and parent.is_superuser):
             parent.is_staff = True
             parent.is_superuser = True
         parent.save()
+        # From here on use the real account username (an adopted account may
+        # differ from the --username default).
+        username = parent.username
 
-        # 2. Family + parent membership.
-        family, _ = Family.objects.get_or_create(name=options["family"])
-        FamilyMembership.objects.get_or_create(
-            user=parent, family=family, defaults={"role": "parent"},
-        )
+        # 2. Family + parent membership — adopt the parent's existing family if
+        #    they already have one, otherwise create the named family.
+        family = get_active_family(parent)
+        if family is None:
+            family, _ = Family.objects.get_or_create(name=options["family"])
+            FamilyMembership.objects.get_or_create(
+                user=parent, family=family, defaults={"role": "parent"},
+            )
 
         # 3. Children with their Levels.
         children = {}

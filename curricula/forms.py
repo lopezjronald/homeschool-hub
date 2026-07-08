@@ -2,7 +2,8 @@ from urllib.parse import urlparse
 
 from django import forms
 
-from .models import Curriculum
+from .blueprints import BLUEPRINTS
+from .models import Curriculum, CurriculumDocument
 
 
 class CurriculumForm(forms.ModelForm):
@@ -26,3 +27,25 @@ class CurriculumForm(forms.ModelForm):
                     "Only HTTP and HTTPS URLs are allowed."
                 )
         return url
+
+
+class CurriculumDocumentForm(forms.ModelForm):
+    """Upload a source document (instructor guide, textbook, etc.) for a curriculum."""
+
+    class Meta:
+        model = CurriculumDocument
+        fields = ["title", "doc_type", "file"]
+        widgets = {
+            "title": forms.TextInput(
+                attrs={"placeholder": "e.g. Home Instructor's Guide 3A"}
+            ),
+        }
+
+
+class ApplyBlueprintForm(forms.Form):
+    """Choose a built-in blueprint to populate a curriculum's structure."""
+
+    blueprint = forms.ChoiceField(
+        choices=[(slug, bp["name"]) for slug, bp in BLUEPRINTS.items()],
+        label="Curriculum blueprint",
+    )

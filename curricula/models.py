@@ -71,3 +71,214 @@ class Curriculum(models.Model):
         if hasattr(self, "assignments"):
             return self.assignments.count()
         return 0
+
+    @property
+    def has_structure(self):
+        """True if this curriculum has been populated with chapters/lessons."""
+        return self.chapters.exists()
+
+
+class Chapter(models.Model):
+    """A chapter/unit within a curriculum's scope & sequence."""
+
+    curriculum = models.ForeignKey(
+        Curriculum,
+        on_delete=models.CASCADE,
+        related_name="chapters",
+    )
+    number = models.PositiveIntegerField()
+    title = models.CharField(max_length=200)
+
+    class Meta:
+        ordering = ["number"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["curriculum", "number"],
+                name="unique_chapter_number_per_curriculum",
+            ),
+        ]
+
+    def __str__(self):
+        return f"Chapter {self.number}: {self.title}"
+
+
+class Lesson(models.Model):
+    """A lesson within a chapter (including openers, practices, and reviews)."""
+
+    TYPE_OPENER = "opener"
+    TYPE_LESSON = "lesson"
+    TYPE_PRACTICE = "practice"
+    TYPE_REVIEW = "review"
+    TYPE_CHOICES = [
+        (TYPE_OPENER, "Chapter Opener"),
+        (TYPE_LESSON, "Lesson"),
+        (TYPE_PRACTICE, "Practice"),
+        (TYPE_REVIEW, "Review"),
+    ]
+
+    chapter = models.ForeignKey(
+        Chapter,
+        on_delete=models.CASCADE,
+        related_name="lessons",
+    )
+    order = models.PositiveIntegerField(
+        help_text="Sequence within the chapter (openers first).",
+    )
+    number = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        help_text="Printed lesson number; blank for openers/reviews.",
+    )
+    title = models.CharField(max_length=200)
+    lesson_type = models.CharField(
+        max_length=20,
+        choices=TYPE_CHOICES,
+        default=TYPE_LESSON,
+    )
+    objectives = models.TextField(blank=True)
+
+    class Meta:
+        ordering = ["chapter__number", "order"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["chapter", "order"],
+                name="unique_lesson_order_per_chapter",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.chapter.curriculum.name} · {self.code}"
+
+    @property
+    def code(self):
+        """Short reference, e.g. 'Ch 2, L6', 'Ch 2 Opener', or 'Review 1'."""
+        if self.lesson_type == self.TYPE_OPENER:
+            return f"Ch {self.chapter.number} Opener"
+        if self.lesson_type == self.TYPE_REVIEW:
+            return self.title
+        if self.number:
+            return f"Ch {self.chapter.number}, L{self.number}"
+        return self.title
+
+
+class CurriculumDocument(models.Model):
+    """A source document (instructor guide, textbook, etc.) for a curriculum.
+
+    Stored in R2 in production and local media in development. This is the source
+    the Teacher agent will read to ground its help (curriculum ingest track).
+    """
+
+    TYPE_INSTRUCTOR = "instructor_guide"
+    TYPE_TEXTBOOK = "textbook"
+    TYPE_WORKBOOK = "workbook"
+    TYPE_TESTS = "tests"
+    TYPE_OTHER = "other"
+    TYPE_CHOICES = [
+        (TYPE_INSTRUCTOR, "Instructor's Guide"),
+        (TYPE_TEXTBOOK, "Textbook"),
+        (TYPE_WORKBOOK, "Workbook"),
+        (TYPE_TESTS, "Tests"),
+        (TYPE_OTHER, "Other"),
+    ]
+
+    curriculum = models.ForeignKey(
+        Curriculum,
+        on_delete=models.CASCADE,
+        related_name="documents",
+    )
+    title = models.CharField(max_length=200)
+    doc_type = models.CharField(
+        max_length=30,
+        choices=TYPE_CHOICES,
+        default=TYPE_OTHER,
+    )
+    file = models.FileField(upload_to="curriculum_docs/%Y/%m/")
+    uploaded_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="uploaded_curriculum_documents",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["doc_type", "title"]
+
+    def __str__(self):
+        return self.title
+
+
+class CurriculumPlacement(models.Model):
+    """Where a child currently is in a curriculum (per-subject progress pointer).
+
+    ``current_lesson`` is the lesson the child is working on now; everything
+    before it in the scope & sequence is treated as completed. This enables
+    subjects to advance at independent paces (per-subject acceleration).
+    """
+
+    child = models.ForeignKey(
+        "students.Student",
+        on_delete=models.CASCADE,
+        related_name="placements",
+    )
+    curriculum = models.ForeignKey(
+        Curriculum,
+        on_delete=models.CASCADE,
+        related_name="placements",
+    )
+    current_lesson = models.ForeignKey(
+        Lesson,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["child", "curriculum"],
+                name="unique_placement_per_child_curriculum",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.child} — {self.curriculum.name}"
+
+    def _progress_lesson_ids(self):
+        """Ordered lesson ids counted toward progress (excludes chapter openers)."""
+        return list(
+            Lesson.objects
+            .filter(chapter__curriculum_id=self.curriculum_id)
+            .exclude(lesson_type=Lesson.TYPE_OPENER)
+            .order_by("chapter__number", "order")
+            .values_list("id", flat=True)
+        )
+
+    def progress(self):
+        """Return {done, total, pct} treating lessons before current as done."""
+        ids = self._progress_lesson_ids()
+        total = len(ids)
+        if self.current_lesson_id in ids:
+            done = ids.index(self.current_lesson_id)
+        else:
+            done = 0
+        pct = round(done / total * 100) if total else 0
+        return {"done": done, "total": total, "pct": pct}
+
+    def next_lesson(self):
+        """The lesson after the current one, or None."""
+        if not self.current_lesson_id:
+            return None
+        lessons = list(
+            Lesson.objects
+            .filter(chapter__curriculum_id=self.curriculum_id)
+            .order_by("chapter__number", "order")
+        )
+        ids = [lsn.id for lsn in lessons]
+        if self.current_lesson_id not in ids:
+            return None
+        idx = ids.index(self.current_lesson_id)
+        return lessons[idx + 1] if idx + 1 < len(lessons) else None

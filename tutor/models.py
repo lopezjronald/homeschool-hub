@@ -78,3 +78,80 @@ class MasteryAssessment(models.Model):
     def ai_badge_class(self):
         """Badge class for the AI-proposed level."""
         return mastery.BADGE.get(self.ai_level, "bg-secondary")
+
+
+class Material(models.Model):
+    """A two-layer learning material for a lesson (authored manually, not by AI).
+
+    ``student_content`` is what the child sees (e.g. a comic script);
+    ``parent_content`` is a teaching guide for the parent. A material is only
+    visible to a student once it is approved.
+    """
+
+    SKILL_MANGA = "manga"
+    SKILL_COMIC = "comic"
+    SKILL_FLASHCARDS = "flashcards"
+    SKILL_DRILL = "drill"
+    SKILL_CHOICES = [
+        (SKILL_MANGA, "Manga"),
+        (SKILL_COMIC, "Comic"),
+        (SKILL_FLASHCARDS, "Flashcards"),
+        (SKILL_DRILL, "Drill"),
+    ]
+
+    DRAFT = "draft"
+    APPROVED = "approved"
+    STATUS_CHOICES = [
+        (DRAFT, "Draft"),
+        (APPROVED, "Approved"),
+    ]
+
+    lesson = models.ForeignKey(
+        "curricula.Lesson",
+        on_delete=models.CASCADE,
+        related_name="materials",
+    )
+    child = models.ForeignKey(
+        "students.Student",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="materials",
+    )
+    family = models.ForeignKey(
+        "core.Family",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="materials",
+    )
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="created_materials",
+    )
+    title = models.CharField(max_length=200)
+    skill_type = models.CharField(max_length=20, choices=SKILL_CHOICES, default=SKILL_MANGA)
+    student_content = models.TextField(help_text="What the child sees (e.g. a comic script).")
+    parent_content = models.TextField(blank=True, help_text="Teaching guide for the parent.")
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=DRAFT)
+    approved_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return self.title
+
+    @property
+    def is_approved(self):
+        return self.status == self.APPROVED
+
+    @property
+    def visible_to_student(self):
+        """A material only reaches the student once approved."""
+        return self.is_approved

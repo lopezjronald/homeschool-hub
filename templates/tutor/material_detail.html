@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}{{ material.title }} · Steadfast Scholars{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+  <div class="row justify-content-center">
+    <div class="col-md-9">
+
+      <div class="card mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <div>
+            <h4 class="mb-0">{{ material.title }}</h4>
+            <small class="text-muted">
+              {{ material.get_skill_type_display }} · {{ material.lesson.code }} — {{ material.lesson.title }}
+              {% if material.child %} · for {{ material.child.get_full_name }}{% endif %}
+            </small>
+          </div>
+          {% if material.is_approved %}
+            <span class="badge bg-success">Approved</span>
+          {% else %}
+            <span class="badge bg-light text-dark">Draft</span>
+          {% endif %}
+        </div>
+        <div class="card-body">
+          <h6 class="text-muted">For the student</h6>
+          <div class="p-3 bg-body-tertiary rounded" style="white-space: pre-wrap;">{{ material.student_content }}</div>
+        </div>
+      </div>
+
+      {% if material.parent_content %}
+      <div class="card mb-4">
+        <div class="card-header"><h5 class="mb-0">Teaching guide (for you)</h5></div>
+        <div class="card-body" style="white-space: pre-wrap;">{{ material.parent_content }}</div>
+      </div>
+      {% endif %}
+
+      <div class="d-flex justify-content-between">
+        <a href="{% url 'curricula:curriculum_detail' material.lesson.chapter.curriculum.pk %}" class="btn btn-secondary">Back to curriculum</a>
+        {% if can_edit and not material.is_approved %}
+          <form method="post" action="{% url 'tutor:material_approve' material.pk %}">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-success">Approve for student</button>
+          </form>
+        {% endif %}
+      </div>
+
+    </div>
+  </div>
+</div>
+{% endblock %}

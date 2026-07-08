@@ -63,7 +63,7 @@ def curriculum_detail(request, pk):
     curriculum = get_object_or_404(viewable_queryset(Curriculum.objects.all(), request.user), pk=pk)
     can_edit = user_can_edit(request.user)
 
-    chapters = curriculum.chapters.prefetch_related("lessons")
+    chapters = curriculum.chapters.prefetch_related("lessons", "lessons__materials")
     documents = curriculum.documents.all()
     ordered_lessons = list(
         Lesson.objects.filter(chapter__curriculum=curriculum)

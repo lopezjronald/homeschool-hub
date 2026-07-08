@@ -109,6 +109,9 @@
                             {% if lesson.objectives %}
                               <small class="text-muted d-block mt-1">{{ lesson.objectives }}</small>
                             {% endif %}
+                            {% for m in lesson.materials.all %}
+                              <a href="{% url 'tutor:material_detail' m.pk %}" class="badge bg-primary text-decoration-none mt-1">📖 {{ m.get_skill_type_display }}{% if not m.is_approved %} (draft){% endif %}</a>
+                            {% endfor %}
                           </li>
                         {% endfor %}
                       </ul>

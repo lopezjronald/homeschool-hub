@@ -25,6 +25,14 @@ from tutor.models import MangaPanel, Material
 
 ART_DIR = "manga/number-besties"
 
+# Match each panel's on-page shape so the art isn't square-cropped.
+SPAN_ASPECT = {
+    MangaPanel.SPAN_NORMAL: "4:3",
+    MangaPanel.SPAN_WIDE: "16:9",
+    MangaPanel.SPAN_FULL: "21:9",
+    MangaPanel.SPAN_TALL: "3:4",
+}
+
 # Shared look so every panel matches. The model must NOT draw text — our speech
 # bubbles are overlaid in the template.
 STYLE = (
@@ -171,31 +179,45 @@ class Command(BaseCommand):
             "--regenerate", action="store_true",
             help="Regenerate art even for panels that already have an image.",
         )
+        parser.add_argument(
+            "--link-only", action="store_true",
+            help="Point panels at the committed static art without generating "
+                 "(use on prod after the PNGs are deployed — no token, no cost).",
+        )
+        parser.add_argument(
+            "--delay", type=float, default=11.0,
+            help="Seconds to wait between image requests (Replicate throttles to "
+                 "6/min while credit is under $5). Default 11.",
+        )
 
     def handle(self, *args, **options):
         material = self._resolve_material(options)
-        dry_run = options["dry_run"] or not imagegen.is_configured()
+        self.delay = options["delay"]
+        link_only = options["link_only"]
+        dry_run = not link_only and (options["dry_run"] or not imagegen.is_configured())
 
         if dry_run and not options["dry_run"]:
             self.stdout.write(self.style.WARNING(
                 "No REPLICATE_API_TOKEN set — building structure only (placeholder art)."
             ))
 
-        sheets = {} if dry_run else self._generate_character_sheets(options["regenerate"])
+        sheets = {} if (dry_run or link_only) else self._generate_character_sheets(options["regenerate"])
 
         built = 0
         for spec in PANELS:
+            defaults = {
+                "span": spec["span"],
+                "alt": spec["alt"],
+                "caption": spec.get("caption", ""),
+                "bubbles": spec["bubbles"],
+                "prompt": self._panel_prompt(spec),
+            }
+            if link_only:
+                defaults["image_path"] = f"{ART_DIR}/p{spec['order']}.png"
             panel, _ = MangaPanel.objects.update_or_create(
-                material=material, order=spec["order"],
-                defaults={
-                    "span": spec["span"],
-                    "alt": spec["alt"],
-                    "caption": spec.get("caption", ""),
-                    "bubbles": spec["bubbles"],
-                    "prompt": self._panel_prompt(spec),
-                },
+                material=material, order=spec["order"], defaults=defaults,
             )
-            if not dry_run and (options["regenerate"] or not panel.has_art):
+            if not dry_run and not link_only and (options["regenerate"] or not panel.has_art):
                 self._draw_panel(panel, spec, sheets)
             built += 1
 
@@ -215,6 +237,26 @@ class Command(BaseCommand):
 
     # -- helpers ------------------------------------------------------------
 
+    def _throttle(self):
+        import time
+
+        if self.delay > 0:
+            time.sleep(self.delay)
+
+    def _save_optimized(self, data, path, max_width=1200):
+        """Save generated art web-lean: grayscale (it's B&W manga), capped width,
+        optimized PNG. Cuts ~2 MB panels to a few hundred KB with no visible loss.
+        """
+        import io
+
+        from PIL import Image
+
+        image = Image.open(io.BytesIO(data)).convert("L")
+        if image.width > max_width:
+            height = round(image.height * max_width / image.width)
+            image = image.resize((max_width, height), Image.LANCZOS)
+        image.save(path, format="PNG", optimize=True)
+
     def _panel_prompt(self, spec):
         return f"{spec['scene']} {STYLE}"
 
@@ -229,9 +271,11 @@ class Command(BaseCommand):
             path = os.path.join(out_dir, f"char-{name}.png")
             if regenerate or not os.path.exists(path):
                 self.stdout.write(f"  drawing character sheet: {name}…")
-                data = imagegen.generate_image(prompt)
-                with open(path, "wb") as fh:
-                    fh.write(data)
+                data = imagegen.generate_image(
+                    prompt, extra_input={"aspect_ratio": "3:4", "output_format": "png"},
+                )
+                self._save_optimized(data, path)
+                self._throttle()
             sheets[name] = path
         return sheets
 
@@ -240,15 +284,22 @@ class Command(BaseCommand):
 
         refs = [sheets[name] for name in spec.get("refs", []) if name in sheets]
         self.stdout.write(f"  drawing panel {spec['order']}…")
-        data = imagegen.generate_image(self._panel_prompt(spec), reference_paths=refs)
+        data = imagegen.generate_image(
+            self._panel_prompt(spec),
+            reference_paths=refs,
+            extra_input={
+                "aspect_ratio": SPAN_ASPECT.get(spec["span"], "4:3"),
+                "output_format": "png",
+            },
+        )
 
         out_dir = os.path.join(settings.BASE_DIR, "static", ART_DIR)
         os.makedirs(out_dir, exist_ok=True)
         filename = f"p{spec['order']}.png"
-        with open(os.path.join(out_dir, filename), "wb") as fh:
-            fh.write(data)
+        self._save_optimized(data, os.path.join(out_dir, filename))
         panel.image_path = f"{ART_DIR}/{filename}"
         panel.save(update_fields=["image_path"])
+        self._throttle()
 
     def _resolve_material(self, options):
         if options.get("material"):

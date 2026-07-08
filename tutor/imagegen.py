@@ -51,12 +51,13 @@ def _output_to_bytes(output):
         raise ImageGenError(f"Could not download the generated image: {exc}")
 
 
-def generate_image(prompt, reference_paths=None, client=None):
+def generate_image(prompt, reference_paths=None, extra_input=None, client=None):
     """Generate one image from a prompt (+ optional reference images).
 
     ``reference_paths`` is a list of local file paths (e.g. character sheets)
-    passed to the model for character consistency. Returns raw image bytes.
-    ``client`` is injectable so tests can supply a fake Replicate client.
+    passed to the model for character consistency. ``extra_input`` is merged
+    into the model input (e.g. aspect_ratio, output_format). Returns raw image
+    bytes. ``client`` is injectable so tests can supply a fake Replicate client.
     """
     if not is_configured():
         raise ImageGenNotConfigured("Replicate API token is not configured.")
@@ -67,6 +68,8 @@ def generate_image(prompt, reference_paths=None, client=None):
         client = replicate.Client(api_token=settings.REPLICATE_API_TOKEN)
 
     inputs = {"prompt": prompt}
+    if extra_input:
+        inputs.update(extra_input)
     handles = []
     if reference_paths:
         key = getattr(settings, "MANGA_REFERENCE_KEY", "image_input")

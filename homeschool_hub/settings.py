@@ -98,6 +98,7 @@ INSTALLED_APPS = [
     "worklog",  # Work log: completed-work records
     "tutor",  # AI tutor layer (mastery grader)
     "portal",  # Tokenless student portal (kids see only their own work)
+    "activities",  # External activities (School of Rock, CodaKid) + check-in nudge
     "storages",  # django-storages for R2/S3
     "django.contrib.admin",
     "django.contrib.auth",

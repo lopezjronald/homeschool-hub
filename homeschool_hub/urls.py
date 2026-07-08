@@ -35,6 +35,7 @@ urlpatterns = [
     path("worklog/", include(("worklog.urls", "worklog"), namespace="worklog")),
     path("tutor/", include(("tutor.urls", "tutor"), namespace="tutor")),
     path("portal/", include(("portal.urls", "portal"), namespace="portal")),
+    path("activities/", include(("activities.urls", "activities"), namespace="activities")),
     path("core/", include(("core.urls", "core"), namespace="core")),
 ]
 

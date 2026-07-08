@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}{{ action }} Activity · Steadfast Scholars{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+  <div class="row justify-content-center">
+    <div class="col-lg-7">
+      <div class="card">
+        <div class="card-header"><h4 class="mb-0">{{ action }} Activity</h4></div>
+        <div class="card-body">
+          <form method="post" novalidate>
+            {% csrf_token %}
+            {% for field in form %}
+              <div class="mb-3">
+                <label for="{{ field.id_for_label }}" class="form-label">{{ field.label }}</label>
+                {{ field }}
+                {% if field.help_text %}<div class="form-text">{{ field.help_text }}</div>{% endif %}
+                {% for error in field.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}
+              </div>
+            {% endfor %}
+            <div class="d-flex gap-2">
+              <button type="submit" class="btn btn-primary">Save</button>
+              <a href="{% url 'activities:activity_list' %}" class="btn btn-outline-secondary">Cancel</a>
+              {% if activity %}
+                <a href="{% url 'activities:activity_delete' activity.pk %}" class="btn btn-outline-danger ms-auto">Delete</a>
+              {% endif %}
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

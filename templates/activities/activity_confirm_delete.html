@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}Remove Activity · Steadfast Scholars{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+  <div class="row justify-content-center">
+    <div class="col-lg-6">
+      <div class="card">
+        <div class="card-header"><h4 class="mb-0">Remove activity?</h4></div>
+        <div class="card-body">
+          <p>Remove <strong>{{ activity.display_label }}</strong>? This can't be undone.</p>
+          <form method="post">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-danger">Remove</button>
+            <a href="{% url 'activities:activity_list' %}" class="btn btn-outline-secondary">Cancel</a>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

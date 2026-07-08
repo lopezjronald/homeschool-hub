@@ -78,7 +78,26 @@
     </div>
   {% endif %}
 
-  {% if not progress and not materials and not set_groups %}
+  {% if activities %}
+    <h2 class="portal-section-title">🎸 My activities</h2>
+    <div class="row row-cols-2 row-cols-md-3 g-3 mb-4">
+      {% for activity in activities %}
+        <div class="col">
+          <a href="{{ activity.url }}" target="_blank" rel="noopener noreferrer" class="text-decoration-none">
+            <div class="card portal-card portal-card-link h-100 text-center">
+              <div class="card-body">
+                <div class="ss-feature-emoji mb-1">{{ activity.emoji }}</div>
+                <div class="fw-semibold">{{ activity.title }}</div>
+                {% if activity.provider %}<small class="text-muted">{{ activity.provider }} ↗</small>{% endif %}
+              </div>
+            </div>
+          </a>
+        </div>
+      {% endfor %}
+    </div>
+  {% endif %}
+
+  {% if not progress and not materials and not set_groups and not activities %}
     <div class="alert alert-info">Nothing here yet — check back soon! 🌱</div>
   {% endif %}
 

@@ -16,6 +16,7 @@ from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 
+from activities.models import ExternalActivity
 from curricula.models import CurriculumPlacement
 from tutor.models import Material, QuestionSet, ResponseSheet
 from worklog.models import WorkLogEntry
@@ -81,6 +82,13 @@ def _annotated_question_sets(student):
     return sets
 
 
+def _visible_activities(student):
+    """Active external activities for this child (theirs + whole-family)."""
+    return ExternalActivity.objects.filter(is_active=True).filter(
+        Q(student=student) | Q(student__isnull=True, family=student.family)
+    )
+
+
 def portal_home(request, token):
     """The kid's dashboard: their curricula, their adventures, their writing."""
     student = _resolve_student(token)
@@ -122,6 +130,7 @@ def portal_home(request, token):
         "progress": progress,
         "materials": _visible_materials(student),
         "set_groups": set_groups,
+        "activities": _visible_activities(student),
     })
 
 

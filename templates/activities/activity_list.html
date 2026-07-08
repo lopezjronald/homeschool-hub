@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}Activities · Steadfast Scholars{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+      <h1 class="mb-0">Activities</h1>
+      <small class="text-muted">Extracurriculars &amp; outside programs — one tap to their site.</small>
+    </div>
+    {% if can_edit %}
+    <a href="{% url 'activities:activity_create' %}" class="btn btn-primary">Add Activity</a>
+    {% endif %}
+  </div>
+
+  {% if activities %}
+    <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4">
+      {% for activity in activities %}
+        <div class="col">
+          <div class="card h-100">
+            <div class="card-body">
+              <div class="ss-feature-emoji mb-2">{{ activity.emoji }}</div>
+              <h5 class="card-title mb-1">{{ activity.title }}</h5>
+              <p class="mb-1">
+                {% if activity.provider %}<span class="badge bg-light text-dark">{{ activity.provider }}</span>{% endif %}
+                {% if activity.student %}<span class="badge bg-secondary">{{ activity.student.first_name }}</span>
+                {% else %}<span class="badge bg-secondary">Whole family</span>{% endif %}
+                {% if activity.cadence != 'none' %}<span class="badge bg-light text-dark">{{ activity.get_cadence_display }}</span>{% endif %}
+              </p>
+              {% if activity.notes %}<p class="card-text text-muted small mb-0">{{ activity.notes }}</p>{% endif %}
+            </div>
+            <div class="card-footer bg-transparent d-flex gap-2">
+              <a href="{{ activity.url }}" target="_blank" rel="noopener noreferrer" class="btn btn-sm btn-outline-primary">Launch ↗</a>
+              {% if can_edit %}
+                <a href="{% url 'activities:activity_update' activity.pk %}" class="btn btn-sm btn-outline-secondary ms-auto">Edit</a>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  {% else %}
+    <div class="alert alert-info" role="alert">
+      <h4 class="alert-heading">No activities yet</h4>
+      <p>Add outside programs like music lessons or coding so their login links are one tap away — for you and the kids.</p>
+      {% if can_edit %}<hr><a href="{% url 'activities:activity_create' %}" class="btn btn-primary">Add Your First Activity</a>{% endif %}
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

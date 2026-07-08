@@ -216,6 +216,27 @@ class MaterialTests(TestCase):
         self.assertIn("borrow", m.student_content.lower())
         self.assertEqual(m.child, self.child)  # linked by --child-name default "Violet"
 
+    def test_seed_sets_child_intro_and_markdown_guide(self):
+        call_command("seed_violet_manga", "--curriculum", str(self.curriculum.pk), stdout=StringIO())
+        m = Material.objects.get(lesson=self.lesson, skill_type=Material.SKILL_MANGA)
+        self.assertTrue(m.student_intro)                 # kid-facing explanation
+        self.assertIn("secret", m.student_intro.lower())
+        self.assertIn("## ", m.parent_content)           # teaching guide is Markdown
+
+        self.client.login(username="mp", password="pw")
+        resp = self.client.get(reverse("tutor:material_detail", kwargs={"pk": m.pk}))
+        self.assertContains(resp, "What we're exploring")  # intro label
+        self.assertContains(resp, "<h2")                    # guide Markdown -> HTML
+        self.assertContains(resp, "The big idea")           # a guide heading
+
+    def test_markdownify_filter_renders_html(self):
+        from tutor.templatetags.tutor_extras import markdownify
+
+        html = markdownify("## Title\n\nSome **bold** text.")
+        self.assertIn("<h2", html)
+        self.assertIn("<strong>bold</strong>", html)
+        self.assertEqual(markdownify(""), "")
+
     def test_parent_can_view_material(self):
         m = Material.objects.create(
             lesson=self.lesson, title="Comic", student_content="hi", family=self.family,

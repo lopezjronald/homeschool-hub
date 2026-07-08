@@ -83,9 +83,9 @@ PANELS = [
                  "NINETY-EIGHT. Warm, energetic.",
         "refs": ["98", "2"],
         "bubbles": [
-            {"speaker": "Two", "kind": "speech", "x": 30, "y": 20,
+            {"speaker": "Two", "kind": "speech", "x": 34, "y": 16,
              "text": "Then borrow me, partner! You + me = 100. That's what besties are for."},
-            {"speaker": "", "kind": "sfx", "x": 70, "y": 70, "text": "BA-DUMP"},
+            {"speaker": "", "kind": "sfx", "x": 48, "y": 84, "text": "BA-DUMP"},
         ],
     },
     {
@@ -133,7 +133,7 @@ PANELS = [
         "refs": [],
         "caption": "Another way:  adjust first → 234 − 2 = 232,  then 232 + 100 = 332",
         "bubbles": [
-            {"speaker": "Rival", "kind": "speech", "x": 40, "y": 22,
+            {"speaker": "Rival", "kind": "speech", "x": 40, "y": 15,
              "text": "There's more than one way, you know."},
         ],
     },

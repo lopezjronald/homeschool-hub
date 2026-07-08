@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% load static %}
+{% load tutor_extras %}
 {% block title %}{{ material.title }} · Steadfast Scholars{% endblock %}
 {% block extra_css %}<link href="{% static 'css/manga.css' %}" rel="stylesheet">{% endblock %}
 
@@ -24,6 +25,12 @@
           {% endif %}
         </div>
         <div class="card-body">
+          {% if material.student_intro %}
+            <div class="lesson-intro">
+              <div class="lesson-intro-label">What we're exploring</div>
+              <p>{{ material.student_intro }}</p>
+            </div>
+          {% endif %}
           {% if material.has_pages %}
             <div class="manga-page">
               {% for panel in material.panels.all %}
@@ -56,8 +63,13 @@
 
       {% if material.parent_content %}
       <div class="card mb-4">
-        <div class="card-header"><h5 class="mb-0">Teaching guide (for you)</h5></div>
-        <div class="card-body" style="white-space: pre-wrap;">{{ material.parent_content }}</div>
+        <div class="card-header d-flex align-items-center gap-2">
+          <span class="teaching-guide-badge">For the teacher</span>
+          <h5 class="mb-0">Teaching guide</h5>
+        </div>
+        <div class="card-body">
+          <div class="teaching-guide">{{ material.parent_content|markdownify }}</div>
+        </div>
       </div>
       {% endif %}
 

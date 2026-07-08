@@ -134,8 +134,13 @@ class Material(models.Model):
     )
     title = models.CharField(max_length=200)
     skill_type = models.CharField(max_length=20, choices=SKILL_CHOICES, default=SKILL_MANGA)
+    student_intro = models.TextField(
+        blank=True,
+        help_text="A short, grade-level explanation for the child of what this lesson is "
+                  "about — shown with the manga.",
+    )
     student_content = models.TextField(help_text="What the child sees (e.g. a comic script).")
-    parent_content = models.TextField(blank=True, help_text="Teaching guide for the parent.")
+    parent_content = models.TextField(blank=True, help_text="Teaching guide (Markdown) for the parent.")
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=DRAFT)
     approved_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)

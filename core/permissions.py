@@ -110,8 +110,24 @@ def user_can_edit(user):
 
     Legacy fallback: if the user has NO family memberships at all,
     they are treated as a standalone parent and can edit.
+
+    The result is memoized on the ``user`` instance. Auth middleware builds a
+    fresh ``request.user`` per request, so this cache is request-scoped and
+    collapses the 2-3 duplicate FamilyMembership queries per request (views
+    call this directly and ``scoped_queryset`` calls it again).
     """
+    cached = getattr(user, "_can_edit_cache", None)
+    if cached is not None:
+        return cached
+
     memberships = FamilyMembership.objects.filter(user=user)
     if not memberships.exists():
-        return True  # Legacy user with no memberships
-    return memberships.filter(role__in=EDIT_ROLES).exists()
+        result = True  # Legacy user with no memberships
+    else:
+        result = memberships.filter(role__in=EDIT_ROLES).exists()
+
+    try:
+        user._can_edit_cache = result
+    except AttributeError:  # e.g. AnonymousUser oddities — just skip caching
+        pass
+    return result

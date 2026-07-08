@@ -306,3 +306,14 @@ a:focus-visible > .hub-tile {
   box-shadow:var(--ss-shadow-md);
   transform:translateY(-3px);
 }
+
+/* Login-time activity check-in nudge */
+.ss-checkin { border-left:4px solid var(--ss-amber); background:#fbf6ec; }
+.ss-checkin .card-title { color:var(--ss-forest); }
+.ss-checkin-row {
+  padding:.6rem .75rem;
+  background:#fff;
+  border:1px solid var(--ss-border,#e7e1d3);
+  border-radius:.6rem;
+}
+.ss-feature-emoji-inline { font-size:1.15rem; margin-right:.35rem; }

@@ -23,6 +23,43 @@
   </div>
 
   {% if user.is_authenticated %}
+    {% if due_activities %}
+      <div class="card ss-checkin mb-4">
+        <div class="card-body">
+          <h5 class="card-title mb-1">🎯 Quick check-in</h5>
+          <p class="text-muted small mb-3">Log any outside activities you've done so they're captured in the record.</p>
+          <div class="d-flex flex-column gap-2">
+            {% for activity in due_activities %}
+              <div class="ss-checkin-row d-flex flex-wrap align-items-center justify-content-between gap-2">
+                <div class="me-auto">
+                  <span class="ss-feature-emoji-inline">{{ activity.emoji }}</span>
+                  <span class="fw-semibold">
+                    Did {% if activity.student %}{{ activity.student.first_name }}{% else %}the kids{% endif %} do {{ activity.title }}{% if activity.provider %} <span class="text-muted fw-normal">({{ activity.provider }})</span>{% endif %}?
+                  </span>
+                </div>
+                <div class="d-flex gap-1">
+                  <form method="post" action="{% url 'activities:activity_checkin' activity.pk %}">
+                    {% csrf_token %}
+                    <input type="hidden" name="action" value="log">
+                    <button type="submit" class="btn btn-amber btn-sm">✓ Log it</button>
+                  </form>
+                  <form method="post" action="{% url 'activities:activity_checkin' activity.pk %}">
+                    {% csrf_token %}
+                    <input type="hidden" name="action" value="snooze">
+                    <button type="submit" class="btn btn-outline-secondary btn-sm">Snooze</button>
+                  </form>
+                  <form method="post" action="{% url 'activities:activity_checkin' activity.pk %}">
+                    {% csrf_token %}
+                    <input type="hidden" name="action" value="mute">
+                    <button type="submit" class="btn btn-link btn-sm text-muted px-2">Mute</button>
+                  </form>
+                </div>
+              </div>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+    {% endif %}
     <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4">
       <div class="col">
         <a href="{% url 'students:student_list' %}" class="text-decoration-none">
@@ -56,7 +93,7 @@
           <div class="card h-100 hub-tile"><div class="card-body">
             <div class="ss-feature-emoji mb-2">🎸</div>
             <h5 class="card-title">Activities</h5>
-            <p class="card-text text-muted mb-0">Music, coding, and other outside programs — with one-tap login links for you and the kids.</p>
+            <p class="card-text text-muted mb-0">{% if activities_count %}{{ activities_count }} on file — {% endif %}music, coding, and other outside programs with one-tap login links for you and the kids.</p>
           </div></div>
         </a>
       </div>

@@ -101,3 +101,97 @@ class ExternalActivityTests(TestCase):
         self.assertTrue(
             ExternalActivity.objects.filter(provider="School of Rock", title="Guitar", student=self.violet).exists()
         )
+
+
+class ActivityCheckinTests(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        cls.parent = User.objects.create_user(username="cp", email="cp@e.com", password="pw")
+        cls.family = Family.objects.create(name="Checkin Fam")
+        FamilyMembership.objects.create(user=cls.parent, family=cls.family, role="parent")
+        cls.violet = Student.objects.create(parent=cls.parent, first_name="Violet", grade_level="G03", family=cls.family)
+        cls.kaylin = Student.objects.create(parent=cls.parent, first_name="Kaylin", grade_level="G07", family=cls.family)
+
+    def _activity(self, **kw):
+        defaults = dict(
+            parent=self.parent, family=self.family, title="Guitar",
+            provider="School of Rock", url="https://sor.example/",
+            cadence=ExternalActivity.CADENCE_WEEKLY,
+        )
+        defaults.update(kw)
+        return ExternalActivity.objects.create(**defaults)
+
+    def test_home_surfaces_due_activity_for_parent(self):
+        self._activity(student=self.violet)
+        self.client.login(username="cp", password="pw")
+        resp = self.client.get(reverse("home"))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "Quick check-in")
+        self.assertContains(resp, "Did Violet do Guitar")
+
+    def test_log_creates_worklog_and_stamps_activity(self):
+        from worklog.models import WorkLogEntry
+
+        activity = self._activity(student=self.violet)
+        self.client.login(username="cp", password="pw")
+        resp = self.client.post(
+            reverse("activities:activity_checkin", args=[activity.pk]), data={"action": "log"},
+        )
+        self.assertEqual(resp.status_code, 302)
+        activity.refresh_from_db()
+        self.assertEqual(activity.last_logged_at, timezone.localdate())
+        self.assertFalse(activity.is_due)                          # logged → not due
+        entries = WorkLogEntry.objects.filter(child=self.violet, subject="Guitar")
+        self.assertEqual(entries.count(), 1)
+
+    def test_log_family_wide_creates_entry_per_child(self):
+        from worklog.models import WorkLogEntry
+
+        activity = self._activity(student=None, title="Coding", provider="CodaKid")
+        self.client.login(username="cp", password="pw")
+        self.client.post(reverse("activities:activity_checkin", args=[activity.pk]), data={"action": "log"})
+        # one WorkLogEntry for each child in the family
+        self.assertEqual(WorkLogEntry.objects.filter(subject="Coding").count(), 2)
+
+    def test_snooze_hides_until_tomorrow(self):
+        activity = self._activity(student=self.violet)
+        self.client.login(username="cp", password="pw")
+        self.client.post(reverse("activities:activity_checkin", args=[activity.pk]), data={"action": "snooze"})
+        activity.refresh_from_db()
+        self.assertEqual(activity.snoozed_until, timezone.localdate() + timedelta(days=1))
+        self.assertFalse(activity.is_due)
+
+    def test_mute_stops_prompting(self):
+        activity = self._activity(student=self.violet)
+        self.client.login(username="cp", password="pw")
+        self.client.post(reverse("activities:activity_checkin", args=[activity.pk]), data={"action": "mute"})
+        activity.refresh_from_db()
+        self.assertTrue(activity.is_muted)
+        self.assertFalse(activity.is_due)
+
+    def test_checkin_requires_login(self):
+        activity = self._activity(student=self.violet)
+        resp = self.client.post(reverse("activities:activity_checkin", args=[activity.pk]), data={"action": "log"})
+        self.assertEqual(resp.status_code, 302)
+        self.assertIn("/accounts/login", resp["Location"])
+
+    def test_checkin_get_not_allowed(self):
+        activity = self._activity(student=self.violet)
+        self.client.login(username="cp", password="pw")
+        resp = self.client.get(reverse("activities:activity_checkin", args=[activity.pk]))
+        self.assertEqual(resp.status_code, 405)
+
+    def test_cannot_checkin_other_family_activity(self):
+        other = User.objects.create_user(username="cp2", email="cp2@e.com", password="pw")
+        fam2 = Family.objects.create(name="Other")
+        FamilyMembership.objects.create(user=other, family=fam2, role="parent")
+        theirs = ExternalActivity.objects.create(
+            parent=other, family=fam2, title="Secret", url="https://x.example/",
+        )
+        self.client.login(username="cp", password="pw")
+        resp = self.client.post(
+            reverse("activities:activity_checkin", args=[theirs.pk]), data={"action": "mute"},
+        )
+        self.assertEqual(resp.status_code, 404)
+        theirs.refresh_from_db()
+        self.assertFalse(theirs.is_muted)

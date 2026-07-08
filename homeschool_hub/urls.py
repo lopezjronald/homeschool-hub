@@ -9,6 +9,7 @@ def home(request):
     """Landing page. For a signed-in parent it's a hub of tiles with live counts."""
     context = {}
     if request.user.is_authenticated:
+        from activities.models import ExternalActivity
         from core.permissions import scoped_queryset
         from core.utils import get_selected_family
         from curricula.models import Curriculum
@@ -21,6 +22,13 @@ def home(request):
         context["curricula_count"] = scoped_queryset(
             Curriculum.objects.all(), request.user, family,
         ).count()
+        activities = scoped_queryset(
+            ExternalActivity.objects.all(), request.user, family,
+        ).select_related("student")
+        context["activities_count"] = activities.count()
+        # `is_due` is a Python property (cadence + last-logged + snooze/mute),
+        # so evaluate in-process rather than in the DB.
+        context["due_activities"] = [a for a in activities if a.is_due]
     return render(request, "home.html", context)
 
 

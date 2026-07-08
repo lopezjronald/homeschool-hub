@@ -1,15 +1,58 @@
 """Parent-side management of external activities (School of Rock, CodaKid, …)."""
 
+from datetime import timedelta
+
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.http import Http404
 from django.shortcuts import get_object_or_404, redirect, render
+from django.utils import timezone
+from django.views.decorators.http import require_POST
 
 from core.permissions import editable_queryset, scoped_queryset, user_can_edit
 from core.utils import get_active_family, get_selected_family
+from students.models import Student
+from worklog.models import WorkLogEntry
 
 from .forms import ExternalActivityForm
 from .models import ExternalActivity
+
+
+@login_required
+@require_POST
+def activity_checkin(request, pk):
+    """Handle a check-in nudge: log it (→ WorkLogEntry), snooze, or mute."""
+    activity = get_object_or_404(
+        editable_queryset(ExternalActivity.objects.all(), request.user), pk=pk,
+    )
+    action = request.POST.get("action")
+    today = timezone.localdate()
+
+    if action == "log":
+        # One WorkLogEntry per child (the tagged child, else every child in the family).
+        children = ([activity.student] if activity.student
+                    else list(Student.objects.filter(family=activity.family)))
+        for child in filter(None, children):
+            WorkLogEntry.objects.create(
+                parent=request.user, family=activity.family, child=child,
+                subject=activity.title,
+                description=f"{activity.display_label} — logged from the activity check-in.",
+                date=today,
+            )
+        activity.last_logged_at = today
+        activity.snoozed_until = None
+        activity.save(update_fields=["last_logged_at", "snoozed_until", "updated_at"])
+        messages.success(request, f"Logged {activity.display_label}. 🎉")
+    elif action == "snooze":
+        activity.snoozed_until = today + timedelta(days=1)
+        activity.save(update_fields=["snoozed_until", "updated_at"])
+        messages.info(request, f"Snoozed {activity.display_label} until tomorrow.")
+    elif action == "mute":
+        activity.is_muted = True
+        activity.save(update_fields=["is_muted", "updated_at"])
+        messages.info(request, f"Muted reminders for {activity.display_label}.")
+
+    return redirect(request.POST.get("next") or "home")
 
 
 @login_required

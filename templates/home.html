@@ -1,23 +1,69 @@
 {% extends "base.html" %}
 {% block title %}Home · Steadfast Scholars{% endblock %}
 {% block content %}
-<div class="container py-5">
-  <div class="row justify-content-center">
-    <div class="col-md-8 text-center">
-      <h1 class="display-4">Welcome to Steadfast Scholars</h1>
-      {% if user.is_authenticated %}
-        <p class="lead">You're signed in as <strong>{{ user.username }}</strong>.</p>
-        <hr class="my-4">
-        <p>Get started by managing your children's profiles and assignments.</p>
-        <a href="{% url 'students:student_list' %}" class="btn btn-primary btn-lg">My Children</a>
-      {% else %}
-        <p class="lead">Your all-in-one platform for managing homeschool curriculum, assignments, and progress.</p>
-        <hr class="my-4">
-        <p>Please log in or create an account to get started.</p>
-        <a href="{% url 'accounts:login' %}" class="btn btn-primary btn-lg me-2">Login</a>
-        <a href="{% url 'accounts:register' %}" class="btn btn-outline-primary btn-lg">Register</a>
-      {% endif %}
-    </div>
+<div class="container py-4">
+
+  <div class="ss-hero mb-5">
+    <div class="ss-kicker">Homeschool, organized</div>
+    <h1>Steadfast Scholars</h1>
+    {% if user.is_authenticated %}
+      <p class="lead mb-4">Welcome back, {{ user.username }}.</p>
+      <div class="d-flex flex-wrap gap-2 justify-content-center">
+        <a href="{% url 'students:student_list' %}" class="btn btn-amber btn-lg">My Children</a>
+        <a href="{% url 'curricula:curriculum_list' %}" class="btn btn-outline-light btn-lg">Curricula</a>
+        <a href="{% url 'worklog:worklog_list' %}" class="btn btn-outline-light btn-lg">Work Log</a>
+        <a href="{% url 'dashboard:dashboard' %}" class="btn btn-outline-light btn-lg">Dashboard</a>
+      </div>
+    {% else %}
+      <p class="lead mx-auto mb-4" style="max-width:640px;">
+        One calm place for your children's learning — log their work, follow every
+        subject at its own level, and capture mastery as it grows. From daily work
+        log to a report your teacher can trust.
+      </p>
+      <div class="d-flex flex-wrap gap-2 justify-content-center">
+        <a href="{% url 'accounts:register' %}" class="btn btn-amber btn-lg">Create account</a>
+        <a href="{% url 'accounts:login' %}" class="btn btn-outline-light btn-lg">Log in</a>
+      </div>
+    {% endif %}
   </div>
+
+  <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4">
+    <div class="col"><div class="card h-100"><div class="card-body">
+      <div class="ss-feature-emoji mb-2">📚</div>
+      <h5 class="card-title">Children &amp; Levels</h5>
+      <p class="card-text text-muted mb-0">Each child has a school Level — and each subject runs at its own grade, so they accelerate where they shine and take their time where they need it.</p>
+    </div></div></div>
+
+    <div class="col"><div class="card h-100"><div class="card-body">
+      <div class="ss-feature-emoji mb-2">🧭</div>
+      <h5 class="card-title">Curriculum &amp; Progress</h5>
+      <p class="card-text text-muted mb-0">Organize curricula by chapter and lesson, and watch a clear progress bar fill as your child moves through the year.</p>
+    </div></div></div>
+
+    <div class="col"><div class="card h-100"><div class="card-body">
+      <div class="ss-feature-emoji mb-2">📝</div>
+      <h5 class="card-title">Daily Work Log</h5>
+      <p class="card-text text-muted mb-0">Capture what was done each day — with a photo of the work — building the durable record a charter or reviewing teacher needs.</p>
+    </div></div></div>
+
+    <div class="col"><div class="card h-100"><div class="card-body">
+      <div class="ss-feature-emoji mb-2">✅</div>
+      <h5 class="card-title">Mastery, Not Grades</h5>
+      <p class="card-text text-muted mb-0">Beginning, Developing, Proficient, Mastered. An AI assistant proposes a level with feedback — you always have the final say.</p>
+    </div></div></div>
+
+    <div class="col"><div class="card h-100"><div class="card-body">
+      <div class="ss-feature-emoji mb-2">🦸</div>
+      <h5 class="card-title">Manga Lessons</h5>
+      <p class="card-text text-muted mb-0">Turn a lesson into a story your kids actually want to read — manga-style material that teaches the concept in a world they love.</p>
+    </div></div></div>
+
+    <div class="col"><div class="card h-100"><div class="card-body">
+      <div class="ss-feature-emoji mb-2">👪</div>
+      <h5 class="card-title">Co-parents &amp; Teachers</h5>
+      <p class="card-text text-muted mb-0">Send one link. A co-parent, guardian, grandparent, or teacher creates their own account and joins — with exactly the access you choose.</p>
+    </div></div></div>
+  </div>
+
 </div>
 {% endblock %}

@@ -1,57 +1,60 @@
 {% extends "base.html" %}
-{% block title %}Invite Teacher · Steadfast Scholars{% endblock %}
+{% block title %}Invite to your family · Steadfast Scholars{% endblock %}
 
 {% block content %}
 <div class="container py-4">
   <div class="row justify-content-center">
-    <div class="col-md-6">
+    <div class="col-lg-7">
       {% if no_family %}
         <div class="alert alert-info">
-          <h4 class="alert-heading">No Family Found</h4>
-          <p>You need to be a parent in a family before you can invite teachers. Please add a child first to create your family.</p>
+          <h4 class="alert-heading">No family yet</h4>
+          <p class="mb-0">Add a child first to create your family — then you can invite a co-parent, guardian, grandparent, or teacher.</p>
         </div>
       {% else %}
         <div class="card">
           <div class="card-header">
-            <h4 class="mb-0">Invite a Teacher to {{ family.name }}</h4>
+            <h4 class="mb-0">Invite someone to {{ family.name }}</h4>
+            <small class="text-muted">Send a link so they can join — they'll create their own account.</small>
           </div>
           <div class="card-body">
-            <form method="post">
+            <form method="post" novalidate>
               {% csrf_token %}
               <div class="mb-3">
-                <label for="id_email" class="form-label">Teacher's Email Address</label>
+                <label for="id_role" class="form-label">{{ form.role.label }}</label>
+                {{ form.role }}
+                <div class="form-text">Co-parents and guardians can add and edit everything. Grandparents and teachers get read-only oversight.</div>
+              </div>
+              <div class="mb-3">
+                <label for="id_email" class="form-label">{{ form.email.label }}</label>
                 {{ form.email }}
                 {% if form.email.errors %}
-                  <div class="invalid-feedback d-block">
-                    {% for error in form.email.errors %}{{ error }}{% endfor %}
-                  </div>
+                  <div class="invalid-feedback d-block">{% for error in form.email.errors %}{{ error }}{% endfor %}</div>
                 {% endif %}
               </div>
-              <button type="submit" class="btn btn-primary">Send Invitation</button>
+              <button type="submit" class="btn btn-primary">Create invite link</button>
             </form>
           </div>
         </div>
 
         {% if pending_invites %}
           <div class="card mt-4">
-            <div class="card-header">
-              <h5 class="mb-0">Pending Invitations</h5>
-            </div>
+            <div class="card-header"><h5 class="mb-0">Pending invitations</h5></div>
             <ul class="list-group list-group-flush">
               {% for inv in pending_invites %}
                 <li class="list-group-item">
-                  <div class="d-flex justify-content-between align-items-center">
+                  <div class="d-flex justify-content-between align-items-center gap-2">
                     <div>
                       {{ inv.email }}
-                      <br><small class="text-muted">Sent {{ inv.created_at|date:"M d, Y" }}{% if inv.resent_at %} · Resent {{ inv.resent_at|date:"M d, Y" }}{% endif %}</small>
+                      <span class="badge {% if inv.role == 'parent' or inv.role == 'guardian' %}bg-primary{% else %}bg-light text-dark{% endif %} ms-1">{{ inv.role_display }}</span>
+                      <br><small class="text-muted">Created {{ inv.created_at|date:"M d, Y" }}{% if inv.resent_at %} · Resent {{ inv.resent_at|date:"M d, Y" }}{% endif %}</small>
                     </div>
                     <div class="d-flex gap-2">
                       {% if inv.is_resendable %}
+                        <button type="button" class="btn btn-outline-primary btn-sm" onclick="copyInviteLink(this, '{% url 'core:accept_invite' invite_id=inv.id %}')">Copy link</button>
                         <form method="post" action="{% url 'core:resend_invite' invite_id=inv.id %}" class="d-inline">
                           {% csrf_token %}
-                          <button type="submit" class="btn btn-outline-primary btn-sm">Resend</button>
+                          <button type="submit" class="btn btn-outline-secondary btn-sm">Resend email</button>
                         </form>
-                        <button type="button" class="btn btn-outline-secondary btn-sm" onclick="copyInviteLink(this, '{% url 'core:accept_invite' invite_id=inv.id %}')">Copy Link</button>
                       {% elif inv.is_expired %}
                         <span class="badge bg-warning text-dark">Expired</span>
                       {% endif %}
@@ -65,26 +68,15 @@
           <script>
           function copyInviteLink(btn, path) {
             var url = window.location.origin + path;
+            var done = function () { btn.textContent = 'Copied!'; setTimeout(function () { btn.textContent = 'Copy link'; }, 2000); };
             if (navigator.clipboard && navigator.clipboard.writeText) {
-              navigator.clipboard.writeText(url).then(function() {
-                btn.textContent = 'Copied!';
-                setTimeout(function() { btn.textContent = 'Copy Link'; }, 2000);
-              }, function() {
-                fallbackCopy(btn, url);
-              });
-            } else {
-              fallbackCopy(btn, url);
-            }
+              navigator.clipboard.writeText(url).then(done, function () { fallbackCopy(url, done); });
+            } else { fallbackCopy(url, done); }
           }
-          function fallbackCopy(btn, url) {
+          function fallbackCopy(url, done) {
             var input = document.createElement('input');
-            input.value = url;
-            document.body.appendChild(input);
-            input.select();
-            document.execCommand('copy');
-            document.body.removeChild(input);
-            btn.textContent = 'Copied!';
-            setTimeout(function() { btn.textContent = 'Copy Link'; }, 2000);
+            input.value = url; document.body.appendChild(input); input.select();
+            document.execCommand('copy'); document.body.removeChild(input); done();
           }
           </script>
         {% endif %}

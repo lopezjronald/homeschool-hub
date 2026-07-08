@@ -57,6 +57,8 @@ class FamilyMembership(models.Model):
 
     ROLE_CHOICES = [
         ("parent", "Parent"),
+        ("guardian", "Guardian"),
+        ("grandparent", "Grandparent"),
         ("teacher", "Teacher"),
         ("admin", "Admin"),
     ]
@@ -131,8 +133,20 @@ class Invitation(models.Model):
         ]
         ordering = ["-created_at"]
 
+    ROLE_LABELS = {
+        "parent": "Co-parent",
+        "guardian": "Guardian",
+        "grandparent": "Grandparent",
+        "teacher": "Teacher",
+        "admin": "Admin",
+    }
+
     def __str__(self):
         return f"Invite {self.email} → {self.family} ({self.status})"
+
+    @property
+    def role_display(self):
+        return self.ROLE_LABELS.get(self.role, self.role.title())
 
     @property
     def is_expired(self):

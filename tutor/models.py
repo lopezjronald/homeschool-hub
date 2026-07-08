@@ -155,3 +155,68 @@ class Material(models.Model):
     def visible_to_student(self):
         """A material only reaches the student once approved."""
         return self.is_approved
+
+    @property
+    def has_pages(self):
+        """True once the material has illustrated panels (a real visual manga)."""
+        return self.panels.exists()
+
+
+class MangaPanel(models.Model):
+    """One illustrated panel of a Material's manga page.
+
+    The artwork is an AI-generated image (Replicate), stored durably as a
+    committed static file (``image_path``) for authored curriculum manga, or in
+    media/object storage (``image``) for uploads. ``bubbles`` is a list of
+    speech/thought/caption/sfx overlays positioned as percentages over the art,
+    so the page renders with CSS — no plain-text script.
+    """
+
+    SPAN_NORMAL = "normal"
+    SPAN_WIDE = "wide"
+    SPAN_TALL = "tall"
+    SPAN_FULL = "full"
+    SPAN_CHOICES = [
+        (SPAN_NORMAL, "Normal"),
+        (SPAN_WIDE, "Wide (2 columns)"),
+        (SPAN_TALL, "Tall (2 rows)"),
+        (SPAN_FULL, "Full width"),
+    ]
+
+    material = models.ForeignKey(
+        Material,
+        on_delete=models.CASCADE,
+        related_name="panels",
+    )
+    order = models.PositiveIntegerField(help_text="Reading order within the page.")
+    image = models.FileField(upload_to="manga/%Y/%m/", blank=True)
+    image_path = models.CharField(
+        max_length=300,
+        blank=True,
+        help_text="Path under static/ for committed panel art (e.g. 'manga/number-besties/p1.png').",
+    )
+    alt = models.CharField(max_length=300, blank=True, help_text="Accessible description of the art.")
+    span = models.CharField(max_length=10, choices=SPAN_CHOICES, default=SPAN_NORMAL)
+    caption = models.CharField(max_length=400, blank=True, help_text="Narrator caption box.")
+    bubbles = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="List of {speaker, text, kind, x, y} overlays (x/y are 0-100 percentages).",
+    )
+    prompt = models.TextField(blank=True, help_text="The image-gen prompt used to draw this panel.")
+
+    class Meta:
+        ordering = ["order"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["material", "order"],
+                name="unique_panel_order_per_material",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.material.title} — panel {self.order}"
+
+    @property
+    def has_art(self):
+        return bool(self.image_path or self.image)

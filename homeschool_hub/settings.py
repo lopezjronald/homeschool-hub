@@ -232,6 +232,16 @@ ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 TUTOR_MODEL = os.getenv("TUTOR_MODEL", "claude-opus-4-8")
 
 # ---------------------------------------------------------------------------
+# Manga art generation (Replicate) — server-side only, disabled until a token
+# is set. MANGA_IMAGE_MODEL is any Replicate slug; nano-banana-2 holds several
+# characters consistent across panels via reference images. MANGA_REFERENCE_KEY
+# is the model's input field name for reference images (varies by model).
+# ---------------------------------------------------------------------------
+REPLICATE_API_TOKEN = os.getenv("REPLICATE_API_TOKEN", "")
+MANGA_IMAGE_MODEL = os.getenv("MANGA_IMAGE_MODEL", "google/nano-banana-2")
+MANGA_REFERENCE_KEY = os.getenv("MANGA_REFERENCE_KEY", "image_input")
+
+# ---------------------------------------------------------------------------
 # Security Settings (env-driven, safe defaults)
 # ---------------------------------------------------------------------------
 # In production (DEBUG=False), these default to strict/secure values.

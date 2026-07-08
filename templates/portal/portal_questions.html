@@ -69,7 +69,8 @@
                   placeholder="Type your answer here…"
                   autocomplete="off" autocorrect="off" autocapitalize="off"
                   spellcheck="false" data-gramm="false"
-                  {% if sheet.is_submitted %}readonly{% endif %}>{{ q.my_answer }}</textarea>
+                  {% if sheet.is_submitted %}readonly{% endif %}>
+{{ q.my_answer }}</textarea>
                 <div class="portal-wordcount text-muted" data-count-for="{{ q.pk }}"></div>
               </div>
             {% endfor %}

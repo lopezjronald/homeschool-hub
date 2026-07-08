@@ -1,5 +1,11 @@
+import uuid
+
 from django.conf import settings
 from django.db import models
+
+
+def _new_portal_key():
+    return uuid.uuid4().hex
 
 
 class Student(models.Model):
@@ -46,6 +52,12 @@ class Student(models.Model):
         choices=LEVEL_CHOICES,
         verbose_name="level",
         help_text="The child's year of school (their Level).",
+    )
+    portal_key = models.CharField(
+        max_length=32,
+        default=_new_portal_key,
+        editable=False,
+        help_text="Rotate to revoke this child's existing portal link.",
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

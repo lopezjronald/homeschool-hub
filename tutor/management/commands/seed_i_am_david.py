@@ -19,7 +19,7 @@ from core.utils import get_active_family
 from curricula.models import Curriculum, CurriculumPlacement, Lesson
 from curricula.services import apply_blueprint, get_blueprint
 from students.models import Student
-from tutor.models import Question, QuestionSet
+from tutor.models import Question, QuestionSet, ResponseSheet
 
 # ---------------------------------------------------------------------------
 # Shared rubric text (verbatim Blackbird points + the guide's writing rubric),
@@ -610,6 +610,13 @@ class Command(BaseCommand):
                 defaults={"category": category, "prompt": prompt, "hint": hint},
             )
             count += 1
-        # Drop stale questions beyond the current list.
-        qset.questions.filter(order__gt=len(questions)).delete()
+        # Drop stale questions beyond the current list — but never delete one a
+        # child has already answered (that would orphan their saved response).
+        stale = qset.questions.filter(order__gt=len(questions))
+        answered = set()
+        for sheet in ResponseSheet.objects.filter(question_set=qset):
+            answered |= {
+                int(k) for k, v in (sheet.answers or {}).items() if str(v).strip() and k.isdigit()
+            }
+        stale.exclude(pk__in=answered).delete()
         return 1, count

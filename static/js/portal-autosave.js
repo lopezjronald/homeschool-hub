@@ -17,6 +17,7 @@
   var timer = null;
   var dirty = false;
   var saving = false;
+  var submitting = false; // set on real submit — stops blur/beacon racing the POST
 
   function setStatus(text, cls) {
     if (!statusEl) return;
@@ -62,9 +63,21 @@
       body: JSON.stringify({ answers: collect() }),
       credentials: "same-origin",
     })
-      .then(function (resp) { return resp.json(); })
-      .then(function (data) {
+      .then(function (resp) {
         saving = false;
+        if (resp.status === 409) {   // already turned in (e.g. another tab)
+          lockAsSubmitted();
+          return null;
+        }
+        if (!resp.ok) {              // terminal client error — do NOT hot-loop
+          dirty = true;
+          setStatus("Couldn't save — please tell your teacher", "is-error");
+          return null;
+        }
+        return resp.json();
+      })
+      .then(function (data) {
+        if (!data) return;
         if (data.ok) {
           setStatus("Saved ✓ " + data.saved_at, "is-saved");
         } else {
@@ -72,19 +85,26 @@
           setStatus("Couldn't save — check your connection", "is-error");
         }
         // Anything typed while the request was in flight gets its own save.
-        if (dirty) { clearTimeout(timer); timer = setTimeout(save, 800); }
+        if (dirty && !submitting) { clearTimeout(timer); timer = setTimeout(save, 800); }
       })
-      .catch(function () {
+      .catch(function () {           // network error only — retry gently
         saving = false;
         dirty = true;
         setStatus("Couldn't save — check your connection", "is-error");
-        clearTimeout(timer);
-        timer = setTimeout(save, 5000); // retry while the child keeps working
+        if (!submitting) { clearTimeout(timer); timer = setTimeout(save, 5000); }
       });
+  }
+
+  function lockAsSubmitted() {
+    submitting = true; // stops further saves, blur saves, and the beacon
+    clearTimeout(timer);
+    setStatus("Already turned in ✓", "is-saved");
+    areas.forEach(function (t) { t.readOnly = true; });
   }
 
   areas.forEach(function (t) {
     t.addEventListener("input", function () {
+      if (submitting) return;
       dirty = true;
       setStatus("Typing…", "");
       refreshCounts();
@@ -92,21 +112,27 @@
       timer = setTimeout(save, IDLE_MS);
     });
     t.addEventListener("blur", function () {
-      if (dirty) { clearTimeout(timer); save(); }
+      if (dirty && !submitting) { clearTimeout(timer); save(); }
     });
   });
 
   // Last-chance save when the page is closed or backgrounded.
   document.addEventListener("visibilitychange", function () {
-    if (document.visibilityState === "hidden" && dirty && navigator.sendBeacon) {
+    if (document.visibilityState === "hidden" && dirty && !submitting && navigator.sendBeacon) {
       var payload = new Blob([JSON.stringify({ answers: collect() })], { type: "application/json" });
       navigator.sendBeacon(url, payload);
       dirty = false;
     }
   });
 
-  // Don't autosave-race the real submit.
-  form.addEventListener("submit", function () { clearTimeout(timer); });
+  // On real submit: stop autosaving and lock the button so a slow connection
+  // can't be double-clicked into two submissions.
+  form.addEventListener("submit", function () {
+    submitting = true;
+    clearTimeout(timer);
+    var btn = form.querySelector("button[type=submit]");
+    if (btn) { btn.disabled = true; btn.textContent = "Turning it in…"; }
+  });
 
   refreshCounts();
 })();

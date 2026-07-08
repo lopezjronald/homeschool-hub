@@ -164,6 +164,13 @@
   font-size: 0.82rem;
   color: #7a8781;
   transition: color 0.2s ease;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+/* On narrow screens let the header wrap so the status sits under the title
+   instead of collapsing into a jittery sliver. */
+@media (max-width: 480px) {
+  .portal-card > .card-header { flex-wrap: wrap; gap: 2px 8px; }
 }
 .portal-save-status.is-saving { color: #854F0B; }
 .portal-save-status.is-saved { color: var(--ss-green, #1E7A50); font-weight: 600; }

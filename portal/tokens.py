@@ -11,18 +11,26 @@ from django.core import signing
 from students.models import Student
 
 SALT = "student-portal"
-MAX_AGE = 365 * 24 * 60 * 60  # 1 year
+MAX_AGE = 180 * 24 * 60 * 60  # 6 months — long enough to bookmark, short enough to age out
 
 
 def make_portal_token(student):
-    """Return a signed token that unlocks this student's portal."""
-    return signing.dumps({"student_id": student.pk}, salt=SALT)
+    """Return a signed token that unlocks this student's portal.
+
+    The token carries the child's rotatable ``portal_key``; rotating that key
+    (e.g. via ``portal_link --rotate``) instantly invalidates any link that
+    leaked, without a global SECRET_KEY change.
+    """
+    return signing.dumps({"student_id": student.pk, "k": student.portal_key}, salt=SALT)
 
 
 def student_from_token(token, max_age=MAX_AGE):
-    """Resolve a portal token to a Student, or None if invalid/expired."""
+    """Resolve a portal token to a Student, or None if invalid/expired/revoked."""
     try:
         data = signing.loads(token, salt=SALT, max_age=max_age)
-        return Student.objects.select_related("family", "parent").get(pk=data["student_id"])
-    except (signing.BadSignature, signing.SignatureExpired, KeyError, Student.DoesNotExist):
+        student = Student.objects.select_related("family", "parent").get(pk=data["student_id"])
+    except (signing.BadSignature, signing.SignatureExpired, KeyError, TypeError, Student.DoesNotExist):
         return None
+    if data.get("k") != student.portal_key:
+        return None  # link was revoked (key rotated)
+    return student

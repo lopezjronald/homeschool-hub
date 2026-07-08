@@ -37,6 +37,17 @@ class PortalTokenTests(TestCase):
         resp = self.client.get(reverse("portal:portal_home", kwargs={"token": "garbage"}))
         self.assertEqual(resp.status_code, 404)
 
+    def test_rotating_key_revokes_link(self):
+        from students.models import _new_portal_key
+
+        token = make_portal_token(self.kid)
+        self.assertEqual(student_from_token(token), self.kid)
+        self.kid.portal_key = _new_portal_key()
+        self.kid.save(update_fields=["portal_key"])
+        # old token no longer resolves; a fresh one does
+        self.assertIsNone(student_from_token(token))
+        self.assertEqual(student_from_token(make_portal_token(self.kid)), self.kid)
+
 
 class PortalCourseTests(TestCase):
     """The full Kaylin flow: seeded course -> portal -> autosave -> submit."""
@@ -136,6 +147,28 @@ class PortalCourseTests(TestCase):
         resp = self.client.get(self._url("portal_questions", set_pk=self.first_set.pk))
         self.assertContains(resp, "Turned in!")
         self.assertContains(resp, "readonly")
+
+    def test_double_submit_creates_one_worklog_entry(self):
+        q = self.first_set.questions.first()
+        url = self._url("portal_questions", set_pk=self.first_set.pk)
+        self.client.post(url, data={f"answer_{q.pk}": "First submit."})
+        # a second POST (double-click / stale tab) must NOT create a 2nd entry
+        self.client.post(url, data={f"answer_{q.pk}": "Second submit changes nothing."})
+        sheets = ResponseSheet.objects.filter(question_set=self.first_set, child=self.kaylin)
+        self.assertEqual(sheets.count(), 1)
+        self.assertEqual(
+            WorkLogEntry.objects.filter(child=self.kaylin, description__contains="Section 1").count(),
+            1,
+        )
+        self.assertIn("First submit.", sheets.first().work_entry.description)
+
+    def test_autosave_rejects_non_object_payload(self):
+        for bad in ("[]", '"hi"', "5", "null"):
+            resp = self.client.post(
+                self._url("portal_autosave", set_pk=self.first_set.pk),
+                data=bad, content_type="application/json",
+            )
+            self.assertEqual(resp.status_code, 400, bad)
 
     def test_sibling_cannot_open_other_childs_course(self):
         violet_token = make_portal_token(self.violet)

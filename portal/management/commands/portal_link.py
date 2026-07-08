@@ -24,6 +24,10 @@ class Command(BaseCommand):
             "--base-url", default="",
             help="Absolute base URL (e.g. https://…herokuapp.com). Omit for a relative path.",
         )
+        parser.add_argument(
+            "--rotate", action="store_true",
+            help="First rotate each child's portal key — instantly revoking any old link.",
+        )
 
     def handle(self, *args, **options):
         User = get_user_model()
@@ -40,6 +44,12 @@ class Command(BaseCommand):
 
         base = options["base_url"].rstrip("/")
         for child in children:
+            if options["rotate"]:
+                from students.models import _new_portal_key
+
+                child.portal_key = _new_portal_key()
+                child.save(update_fields=["portal_key"])
+                self.stdout.write(self.style.WARNING(f"Rotated {child.first_name}'s key — old link revoked."))
             path = reverse("portal:portal_home", kwargs={"token": make_portal_token(child)})
             self.stdout.write(f"{child.get_full_name()} ({child.get_grade_level_display()}):")
             self.stdout.write(self.style.SUCCESS(f"  {base}{path}"))

@@ -11,6 +11,7 @@ from itertools import groupby
 from django.db.models import Q
 from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.db import transaction
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
@@ -96,11 +97,19 @@ def portal_home(request, token):
     # Group the writing work by curriculum section so a 5-week course reads as
     # five tidy groups instead of a wall of cards.
     sets = _annotated_question_sets(student)
+    # Key the grouping on (curriculum, chapter number) — the same discriminator
+    # the queryset is ordered by — so distinct chapters never merge and a
+    # chapter never splits into two groups. Use the title only for display.
     set_groups = [
-        {"heading": f"{cur_name} — {ch_title}", "sets": list(items)}
-        for (cur_name, ch_title), items in groupby(
-            sets, key=lambda s: (s.lesson.chapter.curriculum.name, s.lesson.chapter.title),
+        {
+            "heading": f"{items[0].lesson.chapter.curriculum.name} — {items[0].lesson.chapter.title}",
+            "sets": items,
+        }
+        for _key, group in groupby(
+            sets,
+            key=lambda s: (s.lesson.chapter.curriculum_id, s.lesson.chapter.number),
         )
+        for items in [list(group)]
     ]
 
     return render(request, "portal/portal_home.html", {
@@ -132,30 +141,15 @@ def portal_questions(request, token, set_pk):
     """The response form: no autocorrect, autosaves as the child types."""
     student = _resolve_student(token)
     question_set = get_object_or_404(_visible_question_sets(student), pk=set_pk)
+
+    if request.method == "POST":
+        _submit_sheet(student, question_set, request.POST)
+        return redirect("portal:portal_questions", token=token, set_pk=set_pk)
+
     sheet = _sheet_for(student, question_set)
     questions = list(question_set.questions.all())
     for q in questions:
         q.my_answer = sheet.answer_for(q)
-
-    if request.method == "POST" and not sheet.is_submitted:
-        # Final submit (autosave arrives via the JSON endpoint).
-        _merge_answers(sheet, request.POST)
-        sheet.status = ResponseSheet.SUBMITTED
-        sheet.submitted_at = timezone.now()
-        sheet.work_entry = WorkLogEntry.objects.create(
-            parent=student.parent,
-            family=student.family,
-            child=student,
-            curriculum=question_set.lesson.chapter.curriculum,
-            subject=question_set.lesson.chapter.curriculum.subject or "Literature",
-            description=(
-                f"{question_set.title} — submitted from {student.first_name}'s portal.\n\n"
-                + sheet.as_worklog_text()
-            ),
-            date=timezone.localdate(),
-        )
-        sheet.save()
-        return redirect("portal:portal_questions", token=token, set_pk=set_pk)
 
     return render(request, "portal/portal_questions.html", {
         "student": student,
@@ -164,6 +158,39 @@ def portal_questions(request, token, set_pk):
         "questions": questions,
         "sheet": sheet,
     })
+
+
+def _submit_sheet(student, question_set, post_data):
+    """Atomically turn in a sheet: exactly one DRAFT→SUBMITTED transition.
+
+    Locks the sheet row so a double-click or two-tab race can't create two
+    WorkLogEntries; a request that loses the race sees SUBMITTED and no-ops.
+    """
+    with transaction.atomic():
+        sheet, _ = ResponseSheet.objects.select_for_update().get_or_create(
+            question_set=question_set, child=student,
+        )
+        if sheet.is_submitted:
+            return sheet  # someone already turned it in
+
+        _merge_answers(sheet, post_data)
+        sheet.status = ResponseSheet.SUBMITTED
+        sheet.submitted_at = timezone.now()
+        curriculum = question_set.lesson.chapter.curriculum
+        sheet.work_entry = WorkLogEntry.objects.create(
+            parent=student.parent,
+            family=student.family,
+            child=student,
+            curriculum=curriculum,
+            subject=curriculum.subject or "Literature",
+            description=(
+                f"{question_set.title} — submitted from {student.first_name}'s portal.\n\n"
+                + sheet.as_worklog_text()
+            ),
+            date=timezone.localdate(),
+        )
+        sheet.save()
+        return sheet
 
 
 def _merge_answers(sheet, data):
@@ -191,23 +218,28 @@ def portal_autosave(request, token, set_pk):
     """
     student = _resolve_student(token)
     question_set = get_object_or_404(_visible_question_sets(student), pk=set_pk)
-    sheet = _sheet_for(student, question_set)
-    if sheet.is_submitted:
-        return JsonResponse({"ok": False, "error": "already submitted"}, status=409)
 
     try:
         payload = json.loads(request.body.decode("utf-8"))
-        posted = payload.get("answers", {})
     except (ValueError, UnicodeDecodeError):
+        return JsonResponse({"ok": False, "error": "bad payload"}, status=400)
+    posted = payload.get("answers") if isinstance(payload, dict) else None
+    if not isinstance(posted, dict):
         return JsonResponse({"ok": False, "error": "bad payload"}, status=400)
 
     question_ids = set(str(pk) for pk in question_set.questions.values_list("pk", flat=True))
-    answers = dict(sheet.answers or {})
-    for qid, text in posted.items():
-        if str(qid) in question_ids and isinstance(text, str):
-            answers[str(qid)] = text
-    sheet.answers = answers
-    sheet.save(update_fields=["answers", "updated_at"])
+    with transaction.atomic():
+        sheet, _ = ResponseSheet.objects.select_for_update().get_or_create(
+            question_set=question_set, child=student,
+        )
+        if sheet.is_submitted:
+            return JsonResponse({"ok": False, "error": "already submitted"}, status=409)
+        answers = dict(sheet.answers or {})
+        for qid, text in posted.items():
+            if str(qid) in question_ids and isinstance(text, str):
+                answers[str(qid)] = text
+        sheet.answers = answers
+        sheet.save(update_fields=["answers", "updated_at"])
 
     return JsonResponse({
         "ok": True,

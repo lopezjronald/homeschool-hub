@@ -26,11 +26,17 @@ def assess_create(request, entry_pk):
     if request.method == "POST":
         form = AssessmentRequestForm(request.POST)
         if form.is_valid():
+            # Judge at the curriculum's academic grade when the work links one;
+            # otherwise fall back to the child's school Level.
+            if entry.curriculum and entry.curriculum.grade_level:
+                grade_context = entry.curriculum.get_grade_level_display()
+            else:
+                grade_context = entry.child.get_grade_level_display()
             try:
                 result = ai.grade_work(
                     rubric=form.cleaned_data["rubric"],
                     answers=form.cleaned_data["answers"],
-                    grade_level=entry.child.get_grade_level_display(),
+                    grade_level=grade_context,
                     subject=entry.subject,
                 )
             except ai.GraderNotConfigured:

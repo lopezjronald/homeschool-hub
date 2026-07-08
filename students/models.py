@@ -5,21 +5,25 @@ from django.db import models
 class Student(models.Model):
     """A child profile managed by a parent user."""
 
-    GRADE_CHOICES = [
+    # A child's school Level is their year of school — distinct from a
+    # curriculum's academic grade. A child at Level 3 might work a Grade 3
+    # math and a Grade 5 reading curriculum. (Field name kept as grade_level
+    # for storage/back-compat; it represents the child's Level.)
+    LEVEL_CHOICES = [
         ("PREK", "Pre-K"),
         ("K", "Kindergarten"),
-        ("G01", "1st Grade"),
-        ("G02", "2nd Grade"),
-        ("G03", "3rd Grade"),
-        ("G04", "4th Grade"),
-        ("G05", "5th Grade"),
-        ("G06", "6th Grade"),
-        ("G07", "7th Grade"),
-        ("G08", "8th Grade"),
-        ("G09", "9th Grade"),
-        ("G10", "10th Grade"),
-        ("G11", "11th Grade"),
-        ("G12", "12th Grade"),
+        ("G01", "Level 1"),
+        ("G02", "Level 2"),
+        ("G03", "Level 3"),
+        ("G04", "Level 4"),
+        ("G05", "Level 5"),
+        ("G06", "Level 6"),
+        ("G07", "Level 7"),
+        ("G08", "Level 8"),
+        ("G09", "Level 9"),
+        ("G10", "Level 10"),
+        ("G11", "Level 11"),
+        ("G12", "Level 12"),
     ]
 
     parent = models.ForeignKey(
@@ -37,7 +41,12 @@ class Student(models.Model):
     first_name = models.CharField(max_length=100)
     last_name = models.CharField(max_length=100, blank=True)
     date_of_birth = models.DateField(null=True, blank=True)
-    grade_level = models.CharField(max_length=4, choices=GRADE_CHOICES)
+    grade_level = models.CharField(
+        max_length=4,
+        choices=LEVEL_CHOICES,
+        verbose_name="level",
+        help_text="The child's year of school (their Level).",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

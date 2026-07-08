@@ -566,11 +566,11 @@ class Command(BaseCommand):
                 rubric=JOURNAL_RUBRIC,
                 questions=[
                     ("character",
-                     f"CHARACTERS — as you read, note interesting, important and new things "
-                     f"you learn about: {section['characters']}. Describe such things as their "
-                     f"personality and appearance, including details about the way they act, "
-                     f"think and feel.",
-                     "Bullet points are perfect! Describe who each character IS — not what they do (save that for Plot)."),
+                     "CHARACTERS — as you read, note interesting, important, and new things "
+                     "about each person below: their personality and appearance, and details "
+                     "about the way they act, think, and feel.",
+                     "Bullet points are perfect! Describe who each character IS — not what they do (save that for Plot).",
+                     {"response_type": Question.TYPE_CHARACTERS, "passage": section["characters"]}),
                     ("setting",
                      "SETTING — as you read, note where the story is happening. Explain how "
                      "the setting is significant to the story and include any descriptive "
@@ -720,11 +720,19 @@ class Command(BaseCommand):
             },
         )
         count = 0
-        for i, (category, prompt, hint) in enumerate(questions, start=1):
+        for i, item in enumerate(questions, start=1):
+            # Each question is (category, prompt, hint) with an optional 4th
+            # element: a dict of extra Question fields (response_type, passage).
+            category, prompt, hint = item[0], item[1], item[2]
+            extra = item[3] if len(item) > 3 else {}
             Question.objects.update_or_create(
                 question_set=qset,
                 order=i,
-                defaults={"category": category, "prompt": prompt, "hint": hint},
+                defaults={
+                    "category": category, "prompt": prompt, "hint": hint,
+                    "response_type": extra.get("response_type", Question.TYPE_TEXT),
+                    "passage": extra.get("passage", ""),
+                },
             )
             count += 1
         # Drop stale questions beyond the current list — but never delete one a

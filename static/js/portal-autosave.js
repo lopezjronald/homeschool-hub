@@ -54,14 +54,20 @@
     }
   }
 
-  // Called by the markup canvas after each stroke so drawings autosave too.
-  window.portalMarkDirty = function () {
+  // Generic "the child changed a custom widget" notifier — schedules a save
+  // just like typing does. Used by the markup canvas and the character boxes.
+  window.portalTouch = function (label) {
     if (submitting) return;
     dirty = true;
-    setStatus("Drawing…", "");
+    setStatus(label || "Typing…", "");
     refreshCounts();
     clearTimeout(timer);
     timer = setTimeout(save, IDLE_MS);
+  };
+
+  // Called by the markup canvas after each stroke so drawings autosave too.
+  window.portalMarkDirty = function () {
+    window.portalTouch("Drawing…");
   };
 
   function save() {

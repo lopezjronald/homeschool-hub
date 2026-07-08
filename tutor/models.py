@@ -1,3 +1,5 @@
+import json
+
 from django.conf import settings
 from django.db import models
 
@@ -334,9 +336,11 @@ class Question(models.Model):
 
     TYPE_TEXT = "text"
     TYPE_MARKUP = "markup"
+    TYPE_CHARACTERS = "characters"
     RESPONSE_TYPES = [
         (TYPE_TEXT, "Typed answer"),
         (TYPE_MARKUP, "Mark up the sentence (draw)"),
+        (TYPE_CHARACTERS, "A box per character"),
     ]
 
     question_set = models.ForeignKey(
@@ -350,7 +354,8 @@ class Question(models.Model):
     response_type = models.CharField(max_length=10, choices=RESPONSE_TYPES, default=TYPE_TEXT)
     passage = models.TextField(
         blank=True,
-        help_text="For markup questions: the sentence/text the child draws on.",
+        help_text="For markup questions: the sentence/text the child draws on. "
+                  "For character questions: the character names, separated by '·'.",
     )
     hint = models.TextField(
         blank=True,
@@ -360,6 +365,21 @@ class Question(models.Model):
     @property
     def is_markup(self):
         return self.response_type == self.TYPE_MARKUP
+
+    @property
+    def is_characters(self):
+        return self.response_type == self.TYPE_CHARACTERS
+
+    @property
+    def character_names(self):
+        """Character names for a character question (from ``passage``).
+
+        Accepts '·', '•', or newline separators; trims and drops blanks.
+        """
+        raw = self.passage or ""
+        for sep in ("·", "•", "\n"):
+            raw = raw.replace(sep, "\x00")
+        return [name.strip() for name in raw.split("\x00") if name.strip()]
 
     class Meta:
         ordering = ["order"]
@@ -439,7 +459,8 @@ class ResponseSheet(models.Model):
         """Format the Q&A as readable text for the work log / grader.
 
         Markup answers are drawing strokes, not prose, so they're summarized as
-        the sentence plus whether the child annotated it.
+        the sentence plus whether the child annotated it. Character answers are a
+        per-character map, so each character is listed with what the child wrote.
         """
         lines = []
         for q in self.question_set.questions.all():
@@ -447,9 +468,23 @@ class ResponseSheet(models.Model):
             if q.is_markup:
                 marked = "yes" if raw and raw != "[]" else "no"
                 answer = f'[marked up the sentence "{q.passage}" — annotated: {marked}]'
+            elif q.is_characters:
+                answer = self._format_characters(raw)
             else:
                 answer = raw or "(no answer)"
             lines.append(f"Q{q.order} [{q.get_category_display()}]: {q.prompt}")
             lines.append(f"A: {answer}")
             lines.append("")
         return "\n".join(lines).strip()
+
+    @staticmethod
+    def _format_characters(raw):
+        """Render a character answer ({name: text} JSON) as readable lines."""
+        try:
+            data = json.loads(raw) if raw else {}
+        except (ValueError, TypeError):
+            data = {}
+        if not isinstance(data, dict) or not data:
+            return "(no answer)"
+        parts = [f"{name}: {text}" for name, text in data.items() if str(text).strip()]
+        return "\n" + "\n".join(parts) if parts else "(no answer)"

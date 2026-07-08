@@ -181,6 +181,19 @@
   padding: 0.4rem 0.7rem;
 }
 
+/* ---- character boxes: one box per character ---- */
+.character-field { margin-bottom: 0.9rem; }
+.character-name {
+  display: inline-block;
+  font-weight: 700;
+  color: var(--ss-forest, #0F3D2E);
+  background: rgba(30, 122, 80, 0.1);
+  border-radius: 8px;
+  padding: 0.15rem 0.6rem;
+  margin-bottom: 0.35rem;
+  font-size: 1.02rem;
+}
+
 /* ---- markup: draw on the sentence ---- */
 .markup-widget { margin-top: 0.5rem; }
 .markup-toolbar {

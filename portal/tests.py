@@ -66,6 +66,11 @@ class PortalCourseTests(TestCase):
         call_command("seed_i_am_david", "--for-user", "dad", stdout=StringIO())
         cls.token = make_portal_token(cls.kaylin)
         cls.first_set = QuestionSet.objects.order_by("pk").first()
+        # The Journal's Q1 is now a per-character question; text-answer flow
+        # tests target a plain typed question instead.
+        cls.first_text_q = cls.first_set.questions.filter(
+            response_type=Question.TYPE_TEXT,
+        ).order_by("order").first()
 
     def _url(self, name, **kwargs):
         return reverse(f"portal:{name}", kwargs={"token": self.token, **kwargs})
@@ -127,6 +132,16 @@ class PortalCourseTests(TestCase):
         # and a big Continue points at the next unstarted set
         self.assertContains(resp, "Continue")
 
+    def test_seeded_journal_uses_per_character_boxes(self):
+        from tutor.models import Question
+
+        journal = QuestionSet.objects.filter(title__endswith="Journal").first()
+        char_q = journal.questions.get(order=1)
+        self.assertEqual(char_q.response_type, Question.TYPE_CHARACTERS)
+        self.assertIn("David", char_q.character_names)          # names live in passage now
+        self.assertGreaterEqual(len(char_q.character_names), 2)  # a box per character
+        self.assertNotIn("·", char_q.prompt)                    # names no longer crammed in the prompt
+
     def test_portal_subject_rejects_sibling(self):
         curriculum = Curriculum.objects.get(name__contains="I Am David")
         violet_token = make_portal_token(self.violet)
@@ -187,7 +202,7 @@ class PortalCourseTests(TestCase):
         self.assertNotIn("99999", sheet.answers)
 
     def test_submit_creates_worklog_entry_and_locks(self):
-        q = self.first_set.questions.first()
+        q = self.first_text_q
         resp = self.client.post(
             self._url("portal_questions", set_pk=self.first_set.pk),
             data={f"answer_{q.pk}": "David escapes bravely."},
@@ -211,7 +226,7 @@ class PortalCourseTests(TestCase):
         self.assertContains(resp, "readonly")
 
     def test_double_submit_creates_one_worklog_entry(self):
-        q = self.first_set.questions.first()
+        q = self.first_text_q
         url = self._url("portal_questions", set_pk=self.first_set.pk)
         self.client.post(url, data={f"answer_{q.pk}": "First submit."})
         # a second POST (double-click / stale tab) must NOT create a 2nd entry
@@ -255,7 +270,7 @@ class PortalCourseTests(TestCase):
         self.assertContains(resp, "Copy link")
 
     def test_assess_form_prefills_blackbird_rubric(self):
-        q = self.first_set.questions.first()
+        q = self.first_text_q
         self.client.post(
             self._url("portal_questions", set_pk=self.first_set.pk),
             data={f"answer_{q.pk}": "My journal notes."},
@@ -459,3 +474,70 @@ class LiteratureStandardTests(TestCase):
         guide = self.client.get(reverse("tutor:discussion_guide", kwargs={"curriculum_pk": curriculum.pk}))
         self.assertContains(guide, "Literary Toolbox")
         self.assertContains(guide, "Onomatopoeia")
+
+
+class CharacterQuestionTests(TestCase):
+    """A 'characters' question renders one labeled box per character."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.parent = User.objects.create_user(username="ch", email="ch@e.com", password="pw")
+        cls.family = Family.objects.create(name="Char Fam")
+        FamilyMembership.objects.create(user=cls.parent, family=cls.family, role="parent")
+        cls.violet = Student.objects.create(
+            parent=cls.parent, first_name="Violet", grade_level="G03", family=cls.family,
+        )
+        cls.cur = Curriculum.objects.create(
+            parent=cls.parent, name="I Am David", subject="Literature", family=cls.family,
+        )
+        ch = Chapter.objects.create(curriculum=cls.cur, number=1, title="Chapters 1–2")
+        cls.lesson = Lesson.objects.create(chapter=ch, order=1, number=1, title="Journal")
+        CurriculumPlacement.objects.create(child=cls.violet, curriculum=cls.cur, current_lesson=cls.lesson)
+        cls.qset = QuestionSet.objects.create(
+            lesson=cls.lesson, title="Section 1 · Journal", family=cls.family,
+            status=QuestionSet.APPROVED, intro="Note who each character is.",
+        )
+        cls.q = Question.objects.create(
+            question_set=cls.qset, order=1, category="character",
+            response_type=Question.TYPE_CHARACTERS, passage="David · The Man · Johannes",
+            prompt="CHARACTERS — note who each person is.",
+        )
+        cls.token = make_portal_token(cls.violet)
+
+    def _url(self, name, **kw):
+        return reverse(f"portal:{name}", kwargs={"token": self.token, **kw})
+
+    def test_character_names_parses(self):
+        self.assertEqual(self.q.character_names, ["David", "The Man", "Johannes"])
+
+    def test_renders_a_box_per_character(self):
+        resp = self.client.get(self._url("portal_questions", set_pk=self.qset.pk))
+        self.assertEqual(resp.status_code, 200)
+        for name in ("David", "The Man", "Johannes"):
+            self.assertContains(resp, name)
+        self.assertContains(resp, "character-widget")
+        self.assertEqual(resp.content.decode().count("character-box"), 3)   # one box each
+        self.assertContains(resp, "portal-characters")                      # widget JS loaded
+        self.assertNotContains(resp, f'id="q{self.q.pk}"')                  # NOT one shared textarea
+
+    def test_autosave_then_submit_stores_per_character_map(self):
+        answer = '{"David": "A brave, careful boy.", "Johannes": "David\'s wise friend."}'
+        resp = self.client.post(
+            self._url("portal_autosave", set_pk=self.qset.pk),
+            data=json.dumps({"answers": {str(self.q.pk): answer}}),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.client.post(self._url("portal_questions", set_pk=self.qset.pk), data={f"answer_{self.q.pk}": answer})
+        sheet = ResponseSheet.objects.get(question_set=self.qset, child=self.violet)
+        self.assertTrue(sheet.is_submitted)
+        self.assertEqual(sheet.answers[str(self.q.pk)], answer)
+        text = sheet.as_worklog_text()
+        self.assertIn("David: A brave, careful boy.", text)
+        self.assertIn("Johannes: David's wise friend.", text)
+
+    def test_worklog_text_handles_blank_and_garbage(self):
+        sheet = ResponseSheet.objects.create(question_set=self.qset, child=self.violet, answers={str(self.q.pk): ""})
+        self.assertIn("(no answer)", sheet.as_worklog_text())
+        sheet.answers = {str(self.q.pk): "not json"}
+        self.assertIn("(no answer)", sheet.as_worklog_text())   # never crashes

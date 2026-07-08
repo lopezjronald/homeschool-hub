@@ -54,7 +54,7 @@
                   <span class="portal-chip chip-{{ q.category }}">{{ q.get_category_display }}</span>
                 </div>
                 {% if q.prompt %}
-                  <label class="portal-prompt" {% if not q.is_markup %}for="q{{ q.pk }}"{% endif %}>{{ q.prompt|linebreaksbr }}</label>
+                  <label class="portal-prompt" {% if not q.is_markup and not q.is_characters %}for="q{{ q.pk }}"{% endif %}>{{ q.prompt|linebreaksbr }}</label>
                 {% endif %}
                 {% if q.hint %}
                   <details class="portal-hint">
@@ -63,7 +63,23 @@
                   </details>
                 {% endif %}
 
-                {% if q.is_markup %}
+                {% if q.is_characters %}
+                  <div class="character-widget">
+                    {% for name in q.character_names %}
+                      <div class="character-field">
+                        <label class="character-name" for="char-{{ q.pk }}-{{ forloop.counter }}">{{ name }}</label>
+                        <textarea id="char-{{ q.pk }}-{{ forloop.counter }}"
+                                  class="form-control portal-answer character-box"
+                                  data-character="{{ name }}" rows="3"
+                                  placeholder="Who is {{ name }}? What are they like?"
+                                  autocomplete="off" autocorrect="off" autocapitalize="off"
+                                  spellcheck="false" data-gramm="false"
+                                  {% if sheet.is_submitted %}readonly{% endif %}></textarea>
+                      </div>
+                    {% endfor %}
+                    <input type="hidden" name="answer_{{ q.pk }}" data-question="{{ q.pk }}" value="{{ q.my_answer }}">
+                  </div>
+                {% elif q.is_markup %}
                   <div class="markup-widget">
                     <div class="markup-toolbar" role="toolbar" aria-label="Drawing tools">
                       <span class="markup-tool-label">Pens:</span>
@@ -122,4 +138,5 @@
 {% block extra_js %}
 <script src="{% static 'js/portal-autosave.js' %}"></script>
 <script src="{% static 'js/portal-markup.js' %}"></script>
+<script src="{% static 'js/portal-characters.js' %}"></script>
 {% endblock %}

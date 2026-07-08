@@ -6,11 +6,12 @@ from django.utils import timezone
 from django.views.decorators.http import require_POST
 
 from core.permissions import editable_queryset, user_can_edit, viewable_queryset
+from curricula.models import Curriculum
 from worklog.models import WorkLogEntry
 
 from . import ai, mastery
 from .forms import AssessmentRequestForm, FinalizeForm
-from .models import MasteryAssessment
+from .models import MasteryAssessment, Material
 
 
 @login_required
@@ -109,3 +110,36 @@ def assess_finalize(request, pk):
     else:
         messages.error(request, "Please choose a valid mastery level.")
     return redirect("tutor:assess_detail", pk=assessment.pk)
+
+
+def _materials_for(user, editable=False):
+    """Materials whose curriculum the user can view (or edit)."""
+    scope = editable_queryset if editable else viewable_queryset
+    curricula = scope(Curriculum.objects.all(), user)
+    return Material.objects.filter(lesson__chapter__curriculum__in=curricula)
+
+
+@login_required
+def material_detail(request, pk):
+    """Show a lesson material (both layers) to the parent."""
+    material = get_object_or_404(
+        _materials_for(request.user).select_related("lesson", "lesson__chapter", "child"),
+        pk=pk,
+    )
+    return render(request, "tutor/material_detail.html", {
+        "material": material,
+        "can_edit": user_can_edit(request.user),
+    })
+
+
+@login_required
+@require_POST
+def material_approve(request, pk):
+    """Approve a draft material so it becomes visible to the student (editors)."""
+    material = get_object_or_404(_materials_for(request.user, editable=True), pk=pk)
+    if material.status == Material.DRAFT:
+        material.status = Material.APPROVED
+        material.approved_at = timezone.now()
+        material.save(update_fields=["status", "approved_at", "updated_at"])
+        messages.success(request, f'"{material.title}" is approved and ready for the student.')
+    return redirect("tutor:material_detail", pk=material.pk)

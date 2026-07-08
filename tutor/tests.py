@@ -1,16 +1,20 @@
+from io import StringIO
 from types import SimpleNamespace
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
+from django.core.management import call_command
 from django.test import TestCase, override_settings
 from django.urls import reverse
 
 from core.models import Family, FamilyMembership
+from curricula.models import Curriculum, Lesson
+from curricula.services import apply_blueprint, get_blueprint
 from students.models import Student
 from worklog.models import WorkLogEntry
 
 from . import ai, mastery
-from .models import MasteryAssessment
+from .models import Material, MasteryAssessment
 
 User = get_user_model()
 
@@ -172,3 +176,78 @@ class AssessViewTests(TestCase):
             data={"final_level": "mastered"},
         )
         self.assertEqual(fin.status_code, 404)
+
+
+class MaterialTests(TestCase):
+    """HH-84: manually-authored lesson materials (the comic) + seed command."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.parent = User.objects.create_user(username="mp", email="mp@e.com", password="pw")
+        cls.other = User.objects.create_user(username="mo", email="mo@e.com", password="pw")
+        cls.teacher = User.objects.create_user(username="mt", email="mt@e.com", password="pw")
+        cls.family = Family.objects.create(name="Material Fam")
+        FamilyMembership.objects.create(user=cls.parent, family=cls.family, role="parent")
+        FamilyMembership.objects.create(user=cls.teacher, family=cls.family, role="teacher")
+        cls.child = Student.objects.create(
+            parent=cls.parent, first_name="Violet", grade_level="G03", family=cls.family,
+        )
+        cls.curriculum = Curriculum.objects.create(
+            parent=cls.parent, name="Dimensions Math 3A", subject="Math", family=cls.family,
+        )
+        apply_blueprint(cls.curriculum, get_blueprint("dimensions_math_3a"))
+        cls.lesson = Lesson.objects.get(
+            chapter__curriculum=cls.curriculum, chapter__number=2, number=6,
+        )
+
+    def test_visible_to_student_requires_approval(self):
+        m = Material(status=Material.DRAFT)
+        self.assertFalse(m.visible_to_student)
+        m.status = Material.APPROVED
+        self.assertTrue(m.visible_to_student)
+
+    def test_seed_command_creates_manga_idempotently(self):
+        call_command("seed_violet_manga", "--curriculum", str(self.curriculum.pk), stdout=StringIO())
+        call_command("seed_violet_manga", "--curriculum", str(self.curriculum.pk), stdout=StringIO())
+        materials = Material.objects.filter(lesson=self.lesson, skill_type=Material.SKILL_MANGA)
+        self.assertEqual(materials.count(), 1)
+        m = materials.first()
+        self.assertIn("Number Besties", m.title)
+        self.assertIn("borrow", m.student_content.lower())
+        self.assertEqual(m.child, self.child)  # linked by --child-name default "Violet"
+
+    def test_parent_can_view_material(self):
+        m = Material.objects.create(
+            lesson=self.lesson, title="Comic", student_content="hi", family=self.family,
+        )
+        self.client.login(username="mp", password="pw")
+        resp = self.client.get(reverse("tutor:material_detail", kwargs={"pk": m.pk}))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "For the student")
+
+    def test_cross_family_cannot_view_material(self):
+        m = Material.objects.create(lesson=self.lesson, title="Comic", student_content="hi")
+        self.client.login(username="mo", password="pw")
+        resp = self.client.get(reverse("tutor:material_detail", kwargs={"pk": m.pk}))
+        self.assertEqual(resp.status_code, 404)
+
+    def test_editor_can_approve(self):
+        m = Material.objects.create(lesson=self.lesson, title="Comic", student_content="hi")
+        self.client.login(username="mp", password="pw")
+        resp = self.client.post(reverse("tutor:material_approve", kwargs={"pk": m.pk}))
+        self.assertEqual(resp.status_code, 302)
+        m.refresh_from_db()
+        self.assertEqual(m.status, Material.APPROVED)
+        self.assertIsNotNone(m.approved_at)
+
+    def test_teacher_can_view_but_not_approve(self):
+        m = Material.objects.create(lesson=self.lesson, title="Comic", student_content="hi")
+        self.client.login(username="mt", password="pw")
+        self.assertEqual(
+            self.client.get(reverse("tutor:material_detail", kwargs={"pk": m.pk})).status_code, 200,
+        )
+        self.assertEqual(
+            self.client.post(reverse("tutor:material_approve", kwargs={"pk": m.pk})).status_code, 404,
+        )
+        m.refresh_from_db()
+        self.assertEqual(m.status, Material.DRAFT)

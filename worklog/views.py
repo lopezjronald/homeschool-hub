@@ -1,7 +1,12 @@
+from datetime import timedelta
+from itertools import groupby
+from operator import attrgetter
+
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.http import Http404
 from django.shortcuts import get_object_or_404, redirect, render
+from django.utils import timezone
 
 from core.permissions import (
     editable_queryset,
@@ -11,7 +16,7 @@ from core.permissions import (
 )
 from core.utils import get_active_family, get_selected_family
 
-from .forms import WorkLogEntryForm
+from .forms import WorkLogEntryForm, WorkLogReportForm
 from .models import WorkLogEntry
 
 
@@ -25,6 +30,65 @@ def worklog_list(request):
     return render(request, "worklog/worklog_list.html", {
         "entries": entries,
         "can_edit": user_can_edit(request.user),
+    })
+
+
+@login_required
+def worklog_report(request):
+    """Date-range completion report of logged work, grouped by child.
+
+    Available to anyone with view access to the family (teachers and
+    grandparents included) — the record a charter Educational Specialist or
+    reviewing teacher can read and print. Defaults to the last 30 days.
+    """
+    family = get_selected_family(request)
+
+    today = timezone.localdate()
+    start = today - timedelta(days=29)
+    end = today
+    selected_child = None
+
+    if request.GET:
+        form = WorkLogReportForm(request.GET, user=request.user, family=family)
+        if form.is_valid():
+            start = form.cleaned_data.get("start") or start
+            end = form.cleaned_data.get("end") or end
+            selected_child = form.cleaned_data.get("child")
+    else:
+        form = WorkLogReportForm(
+            user=request.user, family=family, initial={"start": start, "end": end},
+        )
+
+    entries = (
+        scoped_queryset(WorkLogEntry.objects.all(), request.user, family)
+        .filter(date__range=(start, end))
+        .select_related("child", "curriculum")
+        .order_by("child__first_name", "child__last_name", "child_id", "-date", "-created_at")
+    )
+    if selected_child:
+        entries = entries.filter(child=selected_child)
+
+    entries = list(entries)
+    groups = []
+    for _child_id, items in groupby(entries, key=attrgetter("child_id")):
+        items = list(items)
+        groups.append({
+            "child": items[0].child,
+            "entries": items,
+            "count": len(items),
+            "day_count": len({e.date for e in items}),
+            "subjects": sorted({e.subject for e in items}),
+        })
+
+    return render(request, "worklog/worklog_report.html", {
+        "form": form,
+        "groups": groups,
+        "start": start,
+        "end": end,
+        "selected_child": selected_child,
+        "total_entries": len(entries),
+        "total_days": len({e.date for e in entries}),
+        "family": family,
     })
 
 

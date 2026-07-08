@@ -66,3 +66,44 @@ class WorkLogEntryForm(forms.ModelForm):
             if not self._allowed_curricula().filter(pk=curriculum.pk).exists():
                 raise forms.ValidationError("Invalid curriculum selection.")
         return curriculum
+
+
+class WorkLogReportForm(forms.Form):
+    """Filter the completion report by child and date range.
+
+    A GET form for oversight (teachers, grandparents, parents): the child
+    dropdown is scoped to students the user may view in the selected family.
+    """
+
+    child = forms.ModelChoiceField(
+        queryset=Student.objects.none(),
+        required=False,
+        empty_label="All children",
+    )
+    start = forms.DateField(
+        required=False,
+        label="From",
+        widget=forms.DateInput(attrs={"type": "date"}),
+    )
+    end = forms.DateField(
+        required=False,
+        label="To",
+        widget=forms.DateInput(attrs={"type": "date"}),
+    )
+
+    def __init__(self, *args, user=None, family=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        qs = Student.objects.none()
+        if user:
+            if user_can_edit(user):
+                qs = editable_queryset(Student.objects.all(), user)
+            elif family:
+                qs = scoped_queryset(Student.objects.all(), user, family)
+        self.fields["child"].queryset = qs
+
+    def clean(self):
+        cleaned = super().clean()
+        start, end = cleaned.get("start"), cleaned.get("end")
+        if start and end and start > end:
+            raise forms.ValidationError("The start date must be on or before the end date.")
+        return cleaned

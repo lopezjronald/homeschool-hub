@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% load crispy_forms_tags %}
+{% block title %}Assess Mastery · Steadfast Scholars{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+  <div class="row justify-content-center">
+    <div class="col-md-8">
+      <div class="card">
+        <div class="card-header">
+          <h4 class="mb-0">Assess Mastery</h4>
+          <small class="text-muted">{{ entry.child.get_full_name }} · {{ entry.subject }} · {{ entry.date|date:"M d, Y" }}</small>
+        </div>
+        <div class="card-body">
+          {% if not configured %}
+            <div class="alert alert-warning">
+              AI grading isn't set up yet. You can still draft here, but grading needs an
+              <code>ANTHROPIC_API_KEY</code> configured on the server.
+            </div>
+          {% endif %}
+          <p class="text-muted">
+            The AI proposes a mastery level and rubric-referenced feedback — you review and can
+            override before finalizing. It never assigns letter grades and never finalizes on its own.
+          </p>
+          <form method="post" novalidate>
+            {% csrf_token %}
+            {{ form|crispy }}
+            <div class="d-flex justify-content-between mt-3">
+              <a href="{% url 'worklog:worklog_detail' entry.pk %}" class="btn btn-secondary">Cancel</a>
+              <button type="submit" class="btn btn-primary">Grade with AI</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

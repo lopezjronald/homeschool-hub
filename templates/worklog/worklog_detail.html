@@ -48,11 +48,32 @@
         <div class="card-footer">
           <a href="{% url 'worklog:worklog_list' %}" class="btn btn-secondary">Back to Work Log</a>
           {% if can_edit %}
+          <a href="{% url 'tutor:assess_create' entry.pk %}" class="btn btn-success">Assess mastery</a>
           <a href="{% url 'worklog:worklog_update' entry.pk %}" class="btn btn-primary">Edit</a>
           <a href="{% url 'worklog:worklog_delete' entry.pk %}" class="btn btn-danger">Delete</a>
           {% endif %}
         </div>
       </div>
+
+      {% with assessments=entry.assessments.all %}
+      {% if assessments %}
+      <div class="card mt-4">
+        <div class="card-header"><h5 class="mb-0">Mastery Assessments</h5></div>
+        <ul class="list-group list-group-flush">
+          {% for a in assessments %}
+            <li class="list-group-item d-flex justify-content-between align-items-center">
+              <a href="{% url 'tutor:assess_detail' a.pk %}">
+                {{ a.created_at|date:"M d, Y" }}
+                {% if a.status == 'finalized' %}<span class="text-muted">· finalized</span>{% else %}<span class="text-muted">· draft</span>{% endif %}
+              </a>
+              <span class="badge {{ a.badge_class }}">{{ a.get_final_level_display|default:a.get_ai_level_display }}</span>
+            </li>
+          {% endfor %}
+        </ul>
+      </div>
+      {% endif %}
+      {% endwith %}
+
     </div>
   </div>
 </div>

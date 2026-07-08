@@ -96,6 +96,7 @@ INSTALLED_APPS = [
     "assignments",  # Assignment tracking
     "dashboard",  # Parent progress dashboard
     "worklog",  # Work log: completed-work records
+    "tutor",  # AI tutor layer (mastery grader)
     "storages",  # django-storages for R2/S3
     "django.contrib.admin",
     "django.contrib.auth",
@@ -217,6 +218,13 @@ LOGIN_REDIRECT_URL = "/"
 LOGOUT_REDIRECT_URL = "/"
 
 INVITE_MAX_AGE_DAYS = 7
+
+# ---------------------------------------------------------------------------
+# AI tutor (Anthropic) — server-side only. The grader stays disabled until a
+# key is set; add ANTHROPIC_API_KEY in Heroku config to enable it.
+# ---------------------------------------------------------------------------
+ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
+TUTOR_MODEL = os.getenv("TUTOR_MODEL", "claude-opus-4-8")
 
 # ---------------------------------------------------------------------------
 # Security Settings (env-driven, safe defaults)

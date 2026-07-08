@@ -291,6 +291,11 @@ class QuestionSet(models.Model):
         blank=True,
         help_text="Markdown rubric used when assessing responses.",
     )
+    answer_key = models.TextField(
+        blank=True,
+        help_text="Reference answers (Markdown) the AI grader checks against; never "
+                  "shown to the student.",
+    )
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=DRAFT)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

@@ -69,8 +69,12 @@ def assess_create(request, entry_pk):
         # set's own rubric (e.g. Blackbird's) and the formatted Q&A.
         sheet = entry.response_sheets.select_related("question_set").first()
         if sheet:
-            if sheet.question_set.rubric:
-                initial["rubric"] = sheet.question_set.rubric
+            rubric = sheet.question_set.rubric or ""
+            if sheet.question_set.answer_key:
+                rubric = (rubric + "\n\n---\n### Reference answers (for grading only)\n"
+                          + sheet.question_set.answer_key).strip()
+            if rubric:
+                initial["rubric"] = rubric
             initial["answers"] = sheet.as_worklog_text()
         form = AssessmentRequestForm(initial=initial)
 

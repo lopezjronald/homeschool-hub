@@ -74,9 +74,15 @@ class PortalCourseTests(TestCase):
         curriculum = Curriculum.objects.get(name__contains="I Am David")
         self.assertEqual(curriculum.grade_level, "G07")
         sets = QuestionSet.objects.filter(lesson__chapter__curriculum=curriculum)
-        self.assertEqual(sets.count(), 25)  # 6 per section x 4 + Glean
+        self.assertEqual(sets.count(), 26)  # 6/section x 4 + Glean + whole-book standard
         self.assertEqual(
-            Question.objects.filter(question_set__in=sets).count(), 162,
+            Question.objects.filter(question_set__in=sets).count(), 209,
+        )
+        # comprehension sets carry the answer key (grader reference, never shown)
+        self.assertTrue(sets.filter(title__contains="Comprehension").exclude(answer_key="").exists())
+        # the reusable Story-Grammar standard set exists (teacher-led)
+        self.assertTrue(
+            sets.filter(title__contains="Story-Grammar", mode=QuestionSet.MODE_DISCUSSION).exists()
         )
         # Socratic sets exist per section with story-grammar categories
         socratic = sets.filter(title__contains="Socratic")
@@ -93,8 +99,8 @@ class PortalCourseTests(TestCase):
 
     def test_seed_is_idempotent(self):
         call_command("seed_i_am_david", "--for-user", "dad", stdout=StringIO())
-        self.assertEqual(QuestionSet.objects.count(), 25)
-        self.assertEqual(Question.objects.count(), 162)
+        self.assertEqual(QuestionSet.objects.count(), 26)
+        self.assertEqual(Question.objects.count(), 209)
 
     def test_portal_home_groups_by_section(self):
         resp = self.client.get(self._url("portal_home"))
@@ -289,3 +295,25 @@ class MarkupTests(TestCase):
         before = QuestionSet.objects.count()
         call_command("seed_eiw_violet", "--for-user", "mup", stdout=StringIO())
         self.assertEqual(QuestionSet.objects.count(), before)
+
+
+class SocraticStandardTests(TestCase):
+    """The reusable CenterForLit question ladder scales by the reader's level."""
+
+    def test_questions_scale_by_level(self):
+        from tutor import socratic
+
+        g3 = socratic.questions_for("G03")
+        g7 = socratic.questions_for("G07")
+        self.assertGreater(len(g7), len(g3))  # older readers get more/deeper questions
+        # every element is represented at the top band
+        cats = {c for c, _t, _h in g7}
+        for expected in ("context", "setting", "character", "conflict", "plot", "theme", "style"):
+            self.assertIn(expected, cats)
+
+    def test_band_mapping(self):
+        from tutor import socratic
+
+        self.assertEqual(socratic.band_for_level("G02"), 1)
+        self.assertEqual(socratic.band_for_level("G05"), 2)
+        self.assertEqual(socratic.band_for_level("G09"), 3)

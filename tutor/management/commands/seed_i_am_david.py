@@ -393,6 +393,105 @@ SECTIONS = [
     },
 ]
 
+# Novel-grounded LITERARY ELEMENT questions added to each section's Socratic set —
+# the "parts of literature" layer (symbol, foreshadowing, irony, motif, POV, genre).
+LITERARY_ELEMENTS = {
+    1: [
+        ("style",
+         "SYMBOL — the very first thing David asks the man for is a bar of SOAP, and washing "
+         "becomes almost sacred to him. Beyond getting clean, what do you think the washing stands for?",
+         "He's scrubbing away more than dirt. What does 'clean' mean to someone leaving a camp?"),
+        ("style",
+         "SYMBOL — the compass points David south toward freedom. How does the author use the compass "
+         "to stand for David's whole journey — and why does it matter later when he loses it?",
+         "A compass gives direction and hope. What happens to hope when the compass is gone?"),
+    ],
+    2: [
+        ("style",
+         "COLOR & LIGHT — after the grey camp, Holm floods Italy with color and sunshine. How is COLOR "
+         "used as a symbol here? Find a moment where it nearly overwhelms David.",
+         "Grey stood for the camp and death; color stands for life. Track where color bursts in."),
+        ("style",
+         "FORESHADOWING — David's first real SMILE comes when he saves Maria. How does the author make "
+         "such a tiny moment feel enormous, and what does it hint about who David is becoming?",
+         "A first smile is a promise. What does it foreshadow about the rest of the journey?"),
+    ],
+    3: [
+        ("style",
+         "SYMBOL — Signora Hartman's PHOTOGRAPH turns the whole story. Why is a photograph the perfect "
+         "object to do that? What does it hold and point toward?",
+         "A photo holds the past and points to the future. Whose face is about to matter most?"),
+        ("style",
+         "IRONY — David, who trusts no one, is safest among strangers, yet a 'kind' farmer will later "
+         "betray him. How does the author use irony about trust and kindness?",
+         "Irony = the opposite of what you'd expect. Who turns out trustworthy, and who doesn't?"),
+    ],
+    4: [
+        ("style",
+         "MOTIF & TITLE — the book ends with the very words it is named for: 'I am David.' Why title the "
+         "whole story after these three words? Trace how the idea of his NAME returns from chapter 1 to the end.",
+         "A motif is an idea that keeps coming back. In chapter 1 he was almost a number; at the end?"),
+        ("theme",
+         "POINT OF VIEW — we see everything through David's eyes alone. How would the story change if we "
+         "saw it through his mother's eyes, or the farmer's? Why did Holm keep us inside David?",
+         "Limited POV keeps secrets (like his mother) until David learns them. Why is that powerful?"),
+        ("style",
+         "GENRE — is this an adventure, a survival story, or something deeper? What clues tell you what "
+         "KIND of story it really is?",
+         "Genre shapes what you expect. Is the true journey outside David, or inside him?"),
+    ],
+}
+
+# Blackbird & Company answer key (from the publisher's teacher key) — grader
+# reference for the comprehension sets; never shown to the student.
+ANSWER_KEYS = {
+    1: """## Comprehension answer key — Section 1 (Chapters 1–2)
+1. Wait for the signal, take a compass heading south to Salonika, board a boat to Italy, and hide.
+2. A piece of soap.
+3. To be free — to escape his captors and the man who controls him.
+4. That no gunfire followed his escape (no one is chasing him yet).
+5. Johannes suddenly collapsing and dying in the back of the truck.
+6. Realizing Johannes is not with him — he is completely alone.
+7. Seeing natural beauty, he no longer wants capture or death; he wants to LIVE.
+8. A story he can stick to when people question him.
+9. Advantages: strength, sharp senses, survival skills, languages. Disadvantages: he doesn't know geography, which foods are safe, and — worst of all — people.
+10. His belief that he will eventually get away grows stronger.""",
+    2: """## Comprehension answer key — Section 2 (Chapters 3–4)
+1. His compass (his most precious possession) — dropped into the sea.
+2. "The God of the green pastures and still waters" (Johannes's God); he chooses carefully, by reasoning.
+3. To learn whether the country is free (has a king rather than "them").
+4. That he is no ordinary little boy — his eyes and manner are unusual.
+5. To see what is wrong with his eyes, and to change/check his appearance.
+6. His freedom — after living free he can no longer imagine giving it up.
+7. To take away his fear for a while, and to send a good man driving the truck.
+8. Music (for the first time).
+9. Because fighting back would make him as worthless as his captors — unworthy of freedom.
+10. Smiling — for the first time, out of happiness.""",
+    3: """## Comprehension answer key — Section 3 (Chapters 5–6)
+1. That words have different qualities; a bigger vocabulary lets him think and communicate better.
+2. To be sure it is truthful — printed before "they" (the Soviets) could fill it with propaganda (pre-1917).
+3. That Carlo is bad, because he is skilled at hiding his true intentions.
+4. Maria — she senses his discomfort, never makes him feel ignorant, and values his thoughts.
+5. Going to school — he wants it almost as much as sunshine and beauty.
+6. The camp milk/vitamins; he realizes the man in the camp actually helped him, though he questions his motives.
+7. That they share the same God — the God of the church David entered.
+8. A map — he asks instead to see where Italy is and where Switzerland begins.
+9. He is no longer perfectly content; life outdoors alone has lost its appeal after living with a family.
+10. He can no longer detach his emotions (essential for camp survival) now that the family has reached his heart.""",
+    4: """## Comprehension answer key — Section 4 (Chapters 7–8)
+1. He gave David milk and vitamins and made sure Johannes looked after him.
+2. King (the dog) approaches, sniffs him, and lies beside him; the dog makes the first move.
+3. To keep David as free labor — hiding that spring (and David's promised release) has come.
+4. That he has not forgiven Carlo, who kept apologizing; he must let his own anger go.
+5. King defends David from the farmer; David is so moved that he cries.
+6. Lying to people — it troubles him deeply because he wants to be honest.
+7. That they had the dejected, dull-eyed look of camp prisoners (they were dangerous).
+8. First a painless death; then, remembering King, he asks God to take care of him.
+9. That King chose freely to follow and protect him — it was the dog's own nature.
+10. That he recognizes the woman from a photograph — she is his mother.""",
+}
+
+
 GLEAN_OPTIONS = """Choose ONE (or more!) of the guide's final projects:
 
 1. **Epilogue** — What might David's life be like after the story? Write an epilogue set one, five, or ten years after David is reunited with his mother.
@@ -500,7 +599,7 @@ class Command(BaseCommand):
             )
             set_count += s; q_count += q
 
-            # -- Recollect -------------------------------------------------
+            # -- Recollect (answer key grounds the grader) ------------------
             s, q = self._seed_set(
                 recollect, family,
                 title=f"Section {n} · Comprehension",
@@ -508,6 +607,7 @@ class Command(BaseCommand):
                 intro=RECOLLECT_INTRO,
                 rubric=RECOLLECT_RUBRIC,
                 questions=[("comprehension", prompt, "") for prompt in section["recollect"]],
+                answer_key=ANSWER_KEYS.get(n, ""),
             )
             set_count += s; q_count += q
 
@@ -546,17 +646,38 @@ class Command(BaseCommand):
             )
             set_count += s; q_count += q
 
-            # -- Socratic seminar (authored, CenterForLit story-grammar) — teacher-led
+            # -- Socratic seminar: novel-grounded story grammar + literary elements
             s, q = self._seed_set(
                 explore, family,
                 title=f"Section {n} · Socratic Seminar",
                 reading=chs,
                 intro=SOCRATIC_INTRO,
                 rubric=SOCRATIC_RUBRIC,
-                questions=section["socratic"],
+                questions=section["socratic"] + LITERARY_ELEMENTS.get(n, []),
                 mode=QuestionSet.MODE_DISCUSSION,
             )
             set_count += s; q_count += q
+
+        # -- Story-Grammar Standard (reusable CenterForLit ladder, at this
+        #    child's level) — a whole-book seminar the teacher can use anytime.
+        from tutor import socratic
+
+        standard_qs = [
+            (category, text, hint)
+            for category, text, hint in socratic.questions_for(child.grade_level)
+        ]
+        s, q = self._seed_set(
+            self._lesson(curriculum, 4, 5), family,
+            title="Whole-Book · Story-Grammar Seminar",
+            reading="the whole book",
+            intro="The Teaching-the-Classics ladder for the whole story — context, setting, "
+                  "characters, conflict, plot, theme, and literary devices — at your student's "
+                  "level. Use it as a capstone discussion or dip into any element anytime.",
+            rubric=SOCRATIC_RUBRIC,
+            questions=standard_qs,
+            mode=QuestionSet.MODE_DISCUSSION,
+        )
+        set_count += s; q_count += q
 
         # -- Glean ----------------------------------------------------------
         glean = self._lesson(curriculum, 5, 1)
@@ -593,7 +714,7 @@ class Command(BaseCommand):
         )
 
     def _seed_set(self, lesson, family, *, title, reading, intro, rubric, questions,
-                  mode=QuestionSet.MODE_STUDENT):
+                  mode=QuestionSet.MODE_STUDENT, answer_key=""):
         qset, _ = QuestionSet.objects.update_or_create(
             lesson=lesson,
             title=title,
@@ -602,6 +723,7 @@ class Command(BaseCommand):
                 "intro": intro,
                 "reading": reading,
                 "rubric": rubric,
+                "answer_key": answer_key,
                 "status": QuestionSet.APPROVED,
                 "mode": mode,
             },

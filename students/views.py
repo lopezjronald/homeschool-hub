@@ -64,10 +64,21 @@ def student_detail(request, pk):
         for placement in placements
     ]
 
+    portal_url = None
+    if can_edit:
+        from django.urls import reverse
+
+        from portal.tokens import make_portal_token
+
+        portal_url = request.build_absolute_uri(
+            reverse("portal:portal_home", kwargs={"token": make_portal_token(student)})
+        )
+
     return render(request, "students/student_detail.html", {
         "student": student,
         "can_edit": can_edit,
         "curricula": curricula,
+        "portal_url": portal_url,
     })
 
 

@@ -1,0 +1,86 @@
+{% extends "portal/base_portal.html" %}
+{% block title %}Hi {{ student.first_name }}! · Steadfast Scholars{% endblock %}
+
+{% block content %}
+<div class="container">
+
+  <div class="portal-hero mb-4">
+    <h1>Hi, {{ student.first_name }}! 👋</h1>
+    <p class="mb-0">Here's what's waiting for you today.</p>
+  </div>
+
+  {% if progress %}
+    <h2 class="portal-section-title">📚 My subjects</h2>
+    <div class="row row-cols-1 row-cols-md-2 g-3 mb-4">
+      {% for item in progress %}
+        <div class="col">
+          <div class="card h-100 portal-card">
+            <div class="card-body">
+              <div class="d-flex justify-content-between align-items-start mb-1">
+                <h5 class="card-title mb-0">{{ item.curriculum.name }}</h5>
+                <span class="text-muted small">{{ item.progress.done }}/{{ item.progress.total }}</span>
+              </div>
+              <div class="progress my-2" role="progressbar" aria-valuenow="{{ item.progress.pct }}" aria-valuemin="0" aria-valuemax="100" style="height: 0.7rem;">
+                <div class="progress-bar" style="width: {{ item.progress.pct }}%;"></div>
+              </div>
+              {% if item.current_lesson %}
+                <small class="text-muted">Now on: <strong>{{ item.current_lesson.code }}</strong>{% if item.current_lesson.title %} — {{ item.current_lesson.title }}{% endif %}</small>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  {% endif %}
+
+  {% if set_groups %}
+    <h2 class="portal-section-title">✍️ My writing</h2>
+    {% for group in set_groups %}
+      <div class="portal-group mb-4">
+        <div class="portal-group-heading">{{ group.heading }}</div>
+        <div class="list-group portal-set-list">
+          {% for qs in group.sets %}
+            <a href="{% url 'portal:portal_questions' token=token set_pk=qs.pk %}"
+               class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
+              <div>
+                <span class="fw-semibold">{{ qs.title }}</span>
+                {% if qs.reading %}<small class="text-muted ms-2">📖 Read {{ qs.reading }} first</small>{% endif %}
+              </div>
+              {% if qs.my_response and qs.my_response.is_submitted %}
+                <span class="badge bg-success">Turned in ✓</span>
+              {% elif qs.my_response and qs.my_response.answered_count %}
+                <span class="badge portal-badge-progress">{{ qs.my_response.answered_count }} answered</span>
+              {% else %}
+                <span class="badge portal-badge-new">Start ➜</span>
+              {% endif %}
+            </a>
+          {% endfor %}
+        </div>
+      </div>
+    {% endfor %}
+  {% endif %}
+
+  {% if materials %}
+    <h2 class="portal-section-title">🦸 My adventures</h2>
+    <div class="row row-cols-1 row-cols-md-2 g-3 mb-4">
+      {% for m in materials %}
+        <div class="col">
+          <a href="{% url 'portal:portal_material' token=token pk=m.pk %}" class="text-decoration-none">
+            <div class="card portal-card portal-card-link h-100">
+              <div class="card-body">
+                <h5 class="card-title mb-1">{{ m.title }}</h5>
+                <small class="text-muted">{{ m.get_skill_type_display }} · {{ m.lesson.code }}</small>
+              </div>
+            </div>
+          </a>
+        </div>
+      {% endfor %}
+    </div>
+  {% endif %}
+
+  {% if not progress and not materials and not set_groups %}
+    <div class="alert alert-info">Nothing here yet — check back soon! 🌱</div>
+  {% endif %}
+
+</div>
+{% endblock %}

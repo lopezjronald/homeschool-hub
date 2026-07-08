@@ -168,6 +168,66 @@ DIMENSIONS_MATH_3A = {
 }
 
 
+def _bb_section(number, chapters):
+    """One Blackbird & Company section: Read → Journal → Acquire → Recollect → Explore."""
+    return {
+        "number": number,
+        "title": f"Section {number}: Chapters {chapters}",
+        "lessons": [
+            _ls(1, 1, f"Read: Chapters {chapters}",
+                "Read the entire assignment before beginning any guide work. "
+                "Silent reading plus read-aloud opportunities build fluency, accuracy, "
+                "pacing, intonation, and dramatic expression."),
+            _ls(2, 2, "Journal: Characters, Setting & Plot",
+                "As you read, take bullet-point notes. Characters: who a character IS "
+                "(appearance, personality, background, strengths, weaknesses) — not what "
+                "he does. Setting: historical time period, geographic location, details. "
+                "Plot: simple reminders of major events, not a retelling."),
+            _ls(3, 3, "Acquire: Vocabulary",
+                "Use a traditional printed dictionary to define the week's words, then "
+                "use five of them in original sentences that illustrate their meaning."),
+            _ls(4, 4, "Recollect: Comprehension Questions",
+                "Answer in complete sentences after finishing the reading. You may refer "
+                "to both the book and your journal notes; note page numbers."),
+            _ls(5, 5, "Explore: Writing & Discussion",
+                "Writing: brainstorm → rough draft → conference → re-write → edit → final "
+                "draft. Discussion: the culmination of the week — springboard questions "
+                "with no single right answer."),
+        ],
+    }
+
+
+# Blackbird & Company Literature Discovery Guide: I Am David (Anne Holm), Level 7.
+# Five-week course: four reading sections (two novel chapters each) + a final
+# project week. Digitized from the family's purchased guide for private use.
+BLACKBIRD_I_AM_DAVID = {
+    "slug": "blackbird_i_am_david",
+    "name": "I Am David — Literature Discovery",
+    "subject": "Literature",
+    "grade_level": "G07",
+    "source": "Blackbird & Company Educational Press — Literature Discovery Guide: "
+              "I Am David by Anne Holm (Level 7)",
+    "chapters": [
+        _bb_section(1, "1–2"),
+        _bb_section(2, "3–4"),
+        _bb_section(3, "5–6"),
+        _bb_section(4, "7–8"),
+        {
+            "number": 5,
+            "title": "Section 5: Glean — Final Project",
+            "lessons": [
+                _ls(1, 1, "Glean: Final Project",
+                    "Complete one or more of the final project options: an epilogue, an "
+                    "alternate ending, a change-one-decision reflection, a research essay "
+                    "on unjust imprisonment today, the map of David's journey, or an "
+                    "essay on the guide's most thought-provoking discussion question."),
+            ],
+        },
+    ],
+}
+
+
 BLUEPRINTS = {
     DIMENSIONS_MATH_3A["slug"]: DIMENSIONS_MATH_3A,
+    BLACKBIRD_I_AM_DAVID["slug"]: BLACKBIRD_I_AM_DAVID,
 }

@@ -62,7 +62,15 @@ def assess_create(request, entry_pk):
             messages.success(request, "Draft assessment ready — review and finalize.")
             return redirect("tutor:assess_detail", pk=assessment.pk)
     else:
-        form = AssessmentRequestForm(initial={"answers": entry.description})
+        initial = {"answers": entry.description}
+        # If this entry came from a portal response sheet, prefill the question
+        # set's own rubric (e.g. Blackbird's) and the formatted Q&A.
+        sheet = entry.response_sheets.select_related("question_set").first()
+        if sheet:
+            if sheet.question_set.rubric:
+                initial["rubric"] = sheet.question_set.rubric
+            initial["answers"] = sheet.as_worklog_text()
+        form = AssessmentRequestForm(initial=initial)
 
     return render(request, "tutor/assess_form.html", {
         "form": form,

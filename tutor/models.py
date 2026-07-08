@@ -225,3 +225,183 @@ class MangaPanel(models.Model):
     @property
     def has_art(self):
         return bool(self.image_path or self.image)
+
+
+class QuestionSet(models.Model):
+    """A set of Socratic/comprehension questions a child answers for a lesson.
+
+    Authored per-lesson (e.g. a Blackbird & Company reading session). The
+    ``rubric`` (Markdown) travels with the set so the parent — or the AI
+    grader — assesses submissions against the curriculum's own standard.
+    Like ``Material``, a set only reaches the student once approved.
+    """
+
+    DRAFT = "draft"
+    APPROVED = "approved"
+    STATUS_CHOICES = [
+        (DRAFT, "Draft"),
+        (APPROVED, "Approved"),
+    ]
+
+    lesson = models.ForeignKey(
+        "curricula.Lesson",
+        on_delete=models.CASCADE,
+        related_name="question_sets",
+    )
+    child = models.ForeignKey(
+        "students.Student",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="question_sets",
+        help_text="Optional: pin this set to one child; blank = any child placed in the curriculum.",
+    )
+    family = models.ForeignKey(
+        "core.Family",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="question_sets",
+    )
+    title = models.CharField(max_length=200)
+    intro = models.TextField(
+        blank=True,
+        help_text="Kid-facing instructions shown above the questions.",
+    )
+    reading = models.CharField(
+        max_length=200,
+        blank=True,
+        help_text="What to read first, e.g. 'Chapters 3–4'.",
+    )
+    rubric = models.TextField(
+        blank=True,
+        help_text="Markdown rubric used when assessing responses.",
+    )
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=DRAFT)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["lesson__chapter__number", "lesson__order", "id"]
+
+    def __str__(self):
+        return self.title
+
+    @property
+    def is_approved(self):
+        return self.status == self.APPROVED
+
+
+class Question(models.Model):
+    """One question in a QuestionSet, tagged with its Socratic category."""
+
+    # CenterForLit-style story-grammar categories + plain comprehension.
+    CATEGORY_CHOICES = [
+        ("comprehension", "Comprehension"),
+        ("context", "Context"),
+        ("conflict", "Conflict"),
+        ("plot", "Plot"),
+        ("setting", "Setting"),
+        ("character", "Character"),
+        ("theme", "Theme"),
+        ("style", "Style"),
+        ("application", "Application"),
+        ("vocabulary", "Vocabulary"),
+    ]
+
+    question_set = models.ForeignKey(
+        QuestionSet,
+        on_delete=models.CASCADE,
+        related_name="questions",
+    )
+    order = models.PositiveIntegerField()
+    category = models.CharField(max_length=20, choices=CATEGORY_CHOICES, default="comprehension")
+    prompt = models.TextField()
+    hint = models.TextField(
+        blank=True,
+        help_text="A gentle scaffold shown to the child on demand.",
+    )
+
+    class Meta:
+        ordering = ["order"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["question_set", "order"],
+                name="unique_question_order_per_set",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.question_set.title} — Q{self.order}"
+
+
+class ResponseSheet(models.Model):
+    """A child's answers to a QuestionSet — autosaved as they type, then submitted.
+
+    ``answers`` maps question id (as a string) to the child's text. On submit a
+    WorkLogEntry is created so the response lands in the family's durable
+    record and can be assessed via the existing mastery flow.
+    """
+
+    DRAFT = "draft"
+    SUBMITTED = "submitted"
+    STATUS_CHOICES = [
+        (DRAFT, "Draft"),
+        (SUBMITTED, "Submitted"),
+    ]
+
+    question_set = models.ForeignKey(
+        QuestionSet,
+        on_delete=models.CASCADE,
+        related_name="responses",
+    )
+    child = models.ForeignKey(
+        "students.Student",
+        on_delete=models.CASCADE,
+        related_name="response_sheets",
+    )
+    answers = models.JSONField(default=dict, blank=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=DRAFT)
+    work_entry = models.ForeignKey(
+        "worklog.WorkLogEntry",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="response_sheets",
+    )
+    started_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    submitted_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["question_set", "child"],
+                name="unique_response_sheet_per_child_set",
+            ),
+        ]
+        ordering = ["-updated_at"]
+
+    def __str__(self):
+        return f"{self.child} — {self.question_set.title} ({self.get_status_display()})"
+
+    @property
+    def is_submitted(self):
+        return self.status == self.SUBMITTED
+
+    def answer_for(self, question):
+        return (self.answers or {}).get(str(question.pk), "")
+
+    @property
+    def answered_count(self):
+        return sum(1 for v in (self.answers or {}).values() if str(v).strip())
+
+    def as_worklog_text(self):
+        """Format the Q&A as readable text for the work log / grader."""
+        lines = []
+        for q in self.question_set.questions.all():
+            answer = self.answer_for(q).strip() or "(no answer)"
+            lines.append(f"Q{q.order} [{q.get_category_display()}]: {q.prompt}")
+            lines.append(f"A: {answer}")
+            lines.append("")
+        return "\n".join(lines).strip()

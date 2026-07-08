@@ -97,6 +97,7 @@ INSTALLED_APPS = [
     "dashboard",  # Parent progress dashboard
     "worklog",  # Work log: completed-work records
     "tutor",  # AI tutor layer (mastery grader)
+    "portal",  # Tokenless student portal (kids see only their own work)
     "storages",  # django-storages for R2/S3
     "django.contrib.admin",
     "django.contrib.auth",
@@ -191,7 +192,7 @@ if "test" in sys.argv:
 
 LANGUAGE_CODE = "en-us"
 
-TIME_ZONE = "UTC"
+TIME_ZONE = "America/Los_Angeles"  # the family's home timezone (Sacramento)
 
 USE_I18N = True
 

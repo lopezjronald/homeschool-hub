@@ -19,6 +19,7 @@ urlpatterns = [
     path("dashboard/", include(("dashboard.urls", "dashboard"), namespace="dashboard")),
     path("worklog/", include(("worklog.urls", "worklog"), namespace="worklog")),
     path("tutor/", include(("tutor.urls", "tutor"), namespace="tutor")),
+    path("portal/", include(("portal.urls", "portal"), namespace="portal")),
     path("core/", include(("core.urls", "core"), namespace="core")),
 ]
 

@@ -1,0 +1,187 @@
+/* Student portal — a kid-friendly layer over the Scholar's Grove system.
+   Bigger type, warmer corners, playful chips; still calm and uncluttered. */
+
+.portal-body { background: var(--ss-parchment, #F6F3EA); }
+
+.portal-nav {
+  background: var(--ss-forest-grad, linear-gradient(135deg, #0B2E22 0%, #0F3D2E 100%));
+}
+.portal-nav .navbar-brand { font-weight: 700; letter-spacing: 0.01em; }
+.portal-brand-icon { font-size: 1.1rem; }
+.portal-level-badge {
+  background: var(--ss-amber, #EBA83A);
+  color: var(--ss-forest-2, #0B2E22);
+  font-weight: 700;
+  border-radius: 999px;
+}
+
+.portal-hero {
+  background: #fff;
+  border: 1px solid rgba(30, 122, 80, 0.18);
+  border-radius: 18px;
+  padding: 1.5rem 1.75rem;
+  box-shadow: 0 4px 14px rgba(15, 61, 46, 0.06);
+}
+.portal-hero h1 { font-size: 1.9rem; margin-bottom: 0.25rem; }
+.portal-hero p { color: #5a6a62; }
+
+.portal-section-title {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--ss-forest, #0F3D2E);
+  margin: 0 0 0.75rem;
+}
+
+.portal-card { border-radius: 14px; }
+.portal-card-link { transition: transform 0.12s ease, box-shadow 0.12s ease; }
+.portal-card-link:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 18px rgba(15, 61, 46, 0.12);
+}
+.portal-card-link .card-title { color: var(--ss-forest, #0F3D2E); }
+
+.portal-badge-new {
+  background: var(--ss-amber, #EBA83A);
+  color: var(--ss-forest-2, #0B2E22);
+  font-weight: 700;
+}
+.portal-badge-progress {
+  background: rgba(30, 122, 80, 0.12);
+  color: var(--ss-green, #1E7A50);
+  font-weight: 600;
+}
+
+/* ---- grouped set lists (one group per curriculum section) ---- */
+.portal-group-heading {
+  font-size: 0.82rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--ss-green, #1E7A50);
+  margin-bottom: 0.4rem;
+}
+.portal-set-list { border-radius: 12px; overflow: hidden; }
+.portal-set-list .list-group-item { padding: 0.8rem 1rem; }
+.portal-set-list .list-group-item:hover { background: #f2f7f3; }
+
+/* ---- the reading-first callout ---- */
+.portal-reading-first {
+  background: rgba(235, 168, 58, 0.14);
+  border: 1px solid rgba(235, 168, 58, 0.5);
+  border-radius: 10px;
+  padding: 0.6rem 0.9rem;
+  margin-bottom: 1rem;
+  font-size: 1.02rem;
+}
+
+/* ---- questions ---- */
+.portal-question {
+  padding: 1.1rem 0;
+  border-bottom: 1px dashed rgba(15, 61, 46, 0.15);
+}
+.portal-question:last-of-type { border-bottom: none; }
+
+.portal-qnum {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.7rem;
+  height: 1.7rem;
+  border-radius: 50%;
+  background: var(--ss-forest, #0F3D2E);
+  color: #fff;
+  font-weight: 700;
+  font-size: 0.85rem;
+  flex: none;
+}
+
+.portal-prompt {
+  display: block;
+  font-size: 1.06rem;
+  line-height: 1.55;
+  color: #24303a;
+  margin: 0.25rem 0 0.5rem;
+  font-weight: 500;
+}
+
+.portal-answer {
+  font-size: 1.05rem;
+  line-height: 1.6;
+  border-radius: 10px;
+  border: 1.5px solid rgba(15, 61, 46, 0.25);
+}
+.portal-answer:focus {
+  border-color: var(--ss-green, #1E7A50);
+  box-shadow: 0 0 0 0.2rem rgba(30, 122, 80, 0.15);
+}
+.portal-answer[readonly] { background: #fbfaf5; color: #3a4741; }
+
+.portal-wordcount { font-size: 0.78rem; margin-top: 0.25rem; min-height: 1em; }
+
+.portal-hint { margin: 0 0 0.5rem; }
+.portal-hint summary {
+  cursor: pointer;
+  color: var(--ss-green, #1E7A50);
+  font-size: 0.9rem;
+  font-weight: 600;
+  list-style: none;
+}
+.portal-hint summary::-webkit-details-marker { display: none; }
+.portal-hint p {
+  background: rgba(30, 122, 80, 0.08);
+  border-radius: 8px;
+  padding: 0.5rem 0.75rem;
+  margin-top: 0.35rem;
+  font-size: 0.95rem;
+  color: #2c473b;
+}
+
+/* ---- Socratic category chips ---- */
+.portal-chip {
+  display: inline-block;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  padding: 0.15rem 0.55rem;
+  border-radius: 999px;
+  background: #eef0ec;
+  color: #5f6e66;
+}
+.chip-comprehension { background: #E6F1FB; color: #185FA5; }
+.chip-character     { background: #EEEDFE; color: #534AB7; }
+.chip-setting       { background: #E1F5EE; color: #0F6E56; }
+.chip-plot          { background: #FAEEDA; color: #854F0B; }
+.chip-conflict      { background: #FAECE7; color: #993C1D; }
+.chip-theme         { background: #FBEAF0; color: #993556; }
+.chip-style         { background: #F1EFE8; color: #5F5E5A; }
+.chip-context       { background: #E6F1FB; color: #0C447C; }
+.chip-application   { background: #EAF3DE; color: #3B6D11; }
+.chip-vocabulary    { background: #FCEBEB; color: #A32D2D; }
+
+/* ---- save status ---- */
+.portal-save-status {
+  font-size: 0.82rem;
+  color: #7a8781;
+  transition: color 0.2s ease;
+}
+.portal-save-status.is-saving { color: #854F0B; }
+.portal-save-status.is-saved { color: var(--ss-green, #1E7A50); font-weight: 600; }
+.portal-save-status.is-error { color: #A32D2D; font-weight: 600; }
+
+/* ---- submitted celebration ---- */
+.portal-celebrate {
+  background: linear-gradient(180deg, #ffffff 0%, #eef7f1 100%);
+  border: 1px solid rgba(30, 122, 80, 0.3);
+  border-radius: 18px;
+  text-align: center;
+  padding: 1.75rem 1.5rem;
+}
+.portal-celebrate-emoji { font-size: 2.4rem; }
+.portal-celebrate h2 { color: var(--ss-forest, #0F3D2E); margin: 0.35rem 0; }
+.portal-celebrate p { color: #4a5a52; max-width: 46ch; margin-left: auto; margin-right: auto; }
+
+@media (max-width: 640px) {
+  .portal-hero h1 { font-size: 1.5rem; }
+  .portal-prompt { font-size: 1rem; }
+}

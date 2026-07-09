@@ -335,6 +335,12 @@ a:focus-visible > .hub-tile {
 .activity-emoji-choice:hover { border-color:var(--ss-green); transform:translateY(-1px); }
 .activity-emoji-choice.is-active { border-color:var(--ss-amber); background:var(--ss-amber-tint,#fbf0d9); }
 
+/* Mastery over time sparklines */
+.ss-trend-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:.75rem; margin-top:.4rem; }
+.ss-trend { border:1px solid var(--ss-border,#e7e1d3); border-radius:.6rem; padding:.5rem .6rem; background:#fff; }
+.ss-trend-head { display:flex; justify-content:space-between; align-items:center; gap:.4rem; margin-bottom:.15rem; }
+.ss-trend-svg { width:100%; height:auto; display:block; }
+
 /* Parent work browser: the child's answer, rendered readably */
 .ss-answer-block {
   white-space:pre-wrap;

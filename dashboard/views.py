@@ -76,8 +76,12 @@ def dashboard_view(request):
             assessments = assessments.filter(work_entry__date__gte=start)
         if end:
             assessments = assessments.filter(work_entry__date__lte=end)
-        assessments = assessments.select_related("work_entry", "lesson").order_by("-created_at")
+        assessments = list(
+            assessments.select_related("work_entry", "lesson").order_by("-created_at")
+        )
         levels = [a.effective_level for a in assessments if a.effective_level]
+
+        from tutor.trends import mastery_series
 
         child_cards.append({
             "child": child,
@@ -93,7 +97,9 @@ def dashboard_view(request):
                  "badge": mastery.BADGE.get(lvl, "bg-secondary")}
                 for lvl, label in reversed(mastery.CHOICES) if levels.count(lvl)
             ],
-            "recent_assessments": list(assessments[:4]),
+            "recent_assessments": assessments[:4],
+            # Mastery over time — a per-subject sparkline (needs 2+ points to trend).
+            "trends": [s for s in mastery_series(assessments) if s["count"] >= 2],
         })
 
     summary = {

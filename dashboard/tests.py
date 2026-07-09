@@ -178,3 +178,85 @@ class FamilySwitcherProgressTests(TestCase):
         resp = self.client.get(self.url, {"family_id": self.fam_b.id})
         self.assertContains(resp, "ChildB")
         self.assertNotContains(resp, "ChildA")
+
+
+class MasteryTrendsAndCharterTests(TestCase):
+    """Mastery-over-time sparklines + the print-ready charter report."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.parent = CustomUser.objects.create_user(username="cr", email="cr@e.com", password="pw")
+        cls.family = Family.objects.create(name="CR Fam")
+        FamilyMembership.objects.create(user=cls.parent, family=cls.family, role="parent")
+        cls.violet = Student.objects.create(parent=cls.parent, first_name="Violet",
+                                            grade_level="G03", family=cls.family)
+        cls.today = date.today()
+
+        def finalized(subject, level, days_ago):
+            d = cls.today - timedelta(days=days_ago)
+            e = WorkLogEntry.objects.create(parent=cls.parent, family=cls.family, child=cls.violet,
+                                            subject=subject, date=d)
+            return MasteryAssessment.objects.create(
+                work_entry=e, rubric="r", answers="a", ai_level=level,
+                final_level=level, status=MasteryAssessment.FINALIZED,
+            )
+
+        finalized("Math", mastery.BEGINNING, 21)
+        finalized("Math", mastery.DEVELOPING, 14)
+        finalized("Math", mastery.PROFICIENT, 3)
+        finalized("Reading", mastery.MASTERED, 5)   # single point → no trend line
+
+        # other family (never appears)
+        other = CustomUser.objects.create_user(username="cr2", email="cr2@e.com", password="pw")
+        fam2 = Family.objects.create(name="Other CR")
+        FamilyMembership.objects.create(user=other, family=fam2, role="parent")
+        kid2 = Student.objects.create(parent=other, first_name="Zed", grade_level="G01", family=fam2)
+        e = WorkLogEntry.objects.create(parent=other, family=fam2, child=kid2, subject="SecretSubj",
+                                        date=cls.today)
+        MasteryAssessment.objects.create(work_entry=e, rubric="r", answers="a",
+                                         final_level=mastery.PROFICIENT, status=MasteryAssessment.FINALIZED)
+
+    def test_series_builds_rising_line(self):
+        from tutor.trends import mastery_series
+        series = {s["subject"]: s for s in mastery_series(list(MasteryAssessment.objects.filter(
+            work_entry__child=self.violet)))}
+        self.assertEqual(series["Math"]["count"], 3)
+        ys = [p["y"] for p in series["Math"]["points"]]
+        self.assertGreater(ys[0], ys[-1])                 # rising mastery → y decreases (SVG top)
+        self.assertEqual(series["Math"]["latest"]["label"], "Proficient")
+
+    def test_progress_page_renders_trend(self):
+        self.client.login(username="cr", password="pw")
+        resp = self.client.get(reverse("dashboard:dashboard"))
+        self.assertContains(resp, "Mastery over time")
+        self.assertContains(resp, "<polyline")           # the Math sparkline
+        self.assertContains(resp, "Charter report")
+
+    def test_charter_report_combines_worklog_and_mastery(self):
+        self.client.login(username="cr", password="pw")
+        resp = self.client.get(reverse("worklog:charter_report"))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "Homeschool Progress Report")
+        self.assertContains(resp, "Print / Save PDF")
+        self.assertContains(resp, "Violet")
+        self.assertContains(resp, "Mastery")
+        self.assertContains(resp, "Work log")
+        self.assertContains(resp, "<polyline")           # trend included
+        self.assertNotContains(resp, "SecretSubj")       # family-scoped
+        self.assertNotContains(resp, "Zed")
+
+    def test_charter_report_child_and_date_filter(self):
+        self.client.login(username="cr", password="pw")
+        # window that excludes the 21-day-old Beginning assessment
+        resp = self.client.get(reverse("worklog:charter_report"), {
+            "child": self.violet.id,
+            "start": (self.today - timedelta(days=7)).isoformat(),
+            "end": self.today.isoformat(),
+        })
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "Proficient")
+        self.assertNotContains(resp, "Beginning")
+
+    def test_report_requires_login(self):
+        resp = self.client.get(reverse("worklog:charter_report"))
+        self.assertEqual(resp.status_code, 302)

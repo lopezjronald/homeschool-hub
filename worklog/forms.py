@@ -79,16 +79,17 @@ class WorkLogReportForm(forms.Form):
         queryset=Student.objects.none(),
         required=False,
         empty_label="All children",
+        widget=forms.Select(attrs={"class": "form-select"}),
     )
     start = forms.DateField(
         required=False,
         label="From",
-        widget=forms.DateInput(attrs={"type": "date"}),
+        widget=forms.DateInput(attrs={"type": "date", "class": "form-control"}),
     )
     end = forms.DateField(
         required=False,
         label="To",
-        widget=forms.DateInput(attrs={"type": "date"}),
+        widget=forms.DateInput(attrs={"type": "date", "class": "form-control"}),
     )
 
     def __init__(self, *args, user=None, family=None, **kwargs):

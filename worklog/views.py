@@ -1,3 +1,4 @@
+from collections import defaultdict
 from datetime import timedelta
 from itertools import groupby
 from operator import attrgetter
@@ -89,6 +90,98 @@ def worklog_report(request):
         "total_entries": len(entries),
         "total_days": len({e.date for e in entries}),
         "family": family,
+    })
+
+
+@login_required
+def charter_report(request):
+    """A print-ready charter report: the work-log record PLUS finalized mastery
+    and a mastery-over-time trend, for a date range and (optionally) one child.
+
+    View access is enough (teachers/grandparents too) — this is the artifact a
+    charter Educational Specialist reads. Print to PDF from the browser.
+    """
+    from tutor.models import MasteryAssessment
+    from tutor.trends import mastery_series
+
+    family = get_selected_family(request)
+
+    today = timezone.localdate()
+    start = today - timedelta(days=29)
+    end = today
+    selected_child = None
+
+    if request.GET:
+        form = WorkLogReportForm(request.GET, user=request.user, family=family)
+        if form.is_valid():
+            start = form.cleaned_data.get("start") or start
+            end = form.cleaned_data.get("end") or end
+            selected_child = form.cleaned_data.get("child")
+    else:
+        form = WorkLogReportForm(
+            user=request.user, family=family, initial={"start": start, "end": end},
+        )
+
+    entries = (
+        scoped_queryset(WorkLogEntry.objects.all(), request.user, family)
+        .filter(date__range=(start, end))
+        .select_related("child", "curriculum")
+        .order_by("child__first_name", "child__last_name", "child_id", "date", "created_at")
+    )
+    if selected_child:
+        entries = entries.filter(child=selected_child)
+    entries = list(entries)
+
+    # Finalized mastery in the range, keyed by child (assessments scope through
+    # the same work-log entries, so they inherit the family scoping).
+    assessments = list(
+        MasteryAssessment.objects.filter(
+            work_entry__in=scoped_queryset(WorkLogEntry.objects.all(), request.user, family),
+            status=MasteryAssessment.FINALIZED,
+            work_entry__date__range=(start, end),
+        ).select_related("work_entry", "work_entry__child").order_by("work_entry__date")
+    )
+    if selected_child:
+        assessments = [a for a in assessments if a.work_entry.child_id == selected_child.id]
+
+    entries_by_child = defaultdict(list)
+    for e in entries:
+        entries_by_child[e.child_id].append(e)
+    assess_by_child = defaultdict(list)
+    for a in assessments:
+        assess_by_child[a.work_entry.child_id].append(a)
+
+    child_ids = list(dict.fromkeys([e.child_id for e in entries] + [a.work_entry.child_id for a in assessments]))
+    children = {}
+    for e in entries:
+        children.setdefault(e.child_id, e.child)
+    for a in assessments:
+        children.setdefault(a.work_entry.child_id, a.work_entry.child)
+
+    groups = []
+    for cid in child_ids:
+        child_entries = entries_by_child.get(cid, [])
+        child_assess = assess_by_child.get(cid, [])
+        groups.append({
+            "child": children[cid],
+            "entries": child_entries,
+            "count": len(child_entries),
+            "day_count": len({e.date for e in child_entries}),
+            "subjects": sorted({e.subject for e in child_entries}),
+            "assessments": child_assess,
+            "trends": [s for s in mastery_series(child_assess) if s["count"] >= 2],
+        })
+
+    return render(request, "worklog/charter_report.html", {
+        "form": form,
+        "groups": groups,
+        "start": start,
+        "end": end,
+        "selected_child": selected_child,
+        "total_entries": len(entries),
+        "total_days": len({e.date for e in entries}),
+        "family": family,
+        "today": today,
     })
 
 

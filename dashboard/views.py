@@ -4,7 +4,7 @@ from django.contrib.auth.decorators import login_required
 from django.shortcuts import render
 from django.utils.dateparse import parse_date
 
-from core.permissions import scoped_queryset
+from core.permissions import scoped_queryset, user_can_edit
 from core.utils import get_selected_family
 from curricula.models import CurriculumPlacement
 from curricula.subjects import emoji_for
@@ -76,8 +76,12 @@ def dashboard_view(request):
             assessments = assessments.filter(work_entry__date__gte=start)
         if end:
             assessments = assessments.filter(work_entry__date__lte=end)
-        assessments = assessments.select_related("work_entry", "lesson").order_by("-created_at")
+        assessments = list(
+            assessments.select_related("work_entry", "lesson").order_by("-created_at")
+        )
         levels = [a.effective_level for a in assessments if a.effective_level]
+
+        from tutor.trends import mastery_series
 
         child_cards.append({
             "child": child,
@@ -93,7 +97,9 @@ def dashboard_view(request):
                  "badge": mastery.BADGE.get(lvl, "bg-secondary")}
                 for lvl, label in reversed(mastery.CHOICES) if levels.count(lvl)
             ],
-            "recent_assessments": list(assessments[:4]),
+            "recent_assessments": assessments[:4],
+            # Mastery over time — a per-subject sparkline (needs 2+ points to trend).
+            "trends": [s for s in mastery_series(assessments) if s["count"] >= 2],
         })
 
     summary = {
@@ -112,5 +118,6 @@ def dashboard_view(request):
         "start_date": start_date,
         "end_date": end_date,
         "has_filters": has_filters,
+        "can_edit": user_can_edit(request.user),
         "today": date.today(),
     })

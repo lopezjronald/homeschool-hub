@@ -1,5 +1,6 @@
 {% extends "portal/base_portal.html" %}
 {% load static %}
+{% load tutor_extras %}
 {% block title %}{{ question_set.title }} · Steadfast Scholars{% endblock %}
 
 {% block content %}
@@ -38,7 +39,7 @@
           {% if question_set.intro %}
             <div class="lesson-intro">
               <div class="lesson-intro-label">Before you start</div>
-              <p>{{ question_set.intro|linebreaksbr }}</p>
+              <div class="lesson-intro-body">{{ question_set.intro|markdownify }}</div>
             </div>
           {% endif %}
 
@@ -54,7 +55,7 @@
                   <span class="portal-chip chip-{{ q.category }}">{{ q.get_category_display }}</span>
                 </div>
                 {% if q.prompt %}
-                  <label class="portal-prompt" {% if not q.is_markup %}for="q{{ q.pk }}"{% endif %}>{{ q.prompt|linebreaksbr }}</label>
+                  <label class="portal-prompt" {% if q.response_type == "text" %}for="q{{ q.pk }}"{% endif %}>{{ q.prompt|markdownify_inline }}</label>
                 {% endif %}
                 {% if q.hint %}
                   <details class="portal-hint">
@@ -63,7 +64,67 @@
                   </details>
                 {% endif %}
 
-                {% if q.is_markup %}
+                {% if q.is_characters %}
+                  <div class="character-widget">
+                    {% for name in q.character_names %}
+                      <div class="character-field">
+                        <label class="character-name" for="char-{{ q.pk }}-{{ forloop.counter }}">{{ name }}</label>
+                        <textarea id="char-{{ q.pk }}-{{ forloop.counter }}"
+                                  class="form-control portal-answer character-box"
+                                  data-character="{{ name }}" rows="3"
+                                  placeholder="Who is {{ name }}? What are they like?"
+                                  autocomplete="off" autocorrect="off" autocapitalize="off"
+                                  spellcheck="true" data-gramm="false"
+                                  {% if sheet.is_submitted %}readonly{% endif %}></textarea>
+                      </div>
+                    {% endfor %}
+                    <input type="hidden" name="answer_{{ q.pk }}" data-question="{{ q.pk }}" value="{{ q.my_answer }}">
+                  </div>
+                {% elif q.is_matching %}
+                  <div class="vocab-matching" data-question-widget="{{ q.pk }}">
+                    <div class="vocab-columns">
+                      <div class="vocab-words" role="group" aria-label="Words to match">
+                        {% for w in q.vocab_data.words %}
+                          <button type="button" class="vocab-word" data-word="{{ w }}">
+                            <span class="vocab-slot" aria-hidden="true"></span>
+                            <span class="vocab-word-text">{{ w }}</span>
+                          </button>
+                        {% endfor %}
+                      </div>
+                      <div class="vocab-defs" role="group" aria-label="Numbered definitions">
+                        {% for d in q.vocab_data.definitions %}
+                          <button type="button" class="vocab-def" data-n="{{ d.n }}" data-word="{{ d.word }}">
+                            <span class="vocab-def-n">{{ d.n }}</span>
+                            <span class="vocab-def-text">{{ d.text }}</span>
+                          </button>
+                        {% endfor %}
+                      </div>
+                    </div>
+                    <div class="vocab-done" hidden>🎉 You matched them all — great job!</div>
+                    <input type="hidden" name="answer_{{ q.pk }}" data-question="{{ q.pk }}" value="{{ q.my_answer }}">
+                  </div>
+                {% elif q.is_fill_blank %}
+                  <div class="vocab-fillblank" data-question-widget="{{ q.pk }}">
+                    {% for s in q.fill_blank_sentences %}
+                      <div class="vocab-sentence" data-index="{{ forloop.counter0 }}" data-word="{{ s.word }}">
+                        <span class="vocab-sentence-num">{{ forloop.counter }}.</span>
+                        <span class="vocab-sentence-body">{{ s.before }}<select class="vocab-blank-select" aria-label="Choose the missing word">
+                          <option value="">______</option>
+                          {% for w in q.vocab_data.words %}<option value="{{ w }}">{{ w }}</option>{% endfor %}
+                        </select>{{ s.after }}</span>
+                      </div>
+                    {% endfor %}
+                    <div class="vocab-done" hidden>🎉 Every blank is filled — wonderful!</div>
+                    <input type="hidden" name="answer_{{ q.pk }}" data-question="{{ q.pk }}" value="{{ q.my_answer }}">
+                  </div>
+                {% elif q.is_cloze %}
+                  <div class="vocab-cloze" data-question-widget="{{ q.pk }}">
+                    <div class="cloze-passage">
+                      {% for seg in q.cloze_segments %}{% if seg.blank is None %}{{ seg.text }}{% else %}<input type="text" class="cloze-input" data-blank="{{ seg.blank }}" aria-label="Blank {{ seg.blank|add:1 }}" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="true" data-gramm="false" {% if sheet.is_submitted %}readonly{% endif %}>{% endif %}{% endfor %}
+                    </div>
+                    <input type="hidden" name="answer_{{ q.pk }}" data-question="{{ q.pk }}" value="{{ q.my_answer }}">
+                  </div>
+                {% elif q.is_markup %}
                   <div class="markup-widget">
                     <div class="markup-toolbar" role="toolbar" aria-label="Drawing tools">
                       <span class="markup-tool-label">Pens:</span>
@@ -90,10 +151,23 @@
                     class="form-control portal-answer"
                     placeholder="Type your answer here…"
                     autocomplete="off" autocorrect="off" autocapitalize="off"
-                    spellcheck="false" data-gramm="false"
+                    spellcheck="true" data-gramm="false"
                     {% if sheet.is_submitted %}readonly{% endif %}>
 {{ q.my_answer }}</textarea>
                   <div class="portal-wordcount text-muted" data-count-for="{{ q.pk }}"></div>
+                  {% if q.supports_draft_coach and not sheet.is_submitted %}
+                    <div class="coach-widget" data-coach-for="{{ q.pk }}"
+                         data-coach-url="{% url 'portal:portal_draft_feedback' token=token set_pk=question_set.pk %}">
+                      <button type="button" class="coach-btn">✨ Get feedback on my draft</button>
+                      <div class="coach-box" {% if not q.my_coach %}hidden{% endif %}>
+                        <div class="coach-heading">✍️ Your writing coach says…</div>
+                        <p class="coach-praise">{% if q.my_coach %}{{ q.my_coach.praise }}{% endif %}</p>
+                        <ul class="coach-suggestions">
+                          {% if q.my_coach %}{% for s in q.my_coach.suggestions %}<li>{{ s }}</li>{% endfor %}{% endif %}
+                        </ul>
+                      </div>
+                    </div>
+                  {% endif %}
                 {% endif %}
               </div>
             {% endfor %}
@@ -122,4 +196,7 @@
 {% block extra_js %}
 <script src="{% static 'js/portal-autosave.js' %}"></script>
 <script src="{% static 'js/portal-markup.js' %}"></script>
+<script src="{% static 'js/portal-characters.js' %}"></script>
+<script src="{% static 'js/portal-vocab.js' %}"></script>
+<script src="{% static 'js/portal-coach.js' %}"></script>
 {% endblock %}

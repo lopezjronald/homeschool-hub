@@ -170,6 +170,43 @@
         </div>
       </div>
 
+      <!-- Resources (external links) -->
+      <div class="card mb-4">
+        <div class="card-header"><h5 class="mb-0">📚 Resources</h5></div>
+        <div class="card-body">
+          {% if resources %}
+            <ul class="list-group mb-3">
+              {% for r in resources %}
+                <li class="list-group-item d-flex justify-content-between align-items-center">
+                  <span>
+                    <a href="{{ r.url }}" target="_blank" rel="noopener noreferrer">{{ r.emoji }} {{ r.label }}</a>
+                    <span class="badge bg-light text-dark ms-1">{{ r.get_resource_type_display }}</span>
+                    {% if r.teacher_only %}<span class="badge bg-warning text-dark ms-1">Teacher only</span>{% endif %}
+                    {% if r.notes %}<div class="small text-muted">{{ r.notes }}</div>{% endif %}
+                  </span>
+                  {% if can_edit %}
+                    <form method="post" action="{% url 'curricula:curriculum_resource_delete' curriculum.pk r.pk %}" class="d-inline">
+                      {% csrf_token %}
+                      <button type="submit" class="btn btn-sm btn-outline-danger">Remove</button>
+                    </form>
+                  {% endif %}
+                </li>
+              {% endfor %}
+            </ul>
+          {% else %}
+            <p class="text-muted">No resources linked yet{% if can_edit %} — add an answer key, a read-aloud video, or any helpful page{% endif %}.</p>
+          {% endif %}
+
+          {% if can_edit %}
+            <form method="post" action="{% url 'curricula:curriculum_resource_add' curriculum.pk %}" novalidate>
+              {% csrf_token %}
+              {{ resource_form|crispy }}
+              <button type="submit" class="btn btn-outline-primary">Add resource</button>
+            </form>
+          {% endif %}
+        </div>
+      </div>
+
       <div class="d-flex justify-content-between">
         <a href="{% url 'curricula:curriculum_list' %}" class="btn btn-secondary">Back to List</a>
         {% if can_edit %}

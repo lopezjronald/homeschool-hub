@@ -1,3 +1,5 @@
+import json
+
 from django.conf import settings
 from django.db import models
 
@@ -45,6 +47,10 @@ class MasteryAssessment(models.Model):
     ai_summary = models.TextField(blank=True)
     ai_criteria = models.JSONField(default=list, blank=True)
     ai_encouragement = models.TextField(blank=True)
+    ai_kid_highlights = models.JSONField(
+        default=list, blank=True,
+        help_text="Short child-facing bullets shown on the portal feedback page.",
+    )
 
     parent_override_level = models.CharField(max_length=20, choices=mastery.CHOICES, blank=True)
     final_level = models.CharField(max_length=20, choices=mastery.CHOICES, blank=True)
@@ -58,6 +64,11 @@ class MasteryAssessment(models.Model):
 
     def __str__(self):
         return f"Assessment of {self.work_entry} ({self.get_status_display()})"
+
+    @property
+    def is_auto(self):
+        """True if this draft came from the portal's submit-time grading agent."""
+        return self.graded_by_id is None
 
     @property
     def effective_level(self):
@@ -334,9 +345,17 @@ class Question(models.Model):
 
     TYPE_TEXT = "text"
     TYPE_MARKUP = "markup"
+    TYPE_CHARACTERS = "characters"
+    TYPE_MATCHING = "matching"
+    TYPE_FILL_BLANK = "fill_blank"
+    TYPE_CLOZE = "cloze"
     RESPONSE_TYPES = [
         (TYPE_TEXT, "Typed answer"),
         (TYPE_MARKUP, "Mark up the sentence (draw)"),
+        (TYPE_CHARACTERS, "A box per character"),
+        (TYPE_MATCHING, "Match words to numbered definitions"),
+        (TYPE_FILL_BLANK, "Fill in the blank from a word bank"),
+        (TYPE_CLOZE, "Fill in the blanks with your own words"),
     ]
 
     question_set = models.ForeignKey(
@@ -350,7 +369,8 @@ class Question(models.Model):
     response_type = models.CharField(max_length=10, choices=RESPONSE_TYPES, default=TYPE_TEXT)
     passage = models.TextField(
         blank=True,
-        help_text="For markup questions: the sentence/text the child draws on.",
+        help_text="For markup questions: the sentence/text the child draws on. "
+                  "For character questions: the character names, separated by '·'.",
     )
     hint = models.TextField(
         blank=True,
@@ -360,6 +380,96 @@ class Question(models.Model):
     @property
     def is_markup(self):
         return self.response_type == self.TYPE_MARKUP
+
+    @property
+    def is_characters(self):
+        return self.response_type == self.TYPE_CHARACTERS
+
+    @property
+    def is_matching(self):
+        return self.response_type == self.TYPE_MATCHING
+
+    @property
+    def is_fill_blank(self):
+        return self.response_type == self.TYPE_FILL_BLANK
+
+    @property
+    def is_cloze(self):
+        return self.response_type == self.TYPE_CLOZE
+
+    @property
+    def supports_draft_coach(self):
+        """True if the writing coach can review this answer as a draft.
+
+        Rough drafts in the literature guides carry a "ROUGH DRAFT" marker;
+        Essentials-in-Writing paragraph work is category "writing".
+        """
+        if self.response_type != self.TYPE_TEXT:
+            return False
+        return "ROUGH DRAFT" in (self.prompt or "").upper() or self.category == "writing"
+
+    @property
+    def cloze_segments(self):
+        """Split a cloze passage at underscore runs into text/blank segments.
+
+        Returns [{"text": …, "blank": None|index}, …] — a blank segment carries
+        the input's index; text segments carry the words around it.
+        """
+        import re
+
+        segments = []
+        idx = 0
+        pos = 0
+        for m in re.finditer(r"_{3,}", self.passage or ""):
+            if m.start() > pos:
+                segments.append({"text": (self.passage[pos:m.start()]), "blank": None})
+            segments.append({"text": "", "blank": idx})
+            idx += 1
+            pos = m.end()
+        rest = (self.passage or "")[pos:]
+        if rest:
+            segments.append({"text": rest, "blank": None})
+        return segments
+
+    @property
+    def cloze_blank_count(self):
+        return sum(1 for s in self.cloze_segments if s["blank"] is not None)
+
+    @property
+    def character_names(self):
+        """Character names for a character question (from ``passage``).
+
+        Accepts '·', '•', or newline separators; trims and drops blanks.
+        """
+        raw = self.passage or ""
+        for sep in ("·", "•", "\n"):
+            raw = raw.replace(sep, "\x00")
+        return [name.strip() for name in raw.split("\x00") if name.strip()]
+
+    @property
+    def vocab_data(self):
+        """Parsed exercise data for matching/fill-blank questions (from ``passage``).
+
+        Matching:   {"words": […], "definitions": [{"n": 1, "text": …, "word": …}, …]}
+        Fill-blank: {"words": […], "sentences": [{"text": "… ______ …", "word": …}, …]}
+        Returns {} if the JSON is missing or malformed — templates must degrade.
+        """
+        try:
+            data = json.loads(self.passage or "")
+        except (ValueError, TypeError):
+            return {}
+        return data if isinstance(data, dict) else {}
+
+    @property
+    def fill_blank_sentences(self):
+        """Fill-blank sentences pre-split at the blank for easy templating."""
+        out = []
+        for s in self.vocab_data.get("sentences", []):
+            if not isinstance(s, dict):
+                continue
+            before, _sep, after = str(s.get("text", "")).partition("______")
+            out.append({"before": before, "after": after, "word": s.get("word", "")})
+        return out
 
     class Meta:
         ordering = ["order"]
@@ -400,6 +510,10 @@ class ResponseSheet(models.Model):
         related_name="response_sheets",
     )
     answers = models.JSONField(default=dict, blank=True)
+    draft_feedback = models.JSONField(
+        default=dict, blank=True,
+        help_text="Writing-coach feedback per question id: {qid: {praise, suggestions, at}}.",
+    )
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=DRAFT)
     work_entry = models.ForeignKey(
         "worklog.WorkLogEntry",
@@ -435,21 +549,120 @@ class ResponseSheet(models.Model):
     def answered_count(self):
         return sum(1 for v in (self.answers or {}).values() if str(v).strip())
 
-    def as_worklog_text(self):
-        """Format the Q&A as readable text for the work log / grader.
+    def answer_display(self, question):
+        """A readable rendering of the child's answer to one question.
 
-        Markup answers are drawing strokes, not prose, so they're summarized as
-        the sentence plus whether the child annotated it.
+        Handles every response type: markup (a note that they drew on the
+        sentence), characters/matching/fill-blank/cloze (their structured
+        answer, made readable), and plain text. Used by both the work-log text
+        and the parent's read-only work browser.
         """
+        raw = str(self.answer_for(question)).strip()
+        if question.is_markup:
+            marked = "yes" if raw and raw != "[]" else "no"
+            return f'[marked up the sentence "{question.passage}" — annotated: {marked}]'
+        if question.is_characters:
+            return self._format_characters(raw)
+        if question.is_matching:
+            return self._format_matching(raw, question)
+        if question.is_fill_blank:
+            return self._format_fill_blank(raw, question)
+        if question.is_cloze:
+            return self._format_cloze(raw, question)
+        return raw or "(no answer)"
+
+    def as_worklog_text(self):
+        """Format the Q&A as readable text for the work log / grader."""
         lines = []
         for q in self.question_set.questions.all():
-            raw = str(self.answer_for(q)).strip()
-            if q.is_markup:
-                marked = "yes" if raw and raw != "[]" else "no"
-                answer = f'[marked up the sentence "{q.passage}" — annotated: {marked}]'
-            else:
-                answer = raw or "(no answer)"
             lines.append(f"Q{q.order} [{q.get_category_display()}]: {q.prompt}")
-            lines.append(f"A: {answer}")
+            lines.append(f"A: {self.answer_display(q)}")
             lines.append("")
         return "\n".join(lines).strip()
+
+    @staticmethod
+    def _format_characters(raw):
+        """Render a character answer ({name: text} JSON) as readable lines."""
+        try:
+            data = json.loads(raw) if raw else {}
+        except (ValueError, TypeError):
+            data = {}
+        if not isinstance(data, dict) or not data:
+            return "(no answer)"
+        parts = [f"{name}: {text}" for name, text in data.items() if str(text).strip()]
+        return "\n".join(parts) if parts else "(no answer)"
+
+    @staticmethod
+    def _parse_json_answer(raw):
+        try:
+            data = json.loads(raw) if raw else {}
+        except (ValueError, TypeError):
+            data = {}
+        return data if isinstance(data, dict) else {}
+
+    @classmethod
+    def _format_matching(cls, raw, question):
+        """Render a matching answer ({"matches": {word: n}, "tries": N})."""
+        data = cls._parse_json_answer(raw)
+        matches = data.get("matches") or {}
+        if not isinstance(matches, dict) or not matches:
+            return "(no answer)"
+        defs = {
+            d.get("n"): d.get("text", "")
+            for d in question.vocab_data.get("definitions", [])
+            if isinstance(d, dict)
+        }
+        parts = [
+            f"{word} → {n} ({defs.get(n, '?')}) ✓"
+            for word, n in matches.items()
+        ]
+        tries = data.get("tries")
+        if isinstance(tries, int) and tries:
+            parts.append(f"({tries} wrong tr{'y' if tries == 1 else 'ies'} along the way)")
+        return "\n".join(parts)
+
+    @classmethod
+    def _format_fill_blank(cls, raw, question):
+        """Render a fill-blank answer ({"blanks": {index: word}, "tries": N})."""
+        data = cls._parse_json_answer(raw)
+        blanks = data.get("blanks") or {}
+        if not isinstance(blanks, dict) or not blanks:
+            return "(no answer)"
+        sentences = question.vocab_data.get("sentences", [])
+
+        def _idx(key):
+            try:
+                return int(key)
+            except (ValueError, TypeError):
+                return -1
+
+        parts = []
+        for key in sorted(blanks, key=_idx):           # sentence order, not completion order
+            word = blanks[key]
+            i = _idx(key)
+            try:
+                sentence = sentences[i].get("text", "") if i >= 0 else "?"
+            except (IndexError, AttributeError, TypeError):
+                sentence = "?"
+            parts.append(f"{sentence.replace('______', f'[{word}]')} ✓")
+        tries = data.get("tries")
+        if isinstance(tries, int) and tries:
+            parts.append(f"({tries} wrong tr{'y' if tries == 1 else 'ies'} along the way)")
+        return "\n".join(parts)
+
+    @classmethod
+    def _format_cloze(cls, raw, question):
+        """Render a cloze answer ({"blanks": {index: text}}) — the passage with
+        the child's words dropped into their blanks."""
+        data = cls._parse_json_answer(raw)
+        blanks = data.get("blanks") or {}
+        if not isinstance(blanks, dict) or not any(str(v).strip() for v in blanks.values()):
+            return "(no answer)"
+        out = []
+        for seg in question.cloze_segments:
+            if seg["blank"] is None:
+                out.append(seg["text"])
+            else:
+                word = str(blanks.get(str(seg["blank"]), "")).strip()
+                out.append(f"[{word}]" if word else "[   ]")
+        return "".join(out)

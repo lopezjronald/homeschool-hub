@@ -1,0 +1,168 @@
+{% extends "base.html" %}
+{% block title %}How it works · Steadfast Scholars{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+  <div class="row justify-content-center">
+    <div class="col-lg-9">
+
+      <div class="ss-hero mb-4">
+        <div class="ss-kicker">Welcome</div>
+        <h1>How Steadfast Scholars works</h1>
+        <p class="lead mb-0">One calm place to run your homeschool — plan every subject at its own level,
+          let your children do their work, capture mastery as it grows, and hand your charter a record it can trust.</p>
+      </div>
+
+      <!-- QUICK START (the fold: momentum first) -->
+      <div class="card mb-4" style="border-color:var(--ss-amber);">
+        <div class="card-body">
+          <h2 class="h4 mb-3" style="color:var(--ss-forest);">Quick start — three steps</h2>
+          <ol class="ss-quickstart list-unstyled mb-0">
+            <li class="d-flex align-items-start gap-3 mb-3">
+              <span class="ss-feature-emoji">1️⃣</span>
+              <div><strong>Add a child.</strong> Set their Level — each subject then runs at its own grade.
+                {% if user.is_authenticated %}<a href="{% url 'students:student_create' %}">Add a child →</a>{% endif %}</div>
+            </li>
+            <li class="d-flex align-items-start gap-3 mb-3">
+              <span class="ss-feature-emoji">2️⃣</span>
+              <div><strong>Set up a subject.</strong> Add a course, or tick “done on an external website” for online ones — then place your child.
+                {% if user.is_authenticated %}<a href="{% url 'curricula:curriculum_list' %}">Open curricula →</a>{% endif %}</div>
+            </li>
+            <li class="d-flex align-items-start gap-3 mb-0">
+              <span class="ss-feature-emoji">3️⃣</span>
+              <div><strong>Hand over the device.</strong> On the child's page tap <em>Open portal</em>. They do the work; you get a
+                “Feedback to review” card, confirm mastery, and the record writes itself.
+                <a href="{% url 'worklog:sample_report' %}">See a sample report →</a></div>
+            </li>
+          </ol>
+        </div>
+      </div>
+
+      <p class="text-muted small mb-4">Want the reasoning and the full feature tour? It's all below.</p>
+
+      <!-- WHY -->
+      <div class="card mb-4">
+        <div class="card-body">
+          <h2 class="h4" style="color:var(--ss-forest);">Why this exists</h2>
+          <p>We built Steadfast Scholars around a few beliefs — the “five whys” behind everything you'll see:</p>
+          <ol class="mb-0">
+            <li class="mb-2"><strong>Why mastery, not grades?</strong> A percentage hides what a child actually
+              understands. We track <em>Beginning → Developing → Proficient → Mastered</em> per piece of work, so you
+              always know where they truly are — and they advance when they're ready, not when a calendar says so.</li>
+            <li class="mb-2"><strong>Why a level per subject?</strong> A child can be years ahead in reading and
+              right on pace in math. Each subject moves at its own level, so they accelerate where they shine and take
+              their time where they need it.</li>
+            <li class="mb-2"><strong>Why a separate, login-free kid portal?</strong> Children should see only their
+              own work — one clear next step, no navigation, no wall of rows — so they can start on their own and feel
+              capable, not overwhelmed.</li>
+            <li class="mb-2"><strong>Why does the AI never grade alone?</strong> The assistant reads your child's work
+              and proposes a mastery level with warm, specific feedback — but <em>you</em> always review and finalize.
+              The teacher stays the teacher.</li>
+            <li class="mb-0"><strong>Why the durable record?</strong> Homeschooling under a charter or state program
+              means showing your work. Every day your child does builds a work log, mastery history, and a printable
+              report your Educational Specialist can read at a glance.</li>
+          </ol>
+        </div>
+      </div>
+
+      <!-- WHAT -->
+      <h2 class="portal-section-title" style="color:var(--ss-forest);">What's inside</h2>
+      <div class="row row-cols-1 row-cols-md-2 g-3 mb-4">
+        <div class="col"><div class="card h-100"><div class="card-body">
+          <div class="ss-feature-emoji mb-1">👧</div>
+          <h5 id="children">Children &amp; levels</h5>
+          <p class="text-muted mb-0">Add each child with a school Level. Every subject then runs at its own grade.</p>
+        </div></div></div>
+        <div class="col"><div class="card h-100"><div class="card-body">
+          <div class="ss-feature-emoji mb-1">📚</div>
+          <h5 id="curricula">Curricula</h5>
+          <p class="text-muted mb-0">Built-in courses (literature, writing, math) with lessons — plus <strong>online
+            subjects</strong> like Beast Academy or DIVE that launch out to the provider, and <strong>resource links</strong>
+            (answer keys, read-alouds) you pin per book.</p>
+        </div></div></div>
+        <div class="col"><div class="card h-100"><div class="card-body">
+          <div class="ss-feature-emoji mb-1">🌱</div>
+          <h5 id="portal">The kid portal</h5>
+          <p class="text-muted mb-0">A login-free page with just their subjects: “what's next,” tap a subject, do the
+            work. Typing, matching, fill-in-the-blank, drawing on a sentence — with spelling help built in.</p>
+        </div></div></div>
+        <div class="col"><div class="card h-100"><div class="card-body">
+          <div class="ss-feature-emoji mb-1">✅</div>
+          <h5 id="mastery">Grading &amp; the writing coach</h5>
+          <p class="text-muted mb-0">When a child turns in work, the assistant gives them warm feedback (never a
+            grade) and drafts a mastery level for <em>you</em> to confirm. On rough drafts, a writing coach offers
+            gentle suggestions — it never rewrites their work.</p>
+        </div></div></div>
+        <div class="col"><div class="card h-100"><div class="card-body">
+          <div class="ss-feature-emoji mb-1">📝</div>
+          <h5>Work log &amp; Progress</h5>
+          <p class="text-muted mb-0">Every submission lands in the work log. The Progress page shows each subject's
+            standing and mastery-over-time trends.</p>
+        </div></div></div>
+        <div class="col"><div class="card h-100"><div class="card-body">
+          <div class="ss-feature-emoji mb-1">📄</div>
+          <h5 id="report">Charter report</h5>
+          <p class="text-muted mb-0">One click prints a date-range report — work log + mastery + trends — ready to
+            save as a PDF for your reviewing teacher. <a href="{% url 'worklog:sample_report' %}">See a sample →</a></p>
+        </div></div></div>
+      </div>
+
+      <!-- HOW: parent -->
+      <div class="card mb-4">
+        <div class="card-body">
+          <h2 class="h4" style="color:var(--ss-forest);">How to use it — parents &amp; teachers</h2>
+          <ol class="mb-0">
+            <li class="mb-2"><strong>Add your children.</strong> Go to <strong>My Children → Add</strong> and set each
+              child's Level.</li>
+            <li class="mb-2"><strong>Set up subjects.</strong> Open <strong>Curricula</strong>. Use a built-in course,
+              or add your own — tick <em>“done on an external website”</em> for online subjects. Then place each child
+              at where they're starting.</li>
+            <li class="mb-2"><strong>Hand over the device.</strong> On a child's page, tap <strong>Open portal</strong>
+              (or copy the link and bookmark it on their tablet). They see only their work.</li>
+            <li class="mb-2"><strong>They do the work.</strong> As they type it autosaves; when they turn it in, they
+              get instant encouragement and you get a <em>“Feedback to review”</em> card on your home page.</li>
+            <li class="mb-2"><strong>You confirm mastery.</strong> Open the draft, read what your child was told,
+              accept or adjust the level, and finalize. That's what builds the record.</li>
+            <li class="mb-0"><strong>Report anytime.</strong> From <strong>Progress</strong>, open <strong>Charter
+              report</strong>, pick a date range, and print or save as PDF.</li>
+          </ol>
+        </div>
+      </div>
+
+      <!-- HOW: kid -->
+      <div class="card mb-4">
+        <div class="card-body">
+          <h2 class="h4" style="color:var(--ss-forest);">How it looks for your child</h2>
+          <p class="mb-0">Their portal opens to “Hi! Here's what's waiting for you today.” They tap a subject, see the
+            one next thing to do, and go. Finished work folds away; a subject they do online opens the website in a tap.
+            When they turn something in, they get a kind note about their work — never a score. A small “Parents” button
+            in the corner is the only way back to your side.</p>
+        </div>
+      </div>
+
+      <!-- Invite others -->
+      <div class="card mb-4">
+        <div class="card-body">
+          <h2 id="invite" class="h4" style="color:var(--ss-forest);">Sharing with a co-parent or teacher</h2>
+          <p class="mb-0">From the account menu, choose <strong>Invite people</strong> to bring in a co-parent,
+            guardian, grandparent, or reviewing teacher — with exactly the access you choose. Co-parents and guardians
+            can add and edit; grandparents and teachers get read-only oversight, including the charter report.</p>
+        </div>
+      </div>
+
+      {% if user.is_authenticated %}
+        <div class="d-flex flex-wrap gap-2">
+          <a href="{% url 'students:student_list' %}" class="btn btn-amber btn-lg">Start: add a child →</a>
+          <a href="{% url 'home' %}" class="btn btn-outline-secondary btn-lg">Go to my home</a>
+        </div>
+      {% else %}
+        <div class="d-flex flex-wrap gap-2">
+          <a href="{% url 'accounts:register' %}" class="btn btn-amber btn-lg">Create an account</a>
+          <a href="{% url 'accounts:login' %}" class="btn btn-outline-secondary btn-lg">Log in</a>
+        </div>
+      {% endif %}
+
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -1,6 +1,8 @@
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
+from django.db import connection
 from django.db.models import Q
+from django.db.models.functions import Greatest
 from django.http import Http404
 from django.shortcuts import render, redirect, get_object_or_404
 from django.views.decorators.http import require_POST
@@ -10,10 +12,31 @@ from core.utils import get_active_family, get_selected_family
 from students.models import Student
 
 from .blueprints import BLUEPRINTS
-from .forms import ApplyBlueprintForm, CurriculumDocumentForm, CurriculumForm
+from .forms import ApplyBlueprintForm, CurriculumDocumentForm, CurriculumForm, CurriculumResourceForm
 from .models import Curriculum, CurriculumPlacement, Lesson
 from .services import apply_blueprint, get_blueprint
 from .subjects import emoji_for
+
+
+def _fuzzy_search(qs, q):
+    """Misspelling-tolerant search over name/subject.
+
+    On Postgres, pg_trgm similarity lets "Dimensios Math" still find
+    "Dimensions Math 3A"; exact substring matches always qualify too, and
+    results order by similarity. On SQLite (dev/tests) it degrades to the
+    plain icontains filter. Row counts are tiny, so no GIN index needed yet.
+    """
+    contains = Q(name__icontains=q) | Q(subject__icontains=q)
+    if connection.vendor != "postgresql":
+        return qs.filter(contains)
+    from django.contrib.postgres.search import TrigramSimilarity
+
+    return (
+        qs.annotate(sim=Greatest(TrigramSimilarity("name", q), TrigramSimilarity("subject", q)))
+        .filter(contains | Q(sim__gt=0.25))
+        .order_by("-sim", "subject", "name")
+    )
+
 
 @login_required
 def curriculum_list(request):
@@ -31,7 +54,7 @@ def curriculum_list(request):
     if grade:
         curricula = curricula.filter(grade_level=grade)
     if q:
-        curricula = curricula.filter(Q(name__icontains=q) | Q(subject__icontains=q))
+        curricula = _fuzzy_search(curricula, q)
 
     curricula = list(curricula)
     for c in curricula:
@@ -94,6 +117,7 @@ def curriculum_detail(request, pk):
 
     chapters = curriculum.chapters.prefetch_related("lessons", "lessons__materials")
     documents = curriculum.documents.all()
+    resources = curriculum.resources.all()
     ordered_lessons = list(
         Lesson.objects.filter(chapter__curriculum=curriculum)
         .select_related("chapter")
@@ -122,10 +146,12 @@ def curriculum_detail(request, pk):
         "can_edit": can_edit,
         "chapters": chapters,
         "documents": documents,
+        "resources": resources,
         "ordered_lessons": ordered_lessons,
         "child_rows": child_rows,
         "apply_form": ApplyBlueprintForm() if can_edit else None,
         "doc_form": CurriculumDocumentForm() if can_edit else None,
+        "resource_form": CurriculumResourceForm() if can_edit else None,
     })
 
 
@@ -216,6 +242,34 @@ def curriculum_document_delete(request, pk, doc_pk):
         doc.file.delete(save=False)
     doc.delete()
     messages.success(request, f'Removed document "{title}".')
+    return redirect("curricula:curriculum_detail", pk=curriculum.pk)
+
+
+@login_required
+@require_POST
+def curriculum_resource_add(request, pk):
+    """Add an external resource link to a curriculum (editors)."""
+    curriculum = get_object_or_404(editable_queryset(Curriculum.objects.all(), request.user), pk=pk)
+    form = CurriculumResourceForm(request.POST)
+    if form.is_valid():
+        resource = form.save(commit=False)
+        resource.curriculum = curriculum
+        resource.save()
+        messages.success(request, f'Added resource "{resource.label}".')
+    else:
+        messages.error(request, "Could not add the resource. Please check the link and try again.")
+    return redirect("curricula:curriculum_detail", pk=curriculum.pk)
+
+
+@login_required
+@require_POST
+def curriculum_resource_delete(request, pk, resource_pk):
+    """Delete a curriculum resource link (editors)."""
+    curriculum = get_object_or_404(editable_queryset(Curriculum.objects.all(), request.user), pk=pk)
+    resource = get_object_or_404(curriculum.resources, pk=resource_pk)
+    label = resource.label
+    resource.delete()
+    messages.success(request, f'Removed resource "{label}".')
     return redirect("curricula:curriculum_detail", pk=curriculum.pk)
 
 

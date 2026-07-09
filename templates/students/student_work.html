@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}{{ student.first_name }}'s work · {{ curriculum.name }}{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+  <div class="row justify-content-center">
+    <div class="col-lg-8">
+
+      <div class="ss-hero mb-4">
+        <div class="ss-kicker">{{ curriculum.name }}</div>
+        <h1>{{ student.first_name }}'s work</h1>
+        <p class="lead mb-0">{{ done }} of {{ total }} turned in — click any piece to see what {{ student.first_name }} answered.</p>
+      </div>
+
+      {% for chapter in chapters %}
+        <h2 class="portal-section-title" style="color:var(--ss-forest);">{{ chapter.heading }}</h2>
+        <div class="list-group mb-4">
+          {% for qs in chapter.sets %}
+            <a href="{% url 'students:student_work_set' student.pk qs.pk %}"
+               class="list-group-item list-group-item-action d-flex justify-content-between align-items-center flex-wrap gap-2">
+              <span>
+                <span class="fw-semibold">{{ qs.title }}</span>
+                {% if qs.reading %}<small class="text-muted d-block">📖 {{ qs.reading }}</small>{% endif %}
+              </span>
+              {% if qs.my_sheet and qs.my_sheet.is_submitted %}
+                <span class="badge bg-success">Turned in{% if qs.my_sheet.submitted_at %} · {{ qs.my_sheet.submitted_at|date:"M d" }}{% endif %}</span>
+              {% elif qs.my_sheet and qs.my_sheet.answered_count %}
+                <span class="badge bg-warning text-dark">In progress · {{ qs.my_sheet.answered_count }} answered</span>
+              {% else %}
+                <span class="badge bg-light text-dark">Not started</span>
+              {% endif %}
+            </a>
+          {% endfor %}
+        </div>
+      {% empty %}
+        <div class="alert alert-info">No student work in this curriculum yet.</div>
+      {% endfor %}
+
+      <a href="{% url 'students:student_detail' student.pk %}" class="btn btn-secondary">← Back to {{ student.first_name }}</a>
+
+    </div>
+  </div>
+</div>
+{% endblock %}

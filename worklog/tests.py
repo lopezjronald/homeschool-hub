@@ -112,7 +112,7 @@ class WorkLogScopingTest(TestCase):
         lonely = User.objects.create_user(username="lonely", email="l@example.com", password="pw")
         self.client.login(username="lonely", password="pw")
         resp = self.client.get(reverse("worklog:worklog_list"))
-        self.assertContains(resp, "No work logged yet")
+        self.assertContains(resp, "Log your first day")
 
 
 @override_settings(MEDIA_ROOT=MEDIA)

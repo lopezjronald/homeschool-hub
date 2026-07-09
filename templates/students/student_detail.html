@@ -104,18 +104,20 @@
                     <span>Next: {{ item.next_lesson.code }}</span>
                   {% endif %}
                 </div>
-                {% if item.has_discussion %}
-                  <a href="{% url 'tutor:discussion_guide' item.curriculum.pk %}" class="btn btn-sm btn-outline-primary mt-2">🗣️ Discussion guide (for you)</a>
-                {% endif %}
+                <div class="d-flex flex-wrap gap-2 mt-2">
+                  <a href="{% url 'students:student_work' student.pk item.curriculum.pk %}" class="btn btn-sm btn-amber">📖 Browse {{ student.first_name }}'s work</a>
+                  <a href="{% url 'curricula:curriculum_detail' item.curriculum.pk %}" class="btn btn-sm btn-outline-secondary">Curriculum</a>
+                  {% if item.has_discussion %}
+                    <a href="{% url 'tutor:discussion_guide' item.curriculum.pk %}" class="btn btn-sm btn-outline-primary">🗣️ Discussion guide</a>
+                  {% endif %}
+                </div>
               </li>
             {% endfor %}
           </ul>
         {% else %}
           <div class="card-body">
-            <p class="text-muted mb-0">
-              {{ student.first_name }} isn't placed in any curriculum yet.
-              {% if can_edit %}Open a <a href="{% url 'curricula:curriculum_list' %}">curriculum</a> to set where they're working.{% endif %}
-            </p>
+            {% url 'curricula:curriculum_list' as cur_url %}
+            {% include "includes/empty_state.html" with emoji="📗" heading="Not placed in a subject yet" body="Place them in a curriculum to give them a “what's next” in the portal." action_url=cur_url action_label="Set up a subject" can_edit=can_edit %}
           </div>
         {% endif %}
       </div>

@@ -12,6 +12,17 @@
   {% if subjects %}
     <div class="portal-subjects">
       {% for subject in subjects %}
+        {% if subject.is_external %}
+          <a href="{{ subject.launch_url }}" target="_blank" rel="noopener noreferrer"
+             class="portal-subject-card">
+            <div class="portal-subject-emoji">{{ subject.emoji }}</div>
+            <div class="portal-subject-body">
+              <div class="portal-subject-name">{{ subject.curriculum.name }}</div>
+              <div class="portal-next-line"><span class="portal-next-label">Online</span> opens your lessons ↗</div>
+            </div>
+            <div class="portal-subject-go">Open ↗</div>
+          </a>
+        {% else %}
         <a href="{% url 'portal:portal_subject' token=token curriculum_id=subject.curriculum.id %}"
            class="portal-subject-card">
           <div class="portal-subject-emoji">{{ subject.emoji }}</div>
@@ -46,6 +57,7 @@
             {% if subject.next_set %}Continue{% else %}Open{% endif %} ➜
           </div>
         </a>
+        {% endif %}
       {% endfor %}
     </div>
   {% endif %}

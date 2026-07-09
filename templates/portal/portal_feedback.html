@@ -1,0 +1,83 @@
+{% extends "portal/base_portal.html" %}
+{% block title %}Turned in! · {{ question_set.title }}{% endblock %}
+
+{% block content %}
+<div class="container portal-narrow">
+
+  <div class="portal-celebrate mb-4">
+    <div class="portal-celebrate-emoji">🎉</div>
+    <h2>Turned in!</h2>
+    <p class="mb-0">Wonderful work, {{ student.first_name }} — you finished
+      <strong>{{ question_set.title }}</strong>!</p>
+  </div>
+
+  <div id="feedback-area">
+    {% if assessment %}
+      {% include "portal/_feedback_card.html" with encouragement=assessment.ai_encouragement highlights=assessment.ai_kid_highlights %}
+    {% elif can_generate %}
+      <div class="card portal-card feedback-waiting" id="feedback-waiting">
+        <div class="card-body text-center">
+          <div class="feedback-reader">📖</div>
+          <p class="mb-0 fw-semibold">Your work is being read right now…</p>
+          <p class="text-muted small mb-0">This takes a few seconds. You did the hard part already!</p>
+        </div>
+      </div>
+    {% else %}
+      <div class="card portal-card">
+        <div class="card-body text-center">
+          <p class="mb-0 fw-semibold">Your teacher will take a look at it soon. 🌱</p>
+        </div>
+      </div>
+    {% endif %}
+  </div>
+
+  <div class="text-center mt-4 d-flex gap-2 justify-content-center flex-wrap">
+    <a class="btn btn-amber btn-lg"
+       href="{% url 'portal:portal_subject' token=token curriculum_id=question_set.lesson.chapter.curriculum_id %}">
+      What's next? ➜
+    </a>
+    <a class="btn btn-outline-secondary btn-lg" href="{% url 'portal:portal_home' token=token %}">
+      All my subjects
+    </a>
+  </div>
+
+</div>
+{% endblock %}
+
+{% block extra_js %}
+{% if not assessment and can_generate %}
+<script>
+(function () {
+  "use strict";
+  var area = document.getElementById("feedback-area");
+  fetch("{% url 'portal:portal_feedback_generate' token=token set_pk=question_set.pk %}", {
+    method: "POST",
+    credentials: "same-origin",
+  })
+    .then(function (resp) { return resp.ok ? resp.json() : { ok: false }; })
+    .then(function (data) {
+      if (!data.ok) { fallback(); return; }
+      var html = '<div class="card portal-card feedback-card">' +
+        '<div class="card-body">' +
+        '<div class="feedback-heading">💬 A note about your work</div>' +
+        '<p class="feedback-encouragement"></p>';
+      html += '<ul class="feedback-highlights">';
+      (data.highlights || []).forEach(function () { html += "<li></li>"; });
+      html += "</ul></div></div>";
+      area.innerHTML = html;
+      // Text goes in via textContent so nothing the model says can be markup.
+      area.querySelector(".feedback-encouragement").textContent = data.encouragement || "";
+      var items = area.querySelectorAll(".feedback-highlights li");
+      (data.highlights || []).forEach(function (h, i) { items[i].textContent = h; });
+    })
+    .catch(fallback);
+
+  function fallback() {
+    area.innerHTML = '<div class="card portal-card"><div class="card-body text-center">' +
+      '<p class="mb-0 fw-semibold">Your teacher will take a look at it soon. 🌱</p>' +
+      "</div></div>";
+  }
+})();
+</script>
+{% endif %}
+{% endblock %}

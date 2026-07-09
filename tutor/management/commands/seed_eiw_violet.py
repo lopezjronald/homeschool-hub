@@ -11,6 +11,8 @@ Examples:
     python manage.py seed_eiw_violet --for-user ronald --child-name Violet
 """
 
+import re
+
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
@@ -25,7 +27,9 @@ from ._eiw_content import EXERCISES, LESSON_TITLES
 # kind -> (category, response_type, kid-facing label)
 KIND_MAP = {
     "sentence-editing": ("editing", Question.TYPE_MARKUP, "Mark the sentences"),
-    "fill-blank": ("grammar", Question.TYPE_TEXT, "Fill in the blanks"),
+    # fill-blank renders as a CLOZE: the passage with real inline input boxes at
+    # each blank — not a wall of underscores over one big textarea.
+    "fill-blank": ("grammar", Question.TYPE_CLOZE, "Fill in the blanks"),
     "short-answer": ("grammar", Question.TYPE_TEXT, "Practice"),
     "paragraph-writing": ("writing", Question.TYPE_TEXT, "Write"),
     "multiple-choice": ("grammar", Question.TYPE_TEXT, "Choose the answer"),
@@ -121,6 +125,15 @@ class Command(BaseCommand):
                         defaults = {
                             "category": category,
                             "response_type": Question.TYPE_MARKUP,
+                            "passage": item,
+                            "prompt": "",
+                        }
+                    elif response_type == Question.TYPE_CLOZE and re.search(r"_{3,}", item):
+                        # The blanked text becomes the passage; each underscore
+                        # run renders as an inline input box.
+                        defaults = {
+                            "category": category,
+                            "response_type": Question.TYPE_CLOZE,
                             "passage": item,
                             "prompt": "",
                         }

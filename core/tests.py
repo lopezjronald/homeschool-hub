@@ -1332,3 +1332,173 @@ class HubNavTests(TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertNotContains(resp, "hub-tile")
         self.assertContains(resp, "Create account")
+
+
+# ===========================================================================
+# HH-47: Remove Family Member View Tests
+# ===========================================================================
+
+
+class RemoveMemberViewTests(TestCase):
+    """HH-47: parents revoke family members; the primary parent is protected."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.family = Family.objects.create(name="Remove Family")
+
+        # Primary parent = earliest parent-role membership (created first).
+        cls.primary_parent = CustomUser.objects.create_user(
+            username="rm_primary", email="rm_primary@test.com", password="testpass123",
+        )
+        cls.primary_membership = FamilyMembership.objects.create(
+            user=cls.primary_parent, family=cls.family, role="parent",
+        )
+        # A second, non-primary parent.
+        cls.second_parent = CustomUser.objects.create_user(
+            username="rm_second", email="rm_second@test.com", password="testpass123",
+        )
+        cls.second_membership = FamilyMembership.objects.create(
+            user=cls.second_parent, family=cls.family, role="parent",
+        )
+        # A grandparent member (removable).
+        cls.grandparent = CustomUser.objects.create_user(
+            username="rm_grandparent", email="rm_gp@test.com", password="testpass123",
+        )
+        cls.grandparent_membership = FamilyMembership.objects.create(
+            user=cls.grandparent, family=cls.family, role="grandparent",
+        )
+        # A teacher (non-parent → no active family).
+        cls.teacher = CustomUser.objects.create_user(
+            username="rm_teacher", email="rm_teacher@test.com", password="testpass123",
+        )
+        cls.teacher_membership = FamilyMembership.objects.create(
+            user=cls.teacher, family=cls.family, role="teacher",
+        )
+
+        # A separate family with its own member.
+        cls.other_family = Family.objects.create(name="Other Remove Family")
+        cls.other_parent = CustomUser.objects.create_user(
+            username="rm_other_parent", email="rm_other@test.com", password="testpass123",
+        )
+        FamilyMembership.objects.create(
+            user=cls.other_parent, family=cls.other_family, role="parent",
+        )
+        cls.other_member = CustomUser.objects.create_user(
+            username="rm_other_member", email="rm_other_m@test.com", password="testpass123",
+        )
+        cls.other_membership = FamilyMembership.objects.create(
+            user=cls.other_member, family=cls.other_family, role="grandparent",
+        )
+
+    def _url(self, membership_id):
+        return reverse("core:remove_member", kwargs={"membership_id": membership_id})
+
+    def test_primary_parent_removes_non_primary_member(self):
+        self.client.login(username="rm_primary", password="testpass123")
+        response = self.client.post(self._url(self.grandparent_membership.pk))
+        self.assertEqual(response.status_code, 302)
+        self.assertFalse(
+            FamilyMembership.objects.filter(pk=self.grandparent_membership.pk).exists()
+        )
+
+    def test_removing_primary_parent_is_blocked(self):
+        self.client.login(username="rm_primary", password="testpass123")
+        response = self.client.post(self._url(self.primary_membership.pk), follow=True)
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(
+            FamilyMembership.objects.filter(pk=self.primary_membership.pk).exists()
+        )
+        self.assertContains(response, "be removed from the family")
+
+    def test_teacher_post_returns_404(self):
+        self.client.login(username="rm_teacher", password="testpass123")
+        response = self.client.post(self._url(self.grandparent_membership.pk))
+        self.assertEqual(response.status_code, 404)
+        self.assertTrue(
+            FamilyMembership.objects.filter(pk=self.grandparent_membership.pk).exists()
+        )
+
+    def test_get_returns_405(self):
+        self.client.login(username="rm_primary", password="testpass123")
+        response = self.client.get(self._url(self.grandparent_membership.pk))
+        self.assertEqual(response.status_code, 405)
+
+    def test_member_in_another_family_returns_404(self):
+        self.client.login(username="rm_primary", password="testpass123")
+        response = self.client.post(self._url(self.other_membership.pk))
+        self.assertEqual(response.status_code, 404)
+        self.assertTrue(
+            FamilyMembership.objects.filter(pk=self.other_membership.pk).exists()
+        )
+
+    def test_non_primary_parent_can_leave(self):
+        self.client.login(username="rm_second", password="testpass123")
+        response = self.client.post(self._url(self.second_membership.pk))
+        self.assertEqual(response.status_code, 302)
+        self.assertFalse(
+            FamilyMembership.objects.filter(pk=self.second_membership.pk).exists()
+        )
+
+
+class SetupProgressTests(TestCase):
+    """Onboarding setup-checklist service + surfaces (HH-102)."""
+
+    def setUp(self):
+        self.factory = RequestFactory()
+        self.user = CustomUser.objects.create_user(
+            username="newparent", email="new@example.com", password="testpass123",
+        )
+
+    def _progress(self):
+        from core.services import get_setup_progress
+
+        request = self.factory.get("/")
+        request.user = self.user
+        return get_setup_progress(request, None)
+
+    def test_new_parent_all_steps_incomplete(self):
+        p = self._progress()
+        self.assertEqual(p["total"], 4)
+        self.assertEqual(p["done_count"], 0)
+        self.assertEqual(p["percent"], 0)
+        self.assertFalse(p["complete"])
+        self.assertTrue(p["steps"][0]["is_next"])   # first action foregrounded
+        self.assertFalse(p["steps"][0]["done"])
+
+    def test_child_and_subject_advance_the_checklist(self):
+        Student.objects.create(parent=self.user, first_name="Vi", grade_level="G03")
+        Curriculum.objects.create(parent=self.user, name="Lit 3", subject="Literature")
+        p = self._progress()
+        self.assertTrue(p["steps"][0]["done"])      # child
+        self.assertTrue(p["steps"][1]["done"])      # subject
+        self.assertEqual(p["done_count"], 2)
+        self.assertFalse(p["complete"])
+        self.assertEqual(p["steps"][2]["key"], "portal")
+        self.assertTrue(p["steps"][2]["is_next"])   # next action is the portal
+
+    def test_read_only_reviewer_sees_no_checklist(self):
+        # A user whose only membership is a read-only role never gets the card.
+        family = Family.objects.create(name="Read-Only Fam")
+        FamilyMembership.objects.create(user=self.user, family=family, role="grandparent")
+        from core.services import get_setup_progress
+
+        request = self.factory.get("/")
+        request.user = self.user
+        p = get_setup_progress(request, family)
+        self.assertTrue(p["complete"])
+        self.assertEqual(p["steps"], [])
+
+    def test_hub_renders_checklist_for_new_user(self):
+        self.client.force_login(self.user)
+        resp = self.client.get(reverse("home"))
+        self.assertContains(resp, "Get set up")
+
+    def test_student_list_shows_guided_empty_state(self):
+        self.client.force_login(self.user)
+        resp = self.client.get(reverse("students:student_list"))
+        self.assertContains(resp, "Add your first child")
+
+    def test_sample_report_is_public(self):
+        resp = self.client.get(reverse("worklog:sample_report"))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "sample report")

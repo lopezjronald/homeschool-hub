@@ -159,6 +159,9 @@ def _subject_cards(student):
             "sets_total": sets_total,
             "sets_pct": round(sets_done / sets_total * 100) if sets_total else 0,
             "materials_count": len(materials_by_curr.get(cid, [])),
+            # Online subjects (Beast Academy, DIVE…) launch out to the website.
+            "is_external": curriculum.is_external,
+            "launch_url": curriculum.website_url if curriculum.is_external else "",
         })
 
     cards.sort(key=lambda c: (c["curriculum"].subject or "", c["curriculum"].name))
@@ -262,12 +265,13 @@ def portal_questions(request, token, set_pk):
 
     if request.method == "POST":
         _submit_sheet(student, question_set, request.POST)
-        return redirect("portal:portal_questions", token=token, set_pk=set_pk)
+        return redirect("portal:portal_feedback", token=token, set_pk=set_pk)
 
     sheet = _sheet_for(student, question_set)
     questions = list(question_set.questions.all())
     for q in questions:
         q.my_answer = sheet.answer_for(q)
+        q.my_coach = (sheet.draft_feedback or {}).get(str(q.pk))
 
     return render(request, "portal/portal_questions.html", {
         "student": student,
@@ -323,6 +327,131 @@ def _merge_answers(sheet, data):
             if qid in question_ids:
                 answers[qid] = value
     sheet.answers = answers
+
+
+def portal_feedback(request, token, set_pk):
+    """The 'you turned it in!' page — celebration plus the agent's quick feedback.
+
+    If a draft assessment already exists, its child-facing pieces render at
+    once; otherwise the page shows a friendly reading state and JS asks
+    ``portal_feedback_generate`` to produce one. The child never sees a level.
+    """
+    student = _resolve_student(token)
+    question_set = get_object_or_404(_visible_question_sets(student), pk=set_pk)
+    sheet = ResponseSheet.objects.filter(question_set=question_set, child=student).first()
+    if sheet is None or not sheet.is_submitted:
+        return redirect("portal:portal_questions", token=token, set_pk=set_pk)
+
+    from tutor.models import MasteryAssessment
+
+    assessment = MasteryAssessment.objects.filter(work_entry=sheet.work_entry_id).first()
+    from tutor import ai
+
+    return render(request, "portal/portal_feedback.html", {
+        "student": student,
+        "token": token,
+        "question_set": question_set,
+        "sheet": sheet,
+        "assessment": assessment,
+        "can_generate": assessment is None and ai.is_configured(),
+    })
+
+
+@csrf_exempt
+@require_POST
+def portal_feedback_generate(request, token, set_pk):
+    """Generate (idempotently) the agent's feedback for a submitted sheet.
+
+    CSRF-exempt for the same reason as autosave: portal auth is the signed
+    token in the URL, not an ambient cookie. Returns only child-facing fields.
+    """
+    student = _resolve_student(token)
+    question_set = get_object_or_404(_visible_question_sets(student), pk=set_pk)
+    sheet = ResponseSheet.objects.filter(question_set=question_set, child=student).first()
+    if sheet is None or not sheet.is_submitted:
+        return JsonResponse({"ok": False}, status=409)
+
+    from tutor import ai, grading
+
+    try:
+        assessment, _created = grading.auto_grade_sheet(sheet)
+    except ai.GraderError:
+        return JsonResponse({"ok": False})  # kid page falls back to plain celebration
+    if assessment is None:
+        return JsonResponse({"ok": False})
+    return JsonResponse({
+        "ok": True,
+        "encouragement": assessment.ai_encouragement,
+        "highlights": assessment.ai_kid_highlights or [],
+    })
+
+
+@csrf_exempt
+@require_POST
+def portal_draft_feedback(request, token, set_pk):
+    """Writing-coach feedback on a ROUGH draft (before the final draft).
+
+    Token-authed like autosave. Saves the draft text first (so nothing is
+    lost), asks the coach for praise + suggestions, stores them on the sheet
+    (visible again on reload), and returns the kid-facing pieces. Never grades.
+    """
+    student = _resolve_student(token)
+    question_set = get_object_or_404(_visible_question_sets(student), pk=set_pk)
+
+    try:
+        payload = json.loads(request.body.decode("utf-8"))
+    except (ValueError, UnicodeDecodeError):
+        return JsonResponse({"ok": False}, status=400)
+    if not isinstance(payload, dict):
+        return JsonResponse({"ok": False}, status=400)
+    qid = str(payload.get("question", ""))
+    draft = payload.get("text", "")
+    if not isinstance(draft, str) or len(draft.strip()) < 20:
+        return JsonResponse({"ok": False, "error": "too_short"})
+
+    question = question_set.questions.filter(pk=qid).first() if qid.isdigit() else None
+    if question is None or not question.supports_draft_coach:
+        return JsonResponse({"ok": False}, status=400)
+
+    sheet = _sheet_for(student, question_set)
+    if sheet.is_submitted:
+        return JsonResponse({"ok": False}, status=409)
+
+    from tutor import ai
+
+    curriculum = question_set.lesson.chapter.curriculum
+    grade = (curriculum.get_grade_level_display() if curriculum.grade_level
+             else student.get_grade_level_display())
+    try:
+        result = ai.review_draft(
+            draft=draft,
+            assignment=question.prompt or question_set.intro,
+            grade_level=grade,
+            subject=curriculum.subject or "Writing",
+        )
+    except (ai.GraderNotConfigured, ai.GraderError):
+        return JsonResponse({"ok": False})
+
+    with transaction.atomic():
+        locked, _ = ResponseSheet.objects.select_for_update().get_or_create(
+            question_set=question_set, child=student,
+        )
+        if locked.is_submitted:
+            return JsonResponse({"ok": False}, status=409)
+        answers = dict(locked.answers or {})
+        answers[qid] = draft                     # keep the draft she asked about
+        feedback = dict(locked.draft_feedback or {})
+        feedback[qid] = {
+            "praise": result["praise"],
+            "suggestions": result["suggestions"],
+            "at": timezone.localtime(timezone.now()).strftime("%b %d, %I:%M %p"),
+        }
+        locked.answers = answers
+        locked.draft_feedback = feedback
+        locked.save(update_fields=["answers", "draft_feedback", "updated_at"])
+
+    return JsonResponse({"ok": True, "praise": result["praise"],
+                         "suggestions": result["suggestions"]})
 
 
 @csrf_exempt

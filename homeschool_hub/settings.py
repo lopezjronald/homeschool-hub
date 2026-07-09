@@ -217,8 +217,21 @@ AUTHENTICATION_BACKENDS = [
     "django.contrib.auth.backends.ModelBackend",
 ]
 
-EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
-DEFAULT_FROM_EMAIL = "no-reply@homeschool.local"
+# Email: real SMTP (e.g. Amazon SES) when EMAIL_HOST is configured, else the
+# console backend for local dev. Set EMAIL_HOST / EMAIL_HOST_USER /
+# EMAIL_HOST_PASSWORD / DEFAULT_FROM_EMAIL in Heroku config to enable delivery
+# (invites + email verification depend on this). The test runner overrides this
+# with the in-memory backend automatically.
+EMAIL_HOST = os.getenv("EMAIL_HOST", "")
+if EMAIL_HOST:
+    EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
+    EMAIL_PORT = _env_int("EMAIL_PORT", 587)
+    EMAIL_USE_TLS = _env_bool("EMAIL_USE_TLS", True)
+    EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER", "")
+    EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD", "")
+else:
+    EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
+DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "no-reply@homeschool.local")
 
 LOGIN_URL = "accounts:login"
 LOGIN_REDIRECT_URL = "/"
@@ -293,6 +306,34 @@ X_FRAME_OPTIONS = os.getenv("X_FRAME_OPTIONS", "DENY")
 
 # Referrer-Policy (control referrer header leakage)
 SECURE_REFERRER_POLICY = os.getenv("SECURE_REFERRER_POLICY", "same-origin")
+
+# ---------------------------------------------------------------------------
+# Logging
+# ---------------------------------------------------------------------------
+# Log to stderr so Heroku's logplex captures app output. Level is driven by
+# DJANGO_LOG_LEVEL (default INFO). disable_existing_loggers=False keeps Django's
+# built-in loggers working alongside this config.
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+            "stream": sys.stderr,
+        },
+    },
+    "root": {
+        "handlers": ["console"],
+        "level": os.getenv("DJANGO_LOG_LEVEL", "INFO"),
+    },
+    "loggers": {
+        "django": {
+            "handlers": ["console"],
+            "level": os.getenv("DJANGO_LOG_LEVEL", "INFO"),
+            "propagate": False,
+        },
+    },
+}
 
 # ---------------------------------------------------------------------------
 # Storage Configuration (Static + Media)

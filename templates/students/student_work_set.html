@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% load static %}
+{% load tutor_extras %}
+{% block title %}{{ student.first_name }} · {{ question_set.title }}{% endblock %}
+{% block extra_css %}<link href="{% static 'css/portal.css' %}" rel="stylesheet">{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+  <div class="row justify-content-center">
+    <div class="col-lg-8">
+
+      <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
+        <div>
+          <h1 class="mb-1">{{ question_set.title }}</h1>
+          <div class="text-muted">{{ student.first_name }} · {{ curriculum.name }}</div>
+        </div>
+        {% if sheet and sheet.is_submitted %}
+          <span class="badge bg-success align-self-center">Turned in{% if sheet.submitted_at %} · {{ sheet.submitted_at|date:"M d, Y" }}{% endif %}</span>
+        {% elif sheet and sheet.answered_count %}
+          <span class="badge bg-warning text-dark align-self-center">In progress</span>
+        {% else %}
+          <span class="badge bg-light text-dark align-self-center">Not started</span>
+        {% endif %}
+      </div>
+
+      {% if assessment %}
+        <div class="alert alert-info d-flex justify-content-between align-items-center flex-wrap gap-2">
+          <span>
+            💬 {% if assessment.status == 'finalized' %}Finalized as <strong>{{ assessment.get_final_level_display }}</strong>{% else %}Draft feedback ready to review{% endif %}
+          </span>
+          <a href="{% url 'tutor:assess_detail' assessment.pk %}" class="btn btn-sm btn-primary">Open assessment</a>
+        </div>
+      {% elif sheet.is_submitted and can_edit and sheet.work_entry %}
+        <div class="alert alert-light d-flex justify-content-between align-items-center flex-wrap gap-2">
+          <span>Not assessed yet.</span>
+          <a href="{% url 'tutor:assess_create' sheet.work_entry.pk %}" class="btn btn-sm btn-outline-primary">Grade this work</a>
+        </div>
+      {% endif %}
+
+      {% if not sheet %}
+        <div class="alert alert-secondary">{{ student.first_name }} hasn't opened this one yet.</div>
+      {% endif %}
+
+      {% for row in rows %}
+        <div class="card mb-3">
+          <div class="card-body">
+            <div class="d-flex align-items-center gap-2 mb-2">
+              <span class="portal-chip chip-{{ row.question.category }}">{{ row.question.get_category_display }}</span>
+              <span class="text-muted small">Question {{ row.question.order }}</span>
+            </div>
+            {% if row.question.prompt %}
+              <div class="fw-semibold mb-2">{{ row.question.prompt|markdownify_inline }}</div>
+            {% endif %}
+            {% if row.question.is_markup %}
+              <p class="text-muted mb-1">Sentence to mark up:</p>
+              <p class="mb-2" style="font-family:Georgia,serif;font-size:1.15rem;">{{ row.question.passage }}</p>
+            {% endif %}
+
+            {% if row.answered %}
+              <div class="ss-answer-block">{{ row.answer }}</div>
+            {% else %}
+              <div class="text-muted fst-italic">No answer.</div>
+            {% endif %}
+
+            {% if row.coach %}
+              <div class="mt-2 small">
+                <span class="fw-semibold" style="color:var(--ss-amber-700,#8A5B12);">✍️ Coach told {{ student.first_name }}:</span>
+                {{ row.coach.praise }}
+                {% if row.coach.suggestions %}
+                  <ul class="mb-0">{% for s in row.coach.suggestions %}<li>{{ s }}</li>{% endfor %}</ul>
+                {% endif %}
+              </div>
+            {% endif %}
+          </div>
+        </div>
+      {% endfor %}
+
+      <a href="{% url 'students:student_work' student.pk curriculum.pk %}" class="btn btn-secondary">← All of {{ student.first_name }}'s work</a>
+
+    </div>
+  </div>
+</div>
+{% endblock %}

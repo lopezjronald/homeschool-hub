@@ -181,6 +181,241 @@
   padding: 0.4rem 0.7rem;
 }
 
+/* ---- rendered markdown in the intro ---- */
+.lesson-intro-body > *:last-child { margin-bottom: 0; }
+.lesson-intro-body ol,
+.lesson-intro-body ul { margin: 0.25rem 0 0; padding-left: 1.3rem; }
+.lesson-intro-body li { margin-bottom: 0.2rem; }
+
+/* ---- vocabulary: match the number + fill in the blank (Acquire) ---- */
+.vocab-columns { display: flex; gap: 1rem; flex-wrap: wrap; }
+.vocab-words { flex: 1 1 200px; display: flex; flex-direction: column; gap: 0.5rem; }
+.vocab-defs { flex: 1 1 260px; display: flex; flex-direction: column; gap: 0.5rem; }
+
+.vocab-word, .vocab-def {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  width: 100%;
+  text-align: left;
+  background: #fff;
+  border: 2px solid rgba(15, 61, 46, 0.2);
+  border-radius: 12px;
+  padding: 0.6rem 0.75rem;
+  font-size: 1.05rem;
+  cursor: pointer;
+  transition: border-color 0.12s ease, background 0.12s ease, transform 0.12s ease;
+}
+.vocab-word:hover:not(:disabled), .vocab-def:hover:not(:disabled) { border-color: var(--ss-green, #1E7A50); }
+.vocab-word.is-selected, .vocab-def.is-selected {
+  border-color: var(--ss-amber, #EBA83A);
+  background: rgba(235, 168, 58, 0.12);
+}
+.vocab-word.is-locked, .vocab-def.is-locked {
+  border-color: var(--ss-green, #1E7A50);
+  background: rgba(30, 122, 80, 0.1);
+  cursor: default;
+}
+.vocab-word-text { font-weight: 700; color: var(--ss-forest, #0F3D2E); }
+.vocab-slot {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border: 2px dashed rgba(15, 61, 46, 0.35);
+  border-radius: 8px;
+  font-weight: 800;
+  color: var(--ss-green, #1E7A50);
+  background: #fbfaf5;
+}
+.vocab-word.is-locked .vocab-slot { border-style: solid; border-color: var(--ss-green, #1E7A50); }
+.vocab-def-n {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.7rem;
+  height: 1.7rem;
+  border-radius: 50%;
+  background: var(--ss-forest, #0F3D2E);
+  color: #fff;
+  font-weight: 700;
+  font-size: 0.85rem;
+}
+.vocab-def.is-locked .vocab-def-n { background: var(--ss-green, #1E7A50); }
+.vocab-def-text { line-height: 1.35; }
+
+.vocab-sentence {
+  padding: 0.6rem 0.4rem;
+  border-bottom: 1px dashed rgba(15, 61, 46, 0.15);
+  font-size: 1.05rem;
+  line-height: 2;
+}
+.vocab-sentence:last-of-type { border-bottom: none; }
+.vocab-sentence-num { font-weight: 700; color: var(--ss-green, #1E7A50); margin-right: 0.25rem; }
+.vocab-sentence.is-locked { background: rgba(30, 122, 80, 0.07); border-radius: 10px; }
+.vocab-blank-select {
+  display: inline-block;
+  margin: 0 0.25rem;
+  padding: 0.45rem 0.6rem;          /* child-sized tap target */
+  min-height: 44px;
+  font-size: 1.02rem;
+  font-weight: 700;
+  color: var(--ss-forest, #0F3D2E);
+  border: 2px solid rgba(15, 61, 46, 0.3);
+  border-radius: 8px;
+  background: #fbfaf5;
+}
+.vocab-sentence.is-locked .vocab-blank-select {
+  border-color: var(--ss-green, #1E7A50);
+  background: rgba(30, 122, 80, 0.12);
+}
+
+.vocab-done {
+  margin-top: 0.75rem;
+  padding: 0.7rem 1rem;
+  border-radius: 12px;
+  background: rgba(30, 122, 80, 0.1);
+  border: 1px solid rgba(30, 122, 80, 0.3);
+  color: var(--ss-forest, #0F3D2E);
+  font-weight: 700;
+}
+
+@keyframes vocab-shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-5px); }
+  75% { transform: translateX(5px); }
+}
+.vocab-shake { animation: vocab-shake 0.15s ease 3; border-color: #d64545 !important; }
+@media (prefers-reduced-motion: reduce) {
+  .vocab-shake { animation: none; }
+  .vocab-word, .vocab-def, .portal-card-link, .portal-subject-card { transition: none; }
+}
+
+/* ---- cloze: fill blanks with your own words (Essentials in Writing) ---- */
+.cloze-passage {
+  font-size: 1.08rem;
+  line-height: 2.6;
+  color: #24303a;
+  background: #fffdf7;
+  border: 1.5px solid rgba(15, 61, 46, 0.2);
+  border-radius: 10px;
+  padding: 0.9rem 1.1rem;
+}
+.cloze-input {
+  display: inline-block;
+  width: 9.5rem;
+  max-width: 60vw;
+  min-height: 44px;
+  margin: 0 0.2rem;
+  padding: 0.35rem 0.6rem;
+  font-size: 1.02rem;
+  font-weight: 600;
+  color: var(--ss-forest, #0F3D2E);
+  border: none;
+  border-bottom: 2.5px solid var(--ss-green, #1E7A50);
+  border-radius: 6px 6px 0 0;
+  background: rgba(30, 122, 80, 0.06);
+}
+.cloze-input:focus {
+  outline: none;
+  background: rgba(235, 168, 58, 0.14);
+  border-bottom-color: var(--ss-amber, #EBA83A);
+}
+.cloze-input[readonly] { background: #f2f0e8; border-bottom-color: #b9c4be; }
+
+/* ---- submit-time feedback from the reading helper ---- */
+.feedback-card { border-color: rgba(30, 122, 80, 0.35); }
+.feedback-heading {
+  font-size: 0.82rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--ss-green, #1E7A50);
+  margin-bottom: 0.5rem;
+}
+.feedback-encouragement {
+  font-size: 1.15rem;
+  line-height: 1.55;
+  color: #24303a;
+  margin-bottom: 0.5rem;
+}
+.feedback-highlights { margin: 0; padding-left: 1.3rem; }
+.feedback-highlights li { margin-bottom: 0.35rem; font-size: 1.02rem; }
+.feedback-reader { font-size: 2.2rem; animation: feedback-breathe 1.6s ease-in-out infinite; }
+@keyframes feedback-breathe {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.15); }
+}
+@media (prefers-reduced-motion: reduce) { .feedback-reader { animation: none; } }
+
+/* ---- writing coach (rough drafts) ---- */
+.coach-widget { margin-top: 0.5rem; }
+.coach-btn {
+  border: 2px solid rgba(30, 122, 80, 0.35);
+  background: #fff;
+  color: var(--ss-forest, #0F3D2E);
+  font-weight: 700;
+  border-radius: 10px;
+  padding: 0.5rem 0.9rem;
+  min-height: 44px;
+  cursor: pointer;
+}
+.coach-btn:hover:not(:disabled) { border-color: var(--ss-green, #1E7A50); background: #f2f7f3; }
+.coach-btn:disabled { opacity: 0.7; cursor: wait; }
+.coach-box {
+  margin-top: 0.6rem;
+  background: rgba(235, 168, 58, 0.1);
+  border: 1px solid rgba(235, 168, 58, 0.45);
+  border-radius: 12px;
+  padding: 0.8rem 1rem;
+}
+.coach-heading {
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--ss-amber-700, #8A5B12);
+  margin-bottom: 0.4rem;
+}
+.coach-praise { margin: 0 0 0.4rem; font-size: 1.02rem; }
+.coach-suggestions { margin: 0; padding-left: 1.25rem; }
+.coach-suggestions li { margin-bottom: 0.3rem; font-size: 0.98rem; }
+
+/* ---- navbar + footer escape hatches for the grown-ups ---- */
+.portal-nav-parent {
+  color: #fff;
+  text-decoration: none;
+  font-size: 0.85rem;
+  font-weight: 600;
+  border: 1.5px solid rgba(255, 255, 255, 0.45);
+  border-radius: 999px;
+  padding: 0.3rem 0.75rem;
+  white-space: nowrap;
+}
+.portal-nav-parent:hover {
+  color: var(--ss-forest-2, #0B2E22);
+  background: var(--ss-amber, #EBA83A);
+  border-color: var(--ss-amber, #EBA83A);
+}
+.portal-parent-link { color: #8a978f; text-decoration: none; }
+.portal-parent-link:hover { color: var(--ss-green, #1E7A50); text-decoration: underline; }
+
+/* ---- character boxes: one box per character ---- */
+.character-field { margin-bottom: 0.9rem; }
+.character-name {
+  display: inline-block;
+  font-weight: 700;
+  color: var(--ss-forest, #0F3D2E);
+  background: rgba(30, 122, 80, 0.1);
+  border-radius: 8px;
+  padding: 0.15rem 0.6rem;
+  margin-bottom: 0.35rem;
+  font-size: 1.02rem;
+}
+
 /* ---- markup: draw on the sentence ---- */
 .markup-widget { margin-top: 0.5rem; }
 .markup-toolbar {

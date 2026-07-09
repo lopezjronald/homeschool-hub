@@ -16,7 +16,7 @@ from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
 from core.utils import get_active_family
-from curricula.models import Curriculum, CurriculumPlacement, Lesson
+from curricula.models import Curriculum, CurriculumPlacement, CurriculumResource, Lesson
 from curricula.services import apply_blueprint, get_blueprint
 from students.models import Student
 from tutor.models import Question, QuestionSet, ResponseSheet
@@ -115,6 +115,57 @@ requirements: a clear plan, real research or drafting steps, and a finished piec
 the student can present and explain.""" + MASTERY_NOTE
 
 VOCAB_HINT = "Look it up in a printed dictionary, then write the definition in your own words."
+
+# Official Blackbird definitions — TEACHER REFERENCE ONLY. The Level 7 guide
+# has the student look each word up in a dictionary and write the definition
+# herself (no matching exercise), so the portal keeps the guide's own format.
+OFFICIAL_DEFINITIONS = {
+    1: [
+        ("catastrophe", "great or sudden damage or suffering"),
+        ("grating", "harsh and unpleasant sounding"),
+        ("irresolute", "hesitant and uncertain"),
+        ("lithe", "thin, graceful, and supple"),
+        ("mutter", "low, barely audible speech"),
+        ("quay", "a platform for loading and unloading ships"),
+        ("runnel", "a narrow channel in the ground for liquid"),
+    ],
+    2: [
+        ("brevity", "using few words; concise"),
+        ("disconcert", "to unsettle or disturb someone's composure"),
+        ("ignorant", "lacking awareness or knowledge"),
+        ("inundate", "to overwhelm with things or people"),
+        ("muster", "to assemble, as for inspection or battle"),
+        ("sinister", "suggesting something harmful or evil"),
+        ("undulate", "to move with a smooth, wavelike motion"),
+    ],
+    3: [
+        ("deception", "a misleading act or statement"),
+        ("emaciated", "abnormally thin and weak"),
+        ("foreboding", "a fearful feeling that something bad is coming"),
+        ("fugitive", "a person who has escaped and is in hiding"),
+        ("indebted", "owing something to another"),
+        ("ingratiate", "to gain favor through flattery"),
+        ("obstinate", "stubbornly resistant to change"),
+    ],
+    4: [
+        ("apathy", "lack of interest or enthusiasm"),
+        ("apprehensive", "anxious that something bad will happen"),
+        ("gale", "an extremely strong wind"),
+        ("precipice", "a very steep rock face or cliff"),
+        ("shirk", "to avoid a responsibility or duty"),
+        ("vagabond", "a homeless wanderer"),
+        ("dejected", "sad and depressed"),
+    ],
+}
+
+
+def _acquire_answer_key(section_number):
+    lines = [f"{word} — {text}" for word, text in OFFICIAL_DEFINITIONS[section_number]]
+    return (
+        "## Answer key — Acquire  ·  teacher reference only\n"
+        "Official Blackbird definitions (accept the same meaning in her own words):\n"
+        + "\n".join(lines)
+    )
 SENTENCE_PROMPT = (
     "Choose five of your vocabulary words and use each in a complete sentence "
     "that illustrates your understanding of the word's meaning."
@@ -566,11 +617,11 @@ class Command(BaseCommand):
                 rubric=JOURNAL_RUBRIC,
                 questions=[
                     ("character",
-                     f"CHARACTERS — as you read, note interesting, important and new things "
-                     f"you learn about: {section['characters']}. Describe such things as their "
-                     f"personality and appearance, including details about the way they act, "
-                     f"think and feel.",
-                     "Bullet points are perfect! Describe who each character IS — not what they do (save that for Plot)."),
+                     "CHARACTERS — as you read, note interesting, important, and new things "
+                     "about each person below: their personality and appearance, and details "
+                     "about the way they act, think, and feel.",
+                     "Bullet points are perfect! Describe who each character IS — not what they do (save that for Plot).",
+                     {"response_type": Question.TYPE_CHARACTERS, "passage": section["characters"]}),
                     ("setting",
                      "SETTING — as you read, note where the story is happening. Explain how "
                      "the setting is significant to the story and include any descriptive "
@@ -583,7 +634,7 @@ class Command(BaseCommand):
             )
             set_count += s; q_count += q
 
-            # -- Acquire ---------------------------------------------------
+            # -- Acquire: the guide's own format — look it up and write it.
             vocab_questions = [
                 ("vocabulary", f"Define: **{word}**", VOCAB_HINT)
                 for word in section["vocab"]
@@ -595,6 +646,7 @@ class Command(BaseCommand):
                 reading=chs,
                 intro="Use a real dictionary — the paper kind! Define each word in your own words.",
                 rubric=ACQUIRE_RUBRIC,
+                answer_key=_acquire_answer_key(n),
                 questions=vocab_questions,
             )
             set_count += s; q_count += q
@@ -692,6 +744,18 @@ class Command(BaseCommand):
         )
         set_count += s; q_count += q
 
+        # Teacher-reference answer-key link (never shown to the student).
+        CurriculumResource.objects.get_or_create(
+            curriculum=curriculum,
+            url="https://blackbirdandcompany.com/information-for-parents-and-teachers/answer-keys/i-am-david/",
+            defaults={
+                "label": "Blackbird Answer Key",
+                "resource_type": CurriculumResource.ANSWER_KEY,
+                "teacher_only": True,
+                "order": 0,
+            },
+        )
+
         self.stdout.write(self.style.SUCCESS(
             f"Seeded: {set_count} question sets, {q_count} questions. "
             f"{child.first_name} placed at {'Section 1: Read' if placed else 'existing progress (kept)'}."
@@ -720,11 +784,19 @@ class Command(BaseCommand):
             },
         )
         count = 0
-        for i, (category, prompt, hint) in enumerate(questions, start=1):
+        for i, item in enumerate(questions, start=1):
+            # Each question is (category, prompt, hint) with an optional 4th
+            # element: a dict of extra Question fields (response_type, passage).
+            category, prompt, hint = item[0], item[1], item[2]
+            extra = item[3] if len(item) > 3 else {}
             Question.objects.update_or_create(
                 question_set=qset,
                 order=i,
-                defaults={"category": category, "prompt": prompt, "hint": hint},
+                defaults={
+                    "category": category, "prompt": prompt, "hint": hint,
+                    "response_type": extra.get("response_type", Question.TYPE_TEXT),
+                    "passage": extra.get("passage", ""),
+                },
             )
             count += 1
         # Drop stale questions beyond the current list — but never delete one a

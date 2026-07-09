@@ -54,6 +54,12 @@ class Curriculum(models.Model):
         default="",
         help_text="Optional link to the curriculum's website",
     )
+    is_online = models.BooleanField(
+        default=False,
+        help_text="This subject is done on an external website (e.g. Beast Academy, "
+                  "DIVE). The child's portal launches out to the website instead of "
+                  "showing in-app lessons.",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -63,6 +69,11 @@ class Curriculum(models.Model):
 
     def __str__(self):
         return self.name
+
+    @property
+    def is_external(self):
+        """True when this is an online subject the portal should launch out to."""
+        return bool(self.is_online and self.website_url)
 
     def get_related_assignments_count(self):
         """Return count of related assignments, or 0 if Assignment model doesn't exist yet."""
@@ -282,3 +293,52 @@ class CurriculumPlacement(models.Model):
             return None
         idx = ids.index(self.current_lesson_id)
         return lessons[idx + 1] if idx + 1 < len(lessons) else None
+
+
+class CurriculumResource(models.Model):
+    """A labeled external link attached to a curriculum (answer key, guide,
+    read-aloud video, reference page, …). A shelf of links per book/subject.
+
+    Distinct from CurriculumDocument (uploaded files → R2): this is just a URL.
+    ``teacher_only`` marks resources — like answer keys — meant for the parent/
+    teacher, never surfaced to a child.
+    """
+
+    ANSWER_KEY = "answer_key"
+    GUIDE = "guide"
+    VIDEO = "video"
+    REFERENCE = "reference"
+    OTHER = "other"
+    TYPE_CHOICES = [
+        (ANSWER_KEY, "Answer key"),
+        (GUIDE, "Guide"),
+        (VIDEO, "Video"),
+        (REFERENCE, "Reference"),
+        (OTHER, "Link"),
+    ]
+    TYPE_EMOJI = {
+        ANSWER_KEY: "🔑", GUIDE: "📖", VIDEO: "🎬", REFERENCE: "📌", OTHER: "🔗",
+    }
+
+    curriculum = models.ForeignKey(
+        Curriculum, on_delete=models.CASCADE, related_name="resources",
+    )
+    label = models.CharField(max_length=200, help_text="e.g., 'Answer Key' or 'Read-aloud on YouTube'.")
+    url = models.URLField()
+    resource_type = models.CharField(max_length=20, choices=TYPE_CHOICES, default=OTHER)
+    teacher_only = models.BooleanField(
+        default=False, help_text="Keep this for the teacher — never show it to a child.",
+    )
+    notes = models.CharField(max_length=300, blank=True)
+    order = models.PositiveIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["order", "id"]
+
+    def __str__(self):
+        return f"{self.curriculum.name} — {self.label}"
+
+    @property
+    def emoji(self):
+        return self.TYPE_EMOJI.get(self.resource_type, "🔗")

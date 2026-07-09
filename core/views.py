@@ -7,6 +7,7 @@ from django.http import Http404
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
+from django.views.decorators.http import require_POST
 
 from core.forms import InviteSignupForm, TeacherInviteForm
 from core.models import FamilyMembership, Invitation
@@ -52,6 +53,15 @@ def _send_invite_email(invite, request):
     )
 
 
+def how_it_works(request):
+    """The 'How it works' guide — what the app does, how to use it, and why.
+
+    Open to anyone (it doubles as an overview for prospective and brand-new
+    users); linked prominently in-app for signed-in parents and teachers.
+    """
+    return render(request, "core/how_it_works.html", {})
+
+
 @login_required
 def invite_teacher(request):
     """Parent-only view to invite someone (co-parent, guardian, grandparent, teacher)."""
@@ -77,11 +87,51 @@ def invite_teacher(request):
         form = TeacherInviteForm(family=family)
 
     pending_invites = Invitation.objects.filter(family=family, status=Invitation.PENDING)
+    primary = _primary_parent_membership(family)
+    memberships = list(
+        family.memberships.select_related("user").order_by("role", "created_at", "id")
+    )
+    for m in memberships:
+        m.is_primary = primary is not None and m.pk == primary.pk
+        m.is_self = m.user_id == request.user.id
     return render(request, "core/invite_teacher.html", {
         "form": form,
         "family": family,
         "pending_invites": pending_invites,
+        "memberships": memberships,
     })
+
+
+def _primary_parent_membership(family):
+    """The family's primary parent — the earliest parent-role member.
+
+    Serves as the protected owner: the primary parent can't be removed, so a
+    family can never be left with no one in charge.
+    """
+    return family.memberships.filter(role="parent").order_by("created_at", "id").first()
+
+
+@login_required
+@require_POST
+def remove_member(request, membership_id):
+    """Parent-only: remove a member from the active family (never the primary parent)."""
+    family = get_active_family(request.user)
+    if family is None:
+        raise Http404  # only a parent-role user has an active family here
+
+    membership = get_object_or_404(FamilyMembership, pk=membership_id, family=family)
+    primary = _primary_parent_membership(family)
+    if primary is not None and membership.pk == primary.pk:
+        messages.warning(request, "The primary parent can't be removed from the family.")
+        return redirect("core:invite_teacher")
+
+    who = membership.user.get_full_name() or membership.user.username
+    membership.delete()
+    if membership.user_id == request.user.id:
+        messages.success(request, f"You've left {family.name}.")
+    else:
+        messages.success(request, f"Removed {who} from {family.name}.")
+    return redirect("core:invite_teacher")
 
 
 @login_required

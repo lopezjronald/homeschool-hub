@@ -1,0 +1,11 @@
+<div class="card portal-card feedback-card">
+  <div class="card-body">
+    <div class="feedback-heading">💬 A note about your work</div>
+    {% if encouragement %}<p class="feedback-encouragement">{{ encouragement }}</p>{% endif %}
+    {% if highlights %}
+      <ul class="feedback-highlights">
+        {% for h in highlights %}<li>{{ h }}</li>{% endfor %}
+      </ul>
+    {% endif %}
+  </div>
+</div>

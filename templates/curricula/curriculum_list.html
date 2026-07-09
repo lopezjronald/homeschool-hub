@@ -82,11 +82,9 @@
       No curricula match your filters. <a href="{% url 'curricula:curriculum_list' %}" class="alert-link">Clear filters</a>.
     </div>
   {% else %}
-    <div class="alert alert-info" role="alert">
-      <h4 class="alert-heading">No curricula yet</h4>
-      <p>Curricula help you organize subjects and lessons for your children.</p>
-      {% if can_edit %}<hr><a href="{% url 'curricula:curriculum_create' %}" class="btn btn-primary">Add Your First Curriculum</a>{% endif %}
-    </div>
+    {% url 'curricula:curriculum_create' as add_url %}
+    {% url 'core:how_it_works' as help_url %}
+    {% include "includes/empty_state.html" with emoji="📚" heading="Set up a subject" body="Add your own course, or tick “done on an external website” for online subjects like Beast Academy — then place each child where they're starting." action_url=add_url action_label="Add a subject" can_edit=can_edit secondary_url=help_url secondary_label="How it works" %}
   {% endif %}
 </div>
 {% endblock %}

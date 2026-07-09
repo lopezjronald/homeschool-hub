@@ -117,18 +117,49 @@
                   <span class="badge {{ m.badge }}">{{ m.label }} · {{ m.count }}</span>
                 {% endfor %}
               </div>
-              <small class="text-muted">{{ card.meets_bar_count }} of {{ card.assessed_count }} at Proficient or above</small>
+              <small class="text-muted d-block">{{ card.meets_bar_count }} of {{ card.assessed_count }} at Proficient or above</small>
+
+              {% if card.trends %}
+                <div class="ss-panel-label mt-3">📈 Mastery over time</div>
+                <div class="ss-trend-grid">
+                  {% for s in card.trends %}
+                    <div class="ss-trend">
+                      <div class="ss-trend-head">
+                        <span class="fw-semibold small">{{ s.subject }}</span>
+                        {% if s.latest %}<span class="badge {{ card.mastery_counts.0.badge }}" style="background:{{ s.latest.color }} !important;">{{ s.latest.label }}</span>{% endif %}
+                      </div>
+                      <svg viewBox="0 0 {{ s.width }} {{ s.height }}" class="ss-trend-svg" role="img"
+                           aria-label="{{ s.subject }} mastery trend, now {{ s.latest.label }}">
+                        <polyline points="{{ s.polyline }}" fill="none" stroke="#1E7A50" stroke-width="2" stroke-linejoin="round"/>
+                        {% for p in s.points %}
+                          <circle cx="{{ p.x }}" cy="{{ p.y }}" r="4" fill="{{ p.color }}" stroke="#fff" stroke-width="1.5">
+                            <title>{{ p.date|date:"M d, Y" }} — {{ p.label }}</title>
+                          </circle>
+                        {% endfor %}
+                      </svg>
+                    </div>
+                  {% endfor %}
+                </div>
+              {% endif %}
             {% else %}
-              <p class="text-muted small mb-0">No mastery assessments yet.</p>
+              <p class="text-muted small mb-1">No mastery assessments yet.</p>
             {% endif %}
+            <div class="small">
+              <a href="{% url 'tutor:assessment_list' %}?child_id={{ card.child.id }}">Grading history →</a>
+              <a href="{% url 'worklog:charter_report' %}?child={{ card.child.id }}" class="ms-2">📄 Charter report →</a>
+            </div>
           </div>
         </div>
       </div>
     </div>
   {% empty %}
-    <div class="alert alert-info">
-      {% if has_filters %}No children match these filters.{% else %}No children on file yet — add a child to start tracking progress.{% endif %}
-    </div>
+    {% if has_filters %}
+      <div class="alert alert-info">No children match these filters.</div>
+    {% else %}
+      {% url 'students:student_create' as add_url %}
+      {% url 'worklog:sample_report' as sample_url %}
+      {% include "includes/empty_state.html" with emoji="📈" heading="No progress to show yet" body="Mastery and trends appear here as your children turn in work and you confirm levels. Here's the report it all builds toward." action_url=add_url action_label="Add a child" can_edit=can_edit secondary_url=sample_url secondary_label="See a sample report" %}
+    {% endif %}
   {% endfor %}
 
 </div>

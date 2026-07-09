@@ -227,6 +227,34 @@ BLACKBIRD_I_AM_DAVID = {
 }
 
 
+BLACKBIRD_A_MOUSE_CALLED_WOLF = {
+    "slug": "blackbird_a_mouse_called_wolf",
+    "name": "A Mouse Called Wolf — Literature Discovery",
+    "subject": "Literature",
+    "grade_level": "G03",
+    "source": "Blackbird & Company Educational Press — Literature Discovery Guide: "
+              "A Mouse Called Wolf by Dick King-Smith (Level 3). Family-owned guide; "
+              "content follows the workbook for private family use.",
+    "chapters": [
+        _bb_section(1, "1–3"),
+        _bb_section(2, "4–6"),
+        _bb_section(3, "7–9"),
+        _bb_section(4, "10–11"),
+        {
+            "number": 5,
+            "title": "Section 5: Glean — Final Project",
+            "lessons": [
+                _ls(1, 1, "Glean: Final Project",
+                    "Complete one or more of the guide's final project options: compare "
+                    "Schubert, Beethoven, and Mozart; research Mozart's life; research and "
+                    "draw a labeled grand piano; research the history and meaning of your "
+                    "own name; or define the story's musical terms."),
+            ],
+        },
+    ],
+}
+
+
 # Essentials in Writing — Grade 3 (2nd ed). Scope & sequence transcribed from the
 # family's Teacher Handbook; lesson titles come from tutor._eiw_content.
 _EIW_SECTIONS = [
@@ -312,5 +340,6 @@ ESSENTIALS_IN_WRITING_3 = {
 BLUEPRINTS = {
     DIMENSIONS_MATH_3A["slug"]: DIMENSIONS_MATH_3A,
     BLACKBIRD_I_AM_DAVID["slug"]: BLACKBIRD_I_AM_DAVID,
+    BLACKBIRD_A_MOUSE_CALLED_WOLF["slug"]: BLACKBIRD_A_MOUSE_CALLED_WOLF,
     ESSENTIALS_IN_WRITING_3["slug"]: ESSENTIALS_IN_WRITING_3,
 }

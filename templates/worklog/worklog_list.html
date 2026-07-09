@@ -49,14 +49,9 @@
       {% endfor %}
     </div>
   {% else %}
-    <div class="alert alert-info" role="alert">
-      <h4 class="alert-heading">No work logged yet</h4>
-      <p>Log what your child worked on — a subject, a few notes, and a photo of the work if you like.</p>
-      <hr>
-      {% if can_edit %}
-      <a href="{% url 'worklog:worklog_create' %}" class="btn btn-primary">Log Your First Entry</a>
-      {% endif %}
-    </div>
+    {% url 'worklog:worklog_create' as add_url %}
+    {% url 'worklog:sample_report' as sample_url %}
+    {% include "includes/empty_state.html" with emoji="📝" heading="Log your first day" body="Each entry builds the durable record your charter reviewer reads — subject, a few notes, and a photo if you like. Here's what that report looks like." action_url=add_url action_label="Log your first entry" can_edit=can_edit secondary_url=sample_url secondary_label="See a sample report" %}
   {% endif %}
 </div>
 {% endblock %}

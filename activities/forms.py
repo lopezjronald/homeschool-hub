@@ -13,11 +13,18 @@ class ExternalActivityForm(forms.ModelForm):
         model = ExternalActivity
         fields = ["title", "provider", "url", "emoji", "student", "cadence", "notes", "is_active"]
         widgets = {
-            "notes": forms.Textarea(attrs={"rows": 2}),
-            "title": forms.TextInput(attrs={"placeholder": "e.g. Guitar"}),
-            "provider": forms.TextInput(attrs={"placeholder": "e.g. School of Rock"}),
-            "url": forms.URLInput(attrs={"placeholder": "https://…"}),
-            "emoji": forms.TextInput(attrs={"placeholder": "🎸", "maxlength": 8}),
+            "notes": forms.Textarea(attrs={"rows": 2, "class": "form-control",
+                                           "placeholder": "Anything to remember (schedule, login notes)…"}),
+            "title": forms.TextInput(attrs={"class": "form-control form-control-lg",
+                                            "placeholder": "e.g. Guitar"}),
+            "provider": forms.TextInput(attrs={"class": "form-control",
+                                               "placeholder": "e.g. School of Rock"}),
+            "url": forms.URLInput(attrs={"class": "form-control", "placeholder": "https://…"}),
+            "emoji": forms.TextInput(attrs={"class": "form-control text-center activity-emoji-input",
+                                            "maxlength": 8, "aria-label": "Icon"}),
+            "student": forms.Select(attrs={"class": "form-select"}),
+            "cadence": forms.Select(attrs={"class": "form-select"}),
+            "is_active": forms.CheckboxInput(attrs={"class": "form-check-input"}),
         }
 
     def __init__(self, *args, user=None, family=None, **kwargs):

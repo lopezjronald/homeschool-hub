@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% block title %}Sample Report · Steadfast Scholars{% endblock %}
+{% block extra_css %}
+<style>
+  .charter-answer { white-space: pre-wrap; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+
+  <div class="ss-hero mb-4">
+    <div class="ss-kicker">Sample</div>
+    <h1 class="mb-2">This is a sample report</h1>
+    <p class="lead mb-0">Here's the record your daily work builds toward — a print-ready summary of work log
+      and finalized mastery you can hand your charter's Educational Specialist. Yours fills in as you go.</p>
+  </div>
+
+  <div class="alert" style="background:var(--ss-amber-tint);border:1px solid var(--ss-amber);">
+    <strong>Sample data.</strong> “Sample Scholar” isn't a real child — this page shows the shape of the report.
+    Your own <a href="{% url 'worklog:charter_report' %}" class="alert-link">Charter Report</a> uses your family's real work log and mastery.
+  </div>
+
+  <!-- Report letterhead -->
+  <div class="border-bottom pb-2 mb-4">
+    <div class="d-flex justify-content-between align-items-baseline flex-wrap">
+      <h2 class="mb-0">Homeschool Progress Report</h2>
+      <span class="text-muted">Generated {{ today|date:"M d, Y" }}</span>
+    </div>
+    <div class="text-muted">
+      Sample Family · {{ start|date:"M d, Y" }} – {{ end|date:"M d, Y" }}
+      · {{ total_entries }} entries across {{ total_days }} days
+    </div>
+  </div>
+
+  {% for g in groups %}
+    <div class="charter-group mb-5">
+      <h3 class="mb-1" style="color:var(--ss-forest);">{{ g.name }}</h3>
+      <p class="text-muted small">
+        {{ g.level }} · {{ g.count }} entries on {{ g.day_count }} days · {{ g.subjects|join:", " }}
+      </p>
+
+      <h5 class="mt-3">Mastery</h5>
+      <table class="table table-sm">
+        <thead><tr><th>Date</th><th>Subject</th><th>Level</th></tr></thead>
+        <tbody>
+          {% for a in g.assessments %}
+            <tr>
+              <td class="text-muted">{{ a.date|date:"M d, Y" }}</td>
+              <td>{{ a.subject }}</td>
+              <td><span class="badge {{ a.badge }}">{{ a.level }}</span></td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+
+      <h5 class="mt-3">Work log</h5>
+      <table class="table table-sm">
+        <thead><tr><th style="width:6.5rem;">Date</th><th>Subject</th><th>What was done</th></tr></thead>
+        <tbody>
+          {% for e in g.entries %}
+            <tr>
+              <td class="text-muted">{{ e.date|date:"M d" }}</td>
+              <td class="fw-semibold">{{ e.subject }}</td>
+              <td><div class="charter-answer">{{ e.description }}</div></td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% endfor %}
+
+  <div class="d-flex flex-wrap gap-2">
+    {% if user.is_authenticated %}
+      <a href="{% url 'home' %}" class="btn btn-amber">Set up my homeschool →</a>
+      <a href="{% url 'core:how_it_works' %}" class="btn btn-outline-secondary">How it works</a>
+    {% else %}
+      <a href="{% url 'accounts:register' %}" class="btn btn-amber">Create an account →</a>
+      <a href="{% url 'core:how_it_works' %}" class="btn btn-outline-secondary">How it works</a>
+    {% endif %}
+  </div>
+
+</div>
+{% endblock %}

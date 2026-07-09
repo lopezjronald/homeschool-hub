@@ -53,6 +53,15 @@ def _send_invite_email(invite, request):
     )
 
 
+def how_it_works(request):
+    """The 'How it works' guide — what the app does, how to use it, and why.
+
+    Open to anyone (it doubles as an overview for prospective and brand-new
+    users); linked prominently in-app for signed-in parents and teachers.
+    """
+    return render(request, "core/how_it_works.html", {})
+
+
 @login_required
 def invite_teacher(request):
     """Parent-only view to invite someone (co-parent, guardian, grandparent, teacher)."""

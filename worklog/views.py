@@ -185,6 +185,48 @@ def charter_report(request):
     })
 
 
+def sample_report(request):
+    """A static, demo-data charter report — the payoff, shown before any setup.
+
+    Linked from the Work Log / Progress empty states (and How-it-works) so a new
+    or prospective parent can see exactly what the record they're building looks
+    like. No real data, no login required.
+    """
+    today = timezone.localdate()
+
+    def d(days_ago):
+        return today - timedelta(days=days_ago)
+
+    groups = [{
+        "name": "Sample Scholar",
+        "level": "3rd grade",
+        "count": 6,
+        "day_count": 5,
+        "subjects": ["Literature", "Math", "Writing"],
+        "assessments": [
+            {"date": d(2), "subject": "Literature", "level": "Proficient", "badge": "bg-success"},
+            {"date": d(9), "subject": "Math", "level": "Developing", "badge": "bg-warning text-dark"},
+            {"date": d(16), "subject": "Writing", "level": "Mastered", "badge": "bg-primary"},
+        ],
+        "entries": [
+            {"date": d(2), "subject": "Literature", "description": "Read Ch. 4 of “A Mouse Called Wolf” and answered the comprehension set — strong on character motivation."},
+            {"date": d(4), "subject": "Math", "description": "Saxon Lesson 42: multi-digit addition with regrouping. Needed a nudge on carrying the tens."},
+            {"date": d(9), "subject": "Writing", "description": "Drafted a paragraph about our weekend hike; revised for a stronger topic sentence with the writing coach."},
+            {"date": d(11), "subject": "Math", "description": "Beast Academy online — measurement puzzles. Finished the chapter check."},
+            {"date": d(16), "subject": "Literature", "description": "Vocabulary matching for Ch. 5 — matched all ten words on the second try."},
+        ],
+    }]
+
+    return render(request, "worklog/sample_report.html", {
+        "groups": groups,
+        "start": d(29),
+        "end": today,
+        "total_entries": 6,
+        "total_days": 5,
+        "today": today,
+    })
+
+
 @login_required
 def worklog_create(request):
     """Log a new piece of work (editors only)."""

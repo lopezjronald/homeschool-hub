@@ -153,9 +153,13 @@
       </div>
     </div>
   {% empty %}
-    <div class="alert alert-info">
-      {% if has_filters %}No children match these filters.{% else %}No children on file yet — add a child to start tracking progress.{% endif %}
-    </div>
+    {% if has_filters %}
+      <div class="alert alert-info">No children match these filters.</div>
+    {% else %}
+      {% url 'students:student_create' as add_url %}
+      {% url 'worklog:sample_report' as sample_url %}
+      {% include "includes/empty_state.html" with emoji="📈" heading="No progress to show yet" body="Mastery and trends appear here as your children turn in work and you confirm levels. Here's the report it all builds toward." action_url=add_url action_label="Add a child" can_edit=can_edit secondary_url=sample_url secondary_label="See a sample report" %}
+    {% endif %}
   {% endfor %}
 
 </div>

@@ -354,6 +354,39 @@ a:focus-visible > .hub-tile {
   color:#24303a;
 }
 
+/* Onboarding: setup checklist card */
+.ss-checklist-progress { height:.5rem; background:var(--ss-green-tint); border-radius:1rem; }
+.ss-checklist-progress .progress-bar { background:var(--ss-amber-grad); border-radius:1rem; transition:width var(--ss-t) ease; }
+.ss-checklist-list { display:flex; flex-direction:column; gap:.35rem; }
+.ss-checklist-row {
+  padding:.6rem .75rem;
+  border:1px solid var(--ss-border,#e7e1d3);
+  border-radius:.6rem;
+  background:#fff;
+}
+.ss-checklist-row.is-next { border-color:var(--ss-amber); background:var(--ss-amber-tint); }
+.ss-checklist-row.is-todo { opacity:.72; }
+.ss-checklist-mark {
+  flex:0 0 auto;
+  width:1.6rem; height:1.6rem;
+  display:inline-flex; align-items:center; justify-content:center;
+  border-radius:50%;
+  font-size:.85rem; font-weight:700;
+  background:var(--ss-green-tint); color:var(--ss-green-700);
+}
+.ss-checklist-row.is-done .ss-checklist-mark { background:var(--ss-green); color:#fff; }
+.ss-checklist-row.is-next .ss-checklist-mark { background:var(--ss-amber); color:var(--ss-forest-2); }
+.ss-checklist-row.is-done .ss-checklist-text { color:#8a978f; text-decoration:line-through; }
+
+/* Onboarding: guided empty states */
+.ss-empty { padding:2.5rem 1rem; }
+.ss-empty-emoji { font-size:2.6rem; line-height:1; margin-bottom:.5rem; }
+.ss-empty-heading { color:var(--ss-forest); margin-bottom:.35rem; }
+.ss-empty-body { max-width:34rem; }
+
+/* Quick-start list on the How-it-works page */
+.ss-quickstart .ss-feature-emoji { font-size:1.5rem; line-height:1.4; }
+
 /* Progress page: stat tiles + panel labels */
 .ss-stat { color:var(--ss-forest); font-weight:700; line-height:1; }
 .ss-stat-sub { font-size:1.4rem; color:#8a978f; font-weight:600; }

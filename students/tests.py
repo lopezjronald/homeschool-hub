@@ -135,7 +135,7 @@ class StudentViewsTest(TestCase):
         response = self.client.get(
             reverse("students:student_detail", kwargs={"pk": self.student1.pk})
         )
-        self.assertContains(response, "isn't placed in any curriculum yet")
+        self.assertContains(response, "Not placed in a subject yet")
 
     def test_update_returns_404_for_non_owner(self):
         """Parent cannot edit another parent's child (404)."""

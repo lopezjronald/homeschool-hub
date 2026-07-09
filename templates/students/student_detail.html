@@ -116,10 +116,8 @@
           </ul>
         {% else %}
           <div class="card-body">
-            <p class="text-muted mb-0">
-              {{ student.first_name }} isn't placed in any curriculum yet.
-              {% if can_edit %}Open a <a href="{% url 'curricula:curriculum_list' %}">curriculum</a> to set where they're working.{% endif %}
-            </p>
+            {% url 'curricula:curriculum_list' as cur_url %}
+            {% include "includes/empty_state.html" with emoji="📗" heading="Not placed in a subject yet" body="Place them in a curriculum to give them a “what's next” in the portal." action_url=cur_url action_label="Set up a subject" can_edit=can_edit %}
           </div>
         {% endif %}
       </div>

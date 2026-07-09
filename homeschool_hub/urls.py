@@ -16,6 +16,13 @@ def home(request):
         from students.models import Student
 
         family = get_selected_family(request)
+
+        # New-parent onboarding: a stateful setup checklist that drives toward
+        # the first finalized mastery review (auto-hides once complete).
+        from core.services import get_setup_progress
+
+        context["setup"] = get_setup_progress(request, family)
+
         context["children_count"] = scoped_queryset(
             Student.objects.all(), request.user, family,
         ).count()

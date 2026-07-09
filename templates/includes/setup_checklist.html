@@ -1,0 +1,38 @@
+{% comment %}
+Setup checklist card for the parent hub. Expects a `setup` dict from
+core.services.get_setup_progress. Render only when `setup and not setup.complete`.
+Reuses the .ss-checkin card language already used elsewhere on the hub.
+{% endcomment %}
+<div class="card ss-checkin ss-checklist mb-4">
+  <div class="card-body">
+    <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-1">
+      <h5 class="card-title mb-0">🧭 Get set up</h5>
+      <span class="small text-muted">{{ setup.done_count }} of {{ setup.total }} done</span>
+    </div>
+    <p class="text-muted small mb-3">A few steps to your first record — do them in any order, skip back anytime.</p>
+
+    <div class="progress ss-checklist-progress mb-3" role="progressbar"
+         aria-label="Setup progress" aria-valuenow="{{ setup.done_count }}"
+         aria-valuemin="0" aria-valuemax="{{ setup.total }}">
+      <div class="progress-bar" style="width: {{ setup.percent }}%;"></div>
+    </div>
+
+    <ol class="ss-checklist-list list-unstyled mb-0">
+      {% for step in setup.steps %}
+        <li class="ss-checklist-row d-flex flex-wrap align-items-center gap-2 {% if step.done %}is-done{% elif step.is_next %}is-next{% else %}is-todo{% endif %}"{% if step.is_next %} aria-current="step"{% endif %}>
+          <span class="ss-checklist-mark" aria-hidden="true">{% if step.done %}✓{% else %}{{ forloop.counter }}{% endif %}</span>
+          <span class="ss-checklist-label me-auto">
+            <span class="ss-checklist-text">{{ step.label }}</span>
+            {% if step.done %}<span class="visually-hidden"> — done</span>{% endif %}
+            {% if step.is_next %}<small class="d-block text-muted mt-1">{{ step.why }}</small>{% endif %}
+          </span>
+          {% if not step.done %}
+            <a href="{{ step.url }}" class="btn btn-sm {% if step.is_next %}btn-amber{% else %}btn-outline-secondary{% endif %}">{{ step.cta }}</a>
+          {% endif %}
+        </li>
+      {% endfor %}
+    </ol>
+
+    <p class="small text-muted mb-0 mt-3">New here? <a href="{% url 'core:how_it_works' %}">See how it works →</a></p>
+  </div>
+</div>

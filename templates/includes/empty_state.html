@@ -1,0 +1,32 @@
+{% comment %}
+Guided empty state — replaces dead-end "no X yet" alerts with a next step and a
+reason to take it. Include with named params:
+
+  emoji            small illustration (default 🌱)
+  heading          short title
+  body             one line: why this matters / what happens next
+  action_url       primary next-best-action URL   (shown only if can_edit)
+  action_label     primary button text
+  can_edit         gate the primary action for read-only viewers
+  secondary_url    optional secondary link (e.g. a sample report, "how it works")
+  secondary_label  secondary link text
+
+Example:
+  {% url 'students:student_create' as add_url %}
+  {% include "includes/empty_state.html" with emoji="👧" heading="No children yet" body="…" action_url=add_url action_label="Add your first child" can_edit=can_edit %}
+{% endcomment %}
+<div class="ss-empty text-center">
+  <div class="ss-empty-emoji" aria-hidden="true">{{ emoji|default:"🌱" }}</div>
+  <h4 class="ss-empty-heading">{{ heading }}</h4>
+  {% if body %}<p class="ss-empty-body text-muted mx-auto">{{ body }}</p>{% endif %}
+  {% if action_url and action_label and can_edit or secondary_url %}
+    <div class="d-flex flex-wrap gap-2 justify-content-center">
+      {% if action_url and action_label and can_edit %}
+        <a href="{{ action_url }}" class="btn btn-amber">{{ action_label }}</a>
+      {% endif %}
+      {% if secondary_url and secondary_label %}
+        <a href="{{ secondary_url }}" class="btn btn-outline-secondary">{{ secondary_label }}</a>
+      {% endif %}
+    </div>
+  {% endif %}
+</div>

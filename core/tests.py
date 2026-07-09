@@ -1438,3 +1438,67 @@ class RemoveMemberViewTests(TestCase):
         self.assertFalse(
             FamilyMembership.objects.filter(pk=self.second_membership.pk).exists()
         )
+
+
+class SetupProgressTests(TestCase):
+    """Onboarding setup-checklist service + surfaces (HH-102)."""
+
+    def setUp(self):
+        self.factory = RequestFactory()
+        self.user = CustomUser.objects.create_user(
+            username="newparent", email="new@example.com", password="testpass123",
+        )
+
+    def _progress(self):
+        from core.services import get_setup_progress
+
+        request = self.factory.get("/")
+        request.user = self.user
+        return get_setup_progress(request, None)
+
+    def test_new_parent_all_steps_incomplete(self):
+        p = self._progress()
+        self.assertEqual(p["total"], 4)
+        self.assertEqual(p["done_count"], 0)
+        self.assertEqual(p["percent"], 0)
+        self.assertFalse(p["complete"])
+        self.assertTrue(p["steps"][0]["is_next"])   # first action foregrounded
+        self.assertFalse(p["steps"][0]["done"])
+
+    def test_child_and_subject_advance_the_checklist(self):
+        Student.objects.create(parent=self.user, first_name="Vi", grade_level="G03")
+        Curriculum.objects.create(parent=self.user, name="Lit 3", subject="Literature")
+        p = self._progress()
+        self.assertTrue(p["steps"][0]["done"])      # child
+        self.assertTrue(p["steps"][1]["done"])      # subject
+        self.assertEqual(p["done_count"], 2)
+        self.assertFalse(p["complete"])
+        self.assertEqual(p["steps"][2]["key"], "portal")
+        self.assertTrue(p["steps"][2]["is_next"])   # next action is the portal
+
+    def test_read_only_reviewer_sees_no_checklist(self):
+        # A user whose only membership is a read-only role never gets the card.
+        family = Family.objects.create(name="Read-Only Fam")
+        FamilyMembership.objects.create(user=self.user, family=family, role="grandparent")
+        from core.services import get_setup_progress
+
+        request = self.factory.get("/")
+        request.user = self.user
+        p = get_setup_progress(request, family)
+        self.assertTrue(p["complete"])
+        self.assertEqual(p["steps"], [])
+
+    def test_hub_renders_checklist_for_new_user(self):
+        self.client.force_login(self.user)
+        resp = self.client.get(reverse("home"))
+        self.assertContains(resp, "Get set up")
+
+    def test_student_list_shows_guided_empty_state(self):
+        self.client.force_login(self.user)
+        resp = self.client.get(reverse("students:student_list"))
+        self.assertContains(resp, "Add your first child")
+
+    def test_sample_report_is_public(self):
+        resp = self.client.get(reverse("worklog:sample_report"))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "sample report")

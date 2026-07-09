@@ -549,31 +549,34 @@ class ResponseSheet(models.Model):
     def answered_count(self):
         return sum(1 for v in (self.answers or {}).values() if str(v).strip())
 
-    def as_worklog_text(self):
-        """Format the Q&A as readable text for the work log / grader.
+    def answer_display(self, question):
+        """A readable rendering of the child's answer to one question.
 
-        Markup answers are drawing strokes, not prose, so they're summarized as
-        the sentence plus whether the child annotated it. Character answers are a
-        per-character map, so each character is listed with what the child wrote.
+        Handles every response type: markup (a note that they drew on the
+        sentence), characters/matching/fill-blank/cloze (their structured
+        answer, made readable), and plain text. Used by both the work-log text
+        and the parent's read-only work browser.
         """
+        raw = str(self.answer_for(question)).strip()
+        if question.is_markup:
+            marked = "yes" if raw and raw != "[]" else "no"
+            return f'[marked up the sentence "{question.passage}" — annotated: {marked}]'
+        if question.is_characters:
+            return self._format_characters(raw)
+        if question.is_matching:
+            return self._format_matching(raw, question)
+        if question.is_fill_blank:
+            return self._format_fill_blank(raw, question)
+        if question.is_cloze:
+            return self._format_cloze(raw, question)
+        return raw or "(no answer)"
+
+    def as_worklog_text(self):
+        """Format the Q&A as readable text for the work log / grader."""
         lines = []
         for q in self.question_set.questions.all():
-            raw = str(self.answer_for(q)).strip()
-            if q.is_markup:
-                marked = "yes" if raw and raw != "[]" else "no"
-                answer = f'[marked up the sentence "{q.passage}" — annotated: {marked}]'
-            elif q.is_characters:
-                answer = self._format_characters(raw)
-            elif q.is_matching:
-                answer = self._format_matching(raw, q)
-            elif q.is_fill_blank:
-                answer = self._format_fill_blank(raw, q)
-            elif q.is_cloze:
-                answer = self._format_cloze(raw, q)
-            else:
-                answer = raw or "(no answer)"
             lines.append(f"Q{q.order} [{q.get_category_display()}]: {q.prompt}")
-            lines.append(f"A: {answer}")
+            lines.append(f"A: {self.answer_display(q)}")
             lines.append("")
         return "\n".join(lines).strip()
 
@@ -587,7 +590,7 @@ class ResponseSheet(models.Model):
         if not isinstance(data, dict) or not data:
             return "(no answer)"
         parts = [f"{name}: {text}" for name, text in data.items() if str(text).strip()]
-        return "\n" + "\n".join(parts) if parts else "(no answer)"
+        return "\n".join(parts) if parts else "(no answer)"
 
     @staticmethod
     def _parse_json_answer(raw):
@@ -616,7 +619,7 @@ class ResponseSheet(models.Model):
         tries = data.get("tries")
         if isinstance(tries, int) and tries:
             parts.append(f"({tries} wrong tr{'y' if tries == 1 else 'ies'} along the way)")
-        return "\n" + "\n".join(parts)
+        return "\n".join(parts)
 
     @classmethod
     def _format_fill_blank(cls, raw, question):
@@ -645,7 +648,7 @@ class ResponseSheet(models.Model):
         tries = data.get("tries")
         if isinstance(tries, int) and tries:
             parts.append(f"({tries} wrong tr{'y' if tries == 1 else 'ies'} along the way)")
-        return "\n" + "\n".join(parts)
+        return "\n".join(parts)
 
     @classmethod
     def _format_cloze(cls, raw, question):
@@ -662,4 +665,4 @@ class ResponseSheet(models.Model):
             else:
                 word = str(blanks.get(str(seg["blank"]), "")).strip()
                 out.append(f"[{word}]" if word else "[   ]")
-        return "\n" + "".join(out)
+        return "".join(out)

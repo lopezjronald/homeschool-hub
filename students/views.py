@@ -1,5 +1,6 @@
 from django.contrib.auth import logout
 from django.contrib.auth.decorators import login_required
+from django.db.models import Q
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
 from django.urls import reverse
@@ -108,6 +109,105 @@ def student_detail(request, pk):
         "can_edit": can_edit,
         "curricula": curricula,
         "portal_url": portal_url,
+    })
+
+
+@login_required
+def student_work(request, pk, curriculum_id):
+    """Parent read-only browser: a child's question sets in one curriculum,
+    grouped by chapter, each showing whether it's turned in, in progress, or
+    not started."""
+    from itertools import groupby
+
+    from curricula.models import Curriculum
+    from tutor.models import QuestionSet, ResponseSheet
+
+    student = get_object_or_404(viewable_queryset(Student.objects.all(), request.user), pk=pk)
+    curriculum = get_object_or_404(
+        viewable_queryset(Curriculum.objects.all(), request.user), pk=curriculum_id,
+    )
+
+    sets = list(
+        QuestionSet.objects.filter(
+            lesson__chapter__curriculum=curriculum,
+            mode=QuestionSet.MODE_STUDENT,
+            status=QuestionSet.APPROVED,
+        )
+        # Honor the per-child pin, exactly as the child's own portal does, so
+        # this list matches what the child actually has (no phantom siblings' sets).
+        .filter(Q(child=student) | Q(child__isnull=True))
+        .select_related("lesson", "lesson__chapter")
+        .order_by("lesson__chapter__number", "lesson__order", "id")
+    )
+    sheets = {
+        s.question_set_id: s
+        for s in ResponseSheet.objects.filter(question_set__in=sets, child=student)
+    }
+    for qs in sets:
+        qs.my_sheet = sheets.get(qs.pk)
+
+    chapters = [
+        {"heading": f"Chapter {number} · {items[0].lesson.chapter.title}", "sets": items}
+        for (number, _t), group in groupby(
+            sets, key=lambda s: (s.lesson.chapter.number, s.lesson.chapter.title),
+        )
+        for items in [list(group)]
+    ]
+    done = sum(1 for qs in sets if qs.my_sheet and qs.my_sheet.is_submitted)
+
+    return render(request, "students/student_work.html", {
+        "student": student,
+        "curriculum": curriculum,
+        "chapters": chapters,
+        "done": done,
+        "total": len(sets),
+    })
+
+
+@login_required
+def student_work_set(request, pk, set_pk):
+    """Parent read-only view of one question set with the child's answers."""
+    from curricula.models import Curriculum
+    from tutor.models import MasteryAssessment, QuestionSet, ResponseSheet
+
+    student = get_object_or_404(viewable_queryset(Student.objects.all(), request.user), pk=pk)
+    viewable_curricula = viewable_queryset(Curriculum.objects.all(), request.user)
+    question_set = get_object_or_404(
+        QuestionSet.objects.filter(
+            lesson__chapter__curriculum__in=viewable_curricula,
+        )
+        # Same per-child pin scoping as the portal: a set pinned to a sibling
+        # isn't this child's work.
+        .filter(Q(child=student) | Q(child__isnull=True))
+        .select_related("lesson", "lesson__chapter", "lesson__chapter__curriculum"),
+        pk=set_pk,
+    )
+    sheet = ResponseSheet.objects.filter(question_set=question_set, child=student).first()
+
+    rows = []
+    for q in question_set.questions.all():
+        display = sheet.answer_display(q) if sheet else ""
+        rows.append({
+            "question": q,
+            "answer": display,
+            # Derive from the rendered display so an empty structured answer
+            # (e.g. only-wrong matching attempts → "(no answer)") reads as unanswered.
+            "answered": display not in ("", "(no answer)"),
+            "coach": (sheet.draft_feedback or {}).get(str(q.pk)) if sheet else None,
+        })
+
+    assessment = None
+    if sheet and sheet.work_entry_id:
+        assessment = MasteryAssessment.objects.filter(work_entry=sheet.work_entry_id).first()
+
+    return render(request, "students/student_work_set.html", {
+        "student": student,
+        "question_set": question_set,
+        "curriculum": question_set.lesson.chapter.curriculum,
+        "sheet": sheet,
+        "rows": rows,
+        "assessment": assessment,
+        "can_edit": user_can_edit(request.user),
     })
 
 

@@ -318,6 +318,36 @@ a:focus-visible > .hub-tile {
 }
 .ss-feature-emoji-inline { font-size:1.15rem; margin-right:.35rem; }
 
+/* Activity form: emoji picker */
+.activity-emoji-input { font-size:1.5rem; }
+.activity-emoji-picker { display:flex; flex-wrap:wrap; gap:.35rem; }
+.activity-emoji-choice {
+  font-size:1.35rem;
+  line-height:1;
+  width:2.6rem;
+  height:2.6rem;
+  border:1.5px solid var(--ss-border,#e7e1d3);
+  border-radius:.6rem;
+  background:#fff;
+  cursor:pointer;
+  transition:border-color .12s ease, transform .1s ease, background .12s ease;
+}
+.activity-emoji-choice:hover { border-color:var(--ss-green); transform:translateY(-1px); }
+.activity-emoji-choice.is-active { border-color:var(--ss-amber); background:var(--ss-amber-tint,#fbf0d9); }
+
+/* Parent work browser: the child's answer, rendered readably */
+.ss-answer-block {
+  white-space:pre-wrap;
+  background:#fbfaf5;
+  border:1px solid var(--ss-border,#e7e1d3);
+  border-left:3px solid var(--ss-green);
+  border-radius:.5rem;
+  padding:.7rem .9rem;
+  font-size:1.02rem;
+  line-height:1.6;
+  color:#24303a;
+}
+
 /* Progress page: stat tiles + panel labels */
 .ss-stat { color:var(--ss-forest); font-weight:700; line-height:1; }
 .ss-stat-sub { font-size:1.4rem; color:#8a978f; font-weight:600; }

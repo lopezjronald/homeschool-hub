@@ -541,3 +541,55 @@ class CharacterQuestionTests(TestCase):
         self.assertIn("(no answer)", sheet.as_worklog_text())
         sheet.answers = {str(self.q.pk): "not json"}
         self.assertIn("(no answer)", sheet.as_worklog_text())   # never crashes
+
+
+class AMouseCalledWolfSeedTests(TestCase):
+    """Violet's Blackbird 'A Mouse Called Wolf' course (original, book-grounded)."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.parent = User.objects.create_user(username="mw", email="mw@e.com", password="pw")
+        cls.family = Family.objects.create(name="MW Fam")
+        FamilyMembership.objects.create(user=cls.parent, family=cls.family, role="parent")
+        cls.violet = Student.objects.create(
+            parent=cls.parent, first_name="Violet", grade_level="G03", family=cls.family,
+        )
+        call_command("seed_a_mouse_called_wolf", "--for-user", "mw", stdout=StringIO())
+        cls.curriculum = Curriculum.objects.get(name__contains="Mouse Called Wolf")
+
+    def test_course_shape_and_teacher_answer_keys(self):
+        self.assertEqual(self.curriculum.grade_level, "G03")
+        sets = QuestionSet.objects.filter(lesson__chapter__curriculum=self.curriculum)
+        # 6 sets/section x 4 sections + Glean + Story-Grammar + Toolbox = 27
+        self.assertEqual(sets.count(), 27)
+        # every Comprehension set carries a teacher answer key (never shown to students)
+        comp = sets.filter(title__contains="Comprehension")
+        self.assertEqual(comp.count(), 4)
+        self.assertTrue(all(c.answer_key.strip() for c in comp))
+        self.assertTrue(comp.filter(answer_key__contains="teacher reference only").exists())
+
+    def test_journal_uses_per_character_boxes(self):
+        journal = QuestionSet.objects.get(
+            lesson__chapter__curriculum=self.curriculum, title="Section 1 · Journal",
+        )
+        q = journal.questions.get(order=1)
+        self.assertEqual(q.response_type, Question.TYPE_CHARACTERS)
+        self.assertIn("Wolf", q.character_names)
+        self.assertIn("Mrs Honeybee", q.character_names)
+
+    def test_violet_placed_and_discussion_hidden_from_student(self):
+        from portal.views import _visible_question_sets
+
+        self.assertTrue(
+            CurriculumPlacement.objects.filter(child=self.violet, curriculum=self.curriculum).exists()
+        )
+        titles = set(_visible_question_sets(self.violet).values_list("title", flat=True))
+        self.assertIn("Section 1 · Comprehension", titles)     # student work is visible
+        self.assertNotIn("Section 1 · Discussion", titles)     # teacher-led stays hidden
+        self.assertNotIn("Section 1 · Socratic Seminar", titles)
+
+    def test_idempotent(self):
+        before = QuestionSet.objects.filter(lesson__chapter__curriculum=self.curriculum).count()
+        call_command("seed_a_mouse_called_wolf", "--for-user", "mw", stdout=StringIO())
+        after = QuestionSet.objects.filter(lesson__chapter__curriculum=self.curriculum).count()
+        self.assertEqual(before, after)

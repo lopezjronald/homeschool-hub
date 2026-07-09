@@ -110,8 +110,13 @@ Tests are per-app `tests.py`. Onboarding tests: `core.tests.SetupProgressTests`.
 
 ## Deploy (Heroku)
 
-The `main` GitHub branch has diverged from what's deployed — historically each feature
-branch is pushed straight to the Heroku `main` ref:
+**Auto-deploy:** merging to GitHub `main` runs CI, and on success the `deploy` job in
+`.github/workflows/ci.yml` pushes to Heroku (which runs the `release` migrate). This
+needs a repo secret **`HEROKU_API_KEY`** (Settings → Secrets and variables → Actions);
+generate one with `heroku authorizations:create`. Without the secret, the deploy job
+skips with a warning.
+
+**Manual deploy** (hotfix / bypass CI) — push any branch straight to Heroku's `main`:
 
 ```bash
 git push heroku <your-branch>:main

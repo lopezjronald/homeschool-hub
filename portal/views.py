@@ -262,7 +262,7 @@ def portal_questions(request, token, set_pk):
 
     if request.method == "POST":
         _submit_sheet(student, question_set, request.POST)
-        return redirect("portal:portal_questions", token=token, set_pk=set_pk)
+        return redirect("portal:portal_feedback", token=token, set_pk=set_pk)
 
     sheet = _sheet_for(student, question_set)
     questions = list(question_set.questions.all())
@@ -323,6 +323,63 @@ def _merge_answers(sheet, data):
             if qid in question_ids:
                 answers[qid] = value
     sheet.answers = answers
+
+
+def portal_feedback(request, token, set_pk):
+    """The 'you turned it in!' page — celebration plus the agent's quick feedback.
+
+    If a draft assessment already exists, its child-facing pieces render at
+    once; otherwise the page shows a friendly reading state and JS asks
+    ``portal_feedback_generate`` to produce one. The child never sees a level.
+    """
+    student = _resolve_student(token)
+    question_set = get_object_or_404(_visible_question_sets(student), pk=set_pk)
+    sheet = ResponseSheet.objects.filter(question_set=question_set, child=student).first()
+    if sheet is None or not sheet.is_submitted:
+        return redirect("portal:portal_questions", token=token, set_pk=set_pk)
+
+    from tutor.models import MasteryAssessment
+
+    assessment = MasteryAssessment.objects.filter(work_entry=sheet.work_entry_id).first()
+    from tutor import ai
+
+    return render(request, "portal/portal_feedback.html", {
+        "student": student,
+        "token": token,
+        "question_set": question_set,
+        "sheet": sheet,
+        "assessment": assessment,
+        "can_generate": assessment is None and ai.is_configured(),
+    })
+
+
+@csrf_exempt
+@require_POST
+def portal_feedback_generate(request, token, set_pk):
+    """Generate (idempotently) the agent's feedback for a submitted sheet.
+
+    CSRF-exempt for the same reason as autosave: portal auth is the signed
+    token in the URL, not an ambient cookie. Returns only child-facing fields.
+    """
+    student = _resolve_student(token)
+    question_set = get_object_or_404(_visible_question_sets(student), pk=set_pk)
+    sheet = ResponseSheet.objects.filter(question_set=question_set, child=student).first()
+    if sheet is None or not sheet.is_submitted:
+        return JsonResponse({"ok": False}, status=409)
+
+    from tutor import ai, grading
+
+    try:
+        assessment, _created = grading.auto_grade_sheet(sheet)
+    except ai.GraderError:
+        return JsonResponse({"ok": False})  # kid page falls back to plain celebration
+    if assessment is None:
+        return JsonResponse({"ok": False})
+    return JsonResponse({
+        "ok": True,
+        "encouragement": assessment.ai_encouragement,
+        "highlights": assessment.ai_kid_highlights or [],
+    })
 
 
 @csrf_exempt

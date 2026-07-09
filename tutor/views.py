@@ -60,6 +60,7 @@ def assess_create(request, entry_pk):
                 ai_summary=result["summary"],
                 ai_criteria=result["criteria"],
                 ai_encouragement=result["encouragement"],
+                ai_kid_highlights=result.get("kid_highlights", []),
             )
             messages.success(request, "Draft assessment ready — review and finalize.")
             return redirect("tutor:assess_detail", pk=assessment.pk)

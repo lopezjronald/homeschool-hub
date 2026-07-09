@@ -39,7 +39,18 @@
             </ul>
           {% endif %}
 
-          {% if assessment.ai_encouragement %}
+          {% if assessment.is_auto %}
+            <div class="alert alert-info mb-0">
+              <div class="fw-semibold mb-1">💬 What {{ assessment.work_entry.child.first_name }} was told at turn-in</div>
+              {% if assessment.ai_encouragement %}<p class="mb-1">“{{ assessment.ai_encouragement }}”</p>{% endif %}
+              {% if assessment.ai_kid_highlights %}
+                <ul class="mb-0">
+                  {% for h in assessment.ai_kid_highlights %}<li>{{ h }}</li>{% endfor %}
+                </ul>
+              {% endif %}
+              <small class="text-muted d-block mt-1">The mastery level was NOT shown to them — that's yours to confirm below.</small>
+            </div>
+          {% elif assessment.ai_encouragement %}
             <div class="alert alert-info">💬 {{ assessment.ai_encouragement }}</div>
           {% endif %}
         </div>

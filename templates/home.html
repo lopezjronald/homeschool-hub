@@ -23,6 +23,25 @@
   </div>
 
   {% if user.is_authenticated %}
+    {% if pending_feedback %}
+      <div class="card ss-checkin mb-4">
+        <div class="card-body">
+          <h5 class="card-title mb-1">💬 Feedback to review</h5>
+          <p class="text-muted small mb-3">The reading helper drafted feedback when work was turned in — review it and confirm the mastery level so it matches what your child was told.</p>
+          <div class="d-flex flex-column gap-2">
+            {% for a in pending_feedback %}
+              <div class="ss-checkin-row d-flex flex-wrap align-items-center justify-content-between gap-2">
+                <div class="me-auto">
+                  <span class="fw-semibold">{{ a.work_entry.child.first_name }} · {{ a.work_entry.subject }}</span>
+                  <small class="text-muted d-block">“{{ a.ai_encouragement|truncatechars:90 }}”</small>
+                </div>
+                <a href="{% url 'tutor:assess_detail' a.pk %}" class="btn btn-amber btn-sm">Review &amp; finalize</a>
+              </div>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+    {% endif %}
     {% if due_activities %}
       <div class="card ss-checkin mb-4">
         <div class="card-body">

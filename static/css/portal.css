@@ -326,6 +326,31 @@
 }
 .cloze-input[readonly] { background: #f2f0e8; border-bottom-color: #b9c4be; }
 
+/* ---- submit-time feedback from the reading helper ---- */
+.feedback-card { border-color: rgba(30, 122, 80, 0.35); }
+.feedback-heading {
+  font-size: 0.82rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--ss-green, #1E7A50);
+  margin-bottom: 0.5rem;
+}
+.feedback-encouragement {
+  font-size: 1.15rem;
+  line-height: 1.55;
+  color: #24303a;
+  margin-bottom: 0.5rem;
+}
+.feedback-highlights { margin: 0; padding-left: 1.3rem; }
+.feedback-highlights li { margin-bottom: 0.35rem; font-size: 1.02rem; }
+.feedback-reader { font-size: 2.2rem; animation: feedback-breathe 1.6s ease-in-out infinite; }
+@keyframes feedback-breathe {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.15); }
+}
+@media (prefers-reduced-motion: reduce) { .feedback-reader { animation: none; } }
+
 /* ---- footer escape hatch for the grown-ups ---- */
 .portal-parent-link { color: #8a978f; text-decoration: none; }
 .portal-parent-link:hover { color: var(--ss-green, #1E7A50); text-decoration: underline; }

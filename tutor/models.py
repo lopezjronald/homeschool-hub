@@ -47,6 +47,10 @@ class MasteryAssessment(models.Model):
     ai_summary = models.TextField(blank=True)
     ai_criteria = models.JSONField(default=list, blank=True)
     ai_encouragement = models.TextField(blank=True)
+    ai_kid_highlights = models.JSONField(
+        default=list, blank=True,
+        help_text="Short child-facing bullets shown on the portal feedback page.",
+    )
 
     parent_override_level = models.CharField(max_length=20, choices=mastery.CHOICES, blank=True)
     final_level = models.CharField(max_length=20, choices=mastery.CHOICES, blank=True)
@@ -60,6 +64,11 @@ class MasteryAssessment(models.Model):
 
     def __str__(self):
         return f"Assessment of {self.work_entry} ({self.get_status_display()})"
+
+    @property
+    def is_auto(self):
+        """True if this draft came from the portal's submit-time grading agent."""
+        return self.graded_by_id is None
 
     @property
     def effective_level(self):

@@ -720,6 +720,154 @@ class ClozeWidgetTests(TestCase):
         self.assertTrue(all("___" in c.passage for c in cloze.exclude(pk=self.q.pk)))
 
 
+class FeedbackAgentTests(TestCase):
+    """HH-97: submit → kid feedback page → parent 'feedback to review' card."""
+
+    GRADE_RESULT = {
+        "level": "proficient",
+        "summary": "Solid comprehension against the rubric.",
+        "criteria": [{"criterion": "Complete sentences", "met": True, "comment": "Yes"}],
+        "encouragement": "Violet, your answer about Wolf's bravery was wonderful!",
+        "kid_highlights": ["You used complete sentences.", "Next time, add one more detail."],
+    }
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.parent = User.objects.create_user(username="fb", email="fb@e.com", password="pw")
+        cls.family = Family.objects.create(name="FB Fam")
+        FamilyMembership.objects.create(user=cls.parent, family=cls.family, role="parent")
+        cls.violet = Student.objects.create(
+            parent=cls.parent, first_name="Violet", grade_level="G03", family=cls.family,
+        )
+        cls.kaylin = Student.objects.create(
+            parent=cls.parent, first_name="Kaylin", grade_level="G07", family=cls.family,
+        )
+        cls.cur = Curriculum.objects.create(
+            parent=cls.parent, name="FB Course", subject="Literature",
+            grade_level="G03", family=cls.family,
+        )
+        ch = Chapter.objects.create(curriculum=cls.cur, number=1, title="One")
+        cls.lesson = Lesson.objects.create(chapter=ch, order=1, number=1, title="L1")
+        CurriculumPlacement.objects.create(child=cls.violet, curriculum=cls.cur, current_lesson=cls.lesson)
+        cls.qset = QuestionSet.objects.create(
+            lesson=cls.lesson, title="Comprehension", family=cls.family,
+            status=QuestionSet.APPROVED, rubric="Answer in complete sentences.",
+            answer_key="1. Wolf is brave.",
+        )
+        cls.q = Question.objects.create(
+            question_set=cls.qset, order=1, category="comprehension", prompt="Why is Wolf brave?",
+        )
+        cls.token = make_portal_token(cls.violet)
+
+    def _url(self, name, **kw):
+        return reverse(f"portal:{name}", kwargs={"token": self.token, **kw})
+
+    def _submit(self):
+        return self.client.post(
+            self._url("portal_questions", set_pk=self.qset.pk),
+            data={f"answer_{self.q.pk}": "Wolf sings for help even though he is small."},
+        )
+
+    def test_submit_redirects_to_feedback_page(self):
+        resp = self._submit()
+        self.assertEqual(resp.status_code, 302)
+        self.assertIn("/feedback/", resp["Location"])
+        page = self.client.get(resp["Location"])
+        self.assertContains(page, "Turned in!")
+        self.assertContains(page, "What's next?")
+
+    def test_feedback_page_before_submit_redirects_back(self):
+        resp = self.client.get(self._url("portal_feedback", set_pk=self.qset.pk))
+        self.assertEqual(resp.status_code, 302)
+        self.assertNotIn("/feedback/", resp["Location"])
+
+    def test_generate_creates_one_draft_and_returns_kid_fields_only(self):
+        from unittest.mock import patch
+        from tutor.models import MasteryAssessment
+
+        self._submit()
+        with patch("tutor.ai.is_configured", return_value=True), \
+             patch("tutor.ai.grade_work", return_value=dict(self.GRADE_RESULT)) as mocked:
+            r1 = self.client.post(self._url("portal_feedback_generate", set_pk=self.qset.pk))
+            r2 = self.client.post(self._url("portal_feedback_generate", set_pk=self.qset.pk))
+        data = r1.json()
+        self.assertTrue(data["ok"])
+        self.assertIn("bravery", data["encouragement"])
+        self.assertEqual(len(data["highlights"]), 2)
+        self.assertNotIn("level", data)                       # the child never sees a level
+        self.assertNotIn("proficient", str(data))
+        self.assertTrue(r2.json()["ok"])                      # idempotent
+        self.assertEqual(mocked.call_count, 1)                # graded exactly once
+        a = MasteryAssessment.objects.get()
+        self.assertEqual(a.status, MasteryAssessment.DRAFT)
+        self.assertIsNone(a.graded_by)                        # agent-drafted
+        self.assertTrue(a.is_auto)
+        self.assertEqual(a.ai_level, "proficient")
+        self.assertIn("Reference answers", a.rubric)          # answer key folded in
+
+    def test_unconfigured_and_error_fall_back_without_assessment(self):
+        from unittest.mock import patch
+        from tutor import ai
+        from tutor.models import MasteryAssessment
+
+        self._submit()
+        r = self.client.post(self._url("portal_feedback_generate", set_pk=self.qset.pk))
+        self.assertFalse(r.json()["ok"])                      # no key configured in tests
+        with patch("tutor.ai.is_configured", return_value=True), \
+             patch("tutor.ai.grade_work", side_effect=ai.GraderError("boom")):
+            r = self.client.post(self._url("portal_feedback_generate", set_pk=self.qset.pk))
+        self.assertFalse(r.json()["ok"])
+        self.assertEqual(MasteryAssessment.objects.count(), 0)
+        # and the page itself still celebrates
+        page = self.client.get(self._url("portal_feedback", set_pk=self.qset.pk))
+        self.assertContains(page, "Turned in!")
+        self.assertContains(page, "look at it soon")
+
+    def test_feedback_page_renders_existing_assessment_without_level(self):
+        from unittest.mock import patch
+
+        self._submit()
+        with patch("tutor.ai.is_configured", return_value=True), \
+             patch("tutor.ai.grade_work", return_value=dict(self.GRADE_RESULT)):
+            self.client.post(self._url("portal_feedback_generate", set_pk=self.qset.pk))
+        page = self.client.get(self._url("portal_feedback", set_pk=self.qset.pk))
+        self.assertContains(page, "A note about your work")
+        self.assertContains(page, "bravery")
+        self.assertContains(page, "complete sentences.")
+        self.assertNotContains(page, "Proficient")            # no levels for the child
+        self.assertNotContains(page, "proficient")
+
+    def test_sibling_token_cannot_reach_feedback(self):
+        self._submit()
+        sibling = make_portal_token(self.kaylin)
+        for name in ("portal_feedback", "portal_feedback_generate"):
+            url = reverse(f"portal:{name}", kwargs={"token": sibling, "set_pk": self.qset.pk})
+            resp = self.client.post(url) if "generate" in name else self.client.get(url)
+            self.assertEqual(resp.status_code, 404)
+
+    def test_parent_hub_shows_feedback_to_review_until_finalized(self):
+        from unittest.mock import patch
+        from tutor.models import MasteryAssessment
+
+        self._submit()
+        with patch("tutor.ai.is_configured", return_value=True), \
+             patch("tutor.ai.grade_work", return_value=dict(self.GRADE_RESULT)):
+            self.client.post(self._url("portal_feedback_generate", set_pk=self.qset.pk))
+        self.client.login(username="fb", password="pw")
+        home = self.client.get(reverse("home"))
+        self.assertContains(home, "Feedback to review")
+        self.assertContains(home, "Violet")
+        a = MasteryAssessment.objects.get()
+        detail = self.client.get(reverse("tutor:assess_detail", kwargs={"pk": a.pk}))
+        self.assertContains(detail, "What Violet was told at turn-in")
+        self.assertContains(detail, "bravery")
+        # finalize → the hub card clears
+        self.client.post(reverse("tutor:assess_finalize", kwargs={"pk": a.pk}),
+                         data={"final_level": "proficient"})
+        home = self.client.get(reverse("home"))
+        self.assertNotContains(home, "Feedback to review")
+
+
 class PortalMarkdownRenderTests(TestCase):
     """Prompts/intros render Markdown (bold, lists) instead of showing raw **."""
 

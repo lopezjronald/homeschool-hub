@@ -28,7 +28,10 @@ Respond with ONLY a JSON object (no prose, no markdown fences) matching this sha
   "criteria": [
     {"criterion": "<short rubric point>", "met": true, "comment": "<specific note>"}
   ],
-  "encouragement": "<one warm sentence addressed to the child>"
+  "encouragement": "<one warm sentence addressed to the child>",
+  "kid_highlights": [
+    "<2-3 short bullets addressed directly to the child at their reading level: what they did well, and ONE gentle thing to try next time. Never mention the mastery level, points, or grades.>"
+  ]
 }"""
 
 
@@ -71,11 +74,15 @@ def _parse_response(text):
     level = data.get("level")
     if level not in mastery.LEVELS:
         raise GraderError(f"AI returned an unknown mastery level: {level!r}")
+    highlights = data.get("kid_highlights", [])
+    if not isinstance(highlights, list):
+        highlights = []
     return {
         "level": level,
         "summary": data.get("summary", ""),
         "criteria": data.get("criteria", []),
         "encouragement": data.get("encouragement", ""),
+        "kid_highlights": [str(h) for h in highlights if str(h).strip()],
     }
 
 
@@ -90,7 +97,11 @@ def grade_work(*, rubric, answers, grade_level, subject, objectives="", client=N
     if client is None:
         import anthropic
 
-        client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
+        # Bounded timeout: the kid feedback page waits on this call inside a
+        # web request, and Heroku hard-kills requests at 30s.
+        client = anthropic.Anthropic(
+            api_key=settings.ANTHROPIC_API_KEY, timeout=25.0, max_retries=1,
+        )
 
     user_prompt = _build_user_prompt(rubric, answers, grade_level, subject, objectives)
     try:

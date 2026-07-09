@@ -29,6 +29,21 @@ def home(request):
         # `is_due` is a Python property (cadence + last-logged + snooze/mute),
         # so evaluate in-process rather than in the DB.
         context["due_activities"] = [a for a in activities if a.is_due]
+
+        # Agent-drafted feedback awaiting the parent's review (HH-97): the
+        # child already saw the encouragement; the parent confirms the level.
+        from tutor.models import MasteryAssessment
+
+        children = scoped_queryset(Student.objects.all(), request.user, family)
+        context["pending_feedback"] = list(
+            MasteryAssessment.objects.filter(
+                status=MasteryAssessment.DRAFT,
+                graded_by__isnull=True,
+                work_entry__child__in=children,
+            )
+            .select_related("work_entry", "work_entry__child")
+            .order_by("-created_at")[:5]
+        )
     return render(request, "home.html", context)
 
 

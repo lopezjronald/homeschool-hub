@@ -158,7 +158,7 @@ class LoginTests(TestCase):
             reverse("accounts:login"),
             {"username": "activeuser", "password": "testpass123"},
         )
-        self.assertRedirects(response, "/")
+        self.assertRedirects(response, reverse("accounts:post_login"), fetch_redirect_response=False)
         self.assertTrue(response.wsgi_request.user.is_authenticated)
 
     def test_login_with_email(self):
@@ -167,7 +167,7 @@ class LoginTests(TestCase):
             reverse("accounts:login"),
             {"username": "active@example.com", "password": "testpass123"},
         )
-        self.assertRedirects(response, "/")
+        self.assertRedirects(response, reverse("accounts:post_login"), fetch_redirect_response=False)
         self.assertTrue(response.wsgi_request.user.is_authenticated)
 
     def test_login_email_case_insensitive(self):
@@ -176,7 +176,7 @@ class LoginTests(TestCase):
             reverse("accounts:login"),
             {"username": "ACTIVE@EXAMPLE.COM", "password": "testpass123"},
         )
-        self.assertRedirects(response, "/")
+        self.assertRedirects(response, reverse("accounts:post_login"), fetch_redirect_response=False)
         self.assertTrue(response.wsgi_request.user.is_authenticated)
 
     def test_login_wrong_password_rejected(self):
@@ -203,7 +203,7 @@ class LoginTests(TestCase):
             reverse("accounts:login"),
             {"username": "activeuser", "password": "testpass123"},
         )
-        self.assertRedirects(response, "/")
+        self.assertRedirects(response, reverse("accounts:post_login"), fetch_redirect_response=False)
 
 
 class LogoutTests(TestCase):
@@ -315,3 +315,75 @@ class PasswordResetTests(TestCase):
         )
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "invalid")
+
+
+class OnboardingWelcomeTests(TestCase):
+    """Welcome page + post-login routing + UserProfile (HH-104, onboarding Phase 2)."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="p2", email="p2@example.com", password="pw", is_active=True,
+        )
+
+    def test_post_login_new_user_routes_to_welcome(self):
+        self.client.force_login(self.user)
+        resp = self.client.get(reverse("accounts:post_login"))
+        self.assertRedirects(resp, reverse("accounts:welcome"), fetch_redirect_response=False)
+
+    def test_welcome_renders_for_new_user(self):
+        self.client.force_login(self.user)
+        resp = self.client.get(reverse("accounts:welcome"))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "What brings you here")
+
+    def test_welcome_post_records_goal_and_marks_seen(self):
+        from accounts.models import UserProfile
+
+        self.client.force_login(self.user)
+        resp = self.client.post(reverse("accounts:welcome"), {"goal": "charter"})
+        self.assertRedirects(resp, reverse("home"), fetch_redirect_response=False)
+        p = UserProfile.objects.get(user=self.user)
+        self.assertTrue(p.has_seen_welcome)
+        self.assertEqual(p.onboarding_goal, "charter")
+
+    def test_skip_marks_seen_without_recording_goal(self):
+        from accounts.models import UserProfile
+
+        self.client.force_login(self.user)
+        resp = self.client.post(reverse("accounts:welcome"), {"goal": "charter", "skip": "1"})
+        self.assertRedirects(resp, reverse("home"), fetch_redirect_response=False)
+        p = UserProfile.objects.get(user=self.user)
+        self.assertTrue(p.has_seen_welcome)
+        self.assertEqual(p.onboarding_goal, "")
+
+    def test_review_goal_routes_to_progress(self):
+        self.client.force_login(self.user)
+        resp = self.client.post(reverse("accounts:welcome"), {"goal": "review"})
+        self.assertRedirects(resp, reverse("dashboard:dashboard"), fetch_redirect_response=False)
+
+    def test_seen_editor_routes_home(self):
+        from accounts.models import UserProfile
+
+        UserProfile.objects.create(user=self.user, has_seen_welcome=True)
+        self.client.force_login(self.user)
+        resp = self.client.get(reverse("accounts:post_login"))
+        self.assertRedirects(resp, reverse("home"), fetch_redirect_response=False)
+
+    def test_seen_reviewer_routes_to_progress(self):
+        from accounts.models import UserProfile
+        from core.models import Family, FamilyMembership
+
+        fam = Family.objects.create(name="Rev Fam")
+        FamilyMembership.objects.create(user=self.user, family=fam, role="grandparent")
+        UserProfile.objects.create(user=self.user, has_seen_welcome=True)
+        self.client.force_login(self.user)
+        resp = self.client.get(reverse("accounts:post_login"))
+        self.assertRedirects(resp, reverse("dashboard:dashboard"), fetch_redirect_response=False)
+
+    def test_already_seen_welcome_redirects_away(self):
+        from accounts.models import UserProfile
+
+        UserProfile.objects.create(user=self.user, has_seen_welcome=True)
+        self.client.force_login(self.user)
+        resp = self.client.get(reverse("accounts:welcome"))
+        self.assertRedirects(resp, reverse("home"), fetch_redirect_response=False)

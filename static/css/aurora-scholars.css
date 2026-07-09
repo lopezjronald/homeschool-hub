@@ -387,6 +387,13 @@ a:focus-visible > .hub-tile {
 /* Quick-start list on the How-it-works page */
 .ss-quickstart .ss-feature-emoji { font-size:1.5rem; line-height:1.4; }
 
+/* Welcome page: goal radio cards */
+.ss-goal-card { border-color:var(--ss-border,#e7e1d3); font-weight:500; }
+.btn-check:checked + .ss-goal-card {
+  border-color:var(--ss-green); background:var(--ss-green-tint); color:var(--ss-forest-2);
+}
+.btn-check:focus-visible + .ss-goal-card { box-shadow:0 0 0 .25rem var(--ss-amber-tint); }
+
 /* Progress page: stat tiles + panel labels */
 .ss-stat { color:var(--ss-forest); font-weight:700; line-height:1; }
 .ss-stat-sub { font-size:1.4rem; color:#8a978f; font-weight:600; }

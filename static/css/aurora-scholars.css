@@ -394,6 +394,24 @@ a:focus-visible > .hub-tile {
 }
 .btn-check:focus-visible + .ss-goal-card { box-shadow:0 0 0 .25rem var(--ss-amber-tint); }
 
+/* Contextual help: "?" popover button + dismissible hint strip */
+.ss-help {
+  width:1.35rem; height:1.35rem; line-height:1;
+  display:inline-flex; align-items:center; justify-content:center;
+  border:1px solid var(--ss-green); border-radius:50%;
+  background:transparent; color:var(--ss-green);
+  font-size:.8rem; font-weight:700; cursor:pointer; padding:0;
+}
+.ss-help:hover, .ss-help:focus-visible { background:var(--ss-green); color:#fff; }
+.ss-hint {
+  background:var(--ss-amber-tint);
+  border:1px solid var(--ss-amber);
+  border-radius:.6rem;
+  padding:.6rem .8rem;
+  margin-bottom:1rem;
+  font-size:.95rem;
+}
+
 /* Progress page: stat tiles + panel labels */
 .ss-stat { color:var(--ss-forest); font-weight:700; line-height:1; }
 .ss-stat-sub { font-size:1.4rem; color:#8a978f; font-weight:600; }

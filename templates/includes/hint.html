@@ -1,0 +1,18 @@
+{% comment %}
+Dismissible just-in-time hint strip. Include with:
+  {% include "includes/hint.html" with hint_key="curricula_online" emoji="🌐" text="…" %}
+Shows only to signed-in users who haven't dismissed this key (persisted on the
+profile via accounts:dismiss_hint). Works without JS (a plain POST).
+{% endcomment %}
+{% if user.is_authenticated and hint_key not in dismissed_hints %}
+<div class="ss-hint d-flex align-items-start gap-2" role="note">
+  <span aria-hidden="true">{{ emoji|default:"💡" }}</span>
+  <div class="me-auto">{{ text }}</div>
+  <form method="post" action="{% url 'accounts:dismiss_hint' %}" class="m-0">
+    {% csrf_token %}
+    <input type="hidden" name="key" value="{{ hint_key }}">
+    <input type="hidden" name="next" value="{{ request.path }}">
+    <button type="submit" class="btn btn-sm btn-link text-muted p-0 text-decoration-none">Got it ✕</button>
+  </form>
+</div>
+{% endif %}

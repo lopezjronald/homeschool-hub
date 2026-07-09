@@ -58,7 +58,13 @@
 
       {% if finalize_form %}
       <div class="card mb-4">
-        <div class="card-header"><h5 class="mb-0">Your decision</h5></div>
+        <div class="card-header d-flex align-items-center gap-2">
+          <h5 class="mb-0">Your decision</h5>
+          <button type="button" class="ss-help" aria-label="What the four levels mean"
+                  data-bs-toggle="popover" data-bs-trigger="focus" data-bs-html="true"
+                  data-bs-title="The four mastery levels"
+                  data-bs-content="<strong>Beginning</strong> — just starting; needs support.<br><strong>Developing</strong> — getting it, with gaps.<br><strong>Proficient</strong> — solid and independent.<br><strong>Mastered</strong> — confident; could teach it.<br><span class='text-muted'>You always have the final say.</span>">?</button>
+        </div>
         <div class="card-body">
           <p class="text-muted">Accept the AI's level or override it, then finalize. Finalizing records the mastery result.</p>
           <form method="post" action="{% url 'tutor:assess_finalize' assessment.pk %}" class="row g-2">

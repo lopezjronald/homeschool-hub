@@ -387,3 +387,39 @@ class OnboardingWelcomeTests(TestCase):
         self.client.force_login(self.user)
         resp = self.client.get(reverse("accounts:welcome"))
         self.assertRedirects(resp, reverse("home"), fetch_redirect_response=False)
+
+
+class HintDismissTests(TestCase):
+    """Dismissible just-in-time hints (HH-105, onboarding Phase 3)."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="hinter", email="h@example.com", password="pw", is_active=True,
+        )
+
+    def test_hint_shows_then_hides_after_dismiss(self):
+        self.client.force_login(self.user)
+        curricula = reverse("curricula:curriculum_list")
+
+        resp = self.client.get(curricula)
+        self.assertContains(resp, "Got it")  # hint present for a new user
+
+        redirect = self.client.post(
+            reverse("accounts:dismiss_hint"),
+            {"key": "curricula_online", "next": curricula},
+        )
+        self.assertRedirects(redirect, curricula, fetch_redirect_response=False)
+
+        from accounts.models import UserProfile
+        self.assertIn("curricula_online", UserProfile.objects.get(user=self.user).dismissed_hints)
+
+        resp2 = self.client.get(curricula)
+        self.assertNotContains(resp2, "Got it")  # stays dismissed
+
+    def test_dismiss_rejects_offsite_redirect(self):
+        self.client.force_login(self.user)
+        resp = self.client.post(
+            reverse("accounts:dismiss_hint"),
+            {"key": "curricula_online", "next": "https://evil.example.com/"},
+        )
+        self.assertRedirects(resp, reverse("home"), fetch_redirect_response=False)

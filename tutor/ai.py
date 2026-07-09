@@ -35,6 +35,22 @@ Respond with ONLY a JSON object (no prose, no markdown fences) matching this sha
 }"""
 
 
+COACH_PROMPT = """You are a warm writing coach for a homeschooled child working on a ROUGH draft. \
+Your job is to help them improve their own writing before the final draft — never to rewrite it for them.
+
+Speak directly to the child at their grade level. Never mention grades, levels, points, or scores. \
+Never write sentences for them; give directions they can act on themselves ("try adding…", "read this \
+sentence out loud…"). Be encouraging: this is a draft, and drafts are supposed to be improved.
+
+Respond with ONLY a JSON object (no prose, no markdown fences) matching this shape:
+{
+  "praise": "<one specific, genuine sentence about what's working in THEIR words>",
+  "suggestions": [
+    "<2-3 short, concrete, kid-actionable suggestions to make the draft better>"
+  ]
+}"""
+
+
 class GraderNotConfigured(Exception):
     """Raised when no Anthropic API key is configured."""
 
@@ -46,6 +62,16 @@ class GraderError(Exception):
 def is_configured():
     """True if an Anthropic API key is available."""
     return bool(getattr(settings, "ANTHROPIC_API_KEY", ""))
+
+
+def _make_client():
+    import anthropic
+
+    # Bounded timeout: these calls run inside web requests, and Heroku
+    # hard-kills requests at 30s.
+    return anthropic.Anthropic(
+        api_key=settings.ANTHROPIC_API_KEY, timeout=25.0, max_retries=1,
+    )
 
 
 def _build_user_prompt(rubric, answers, grade_level, subject, objectives=""):
@@ -95,13 +121,7 @@ def grade_work(*, rubric, answers, grade_level, subject, objectives="", client=N
         raise GraderNotConfigured("Anthropic API key is not configured.")
 
     if client is None:
-        import anthropic
-
-        # Bounded timeout: the kid feedback page waits on this call inside a
-        # web request, and Heroku hard-kills requests at 30s.
-        client = anthropic.Anthropic(
-            api_key=settings.ANTHROPIC_API_KEY, timeout=25.0, max_retries=1,
-        )
+        client = _make_client()
 
     user_prompt = _build_user_prompt(rubric, answers, grade_level, subject, objectives)
     try:
@@ -118,3 +138,51 @@ def grade_work(*, rubric, answers, grade_level, subject, objectives="", client=N
     if not text:
         raise GraderError("The AI returned an empty response.")
     return _parse_response(text)
+
+
+def review_draft(*, draft, assignment, grade_level, subject, client=None):
+    """Coach a child's ROUGH draft: praise + 2-3 actionable suggestions.
+
+    Formative, not summative — no level, no grade, never rewrites the child's
+    work. Returns {"praise": str, "suggestions": [str, ...]}.
+    """
+    if not is_configured():
+        raise GraderNotConfigured("Anthropic API key is not configured.")
+    if client is None:
+        client = _make_client()
+
+    user_prompt = "\n\n".join([
+        f"Subject: {subject}",
+        f"Child's grade level: {grade_level}",
+        f"The writing assignment:\n{assignment}",
+        f"The child's rough draft:\n{draft}",
+        "Coach this draft and return the JSON described above.",
+    ])
+    try:
+        response = client.messages.create(
+            model=getattr(settings, "TUTOR_MODEL", "claude-opus-4-8"),
+            max_tokens=1000,
+            system=COACH_PROMPT,
+            messages=[{"role": "user", "content": user_prompt}],
+        )
+    except Exception as exc:  # noqa: BLE001 — surface any API/transport error uniformly
+        raise GraderError(str(exc))
+
+    text = next((b.text for b in response.content if getattr(b, "type", None) == "text"), "")
+    if not text:
+        raise GraderError("The AI returned an empty response.")
+    cleaned = text.strip()
+    if cleaned.startswith("```"):
+        cleaned = cleaned.split("```", 2)[1] if "```" in cleaned[3:] else cleaned
+        cleaned = cleaned.removeprefix("json").strip().strip("`").strip()
+    try:
+        data = json.loads(cleaned)
+    except (ValueError, TypeError) as exc:
+        raise GraderError(f"Could not parse the AI response as JSON: {exc}")
+    suggestions = data.get("suggestions", [])
+    if not isinstance(suggestions, list):
+        suggestions = []
+    return {
+        "praise": str(data.get("praise", "")),
+        "suggestions": [str(s) for s in suggestions if str(s).strip()][:3],
+    }

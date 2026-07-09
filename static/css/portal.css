@@ -351,6 +351,39 @@
 }
 @media (prefers-reduced-motion: reduce) { .feedback-reader { animation: none; } }
 
+/* ---- writing coach (rough drafts) ---- */
+.coach-widget { margin-top: 0.5rem; }
+.coach-btn {
+  border: 2px solid rgba(30, 122, 80, 0.35);
+  background: #fff;
+  color: var(--ss-forest, #0F3D2E);
+  font-weight: 700;
+  border-radius: 10px;
+  padding: 0.5rem 0.9rem;
+  min-height: 44px;
+  cursor: pointer;
+}
+.coach-btn:hover:not(:disabled) { border-color: var(--ss-green, #1E7A50); background: #f2f7f3; }
+.coach-btn:disabled { opacity: 0.7; cursor: wait; }
+.coach-box {
+  margin-top: 0.6rem;
+  background: rgba(235, 168, 58, 0.1);
+  border: 1px solid rgba(235, 168, 58, 0.45);
+  border-radius: 12px;
+  padding: 0.8rem 1rem;
+}
+.coach-heading {
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--ss-amber-700, #8A5B12);
+  margin-bottom: 0.4rem;
+}
+.coach-praise { margin: 0 0 0.4rem; font-size: 1.02rem; }
+.coach-suggestions { margin: 0; padding-left: 1.25rem; }
+.coach-suggestions li { margin-bottom: 0.3rem; font-size: 0.98rem; }
+
 /* ---- footer escape hatch for the grown-ups ---- */
 .portal-parent-link { color: #8a978f; text-decoration: none; }
 .portal-parent-link:hover { color: var(--ss-green, #1E7A50); text-decoration: underline; }

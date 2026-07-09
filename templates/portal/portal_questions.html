@@ -155,6 +155,19 @@
                     {% if sheet.is_submitted %}readonly{% endif %}>
 {{ q.my_answer }}</textarea>
                   <div class="portal-wordcount text-muted" data-count-for="{{ q.pk }}"></div>
+                  {% if q.supports_draft_coach and not sheet.is_submitted %}
+                    <div class="coach-widget" data-coach-for="{{ q.pk }}"
+                         data-coach-url="{% url 'portal:portal_draft_feedback' token=token set_pk=question_set.pk %}">
+                      <button type="button" class="coach-btn">✨ Get feedback on my draft</button>
+                      <div class="coach-box" {% if not q.my_coach %}hidden{% endif %}>
+                        <div class="coach-heading">✍️ Your writing coach says…</div>
+                        <p class="coach-praise">{% if q.my_coach %}{{ q.my_coach.praise }}{% endif %}</p>
+                        <ul class="coach-suggestions">
+                          {% if q.my_coach %}{% for s in q.my_coach.suggestions %}<li>{{ s }}</li>{% endfor %}{% endif %}
+                        </ul>
+                      </div>
+                    </div>
+                  {% endif %}
                 {% endif %}
               </div>
             {% endfor %}
@@ -185,4 +198,5 @@
 <script src="{% static 'js/portal-markup.js' %}"></script>
 <script src="{% static 'js/portal-characters.js' %}"></script>
 <script src="{% static 'js/portal-vocab.js' %}"></script>
+<script src="{% static 'js/portal-coach.js' %}"></script>
 {% endblock %}

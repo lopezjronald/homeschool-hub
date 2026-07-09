@@ -80,9 +80,16 @@ class PortalCourseTests(TestCase):
         self.assertEqual(curriculum.grade_level, "G07")
         sets = QuestionSet.objects.filter(lesson__chapter__curriculum=curriculum)
         self.assertEqual(sets.count(), 27)  # 6/section x 4 + Glean + seminar + toolbox
+        # Vocabulary is now matching + sentences (2/section instead of 8).
         self.assertEqual(
-            Question.objects.filter(question_set__in=sets).count(), 232,
+            Question.objects.filter(question_set__in=sets).count(), 208,
         )
+        # Acquire matches use the official Blackbird definitions, teacher key attached.
+        vocab = sets.get(title="Section 1 · Vocabulary")
+        vq = vocab.questions.order_by("order").first()
+        self.assertEqual(vq.response_type, Question.TYPE_MATCHING)
+        self.assertIn("catastrophe", vq.vocab_data["words"])
+        self.assertIn("Matching (official Blackbird definitions)", vocab.answer_key)
         # comprehension sets carry the answer key (grader reference, never shown)
         self.assertTrue(sets.filter(title__contains="Comprehension").exclude(answer_key="").exists())
         # the reusable literature standard sets exist (teacher-led)
@@ -108,7 +115,7 @@ class PortalCourseTests(TestCase):
     def test_seed_is_idempotent(self):
         call_command("seed_i_am_david", "--for-user", "dad", stdout=StringIO())
         self.assertEqual(QuestionSet.objects.count(), 27)
-        self.assertEqual(Question.objects.count(), 232)
+        self.assertEqual(Question.objects.count(), 208)
 
     def test_portal_home_shows_one_calm_subject_card(self):
         # The "What's Next" home shows a subject CARD (curriculum name), not the
@@ -866,6 +873,174 @@ class FeedbackAgentTests(TestCase):
                          data={"final_level": "proficient"})
         home = self.client.get(reverse("home"))
         self.assertNotContains(home, "Feedback to review")
+
+
+class WritingCoachTests(TestCase):
+    """HH-98: draft feedback on rough drafts — formative, never a grade."""
+
+    COACH_RESULT = {
+        "praise": "Your first sentence really hooks the reader!",
+        "suggestions": ["Add one detail about how Wolf feels.", "Read it out loud to catch the missing word."],
+    }
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.parent = User.objects.create_user(username="wc", email="wc@e.com", password="pw")
+        cls.family = Family.objects.create(name="WC Fam")
+        FamilyMembership.objects.create(user=cls.parent, family=cls.family, role="parent")
+        cls.violet = Student.objects.create(
+            parent=cls.parent, first_name="Violet", grade_level="G03", family=cls.family,
+        )
+        cls.cur = Curriculum.objects.create(
+            parent=cls.parent, name="WC Course", subject="Literature",
+            grade_level="G03", family=cls.family,
+        )
+        ch = Chapter.objects.create(curriculum=cls.cur, number=1, title="One")
+        cls.lesson = Lesson.objects.create(chapter=ch, order=1, number=1, title="L1")
+        CurriculumPlacement.objects.create(child=cls.violet, curriculum=cls.cur, current_lesson=cls.lesson)
+        cls.qset = QuestionSet.objects.create(
+            lesson=cls.lesson, title="Writing", family=cls.family,
+            status=QuestionSet.APPROVED,
+        )
+        cls.draft_q = Question.objects.create(
+            question_set=cls.qset, order=1, category="application",
+            prompt="ROUGH DRAFT — Write a paragraph about Wolfgang Amadeus Mouse.",
+        )
+        cls.comp_q = Question.objects.create(
+            question_set=cls.qset, order=2, category="comprehension",
+            prompt="Why is Wolf brave?",
+        )
+        cls.token = make_portal_token(cls.violet)
+
+    def _coach(self, qid, text, token=None):
+        url = reverse("portal:portal_draft_feedback", kwargs={
+            "token": token or self.token, "set_pk": self.qset.pk,
+        })
+        return self.client.post(url, data=json.dumps({"question": str(qid), "text": text}),
+                                content_type="application/json")
+
+    def test_supports_draft_coach_gating(self):
+        self.assertTrue(self.draft_q.supports_draft_coach)     # ROUGH DRAFT marker
+        self.assertFalse(self.comp_q.supports_draft_coach)     # comprehension: no coach
+        eiw_q = Question.objects.create(
+            question_set=self.qset, order=3, category="writing", prompt="Write a paragraph.",
+        )
+        self.assertTrue(eiw_q.supports_draft_coach)            # EIW writing category
+
+    def test_coach_stores_feedback_and_draft(self):
+        from unittest.mock import patch
+
+        draft = "Wolf is a very small mouse but he has a very big dream about singing."
+        with patch("tutor.ai.is_configured", return_value=True), \
+             patch("tutor.ai.review_draft", return_value=dict(self.COACH_RESULT)) as mocked:
+            resp = self._coach(self.draft_q.pk, draft)
+        data = resp.json()
+        self.assertTrue(data["ok"])
+        self.assertIn("hooks", data["praise"])
+        self.assertEqual(len(data["suggestions"]), 2)
+        self.assertEqual(mocked.call_count, 1)
+        sheet = ResponseSheet.objects.get(question_set=self.qset, child=self.violet)
+        self.assertEqual(sheet.answers[str(self.draft_q.pk)], draft)   # draft saved too
+        self.assertIn(str(self.draft_q.pk), sheet.draft_feedback)
+        # and it renders back on reload
+        page = self.client.get(reverse("portal:portal_questions", kwargs={
+            "token": self.token, "set_pk": self.qset.pk,
+        }))
+        self.assertContains(page, "Your writing coach says")
+        self.assertContains(page, "hooks the reader")
+        self.assertContains(page, "Get feedback on my draft")
+
+    def test_coach_rejects_non_draft_question_and_short_text(self):
+        from unittest.mock import patch
+
+        with patch("tutor.ai.is_configured", return_value=True), \
+             patch("tutor.ai.review_draft", return_value=dict(self.COACH_RESULT)):
+            self.assertEqual(self._coach(self.comp_q.pk, "x" * 50).status_code, 400)
+            self.assertEqual(self._coach(self.draft_q.pk, "too short").json()["error"], "too_short")
+
+    def test_coach_blocked_after_submit_and_for_siblings(self):
+        from unittest.mock import patch
+
+        kaylin = Student.objects.create(
+            parent=self.parent, first_name="Kaylin", grade_level="G07", family=self.family,
+        )
+        with patch("tutor.ai.is_configured", return_value=True), \
+             patch("tutor.ai.review_draft", return_value=dict(self.COACH_RESULT)):
+            resp = self._coach(self.draft_q.pk, "x" * 40, token=make_portal_token(kaylin))
+            self.assertEqual(resp.status_code, 404)            # not her course
+            self.client.post(reverse("portal:portal_questions", kwargs={
+                "token": self.token, "set_pk": self.qset.pk,
+            }), data={f"answer_{self.draft_q.pk}": "final text here"})
+            resp = self._coach(self.draft_q.pk, "x" * 40)
+            self.assertEqual(resp.status_code, 409)            # already turned in
+
+    def test_coach_unconfigured_degrades(self):
+        resp = self._coach(self.draft_q.pk, "x" * 40)
+        self.assertFalse(resp.json()["ok"])                    # no key in tests → soft fail
+        self.assertFalse(ResponseSheet.objects.filter(draft_feedback__isnull=False,
+                                                      question_set=self.qset).exclude(draft_feedback={}).exists())
+
+
+class GradingHistoryTests(TestCase):
+    """HH-98: the family's grading history — drafts first, then the record."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from tutor.models import MasteryAssessment
+
+        cls.parent = User.objects.create_user(username="gh", email="gh@e.com", password="pw")
+        cls.family = Family.objects.create(name="GH Fam")
+        FamilyMembership.objects.create(user=cls.parent, family=cls.family, role="parent")
+        cls.violet = Student.objects.create(
+            parent=cls.parent, first_name="Violet", grade_level="G03", family=cls.family,
+        )
+        cls.kaylin = Student.objects.create(
+            parent=cls.parent, first_name="Kaylin", grade_level="G07", family=cls.family,
+        )
+        e1 = WorkLogEntry.objects.create(parent=cls.parent, family=cls.family,
+                                         child=cls.violet, subject="Literature")
+        e2 = WorkLogEntry.objects.create(parent=cls.parent, family=cls.family,
+                                         child=cls.kaylin, subject="Writing")
+        cls.draft = MasteryAssessment.objects.create(
+            work_entry=e1, rubric="r", answers="a", ai_level="proficient",
+        )
+        cls.final = MasteryAssessment.objects.create(
+            work_entry=e2, rubric="r", answers="a", ai_level="mastered",
+            final_level="mastered", status=MasteryAssessment.FINALIZED,
+        )
+        # another family's assessment must never appear
+        other = User.objects.create_user(username="gh2", email="gh2@e.com", password="pw")
+        fam2 = Family.objects.create(name="Other GH")
+        FamilyMembership.objects.create(user=other, family=fam2, role="parent")
+        kid2 = Student.objects.create(parent=other, first_name="Eve", grade_level="G01", family=fam2)
+        e3 = WorkLogEntry.objects.create(parent=other, family=fam2, child=kid2, subject="SecretSubj")
+        MasteryAssessment.objects.create(work_entry=e3, rubric="r", answers="a", ai_level="beginning")
+
+    def test_history_lists_drafts_then_finalized_scoped_to_family(self):
+        self.client.login(username="gh", password="pw")
+        resp = self.client.get(reverse("tutor:assessment_list"))
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual([a.pk for a in resp.context["drafts"]], [self.draft.pk])
+        self.assertEqual([a.pk for a in resp.context["finalized"]], [self.final.pk])
+        self.assertContains(resp, "Awaiting your review")
+        self.assertContains(resp, "Agent draft")
+        self.assertNotContains(resp, "SecretSubj")
+        self.assertNotIn("Eve", [c.first_name for c in resp.context["children"]])
+
+    def test_child_filter(self):
+        self.client.login(username="gh", password="pw")
+        resp = self.client.get(reverse("tutor:assessment_list"), {"child_id": self.kaylin.id})
+        self.assertEqual(resp.context["drafts"], [])
+        self.assertEqual([a.pk for a in resp.context["finalized"]], [self.final.pk])
+
+    def test_requires_login(self):
+        resp = self.client.get(reverse("tutor:assessment_list"))
+        self.assertEqual(resp.status_code, 302)
+
+    def test_progress_page_links_to_history(self):
+        self.client.login(username="gh", password="pw")
+        resp = self.client.get(reverse("dashboard:dashboard"))
+        self.assertContains(resp, "grading history")
 
 
 class PortalMarkdownRenderTests(TestCase):

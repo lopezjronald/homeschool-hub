@@ -398,6 +398,17 @@ class Question(models.Model):
         return self.response_type == self.TYPE_CLOZE
 
     @property
+    def supports_draft_coach(self):
+        """True if the writing coach can review this answer as a draft.
+
+        Rough drafts in the literature guides carry a "ROUGH DRAFT" marker;
+        Essentials-in-Writing paragraph work is category "writing".
+        """
+        if self.response_type != self.TYPE_TEXT:
+            return False
+        return "ROUGH DRAFT" in (self.prompt or "").upper() or self.category == "writing"
+
+    @property
     def cloze_segments(self):
         """Split a cloze passage at underscore runs into text/blank segments.
 
@@ -499,6 +510,10 @@ class ResponseSheet(models.Model):
         related_name="response_sheets",
     )
     answers = models.JSONField(default=dict, blank=True)
+    draft_feedback = models.JSONField(
+        default=dict, blank=True,
+        help_text="Writing-coach feedback per question id: {qid: {praise, suggestions, at}}.",
+    )
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=DRAFT)
     work_entry = models.ForeignKey(
         "worklog.WorkLogEntry",

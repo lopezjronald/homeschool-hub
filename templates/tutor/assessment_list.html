@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block title %}Grading History · Steadfast Scholars{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+
+  <div class="ss-hero mb-4">
+    <div class="ss-kicker">Mastery, not grades</div>
+    <h1>Grading History</h1>
+    <p class="lead mb-0">Every assessment for your children — drafts to review first, then the finalized record.</p>
+  </div>
+
+  <form method="get" class="row g-2 align-items-end mb-4">
+    <div class="col-sm-4 col-md-3">
+      <label for="child_id" class="form-label small mb-1">Child</label>
+      <select name="child_id" id="child_id" class="form-select" onchange="this.form.submit()">
+        <option value="">All children</option>
+        {% for c in children %}
+          <option value="{{ c.id }}" {% if selected_child == c.id|stringformat:"d" %}selected{% endif %}>{{ c.first_name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    {% if finalized %}
+      <div class="col-auto">
+        <span class="text-muted small">{{ meets_bar_count }} of {{ finalized|length }} finalized at Proficient or above</span>
+      </div>
+    {% endif %}
+  </form>
+
+  {% if drafts %}
+    <h2 class="portal-section-title" style="color:var(--ss-forest);">⏳ Awaiting your review</h2>
+    <div class="list-group mb-4">
+      {% for a in drafts %}
+        <a href="{% url 'tutor:assess_detail' a.pk %}" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center flex-wrap gap-2">
+          <span>
+            <strong>{{ a.work_entry.child.first_name }}</strong> · {{ a.work_entry.subject }}
+            {% if a.is_auto %}<span class="badge bg-warning text-dark ms-1">Agent draft</span>{% endif %}
+            <small class="text-muted d-block">{{ a.created_at|date:"M d, Y" }}{% if a.work_entry.curriculum %} · {{ a.work_entry.curriculum.name }}{% endif %}</small>
+          </span>
+          <span class="badge {{ a.ai_badge_class }}">Proposed: {{ a.get_ai_level_display }}</span>
+        </a>
+      {% endfor %}
+    </div>
+  {% endif %}
+
+  <h2 class="portal-section-title" style="color:var(--ss-forest);">✅ Finalized</h2>
+  {% if finalized %}
+    <div class="list-group mb-4">
+      {% for a in finalized %}
+        <a href="{% url 'tutor:assess_detail' a.pk %}" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center flex-wrap gap-2">
+          <span>
+            <strong>{{ a.work_entry.child.first_name }}</strong> · {{ a.work_entry.subject }}
+            <small class="text-muted d-block">{{ a.finalized_at|date:"M d, Y" }}{% if a.work_entry.curriculum %} · {{ a.work_entry.curriculum.name }}{% endif %}{% if a.parent_override_level %} · you overrode the agent{% endif %}</small>
+          </span>
+          <span class="badge {{ a.badge_class }}">{{ a.get_final_level_display }}</span>
+        </a>
+      {% endfor %}
+    </div>
+  {% else %}
+    <p class="text-muted">Nothing finalized yet{% if selected_child %} for this child{% endif %} — finalized assessments will build the record here.</p>
+  {% endif %}
+
+  <a href="{% url 'dashboard:dashboard' %}" class="btn btn-secondary">Back to Progress</a>
+
+</div>
+{% endblock %}

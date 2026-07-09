@@ -6,6 +6,7 @@ app_name = "tutor"
 
 urlpatterns = [
     path("worklog/<int:entry_pk>/assess/", views.assess_create, name="assess_create"),
+    path("assessments/", views.assessment_list, name="assessment_list"),
     path("assessments/<int:pk>/", views.assess_detail, name="assess_detail"),
     path("assessments/<int:pk>/finalize/", views.assess_finalize, name="assess_finalize"),
     path("materials/<int:pk>/", views.material_detail, name="material_detail"),

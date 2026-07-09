@@ -87,6 +87,43 @@ def assess_create(request, entry_pk):
 
 
 @login_required
+def assessment_list(request):
+    """Grading history: every assessment for the family's children.
+
+    Drafts awaiting review float to the top; finalized results read as a
+    chronological history. Optional per-child filter feeds from Progress.
+    """
+    entries = viewable_queryset(WorkLogEntry.objects.all(), request.user)
+    qs = (
+        MasteryAssessment.objects.filter(work_entry__in=entries)
+        .select_related("work_entry", "work_entry__child", "work_entry__curriculum")
+        .order_by("-created_at")
+    )
+
+    child_id = request.GET.get("child_id", "").strip()
+    if child_id.isdigit():
+        qs = qs.filter(work_entry__child_id=child_id)
+
+    assessments = list(qs)
+    drafts = [a for a in assessments if a.status == MasteryAssessment.DRAFT]
+    finalized = [a for a in assessments if a.status == MasteryAssessment.FINALIZED]
+
+    from students.models import Student
+
+    children = Student.objects.filter(
+        work_log_entries__in=entries,
+    ).distinct().order_by("first_name")
+
+    return render(request, "tutor/assessment_list.html", {
+        "drafts": drafts,
+        "finalized": finalized,
+        "children": children,
+        "selected_child": child_id,
+        "meets_bar_count": sum(1 for a in finalized if a.meets_bar),
+    })
+
+
+@login_required
 def assess_detail(request, pk):
     """View an assessment; editors can finalize (with an optional override)."""
     assessment = get_object_or_404(

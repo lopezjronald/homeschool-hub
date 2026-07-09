@@ -117,9 +117,11 @@
                   <span class="badge {{ m.badge }}">{{ m.label }} · {{ m.count }}</span>
                 {% endfor %}
               </div>
-              <small class="text-muted">{{ card.meets_bar_count }} of {{ card.assessed_count }} at Proficient or above</small>
+              <small class="text-muted d-block">{{ card.meets_bar_count }} of {{ card.assessed_count }} at Proficient or above</small>
+              <a href="{% url 'tutor:assessment_list' %}?child_id={{ card.child.id }}" class="small">View grading history →</a>
             {% else %}
-              <p class="text-muted small mb-0">No mastery assessments yet.</p>
+              <p class="text-muted small mb-0">No mastery assessments yet.
+                <a href="{% url 'tutor:assessment_list' %}" class="small">Grading history →</a></p>
             {% endif %}
           </div>
         </div>

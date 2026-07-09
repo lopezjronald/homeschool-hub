@@ -141,13 +141,13 @@
                   {% endfor %}
                 </div>
               {% endif %}
-
-              <a href="{% url 'tutor:assessment_list' %}?child_id={{ card.child.id }}" class="small">View grading history →</a>
-              <a href="{% url 'worklog:charter_report' %}?child={{ card.child.id }}" class="small ms-2">📄 Charter report →</a>
             {% else %}
-              <p class="text-muted small mb-0">No mastery assessments yet.
-                <a href="{% url 'tutor:assessment_list' %}" class="small">Grading history →</a></p>
+              <p class="text-muted small mb-1">No mastery assessments yet.</p>
             {% endif %}
+            <div class="small">
+              <a href="{% url 'tutor:assessment_list' %}?child_id={{ card.child.id }}">Grading history →</a>
+              <a href="{% url 'worklog:charter_report' %}?child={{ card.child.id }}" class="ms-2">📄 Charter report →</a>
+            </div>
           </div>
         </div>
       </div>

@@ -74,7 +74,7 @@
                                   data-character="{{ name }}" rows="3"
                                   placeholder="Who is {{ name }}? What are they like?"
                                   autocomplete="off" autocorrect="off" autocapitalize="off"
-                                  spellcheck="false" data-gramm="false"
+                                  spellcheck="true" data-gramm="false"
                                   {% if sheet.is_submitted %}readonly{% endif %}></textarea>
                       </div>
                     {% endfor %}
@@ -120,7 +120,7 @@
                 {% elif q.is_cloze %}
                   <div class="vocab-cloze" data-question-widget="{{ q.pk }}">
                     <div class="cloze-passage">
-                      {% for seg in q.cloze_segments %}{% if seg.blank is None %}{{ seg.text }}{% else %}<input type="text" class="cloze-input" data-blank="{{ seg.blank }}" aria-label="Blank {{ seg.blank|add:1 }}" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-gramm="false" {% if sheet.is_submitted %}readonly{% endif %}>{% endif %}{% endfor %}
+                      {% for seg in q.cloze_segments %}{% if seg.blank is None %}{{ seg.text }}{% else %}<input type="text" class="cloze-input" data-blank="{{ seg.blank }}" aria-label="Blank {{ seg.blank|add:1 }}" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="true" data-gramm="false" {% if sheet.is_submitted %}readonly{% endif %}>{% endif %}{% endfor %}
                     </div>
                     <input type="hidden" name="answer_{{ q.pk }}" data-question="{{ q.pk }}" value="{{ q.my_answer }}">
                   </div>
@@ -151,7 +151,7 @@
                     class="form-control portal-answer"
                     placeholder="Type your answer here…"
                     autocomplete="off" autocorrect="off" autocapitalize="off"
-                    spellcheck="false" data-gramm="false"
+                    spellcheck="true" data-gramm="false"
                     {% if sheet.is_submitted %}readonly{% endif %}>
 {{ q.my_answer }}</textarea>
                   <div class="portal-wordcount text-muted" data-count-for="{{ q.pk }}"></div>

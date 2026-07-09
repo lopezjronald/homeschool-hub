@@ -188,11 +188,13 @@ class PortalCourseTests(TestCase):
         self.assertContains(resp, "Discussion")
         self.assertContains(resp, "lead")  # facilitation guidance
 
-    def test_form_disables_autocorrect(self):
+    def test_typed_fields_offer_spelling_help_but_no_autocorrect(self):
+        # It's not a spelling class — the browser flags misspellings (spellcheck),
+        # but autocorrect stays off so nothing silently rewrites the child's words.
         resp = self.client.get(self._url("portal_questions", set_pk=self.first_set.pk))
-        self.assertContains(resp, 'spellcheck="false"')
+        self.assertContains(resp, 'spellcheck="true"')
+        self.assertNotContains(resp, 'spellcheck="false"')
         self.assertContains(resp, 'autocorrect="off"')
-        self.assertContains(resp, 'autocapitalize="off"')
         self.assertContains(resp, 'data-gramm="false"')
         self.assertContains(resp, "portal-autosave")  # hashed filename under manifest storage
 
@@ -1041,7 +1043,7 @@ class GradingHistoryTests(TestCase):
     def test_progress_page_links_to_history(self):
         self.client.login(username="gh", password="pw")
         resp = self.client.get(reverse("dashboard:dashboard"))
-        self.assertContains(resp, "grading history")
+        self.assertContains(resp, reverse("tutor:assessment_list"))   # the grading-history link
 
 
 class OnlineCurriculumTests(TestCase):

@@ -3,6 +3,9 @@
 
 {% block content %}
 <div class="container py-4">
+  {% if can_edit %}
+    {% include "includes/hint.html" with hint_key="curricula_online" emoji="🌐" text="Doing a subject on an external site like Beast Academy or DIVE? Add it, tick “done on an external website,” and the child's portal opens the site instead of in-app lessons." %}
+  {% endif %}
   <div class="d-flex justify-content-between align-items-center mb-3">
     <div>
       <h1 class="mb-0">Curricula</h1>

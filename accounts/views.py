@@ -5,8 +5,9 @@ from django.contrib.auth.tokens import default_token_generator
 from django.http import HttpResponseForbidden
 from django.shortcuts import render, redirect
 from django.utils.encoding import force_str
-from django.utils.http import urlsafe_base64_decode
+from django.utils.http import url_has_allowed_host_and_scheme, urlsafe_base64_decode
 from django.views.decorators.csrf import csrf_protect
+from django.views.decorators.http import require_POST
 
 from core.permissions import user_can_edit
 
@@ -90,6 +91,25 @@ def welcome(request):
     return render(request, "accounts/welcome.html", {
         "goal_choices": UserProfile.GOAL_CHOICES,
     })
+
+
+@login_required
+@require_POST
+def dismiss_hint(request):
+    """Persist that the user closed a just-in-time hint, then return them back."""
+    key = request.POST.get("key", "").strip()[:50]
+    if key:
+        profile = UserProfile.get_for(request.user)
+        if key not in profile.dismissed_hints:
+            profile.dismissed_hints = list(profile.dismissed_hints) + [key]
+            profile.save(update_fields=["dismissed_hints"])
+
+    nxt = request.POST.get("next", "")
+    if nxt and url_has_allowed_host_and_scheme(
+        nxt, allowed_hosts={request.get_host()}, require_https=request.is_secure(),
+    ):
+        return redirect(nxt)
+    return redirect("home")
 
 
 @csrf_protect

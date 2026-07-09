@@ -142,6 +142,7 @@ TEMPLATES = [
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
                 "core.context_processors.family_context",
+                "core.context_processors.onboarding_hints",
             ],
         },
     },

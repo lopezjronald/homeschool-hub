@@ -19,3 +19,12 @@ def family_context(request):
         "selected_family": selected,
         "can_invite_teacher": can_invite,
     }
+
+
+def onboarding_hints(request):
+    """Expose the set of just-in-time hints the user has already dismissed."""
+    if not hasattr(request, "user") or not request.user.is_authenticated:
+        return {"dismissed_hints": []}
+    from accounts.models import UserProfile
+
+    return {"dismissed_hints": UserProfile.get_for(request.user).dismissed_hints}

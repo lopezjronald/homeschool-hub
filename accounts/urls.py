@@ -10,6 +10,7 @@ urlpatterns = [
     path("verify/<uidb64>/<token>/", views.verify, name="verify"),
     path("post-login/", views.post_login, name="post_login"),
     path("welcome/", views.welcome, name="welcome"),
+    path("hints/dismiss/", views.dismiss_hint, name="dismiss_hint"),
     path(
         "login/",
         auth_views.LoginView.as_view(

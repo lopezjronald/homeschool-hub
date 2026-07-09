@@ -24,7 +24,12 @@
         {% if current_lesson %}· now on <strong>{{ current_lesson.code }}</strong>{% endif %}</div>
     {% endif %}
 
-    {% if next_set %}
+    {% if curriculum.is_external %}
+      <a href="{{ curriculum.website_url }}" target="_blank" rel="noopener noreferrer" class="btn btn-amber btn-lg portal-continue">
+        Open {{ curriculum.name }} ↗
+      </a>
+      <div class="portal-progress-label mt-2">You do this subject online — this button takes you there.</div>
+    {% elif next_set %}
       <a href="{% url 'portal:portal_questions' token=token set_pk=next_set.pk %}" class="btn btn-amber btn-lg portal-continue">
         Continue ➜ <span class="portal-continue-sub">{{ next_set.title }}</span>
       </a>

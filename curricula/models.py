@@ -54,6 +54,12 @@ class Curriculum(models.Model):
         default="",
         help_text="Optional link to the curriculum's website",
     )
+    is_online = models.BooleanField(
+        default=False,
+        help_text="This subject is done on an external website (e.g. Beast Academy, "
+                  "DIVE). The child's portal launches out to the website instead of "
+                  "showing in-app lessons.",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -63,6 +69,11 @@ class Curriculum(models.Model):
 
     def __str__(self):
         return self.name
+
+    @property
+    def is_external(self):
+        """True when this is an online subject the portal should launch out to."""
+        return bool(self.is_online and self.website_url)
 
     def get_related_assignments_count(self):
         """Return count of related assignments, or 0 if Assignment model doesn't exist yet."""

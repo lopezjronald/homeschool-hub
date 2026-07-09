@@ -11,11 +11,16 @@ class CurriculumForm(forms.ModelForm):
 
     class Meta:
         model = Curriculum
-        fields = ["name", "subject", "grade_level", "website_url"]
+        fields = ["name", "subject", "grade_level", "website_url", "is_online"]
         widgets = {
             "website_url": forms.URLInput(
                 attrs={"placeholder": "https://example.com"}
             ),
+        }
+        help_texts = {
+            "is_online": "Tick this for a subject done on an external site (Beast "
+                         "Academy, DIVE, etc.) — the child's portal opens the website "
+                         "above instead of showing in-app lessons.",
         }
 
     def clean_website_url(self):

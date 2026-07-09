@@ -1044,6 +1044,55 @@ class GradingHistoryTests(TestCase):
         self.assertContains(resp, "grading history")
 
 
+class OnlineCurriculumTests(TestCase):
+    """A core subject done on an external site launches out of the portal."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.parent = User.objects.create_user(username="oc", email="oc@e.com", password="pw")
+        cls.family = Family.objects.create(name="OC Fam")
+        FamilyMembership.objects.create(user=cls.parent, family=cls.family, role="parent")
+        cls.violet = Student.objects.create(
+            parent=cls.parent, first_name="Violet", grade_level="G03", family=cls.family,
+        )
+        cls.online = Curriculum.objects.create(
+            parent=cls.parent, name="Beast Academy", subject="Math", grade_level="G03",
+            family=cls.family, is_online=True, website_url="https://beastacademy.com/",
+        )
+        CurriculumPlacement.objects.create(child=cls.violet, curriculum=cls.online)
+        cls.token = make_portal_token(cls.violet)
+
+    def test_is_external_needs_flag_and_url(self):
+        self.assertTrue(self.online.is_external)
+        self.online.website_url = ""
+        self.assertFalse(self.online.is_external)     # flag alone isn't enough
+
+    def test_home_card_launches_out(self):
+        from portal.views import _subject_cards
+        card = _subject_cards(self.violet)[0]
+        self.assertTrue(card["is_external"])
+        self.assertEqual(card["launch_url"], "https://beastacademy.com/")
+        html = self.client.get(reverse("portal:portal_home", kwargs={"token": self.token})).content.decode()
+        self.assertIn("Beast Academy", html)
+        self.assertIn('href="https://beastacademy.com/"', html)
+        self.assertIn('rel="noopener noreferrer"', html)
+        self.assertIn("opens your lessons ↗", html)
+        # NOT an in-app drill-in link for this subject
+        self.assertNotIn(f"/subject/{self.online.pk}/", html)
+
+    def test_drilldown_shows_launch_button(self):
+        resp = self.client.get(reverse("portal:portal_subject", kwargs={
+            "token": self.token, "curriculum_id": self.online.pk,
+        }))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "Open Beast Academy ↗")
+        self.assertContains(resp, "this subject online")
+
+    def test_form_exposes_is_online(self):
+        from curricula.forms import CurriculumForm
+        self.assertIn("is_online", CurriculumForm().fields)
+
+
 class PortalMarkdownRenderTests(TestCase):
     """Prompts/intros render Markdown (bold, lists) instead of showing raw **."""
 

@@ -159,6 +159,9 @@ def _subject_cards(student):
             "sets_total": sets_total,
             "sets_pct": round(sets_done / sets_total * 100) if sets_total else 0,
             "materials_count": len(materials_by_curr.get(cid, [])),
+            # Online subjects (Beast Academy, DIVE…) launch out to the website.
+            "is_external": curriculum.is_external,
+            "launch_url": curriculum.website_url if curriculum.is_external else "",
         })
 
     cards.sort(key=lambda c: (c["curriculum"].subject or "", c["curriculum"].name))

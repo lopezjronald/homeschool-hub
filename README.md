@@ -135,11 +135,29 @@ heroku config:set EMAIL_HOST=email-smtp.us-west-2.amazonaws.com \
 
 # Daily database backups
 heroku pg:backups:schedule DATABASE_URL --at '02:00 America/Los_Angeles' --app steadfast-scholars
+
+# Custom domain hosts + HSTS (a new hostname 400s until it's in ALLOWED_HOSTS)
+heroku config:set \
+  ALLOWED_HOSTS="<app>.herokuapp.com,steadfastscholars.com,www.steadfastscholars.com" \
+  CSRF_TRUSTED_ORIGINS="https://steadfastscholars.com,https://www.steadfastscholars.com" \
+  SECURE_HSTS_SECONDS=31536000 SECURE_HSTS_INCLUDE_SUBDOMAINS=true SECURE_HSTS_PRELOAD=false \
+  --app steadfast-scholars
 ```
+
+> Note: `SECURE_HSTS_PRELOAD` / `SECURE_HSTS_INCLUDE_SUBDOMAINS` default to **True** in prod, so
+> set `SECURE_HSTS_PRELOAD=false` explicitly unless you really intend to preload (hard to undo).
 
 Windows note: run the `heroku` CLI from **PowerShell**, not the bash shell. For prod
 `manage.py shell` scripts, `cmd /c "heroku run --no-tty --app steadfast-scholars ""python manage.py shell"" < scriptfile"`
 (PowerShell pipes inject a BOM that breaks the shell).
+
+### Custom domain & email
+
+`steadfastscholars.com` (+ `www`) are served via Heroku custom domains with auto-issued SSL
+(Heroku ACM). DNS lives in **Squarespace**, which supports **ALIAS at the apex**, so the bare
+domain points natively at Heroku: apex `@` = ALIAS → Heroku DNS target, `www` = CNAME → Heroku
+DNS target. Email sends from `no-reply@steadfastscholars.com` (domain verified in SES us-west-2
+via Easy DKIM; the domain's `DMARC p=reject` passes through DKIM alignment).
 
 ---
 

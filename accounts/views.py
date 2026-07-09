@@ -1,5 +1,6 @@
 from django.contrib import messages
 from django.contrib.auth import logout, get_user_model
+from django.contrib.auth.decorators import login_required
 from django.contrib.auth.tokens import default_token_generator
 from django.http import HttpResponseForbidden
 from django.shortcuts import render, redirect
@@ -7,7 +8,10 @@ from django.utils.encoding import force_str
 from django.utils.http import urlsafe_base64_decode
 from django.views.decorators.csrf import csrf_protect
 
+from core.permissions import user_can_edit
+
 from .forms import RegisterForm
+from .models import UserProfile
 from .services import UserService
 
 User = get_user_model()
@@ -50,6 +54,42 @@ def verify(request, uidb64: str, token: str):
 
     messages.error(request, "The verification link is invalid or has expired.")
     return redirect("accounts:login")
+
+
+@login_required
+def post_login(request):
+    """Route a user after login: first-timers to the welcome page, read-only
+    reviewers to Progress, everyone else to the hub. LOGIN_REDIRECT_URL points
+    here (Django still honors a safe ``?next=`` before reaching this view)."""
+    profile = UserProfile.get_for(request.user)
+    if not profile.has_seen_welcome:
+        return redirect("accounts:welcome")
+    if not user_can_edit(request.user):
+        return redirect("dashboard:dashboard")
+    return redirect("home")
+
+
+@login_required
+@csrf_protect
+def welcome(request):
+    """One-question welcome survey, shown once (drives the setup emphasis)."""
+    profile = UserProfile.get_for(request.user)
+
+    if request.method == "POST":
+        goal = "" if "skip" in request.POST else request.POST.get("goal", "")
+        valid = {c[0] for c in UserProfile.GOAL_CHOICES}
+        profile.onboarding_goal = goal if goal in valid else ""
+        profile.has_seen_welcome = True
+        profile.save(update_fields=["onboarding_goal", "has_seen_welcome"])
+        if profile.onboarding_goal == UserProfile.GOAL_REVIEW:
+            return redirect("dashboard:dashboard")
+        return redirect("home")
+
+    if profile.has_seen_welcome:
+        return redirect("home")
+    return render(request, "accounts/welcome.html", {
+        "goal_choices": UserProfile.GOAL_CHOICES,
+    })
 
 
 @csrf_protect

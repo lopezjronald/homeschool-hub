@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}Welcome · Steadfast Scholars{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+  <div class="row justify-content-center">
+    <div class="col-lg-8">
+
+      <div class="ss-hero mb-4">
+        <div class="ss-kicker">Welcome</div>
+        <h1>Welcome, {{ user.first_name|default:user.username }} — let's set up your homeschool.</h1>
+        <p class="lead mb-0">It takes about three minutes to reach your first record. One quick question so we
+          can point you the right way.</p>
+      </div>
+
+      <form method="post">
+        {% csrf_token %}
+        <fieldset class="mb-2">
+          <legend class="h5" style="color:var(--ss-forest);">What brings you here?</legend>
+          <div class="d-grid gap-2">
+            {% for value, label in goal_choices %}
+              <input type="radio" class="btn-check" name="goal" id="goal-{{ value }}" value="{{ value }}"
+                     {% if forloop.first %}checked{% endif %}>
+              <label class="btn btn-outline-secondary text-start p-3 ss-goal-card" for="goal-{{ value }}">
+                {{ label }}
+              </label>
+            {% endfor %}
+          </div>
+        </fieldset>
+
+        <div class="d-flex flex-wrap gap-2 mt-4">
+          <button type="submit" class="btn btn-amber btn-lg">Get started →</button>
+          <button type="submit" name="skip" value="1" class="btn btn-outline-secondary btn-lg">Skip for now</button>
+        </div>
+      </form>
+
+      <hr class="my-4">
+
+      <h2 class="h6 text-uppercase text-muted" style="letter-spacing:.06em;">What's next</h2>
+      <div class="row row-cols-2 row-cols-md-4 g-3 mt-0">
+        <div class="col text-center"><div class="ss-feature-emoji">1️⃣</div><div class="small">Add a child</div></div>
+        <div class="col text-center"><div class="ss-feature-emoji">2️⃣</div><div class="small">Set up a subject</div></div>
+        <div class="col text-center"><div class="ss-feature-emoji">3️⃣</div><div class="small">Hand over the portal</div></div>
+        <div class="col text-center"><div class="ss-feature-emoji">4️⃣</div><div class="small">Confirm mastery</div></div>
+      </div>
+
+      <p class="small text-muted mt-4 mb-0">Prefer to read first? <a href="{% url 'core:how_it_works' %}">See how it works →</a></p>
+
+    </div>
+  </div>
+</div>
+{% endblock %}

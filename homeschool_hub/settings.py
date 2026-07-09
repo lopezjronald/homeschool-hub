@@ -234,7 +234,9 @@ else:
 DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "no-reply@homeschool.local")
 
 LOGIN_URL = "accounts:login"
-LOGIN_REDIRECT_URL = "/"
+# Route through post_login so first-time users see the welcome page and
+# read-only reviewers land on Progress (a safe ?next= still takes precedence).
+LOGIN_REDIRECT_URL = "accounts:post_login"
 LOGOUT_REDIRECT_URL = "/"
 
 INVITE_MAX_AGE_DAYS = 7

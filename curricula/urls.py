@@ -17,6 +17,12 @@ urlpatterns = [
         views.curriculum_document_delete,
         name="curriculum_document_delete",
     ),
+    path("<int:pk>/resources/add/", views.curriculum_resource_add, name="curriculum_resource_add"),
+    path(
+        "<int:pk>/resources/<int:resource_pk>/delete/",
+        views.curriculum_resource_delete,
+        name="curriculum_resource_delete",
+    ),
     path(
         "<int:pk>/children/<int:child_pk>/placement/",
         views.curriculum_set_placement,

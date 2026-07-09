@@ -233,23 +233,22 @@ BLACKBIRD_A_MOUSE_CALLED_WOLF = {
     "subject": "Literature",
     "grade_level": "G03",
     "source": "Blackbird & Company Educational Press — Literature Discovery Guide: "
-              "A Mouse Called Wolf by Dick King-Smith (Level 3). Reading schedule "
-              "mirrors the guide; questions and teacher answer keys are original, "
-              "grounded in the novel.",
+              "A Mouse Called Wolf by Dick King-Smith (Level 3). Family-owned guide; "
+              "content follows the workbook for private family use.",
     "chapters": [
         _bb_section(1, "1–3"),
         _bb_section(2, "4–6"),
         _bb_section(3, "7–9"),
-        _bb_section(4, "10–12"),
+        _bb_section(4, "10–11"),
         {
             "number": 5,
             "title": "Section 5: Glean — Final Project",
             "lessons": [
                 _ls(1, 1, "Glean: Final Project",
-                    "Complete one or more of the final project options: write a new song "
-                    "or poem for Wolf, write an epilogue, map Mrs Honeybee's house, make a "
-                    "'My Special Talent' poster, or write a thank-you letter from Mrs "
-                    "Honeybee to Wolf."),
+                    "Complete one or more of the guide's final project options: compare "
+                    "Schubert, Beethoven, and Mozart; research Mozart's life; research and "
+                    "draw a labeled grand piano; research the history and meaning of your "
+                    "own name; or define the story's musical terms."),
             ],
         },
     ],

@@ -34,6 +34,9 @@
               {% if qset.reading %}<small class="text-muted">📖 After reading {{ qset.reading }}</small>{% endif %}
             </div>
             <div class="card-body">
+              {% if qset.intro %}
+                <p class="text-muted small">{{ qset.intro|linebreaksbr }}</p>
+              {% endif %}
               <ol class="discussion-list">
                 {% for q in qset.questions.all %}
                   <li class="discussion-q">
@@ -43,6 +46,12 @@
                   </li>
                 {% endfor %}
               </ol>
+              {% if qset.rubric %}
+                <details class="mt-2">
+                  <summary class="text-muted small" style="cursor:pointer;">📋 Teacher notes &amp; grading</summary>
+                  <div class="small mt-2">{{ qset.rubric|markdownify }}</div>
+                </details>
+              {% endif %}
             </div>
           </div>
         {% endfor %}

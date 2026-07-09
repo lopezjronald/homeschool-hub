@@ -7,7 +7,7 @@ from django.test import TestCase
 from django.urls import reverse
 
 from core.models import Family, FamilyMembership
-from curricula.models import Chapter, Curriculum, CurriculumPlacement, Lesson
+from curricula.models import Chapter, Curriculum, CurriculumPlacement, CurriculumResource, Lesson
 from curricula.services import apply_blueprint, get_blueprint
 from students.models import Student
 from tutor.models import Question, QuestionSet, ResponseSheet
@@ -543,6 +543,216 @@ class CharacterQuestionTests(TestCase):
         self.assertIn("(no answer)", sheet.as_worklog_text())   # never crashes
 
 
+class VocabWidgetTests(TestCase):
+    """Workbook-style vocabulary: match-the-number + fill-in-the-blank."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.parent = User.objects.create_user(username="vw", email="vw@e.com", password="pw")
+        cls.family = Family.objects.create(name="Vocab Fam")
+        FamilyMembership.objects.create(user=cls.parent, family=cls.family, role="parent")
+        cls.violet = Student.objects.create(
+            parent=cls.parent, first_name="Violet", grade_level="G03", family=cls.family,
+        )
+        cls.cur = Curriculum.objects.create(
+            parent=cls.parent, name="Vocab Course", subject="Literature", family=cls.family,
+        )
+        ch = Chapter.objects.create(curriculum=cls.cur, number=1, title="One")
+        cls.lesson = Lesson.objects.create(chapter=ch, order=1, number=1, title="Acquire")
+        CurriculumPlacement.objects.create(child=cls.violet, curriculum=cls.cur, current_lesson=cls.lesson)
+        cls.qset = QuestionSet.objects.create(
+            lesson=cls.lesson, title="Vocabulary", family=cls.family,
+            status=QuestionSet.APPROVED,
+        )
+        cls.match_q = Question.objects.create(
+            question_set=cls.qset, order=1, category="vocabulary",
+            response_type=Question.TYPE_MATCHING,
+            prompt="Write in the number of the correct definition for each word.",
+            passage=json.dumps({
+                "words": ["gleam", "edible"],
+                "definitions": [
+                    {"n": 1, "text": "able to be eaten", "word": "edible"},
+                    {"n": 2, "text": "to shine", "word": "gleam"},
+                ],
+            }),
+        )
+        cls.blank_q = Question.objects.create(
+            question_set=cls.qset, order=2, category="vocabulary",
+            response_type=Question.TYPE_FILL_BLANK,
+            prompt="Fill in each blank with the best word.",
+            passage=json.dumps({
+                "words": ["gleam", "edible"],
+                "sentences": [
+                    {"text": "Polish it until you make it ______.", "word": "gleam"},
+                    {"text": "Not everything ______ tastes good.", "word": "edible"},
+                ],
+            }),
+        )
+        cls.token = make_portal_token(cls.violet)
+
+    def _url(self, name, **kw):
+        return reverse(f"portal:{name}", kwargs={"token": self.token, **kw})
+
+    def test_renders_matching_and_fill_blank_widgets(self):
+        html = self.client.get(self._url("portal_questions", set_pk=self.qset.pk)).content.decode()
+        self.assertIn("vocab-matching", html)
+        self.assertIn("vocab-fillblank", html)
+        for token in ("gleam", "edible", "able to be eaten", "to shine"):
+            self.assertIn(token, html)
+        self.assertEqual(html.count('class="vocab-word"'), 2)   # a button per word
+        self.assertEqual(html.count('class="vocab-def"'), 2)    # a button per definition
+        self.assertIn("vocab-blank-select", html)
+        self.assertIn("portal-vocab", html)          # widget JS loaded
+        # No free-text box for either question — the widgets replace the textarea.
+        self.assertNotIn(f'id="q{self.match_q.pk}"', html)
+        self.assertNotIn(f'id="q{self.blank_q.pk}"', html)
+
+    def test_autosave_and_submit_store_json_and_render_worklog(self):
+        match_answer = json.dumps({"matches": {"gleam": 2, "edible": 1}, "tries": 1})
+        blank_answer = json.dumps({"blanks": {"0": "gleam", "1": "edible"}, "tries": 0})
+        resp = self.client.post(
+            self._url("portal_autosave", set_pk=self.qset.pk),
+            data=json.dumps({"answers": {
+                str(self.match_q.pk): match_answer,
+                str(self.blank_q.pk): blank_answer,
+            }}),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.client.post(self._url("portal_questions", set_pk=self.qset.pk), data={
+            f"answer_{self.match_q.pk}": match_answer,
+            f"answer_{self.blank_q.pk}": blank_answer,
+        })
+        sheet = ResponseSheet.objects.get(question_set=self.qset, child=self.violet)
+        self.assertTrue(sheet.is_submitted)
+        text = sheet.as_worklog_text()
+        self.assertIn("gleam → 2 (to shine) ✓", text)
+        self.assertIn("edible → 1 (able to be eaten) ✓", text)
+        self.assertIn("(1 wrong try along the way)", text)
+        self.assertIn("[gleam]", text)                # sentence rendered with the word
+        self.assertIn("Polish it until you make it", text)
+
+    def test_worklog_text_survives_blank_and_garbage(self):
+        sheet = ResponseSheet.objects.create(
+            question_set=self.qset, child=self.violet,
+            answers={str(self.match_q.pk): "", str(self.blank_q.pk): "not json"},
+        )
+        text = sheet.as_worklog_text()
+        self.assertEqual(text.count("(no answer)"), 2)   # never crashes
+
+    def test_vocab_data_survives_garbage_passage(self):
+        self.match_q.passage = "{broken json"
+        self.assertEqual(self.match_q.vocab_data, {})          # malformed JSON → {}
+        # And the fill-blank helper pre-splits sentences at the blank.
+        first = self.blank_q.fill_blank_sentences[0]
+        self.assertEqual(first["word"], "gleam")
+        self.assertEqual(first["before"], "Polish it until you make it ")
+        self.assertEqual(first["after"], ".")
+
+
+class ClozeWidgetTests(TestCase):
+    """EIW-style fill-in-the-blanks: inline inputs at each blank (own words)."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.parent = User.objects.create_user(username="cz", email="cz@e.com", password="pw")
+        cls.family = Family.objects.create(name="Cloze Fam")
+        FamilyMembership.objects.create(user=cls.parent, family=cls.family, role="parent")
+        cls.violet = Student.objects.create(
+            parent=cls.parent, first_name="Violet", grade_level="G03", family=cls.family,
+        )
+        cls.cur = Curriculum.objects.create(
+            parent=cls.parent, name="EIW Test", subject="Writing", family=cls.family,
+        )
+        ch = Chapter.objects.create(curriculum=cls.cur, number=1, title="One")
+        cls.lesson = Lesson.objects.create(chapter=ch, order=1, number=1, title="L1")
+        CurriculumPlacement.objects.create(child=cls.violet, curriculum=cls.cur, current_lesson=cls.lesson)
+        cls.qset = QuestionSet.objects.create(
+            lesson=cls.lesson, title="Fill in the blanks", family=cls.family,
+            status=QuestionSet.APPROVED, intro="Add subjects where they are missing.",
+        )
+        cls.q = Question.objects.create(
+            question_set=cls.qset, order=1, category="grammar",
+            response_type=Question.TYPE_CLOZE,
+            passage="____________ liked to ride his bike. One day, ____________ met a girl.",
+            prompt="",
+        )
+        cls.token = make_portal_token(cls.violet)
+
+    def _url(self, name, **kw):
+        return reverse(f"portal:{name}", kwargs={"token": self.token, **kw})
+
+    def test_segments_and_blank_count(self):
+        self.assertEqual(self.q.cloze_blank_count, 2)
+        segs = self.q.cloze_segments
+        self.assertEqual(segs[0]["blank"], 0)                     # starts with a blank
+        self.assertIn("liked to ride his bike", segs[1]["text"])
+        self.assertEqual(segs[2]["blank"], 1)
+
+    def test_renders_inline_inputs_not_underscores(self):
+        html = self.client.get(self._url("portal_questions", set_pk=self.qset.pk)).content.decode()
+        self.assertIn("cloze-input", html)
+        self.assertEqual(html.count('class="cloze-input"'), 2)   # one input per blank
+        self.assertNotIn("____", html)                           # no underscore walls
+        self.assertIn("liked to ride his bike", html)
+
+    def test_submit_renders_words_into_worklog(self):
+        answer = json.dumps({"blanks": {"0": "Marcus", "1": "he"}})
+        self.client.post(self._url("portal_questions", set_pk=self.qset.pk),
+                         data={f"answer_{self.q.pk}": answer})
+        sheet = ResponseSheet.objects.get(question_set=self.qset, child=self.violet)
+        text = sheet.as_worklog_text()
+        self.assertIn("[Marcus] liked to ride his bike", text)
+        self.assertIn("[he] met a girl", text)
+
+    def test_blank_answer_and_garbage_degrade(self):
+        sheet = ResponseSheet.objects.create(
+            question_set=self.qset, child=self.violet, answers={str(self.q.pk): "junk"},
+        )
+        self.assertIn("(no answer)", sheet.as_worklog_text())
+
+    def test_eiw_seed_converts_fill_blank_to_cloze(self):
+        from io import StringIO
+        from django.core.management import call_command
+        call_command("seed_eiw_violet", "--for-user", "cz", stdout=StringIO())
+        cloze = Question.objects.filter(response_type=Question.TYPE_CLOZE)
+        self.assertGreater(cloze.count(), 10)                    # the workbook's blanks
+        self.assertTrue(all("___" in c.passage for c in cloze.exclude(pk=self.q.pk)))
+
+
+class PortalMarkdownRenderTests(TestCase):
+    """Prompts/intros render Markdown (bold, lists) instead of showing raw **."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.parent = User.objects.create_user(username="mdp", email="mdp@e.com", password="pw")
+        cls.family = Family.objects.create(name="MD Fam")
+        FamilyMembership.objects.create(user=cls.parent, family=cls.family, role="parent")
+        cls.violet = Student.objects.create(
+            parent=cls.parent, first_name="Violet", grade_level="G03", family=cls.family,
+        )
+        cls.cur = Curriculum.objects.create(
+            parent=cls.parent, name="MD Course", subject="Literature", family=cls.family,
+        )
+        ch = Chapter.objects.create(curriculum=cls.cur, number=1, title="One")
+        cls.lesson = Lesson.objects.create(chapter=ch, order=1, number=1, title="L1")
+        CurriculumPlacement.objects.create(child=cls.violet, curriculum=cls.cur, current_lesson=cls.lesson)
+        cls.qset = QuestionSet.objects.create(
+            lesson=cls.lesson, title="Vocab", family=cls.family,
+            status=QuestionSet.APPROVED, intro="Do **all** of these:",
+        )
+        Question.objects.create(question_set=cls.qset, order=1, category="vocabulary",
+                                prompt="Define: **scamper**")
+        cls.token = make_portal_token(cls.violet)
+
+    def test_bold_prompt_renders_strong_not_asterisks(self):
+        url = reverse("portal:portal_questions", kwargs={"token": self.token, "set_pk": self.qset.pk})
+        html = self.client.get(url).content.decode()
+        self.assertIn("<strong>scamper</strong>", html)   # bold, not raw
+        self.assertNotIn("**scamper**", html)             # no literal asterisks
+        self.assertIn("<strong>all</strong>", html)       # intro bold too
+
+
 class AMouseCalledWolfSeedTests(TestCase):
     """Violet's Blackbird 'A Mouse Called Wolf' course (original, book-grounded)."""
 
@@ -568,14 +778,51 @@ class AMouseCalledWolfSeedTests(TestCase):
         self.assertTrue(all(c.answer_key.strip() for c in comp))
         self.assertTrue(comp.filter(answer_key__contains="teacher reference only").exists())
 
+    def test_answer_key_resource_seeded_teacher_only(self):
+        r = CurriculumResource.objects.get(
+            curriculum=self.curriculum, resource_type=CurriculumResource.ANSWER_KEY,
+        )
+        self.assertTrue(r.teacher_only)             # never shown to the student
+        self.assertIn("blackbirdandcompany.com", r.url)
+
     def test_journal_uses_per_character_boxes(self):
         journal = QuestionSet.objects.get(
             lesson__chapter__curriculum=self.curriculum, title="Section 1 · Journal",
         )
         q = journal.questions.get(order=1)
         self.assertEqual(q.response_type, Question.TYPE_CHARACTERS)
-        self.assertIn("Wolf", q.character_names)
-        self.assertIn("Mrs Honeybee", q.character_names)
+        # The guide's own character list for Section 1.
+        self.assertIn("Wolfgang Amadeus Mouse", q.character_names)
+        self.assertEqual(len(q.character_names), 2)
+
+    def test_vocabulary_is_workbook_matching_plus_fill_blank(self):
+        vocab = QuestionSet.objects.get(
+            lesson__chapter__curriculum=self.curriculum, title="Section 1 · Vocabulary",
+        )
+        qs = list(vocab.questions.order_by("order"))
+        self.assertEqual([q.response_type for q in qs],
+                         [Question.TYPE_MATCHING, Question.TYPE_FILL_BLANK])
+        matching = qs[0].vocab_data
+        # The guide's real Section 1 words, with its fixed answer numbering.
+        self.assertEqual(matching["words"],
+                         ["ordinary", "venture", "gleam", "edible", "dwindle", "curiosity"])
+        by_word = {d["word"]: d["n"] for d in matching["definitions"]}
+        self.assertEqual(by_word["ordinary"], 3)
+        self.assertEqual(by_word["curiosity"], 1)
+        # Fill-blank: 6 sentences, one blank each, answers drawn from the same words.
+        sentences = qs[1].vocab_data["sentences"]
+        self.assertEqual(len(sentences), 6)
+        self.assertTrue(all("______" in s["text"] for s in sentences))
+        self.assertTrue(all(s["word"] in matching["words"] for s in sentences))
+        # Teacher key on the set covers both halves.
+        self.assertIn("Matching:", vocab.answer_key)
+        self.assertIn("Fill in the blank:", vocab.answer_key)
+
+    def test_section4_is_chapters_10_to_11(self):
+        # The guide's Section 4 covers chapters 10–11 (the book has 11 chapters).
+        from curricula.models import Chapter as Ch
+        title = Ch.objects.get(curriculum=self.curriculum, number=4).title
+        self.assertIn("10–11", title)
 
     def test_violet_placed_and_discussion_hidden_from_student(self):
         from portal.views import _visible_question_sets

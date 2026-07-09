@@ -8,12 +8,110 @@ from django.urls import reverse
 from core.models import Family, FamilyMembership
 from students.models import Student
 
-from .models import Chapter, Curriculum, CurriculumDocument, CurriculumPlacement, Lesson
+from .models import (
+    Chapter, Curriculum, CurriculumDocument, CurriculumPlacement, CurriculumResource, Lesson,
+)
 from .services import apply_blueprint, get_blueprint
 
 User = get_user_model()
 
 MEDIA = tempfile.mkdtemp()
+
+
+class FuzzySearchTests(TestCase):
+    """Misspelling-tolerant curricula search (trigram on Postgres, icontains fallback)."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.parent = User.objects.create_user(username="fz", email="fz@e.com", password="pw")
+        cls.family = Family.objects.create(name="Fz Fam")
+        FamilyMembership.objects.create(user=cls.parent, family=cls.family, role="parent")
+        Curriculum.objects.create(parent=cls.parent, family=cls.family,
+                                  name="Dimensions Math 3A", subject="Math")
+        Curriculum.objects.create(parent=cls.parent, family=cls.family,
+                                  name="Essentials in Writing 3", subject="Writing")
+
+    def _search(self, q):
+        self.client.login(username="fz", password="pw")
+        resp = self.client.get(reverse("curricula:curriculum_list"), {"q": q})
+        self.assertEqual(resp.status_code, 200)
+        return [c.name for c in resp.context["curricula"]]
+
+    def test_exact_substring_matches_on_any_backend(self):
+        self.assertEqual(self._search("Dimensions"), ["Dimensions Math 3A"])
+        self.assertEqual(self._search("writ"), ["Essentials in Writing 3"])
+
+    def test_no_results_state_does_not_crash(self):
+        self.assertEqual(self._search("zzzzz"), [])
+
+    def test_misspelling_still_matches_on_postgres(self):
+        from django.db import connection
+        from unittest import skipUnless  # noqa: F401  (documented guard below)
+
+        if connection.vendor != "postgresql":
+            self.skipTest("trigram similarity requires PostgreSQL (runs on prod)")
+        self.assertIn("Dimensions Math 3A", self._search("Dimensios Math"))
+        self.assertIn("Essentials in Writing 3", self._search("Essentails"))
+
+
+class CurriculumResourceTests(TestCase):
+    """External resource links (answer keys, videos, …) attached to a curriculum."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.parent = User.objects.create_user(username="rp", email="rp@e.com", password="pw")
+        cls.family = Family.objects.create(name="Res Fam")
+        FamilyMembership.objects.create(user=cls.parent, family=cls.family, role="parent")
+        cls.teacher = User.objects.create_user(username="rt", email="rt@e.com", password="pw")
+        FamilyMembership.objects.create(user=cls.teacher, family=cls.family, role="teacher")
+        cls.cur = Curriculum.objects.create(
+            parent=cls.parent, name="Res Course", subject="Literature", family=cls.family,
+        )
+
+    def _add_url(self):
+        return reverse("curricula:curriculum_resource_add", kwargs={"pk": self.cur.pk})
+
+    def test_editor_adds_resource_and_it_renders_safely(self):
+        self.client.login(username="rp", password="pw")
+        resp = self.client.post(self._add_url(), data={
+            "label": "Answer Key", "url": "https://example.com/key",
+            "resource_type": "answer_key", "teacher_only": "on", "notes": "",
+        })
+        self.assertEqual(resp.status_code, 302)
+        r = CurriculumResource.objects.get(curriculum=self.cur)
+        self.assertTrue(r.teacher_only)
+        page = self.client.get(
+            reverse("curricula:curriculum_detail", kwargs={"pk": self.cur.pk})
+        ).content.decode()
+        self.assertIn("Answer Key", page)
+        self.assertIn('rel="noopener noreferrer"', page)   # safe external link
+        self.assertIn("Teacher only", page)
+
+    def test_teacher_role_cannot_add(self):
+        self.client.login(username="rt", password="pw")
+        resp = self.client.post(self._add_url(), data={
+            "label": "X", "url": "https://example.com/x", "resource_type": "other",
+        })
+        self.assertEqual(resp.status_code, 404)
+        self.assertFalse(CurriculumResource.objects.filter(curriculum=self.cur).exists())
+
+    def test_editor_deletes_resource(self):
+        r = CurriculumResource.objects.create(
+            curriculum=self.cur, label="Vid", url="https://e.com/v", resource_type="video",
+        )
+        self.client.login(username="rp", password="pw")
+        resp = self.client.post(reverse("curricula:curriculum_resource_delete", kwargs={
+            "pk": self.cur.pk, "resource_pk": r.pk,
+        }))
+        self.assertEqual(resp.status_code, 302)
+        self.assertFalse(CurriculumResource.objects.filter(pk=r.pk).exists())
+
+    def test_rejects_non_http_url(self):
+        self.client.login(username="rp", password="pw")
+        self.client.post(self._add_url(), data={
+            "label": "Bad", "url": "javascript:alert(1)", "resource_type": "other",
+        })
+        self.assertFalse(CurriculumResource.objects.filter(curriculum=self.cur).exists())
 
 
 class CurriculumModelTest(TestCase):

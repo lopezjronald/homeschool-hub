@@ -3,7 +3,7 @@ from urllib.parse import urlparse
 from django import forms
 
 from .blueprints import BLUEPRINTS
-from .models import Curriculum, CurriculumDocument
+from .models import Curriculum, CurriculumDocument, CurriculumResource
 
 
 class CurriculumForm(forms.ModelForm):
@@ -40,6 +40,25 @@ class CurriculumDocumentForm(forms.ModelForm):
                 attrs={"placeholder": "e.g. Home Instructor's Guide 3A"}
             ),
         }
+
+
+class CurriculumResourceForm(forms.ModelForm):
+    """Add an external resource link (answer key, guide, video, …) to a curriculum."""
+
+    class Meta:
+        model = CurriculumResource
+        fields = ["label", "url", "resource_type", "teacher_only", "notes"]
+        widgets = {
+            "label": forms.TextInput(attrs={"placeholder": "e.g. Answer Key"}),
+            "url": forms.URLInput(attrs={"placeholder": "https://…"}),
+            "notes": forms.TextInput(attrs={"placeholder": "Optional note"}),
+        }
+
+    def clean_url(self):
+        url = (self.cleaned_data.get("url") or "").strip()
+        if url and urlparse(url).scheme not in ("http", "https"):
+            raise forms.ValidationError("Only HTTP and HTTPS URLs are allowed.")
+        return url
 
 
 class ApplyBlueprintForm(forms.Form):

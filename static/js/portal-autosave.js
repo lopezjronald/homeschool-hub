@@ -47,7 +47,13 @@
         var n = wordCount(t.value);
         if (el) el.textContent = n ? n + (n === 1 ? " word" : " words") : "";
       }
-      if (t.value.trim() && t.value.trim() !== "[]") answered += 1;
+      if (t.dataset.answered !== undefined) {
+        // Interactive widgets (matching/fill-blank/cloze) declare their own
+        // answered state — a first lucky tap shouldn't count as "answered".
+        if (t.dataset.answered === "1") answered += 1;
+      } else if (t.value.trim() && t.value.trim() !== "[]") {
+        answered += 1;
+      }
     });
     if (progressEl) {
       progressEl.textContent = answered + " of " + progressEl.dataset.total + " answered";

@@ -16,7 +16,7 @@ from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
 from core.utils import get_active_family
-from curricula.models import Curriculum, CurriculumPlacement, Lesson
+from curricula.models import Curriculum, CurriculumPlacement, CurriculumResource, Lesson
 from curricula.services import apply_blueprint, get_blueprint
 from students.models import Student
 from tutor.models import Question, QuestionSet, ResponseSheet
@@ -691,6 +691,18 @@ class Command(BaseCommand):
             ],
         )
         set_count += s; q_count += q
+
+        # Teacher-reference answer-key link (never shown to the student).
+        CurriculumResource.objects.get_or_create(
+            curriculum=curriculum,
+            url="https://blackbirdandcompany.com/information-for-parents-and-teachers/answer-keys/i-am-david/",
+            defaults={
+                "label": "Blackbird Answer Key",
+                "resource_type": CurriculumResource.ANSWER_KEY,
+                "teacher_only": True,
+                "order": 0,
+            },
+        )
 
         self.stdout.write(self.style.SUCCESS(
             f"Seeded: {set_count} question sets, {q_count} questions. "

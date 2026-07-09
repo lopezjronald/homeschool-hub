@@ -21,3 +21,16 @@ def markdownify(text):
         output_format="html5",
     )
     return mark_safe(html)
+
+
+@register.filter(name="markdownify_inline")
+def markdownify_inline(text):
+    """Markdown for a single run of text (e.g. a question prompt): renders
+    **bold**/*italic*/line breaks but strips the wrapping <p> tags (paragraph
+    breaks become <br><br>) so the result stays valid inside a <label>."""
+    if not text:
+        return ""
+    html = md.markdown(text, extensions=["nl2br"], output_format="html5").strip()
+    if html.startswith("<p>") and html.endswith("</p>"):
+        html = html[3:-4].replace("</p>\n<p>", "<br><br>").replace("</p><p>", "<br><br>")
+    return mark_safe(html)

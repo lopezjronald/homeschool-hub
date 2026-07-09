@@ -384,7 +384,22 @@
 .coach-suggestions { margin: 0; padding-left: 1.25rem; }
 .coach-suggestions li { margin-bottom: 0.3rem; font-size: 0.98rem; }
 
-/* ---- footer escape hatch for the grown-ups ---- */
+/* ---- navbar + footer escape hatches for the grown-ups ---- */
+.portal-nav-parent {
+  color: #fff;
+  text-decoration: none;
+  font-size: 0.85rem;
+  font-weight: 600;
+  border: 1.5px solid rgba(255, 255, 255, 0.45);
+  border-radius: 999px;
+  padding: 0.3rem 0.75rem;
+  white-space: nowrap;
+}
+.portal-nav-parent:hover {
+  color: var(--ss-forest-2, #0B2E22);
+  background: var(--ss-amber, #EBA83A);
+  border-color: var(--ss-amber, #EBA83A);
+}
 .portal-parent-link { color: #8a978f; text-decoration: none; }
 .portal-parent-link:hover { color: var(--ss-green, #1E7A50); text-decoration: underline; }
 

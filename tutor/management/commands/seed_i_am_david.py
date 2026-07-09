@@ -12,8 +12,6 @@ Examples:
     python manage.py seed_i_am_david --for-user ronald --child-name Kaylin
 """
 
-import json
-
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
@@ -118,67 +116,55 @@ the student can present and explain.""" + MASTERY_NOTE
 
 VOCAB_HINT = "Look it up in a printed dictionary, then write the definition in your own words."
 
-# Section vocabulary as match-the-number exercises (same interaction as the
-# Level 3 guide). Definitions follow the official Blackbird answer key; the
-# numbering is fixed and deliberately scrambled, workbook-style.
-VOCAB_MATCHING = {
+# Official Blackbird definitions — TEACHER REFERENCE ONLY. The Level 7 guide
+# has the student look each word up in a dictionary and write the definition
+# herself (no matching exercise), so the portal keeps the guide's own format.
+OFFICIAL_DEFINITIONS = {
     1: [
-        (1, "low, barely audible speech", "mutter"),
-        (2, "great or sudden damage or suffering", "catastrophe"),
-        (3, "a platform for loading and unloading ships", "quay"),
-        (4, "thin, graceful, and supple", "lithe"),
-        (5, "harsh and unpleasant sounding", "grating"),
-        (6, "a narrow channel in the ground for liquid", "runnel"),
-        (7, "hesitant and uncertain", "irresolute"),
+        ("catastrophe", "great or sudden damage or suffering"),
+        ("grating", "harsh and unpleasant sounding"),
+        ("irresolute", "hesitant and uncertain"),
+        ("lithe", "thin, graceful, and supple"),
+        ("mutter", "low, barely audible speech"),
+        ("quay", "a platform for loading and unloading ships"),
+        ("runnel", "a narrow channel in the ground for liquid"),
     ],
     2: [
-        (1, "to unsettle or disturb someone's composure", "disconcert"),
-        (2, "using few words; concise", "brevity"),
-        (3, "suggesting something harmful or evil", "sinister"),
-        (4, "lacking awareness or knowledge", "ignorant"),
-        (5, "to move with a smooth, wavelike motion", "undulate"),
-        (6, "to assemble, as for inspection or battle", "muster"),
-        (7, "to overwhelm with things or people", "inundate"),
+        ("brevity", "using few words; concise"),
+        ("disconcert", "to unsettle or disturb someone's composure"),
+        ("ignorant", "lacking awareness or knowledge"),
+        ("inundate", "to overwhelm with things or people"),
+        ("muster", "to assemble, as for inspection or battle"),
+        ("sinister", "suggesting something harmful or evil"),
+        ("undulate", "to move with a smooth, wavelike motion"),
     ],
     3: [
-        (1, "a fearful feeling that something bad is coming", "foreboding"),
-        (2, "a person who has escaped and is in hiding", "fugitive"),
-        (3, "a misleading act or statement", "deception"),
-        (4, "stubbornly resistant to change", "obstinate"),
-        (5, "abnormally thin and weak", "emaciated"),
-        (6, "owing something to another", "indebted"),
-        (7, "to gain favor through flattery", "ingratiate"),
+        ("deception", "a misleading act or statement"),
+        ("emaciated", "abnormally thin and weak"),
+        ("foreboding", "a fearful feeling that something bad is coming"),
+        ("fugitive", "a person who has escaped and is in hiding"),
+        ("indebted", "owing something to another"),
+        ("ingratiate", "to gain favor through flattery"),
+        ("obstinate", "stubbornly resistant to change"),
     ],
     4: [
-        (1, "anxious that something bad will happen", "apprehensive"),
-        (2, "a homeless wanderer", "vagabond"),
-        (3, "lack of interest or enthusiasm", "apathy"),
-        (4, "a very steep rock face or cliff", "precipice"),
-        (5, "sad and depressed", "dejected"),
-        (6, "to avoid a responsibility or duty", "shirk"),
-        (7, "an extremely strong wind", "gale"),
+        ("apathy", "lack of interest or enthusiasm"),
+        ("apprehensive", "anxious that something bad will happen"),
+        ("gale", "an extremely strong wind"),
+        ("precipice", "a very steep rock face or cliff"),
+        ("shirk", "to avoid a responsibility or duty"),
+        ("vagabond", "a homeless wanderer"),
+        ("dejected", "sad and depressed"),
     ],
 }
 
 
-def _matching_passage(section_number, words):
-    return json.dumps({
-        "words": words,
-        "definitions": [
-            {"n": n, "text": text, "word": word}
-            for n, text, word in VOCAB_MATCHING[section_number]
-        ],
-    })
-
-
 def _acquire_answer_key(section_number):
-    lines = [
-        f"{word} = {n} ({text})"
-        for n, text, word in VOCAB_MATCHING[section_number]
-    ]
+    lines = [f"{word} — {text}" for word, text in OFFICIAL_DEFINITIONS[section_number]]
     return (
         "## Answer key — Acquire  ·  teacher reference only\n"
-        "Matching (official Blackbird definitions):\n" + "\n".join(sorted(lines))
+        "Official Blackbird definitions (accept the same meaning in her own words):\n"
+        + "\n".join(lines)
     )
 SENTENCE_PROMPT = (
     "Choose five of your vocabulary words and use each in a complete sentence "
@@ -648,24 +634,20 @@ class Command(BaseCommand):
             )
             set_count += s; q_count += q
 
-            # -- Acquire: match-the-number (official definitions) + sentences
+            # -- Acquire: the guide's own format — look it up and write it.
+            vocab_questions = [
+                ("vocabulary", f"Define: **{word}**", VOCAB_HINT)
+                for word in section["vocab"]
+            ]
+            vocab_questions.append(("application", SENTENCE_PROMPT, SENTENCE_HINT))
             s, q = self._seed_set(
                 acquire, family,
                 title=f"Section {n} · Vocabulary",
                 reading=chs,
-                intro="Vocabulary builds your reading power. Match each word first — "
-                      "then put the words to work in sentences of your own.",
+                intro="Use a real dictionary — the paper kind! Define each word in your own words.",
                 rubric=ACQUIRE_RUBRIC,
                 answer_key=_acquire_answer_key(n),
-                questions=[
-                    ("vocabulary",
-                     "Match each word with the number of its correct definition. "
-                     "Use a dictionary if you need help.",
-                     "Tap a word, then tap the definition that matches it. Green means got it!",
-                     {"response_type": Question.TYPE_MATCHING,
-                      "passage": _matching_passage(n, section["vocab"])}),
-                    ("application", SENTENCE_PROMPT, SENTENCE_HINT),
-                ],
+                questions=vocab_questions,
             )
             set_count += s; q_count += q
 

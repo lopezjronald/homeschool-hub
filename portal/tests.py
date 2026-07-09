@@ -80,16 +80,17 @@ class PortalCourseTests(TestCase):
         self.assertEqual(curriculum.grade_level, "G07")
         sets = QuestionSet.objects.filter(lesson__chapter__curriculum=curriculum)
         self.assertEqual(sets.count(), 27)  # 6/section x 4 + Glean + seminar + toolbox
-        # Vocabulary is now matching + sentences (2/section instead of 8).
         self.assertEqual(
-            Question.objects.filter(question_set__in=sets).count(), 208,
+            Question.objects.filter(question_set__in=sets).count(), 232,
         )
-        # Acquire matches use the official Blackbird definitions, teacher key attached.
+        # Acquire keeps the Level 7 guide's own format (look it up and write it),
+        # with the official Blackbird definitions attached as a TEACHER key.
         vocab = sets.get(title="Section 1 · Vocabulary")
         vq = vocab.questions.order_by("order").first()
-        self.assertEqual(vq.response_type, Question.TYPE_MATCHING)
-        self.assertIn("catastrophe", vq.vocab_data["words"])
-        self.assertIn("Matching (official Blackbird definitions)", vocab.answer_key)
+        self.assertEqual(vq.response_type, Question.TYPE_TEXT)
+        self.assertIn("Define:", vq.prompt)
+        self.assertIn("Official Blackbird definitions", vocab.answer_key)
+        self.assertIn("catastrophe —", vocab.answer_key)
         # comprehension sets carry the answer key (grader reference, never shown)
         self.assertTrue(sets.filter(title__contains="Comprehension").exclude(answer_key="").exists())
         # the reusable literature standard sets exist (teacher-led)
@@ -115,7 +116,7 @@ class PortalCourseTests(TestCase):
     def test_seed_is_idempotent(self):
         call_command("seed_i_am_david", "--for-user", "dad", stdout=StringIO())
         self.assertEqual(QuestionSet.objects.count(), 27)
-        self.assertEqual(Question.objects.count(), 208)
+        self.assertEqual(Question.objects.count(), 232)
 
     def test_portal_home_shows_one_calm_subject_card(self):
         # The "What's Next" home shows a subject CARD (curriculum name), not the

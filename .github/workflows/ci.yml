@@ -28,23 +28,5 @@ jobs:
       - name: Run tests
         run: python manage.py test
 
-  deploy:
-    # Auto-deploy to Heroku after tests pass, only on a push to main.
-    needs: test
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Check out code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0   # Heroku needs full history to accept the push
-
-      - name: Push to Heroku
-        env:
-          HEROKU_API_KEY: ${{ secrets.HEROKU_API_KEY }}
-        run: |
-          if [ -z "$HEROKU_API_KEY" ]; then
-            echo "::warning::HEROKU_API_KEY secret not set — skipping deploy. Add it under Settings → Secrets and variables → Actions."
-            exit 0
-          fi
-          git push https://heroku:$HEROKU_API_KEY@git.heroku.com/steadfast-scholars.git HEAD:main
+# Deploys are manual (owner preference): `git push heroku <branch>:main`.
+# (The auto-deploy job was intentionally removed.)

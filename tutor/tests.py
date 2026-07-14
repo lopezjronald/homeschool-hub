@@ -70,6 +70,28 @@ class AiServiceTests(TestCase):
         self.assertEqual(result["criteria"][0]["criterion"], "Bonds to 100")
 
     @override_settings(ANTHROPIC_API_KEY="test-key")
+    def test_grade_work_parses_parent_pointers(self):
+        with_pointers = (
+            '{"level": "developing", "summary": "s", "criteria": [], '
+            '"encouragement": "Nice try!", '
+            '"parent_pointers": ["Ask her to draw the bar model.", "Reinforce with counters."]}'
+        )
+        result = ai.grade_work(
+            rubric="r", answers="a", grade_level="3rd", subject="Math",
+            client=FakeAnthropic(with_pointers),
+        )
+        self.assertEqual(
+            result["parent_pointers"],
+            ["Ask her to draw the bar model.", "Reinforce with counters."],
+        )
+        # A response without the field is backward-compatible → empty list.
+        result2 = ai.grade_work(
+            rubric="r", answers="a", grade_level="3rd", subject="Math",
+            client=FakeAnthropic(GOOD_JSON),
+        )
+        self.assertEqual(result2["parent_pointers"], [])
+
+    @override_settings(ANTHROPIC_API_KEY="test-key")
     def test_grade_work_tolerates_markdown_fences(self):
         fake = FakeAnthropic("```json\n" + GOOD_JSON + "\n```")
         result = ai.grade_work(
@@ -159,6 +181,26 @@ class AssessViewTests(TestCase):
         self.assertEqual(assessment.final_level, "proficient")
         self.assertEqual(assessment.parent_override_level, "proficient")
         self.assertTrue(assessment.meets_bar)
+
+    def test_parent_pointers_card_renders_on_review(self):
+        assessment = MasteryAssessment.objects.create(
+            work_entry=self.entry, graded_by=self.parent, rubric="r", answers="a",
+            ai_level="developing",
+            ai_parent_pointers=["Ask Violet to explain which bar is bigger and why."],
+        )
+        self._login()
+        resp = self.client.get(reverse("tutor:assess_detail", kwargs={"pk": assessment.pk}))
+        self.assertContains(resp, "How to help")
+        self.assertContains(resp, "Ask Violet to explain which bar is bigger and why.")
+
+    def test_no_pointers_no_card(self):
+        assessment = MasteryAssessment.objects.create(
+            work_entry=self.entry, graded_by=self.parent, rubric="r", answers="a",
+            ai_level="developing",  # ai_parent_pointers defaults to []
+        )
+        self._login()
+        resp = self.client.get(reverse("tutor:assess_detail", kwargs={"pk": assessment.pk}))
+        self.assertNotContains(resp, "How to help")
 
     def test_teacher_can_view_but_not_finalize(self):
         assessment = MasteryAssessment.objects.create(

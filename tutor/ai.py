@@ -31,6 +31,9 @@ Respond with ONLY a JSON object (no prose, no markdown fences) matching this sha
   "encouragement": "<one warm sentence addressed to the child>",
   "kid_highlights": [
     "<2-3 short bullets addressed directly to the child at their reading level: what they did well, and ONE gentle thing to try next time. Never mention the mastery level, points, or grades.>"
+  ],
+  "parent_pointers": [
+    "<3-4 short, concrete pointers addressed to the PARENT or TEACHER (not the child) for helping this child with THIS concept interactively, so they don't rely only on this AI feedback. Draw on the lesson objectives and the specific things this child got right or wrong. Cover, across the bullets: the likely sticking point, a good question to ask the child, a hands-on way to reinforce it, and a suggested next step. Be specific to the work — reference what they actually did.>"
   ]
 }"""
 
@@ -103,12 +106,16 @@ def _parse_response(text):
     highlights = data.get("kid_highlights", [])
     if not isinstance(highlights, list):
         highlights = []
+    pointers = data.get("parent_pointers", [])
+    if not isinstance(pointers, list):
+        pointers = []
     return {
         "level": level,
         "summary": data.get("summary", ""),
         "criteria": data.get("criteria", []),
         "encouragement": data.get("encouragement", ""),
         "kid_highlights": [str(h) for h in highlights if str(h).strip()],
+        "parent_pointers": [str(p) for p in pointers if str(p).strip()],
     }
 
 
@@ -127,7 +134,7 @@ def grade_work(*, rubric, answers, grade_level, subject, objectives="", client=N
     try:
         response = client.messages.create(
             model=getattr(settings, "TUTOR_MODEL", "claude-opus-4-8"),
-            max_tokens=2000,
+            max_tokens=2500,
             system=SYSTEM_PROMPT,
             messages=[{"role": "user", "content": user_prompt}],
         )

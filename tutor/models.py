@@ -51,6 +51,11 @@ class MasteryAssessment(models.Model):
         default=list, blank=True,
         help_text="Short child-facing bullets shown on the portal feedback page.",
     )
+    ai_parent_pointers = models.JSONField(
+        default=list, blank=True,
+        help_text="Parent/teacher-facing coaching pointers (how to help with the "
+                  "concept) shown on the review page — never shown to the child.",
+    )
 
     parent_override_level = models.CharField(max_length=20, choices=mastery.CHOICES, blank=True)
     final_level = models.CharField(max_length=20, choices=mastery.CHOICES, blank=True)

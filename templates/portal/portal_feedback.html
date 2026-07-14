@@ -4,41 +4,59 @@
 {% block content %}
 <div class="container portal-narrow">
 
-  <div class="portal-celebrate mb-4">
-    <div class="portal-celebrate-emoji">🎉</div>
-    <h2>Turned in!</h2>
-    <p class="mb-0">Wonderful work, {{ student.first_name }} — you finished
-      <strong>{{ question_set.title }}</strong>!</p>
-  </div>
-
-  <div id="feedback-area">
-    {% if assessment %}
-      {% include "portal/_feedback_card.html" with encouragement=assessment.ai_encouragement highlights=assessment.ai_kid_highlights %}
-    {% elif can_generate %}
-      <div class="card portal-card feedback-waiting" id="feedback-waiting">
+  {% if not assessment and can_generate %}
+    {# Grading is running — hold here and reveal the feedback only when it's ready. #}
+    <div id="portal-hold">
+      <div class="card portal-card feedback-waiting">
         <div class="card-body text-center">
           <div class="feedback-reader">📖</div>
-          <p class="mb-0 fw-semibold">Your work is being read right now…</p>
-          <p class="text-muted small mb-0">This takes a few seconds. You did the hard part already!</p>
+          <p class="mb-1 fw-semibold">Nice work, {{ student.first_name }} — I'm reading your work…</p>
+          <p class="text-muted small mb-0" id="portal-hold-note">You did the hard part already.</p>
+          <span role="status" style="position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;">Reading your work — this takes a few seconds.</span>
         </div>
       </div>
-    {% else %}
-      <div class="card portal-card">
-        <div class="card-body text-center">
-          <p class="mb-0 fw-semibold">Your teacher will take a look at it soon. 🌱</p>
-        </div>
-      </div>
-    {% endif %}
-  </div>
+    </div>
+    {# Without JavaScript, skip the hold and just show the page. #}
+    <noscript><style>#portal-hold{display:none}#portal-reveal[hidden]{display:block !important}</style></noscript>
+  {% endif %}
 
-  <div class="text-center mt-4 d-flex gap-2 justify-content-center flex-wrap">
-    <a class="btn btn-amber btn-lg"
-       href="{% url 'portal:portal_subject' token=token curriculum_id=question_set.lesson.chapter.curriculum_id %}">
-      What's next? ➜
-    </a>
-    <a class="btn btn-outline-secondary btn-lg" href="{% url 'portal:portal_home' token=token %}">
-      All my subjects
-    </a>
+  <div id="portal-reveal"{% if not assessment and can_generate %} hidden{% endif %}>
+    <div class="portal-celebrate mb-4">
+      <div class="portal-celebrate-emoji">🎉</div>
+      <h2 id="reveal-heading" tabindex="-1">Turned in!</h2>
+      <p class="mb-0">Wonderful work, {{ student.first_name }} — you finished
+        <strong>{{ question_set.title }}</strong>!</p>
+    </div>
+
+    <div id="feedback-area">
+      {% if assessment %}
+        {% include "portal/_feedback_card.html" with encouragement=assessment.ai_encouragement highlights=assessment.ai_kid_highlights %}
+      {% elif not can_generate %}
+        <div class="card portal-card">
+          <div class="card-body text-center">
+            <p class="mb-0 fw-semibold">Your teacher will take a look at it soon. 🌱</p>
+          </div>
+        </div>
+      {% else %}
+        {# Grading pending: the JS below replaces this before revealing. This static
+           card is what a no-JS visitor sees (via the <noscript> above), never blank. #}
+        <div class="card portal-card">
+          <div class="card-body text-center">
+            <p class="mb-0 fw-semibold">All turned in! 🎉 Your teacher will read your work soon. 🌱</p>
+          </div>
+        </div>
+      {% endif %}
+    </div>
+
+    <div class="text-center mt-4 d-flex gap-2 justify-content-center flex-wrap">
+      <a class="btn btn-amber btn-lg"
+         href="{% url 'portal:portal_subject' token=token curriculum_id=question_set.lesson.chapter.curriculum_id %}">
+        What's next? ➜
+      </a>
+      <a class="btn btn-outline-secondary btn-lg" href="{% url 'portal:portal_home' token=token %}">
+        All my subjects
+      </a>
+    </div>
   </div>
 
 </div>
@@ -49,33 +67,65 @@
 <script>
 (function () {
   "use strict";
+  var hold = document.getElementById("portal-hold");
+  var reveal = document.getElementById("portal-reveal");
   var area = document.getElementById("feedback-area");
+  var note = document.getElementById("portal-hold-note");
+  var done = false;
+
+  // Gentle rotating reassurance while the AI reads the work.
+  var msgs = ["You did the hard part already.", "Looking at your ideas…",
+              "Thinking about what you wrote…", "Almost there…"];
+  var i = 0;
+  var rotate = setInterval(function () {
+    i = (i + 1) % msgs.length;
+    if (note) { note.textContent = msgs[i]; }
+  }, 3000);
+
+  // Never hold longer than ~28s (Heroku hard-kills the request at 30s).
+  var timer = setTimeout(function () { finish(null); }, 28000);
+
   fetch("{% url 'portal:portal_feedback_generate' token=token set_pk=question_set.pk %}", {
     method: "POST",
     credentials: "same-origin",
   })
     .then(function (resp) { return resp.ok ? resp.json() : { ok: false }; })
-    .then(function (data) {
-      if (!data.ok) { fallback(); return; }
-      var html = '<div class="card portal-card feedback-card">' +
+    .then(function (data) { finish(data && data.ok ? data : null); })
+    .catch(function () { finish(null); });
+
+  function finish(data) {
+    if (done) { return; }
+    done = true;
+    clearInterval(rotate);
+    clearTimeout(timer);
+
+    if (data) {
+      area.innerHTML = '<div class="card portal-card feedback-card">' +
         '<div class="card-body">' +
         '<div class="feedback-heading">💬 A note about your work</div>' +
-        '<p class="feedback-encouragement"></p>';
-      html += '<ul class="feedback-highlights">';
-      (data.highlights || []).forEach(function () { html += "<li></li>"; });
-      html += "</ul></div></div>";
-      area.innerHTML = html;
-      // Text goes in via textContent so nothing the model says can be markup.
+        '<p class="feedback-encouragement"></p>' +
+        '<ul class="feedback-highlights"></ul>' +
+        '</div></div>';
+      // Text goes in via textContent so nothing the model returns can be markup.
       area.querySelector(".feedback-encouragement").textContent = data.encouragement || "";
-      var items = area.querySelectorAll(".feedback-highlights li");
-      (data.highlights || []).forEach(function (h, i) { items[i].textContent = h; });
-    })
-    .catch(fallback);
+      var ul = area.querySelector(".feedback-highlights");
+      (data.highlights || []).forEach(function (h) {
+        var li = document.createElement("li");
+        li.textContent = h;
+        ul.appendChild(li);
+      });
+    } else {
+      area.innerHTML = '<div class="card portal-card"><div class="card-body text-center">' +
+        '<p class="mb-0 fw-semibold">All turned in! 🎉 Your teacher will read it soon. 🌱</p>' +
+        '</div></div>';
+    }
 
-  function fallback() {
-    area.innerHTML = '<div class="card portal-card"><div class="card-body text-center">' +
-      '<p class="mb-0 fw-semibold">Your teacher will take a look at it soon. 🌱</p>' +
-      "</div></div>";
+    if (hold) { hold.hidden = true; }
+    reveal.hidden = false;
+    // Move focus into the revealed content so screen-reader / keyboard users are
+    // told it's ready and can reach the "What's next" navigation.
+    var heading = document.getElementById("reveal-heading");
+    if (heading && typeof heading.focus === "function") { heading.focus(); }
   }
 })();
 </script>

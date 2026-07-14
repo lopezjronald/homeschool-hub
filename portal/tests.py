@@ -739,6 +739,8 @@ class FeedbackAgentTests(TestCase):
         "criteria": [{"criterion": "Complete sentences", "met": True, "comment": "Yes"}],
         "encouragement": "Violet, your answer about Wolf's bravery was wonderful!",
         "kid_highlights": ["You used complete sentences.", "Next time, add one more detail."],
+        "parent_pointers": ["Ask Violet to point to the part that shows bravery.",
+                            "Reinforce with a re-read of that page together."],
     }
 
     @classmethod
@@ -814,6 +816,8 @@ class FeedbackAgentTests(TestCase):
         self.assertTrue(a.is_auto)
         self.assertEqual(a.ai_level, "proficient")
         self.assertIn("Reference answers", a.rubric)          # answer key folded in
+        self.assertEqual(a.ai_parent_pointers, self.GRADE_RESULT["parent_pointers"])  # stored for the parent
+        self.assertNotIn("point to the part", str(data))      # parent pointers never leak to the child
 
     def test_unconfigured_and_error_fall_back_without_assessment(self):
         from unittest.mock import patch
@@ -846,6 +850,18 @@ class FeedbackAgentTests(TestCase):
         self.assertContains(page, "complete sentences.")
         self.assertNotContains(page, "Proficient")            # no levels for the child
         self.assertNotContains(page, "proficient")
+
+    def test_feedback_page_holds_until_ai_is_ready(self):
+        # Track C: while grading is pending, show a "reading your work" hold state
+        # and keep the feedback + "what's next" gated (hidden) until JS reveals them.
+        from unittest.mock import patch
+
+        self._submit()
+        with patch("tutor.ai.is_configured", return_value=True):
+            page = self.client.get(self._url("portal_feedback", set_pk=self.qset.pk))
+        self.assertContains(page, "reading your work")           # the hold state
+        self.assertContains(page, 'id="portal-hold"')
+        self.assertContains(page, 'id="portal-reveal" hidden')    # reveal gated until ready
 
     def test_sibling_token_cannot_reach_feedback(self):
         self._submit()

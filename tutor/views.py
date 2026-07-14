@@ -16,6 +16,18 @@ from .forms import AssessmentRequestForm, FinalizeForm
 from .models import MasteryAssessment, Material, QuestionSet
 
 
+def _entry_objectives(entry):
+    """Lesson objectives for a work-log entry, when it came from a portal sheet.
+
+    Gives the grader concept context on the parent-initiated path (the portal
+    auto-grader already passes objectives). Returns "" when there's no linked lesson.
+    """
+    sheet = entry.response_sheets.select_related("question_set__lesson").first()
+    if sheet and sheet.question_set.lesson_id:
+        return sheet.question_set.lesson.objectives or ""
+    return ""
+
+
 @login_required
 def assess_create(request, entry_pk):
     """Grade a work log entry against a rubric (editors only)."""
@@ -40,6 +52,7 @@ def assess_create(request, entry_pk):
                     answers=form.cleaned_data["answers"],
                     grade_level=grade_context,
                     subject=entry.subject,
+                    objectives=_entry_objectives(entry),
                 )
             except ai.GraderNotConfigured:
                 messages.error(
@@ -61,6 +74,7 @@ def assess_create(request, entry_pk):
                 ai_criteria=result["criteria"],
                 ai_encouragement=result["encouragement"],
                 ai_kid_highlights=result.get("kid_highlights", []),
+                ai_parent_pointers=result.get("parent_pointers", []),
             )
             messages.success(request, "Draft assessment ready — review and finalize.")
             return redirect("tutor:assess_detail", pk=assessment.pk)

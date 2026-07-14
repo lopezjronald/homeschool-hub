@@ -83,5 +83,6 @@ def auto_grade_sheet(sheet, client=None):
             ai_criteria=result["criteria"],
             ai_encouragement=result["encouragement"],
             ai_kid_highlights=result.get("kid_highlights", []),
+            ai_parent_pointers=result.get("parent_pointers", []),
         )
     return assessment, True

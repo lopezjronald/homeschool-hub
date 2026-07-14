@@ -56,6 +56,18 @@
         </div>
       </div>
 
+      {% if assessment.ai_parent_pointers %}
+      <div class="card mb-4" style="border-color:var(--ss-amber);">
+        <div class="card-body">
+          <h5 class="mb-1" style="color:var(--ss-forest);">🧑‍🏫 How to help {{ assessment.work_entry.child.first_name }}</h5>
+          <p class="text-muted small mb-2">Concrete ways to work through this concept together — so it's more than just the AI's note. (Only you see this.)</p>
+          <ul class="mb-0">
+            {% for p in assessment.ai_parent_pointers %}<li class="mb-2">{{ p }}</li>{% endfor %}
+          </ul>
+        </div>
+      </div>
+      {% endif %}
+
       {% if finalize_form %}
       <div class="card mb-4">
         <div class="card-header d-flex align-items-center gap-2">

@@ -79,8 +79,10 @@ PANELS = [
     {
         "order": 2, "span": MangaPanel.SPAN_NORMAL,
         "alt": "Chi counts on her little paws while Blackie sits calmly beside her.",
-        "scene": "The kitten CHI sits counting on her little paws, brow furrowed in concentration; "
-                 "the big black cat BLACKIE sits calmly and kindly beside her. Cozy, gentle.",
+        "scene": "CHI the kitten sits up and reaches out one front paw, pointing toward a small "
+                 "group of cats resting in the background as if counting them one by one; her head "
+                 "is tilted and her eyes are wide with happy concentration. The big calm black cat "
+                 "BLACKIE sits beside her, watching patiently. The counting gesture is clear and obvious.",
         "refs": ["chi", "blackie"],
         "bubbles": [
             {"speaker": "Chi", "kind": "thought", "x": 34, "y": 20, "text": "Eight kitties here… five kitties there…"},
@@ -101,9 +103,10 @@ PANELS = [
     {
         "order": 4, "span": MangaPanel.SPAN_FULL,
         "alt": "All the park cats gathered together in one happy group around Chi and Blackie.",
-        "scene": "BIG warm panel: the group of cats from the tree and the group of cats from the "
-                 "pond come together, still readable as TWO adjacent clusters merging into one big "
-                 "happy group, with CHI and BLACKIE among them. Cheerful, abundant, cozy.",
+        "scene": "A SMALL, easily countable gathering of cats on the grass: a group of about eight "
+                 "cats on the left and a group of about five cats on the right, gently coming together, "
+                 "with CHI and BLACKIE among them. Keep the two groups distinguishable and the total "
+                 "small — around a dozen cats, NOT a big crowd. Cheerful and cozy.",
         "refs": ["chi", "blackie"],
         "caption": "Put the parts together — the whole is the SUM.   [ 8 ][ 5 ] = 13",
         "bubbles": [

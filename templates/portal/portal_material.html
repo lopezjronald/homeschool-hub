@@ -27,22 +27,24 @@
             <div class="manga-page">
               {% for panel in material.panels.all %}
                 <figure class="manga-panel manga-span-{{ panel.span }}">
-                  {% if panel.image_path %}
-                    <img src="{% static panel.image_path %}" alt="{{ panel.alt }}">
-                  {% elif panel.image %}
-                    <img src="{{ panel.image.url }}" alt="{{ panel.alt }}">
-                  {% else %}
-                    <div class="manga-placeholder" role="img" aria-label="{{ panel.alt }}">
-                      <span>Panel {{ panel.order }}</span>
-                      <small>{{ panel.alt }}</small>
-                    </div>
-                  {% endif %}
+                  <div class="manga-art">
+                    {% if panel.image_path %}
+                      <img src="{% static panel.image_path %}" alt="{{ panel.alt }}">
+                    {% elif panel.image %}
+                      <img src="{{ panel.image.url }}" alt="{{ panel.alt }}">
+                    {% else %}
+                      <div class="manga-placeholder" role="img" aria-label="{{ panel.alt }}">
+                        <span>Panel {{ panel.order }}</span>
+                        <small>{{ panel.alt }}</small>
+                      </div>
+                    {% endif %}
+                    {% for b in panel.bubbles %}
+                      <div class="manga-bubble kind-{{ b.kind }}" style="left:{{ b.x }}%; top:{{ b.y }}%;">
+                        {% if b.speaker %}<b class="manga-speaker">{{ b.speaker }}</b>{% endif %}{{ b.text }}
+                      </div>
+                    {% endfor %}
+                  </div>
                   {% if panel.caption %}<figcaption class="manga-caption">{{ panel.caption }}</figcaption>{% endif %}
-                  {% for b in panel.bubbles %}
-                    <div class="manga-bubble kind-{{ b.kind }}" style="left:{{ b.x }}%; top:{{ b.y }}%;">
-                      {% if b.speaker %}<b class="manga-speaker">{{ b.speaker }}</b>{% endif %}{{ b.text }}
-                    </div>
-                  {% endfor %}
                 </figure>
               {% endfor %}
             </div>

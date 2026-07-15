@@ -597,6 +597,34 @@ class PlacementTests(TestCase):
         nxt = placement.next_lesson()
         self.assertEqual(nxt.number, 7)  # Ch2 L7 Practice A
 
+    def test_progress_counts_submitted_work_even_when_pointer_stuck(self):
+        # Regression (HH): current_lesson never auto-advances, so a child who has
+        # completed lessons showed "0 of N". Progress must follow the work she
+        # actually turns in — with the pointer kept only as a floor.
+        from tutor.models import QuestionSet, ResponseSheet
+
+        first_lesson = (
+            Lesson.objects.filter(chapter__curriculum=self.curriculum)
+            .exclude(lesson_type=Lesson.TYPE_OPENER)
+            .order_by("chapter__number", "order")
+            .first()
+        )
+        placement = CurriculumPlacement.objects.create(
+            child=self.child, curriculum=self.curriculum, current_lesson=first_lesson,
+        )
+        self.assertEqual(placement.progress()["done"], 0)   # pointer at lesson 1, nothing turned in
+
+        for lesson in (first_lesson, self.ch2_l6):
+            qs = QuestionSet.objects.create(
+                lesson=lesson, title=f"Set {lesson.pk}", family=self.family,
+                status=QuestionSet.APPROVED, mode=QuestionSet.MODE_STUDENT,
+            )
+            ResponseSheet.objects.create(
+                question_set=qs, child=self.child, status=ResponseSheet.SUBMITTED,
+            )
+
+        self.assertEqual(placement.progress()["done"], 2)   # two lessons turned in now count
+
     def test_editor_can_set_placement(self):
         self.client.login(username="pl", password="pw")
         resp = self.client.post(

@@ -82,38 +82,37 @@
     if (note) { note.textContent = msgs[i]; }
   }, 3000);
 
-  var url = "{% url 'portal:portal_feedback_generate' token=token set_pk=question_set.pk %}";
-  // Overall guard: never hold longer than ~28s (Heroku hard-kills at 30s).
-  var timer = setTimeout(function () { finish(null); }, 28000);
+  var startUrl = "{% url 'portal:portal_feedback_start' token=token set_pk=question_set.pk %}";
+  var statusUrl = "{% url 'portal:portal_feedback_status' token=token set_pk=question_set.pk %}";
 
-  // Try up to twice. Grading is idempotent (the server serialises concurrent
-  // grade calls on the sheet row), so a retry either finishes the grade or
-  // returns the one the first attempt just saved — no manual refresh needed.
-  function attempt(triesLeft) {
-    if (done) { return; }
+  // Grading now runs in the background (no 30s request wall), so we can wait a
+  // little longer and poll — but still cap the hold so the child is never
+  // stranded on the reading screen. The assessment is saved server-side either
+  // way; a fallback here just means "check back / your teacher will see it."
+  var deadline = Date.now() + 75000;  // ~75s guard on the polling loop
+  // Unconditional backstop: even if a fetch stalls forever (no resolve, no
+  // reject — flaky mobile networks / proxies), reveal the page anyway.
+  var guard = setTimeout(function () { finish(null); }, 78000);
+
+  // fetch with an abort timeout so one stalled request can't wedge the flow;
+  // the timeout is cleared on settle and the rejection re-thrown for callers.
+  function req(url, opts) {
     var ctrl = new AbortController();
-    var abortTimer = setTimeout(function () { ctrl.abort(); }, 13000);
-    fetch(url, { method: "POST", credentials: "same-origin", signal: ctrl.signal })
-      .then(function (resp) { return resp.ok ? resp.json() : { ok: false }; })
-      .then(function (data) {
-        clearTimeout(abortTimer);
-        if (data && data.ok) { finish(data); }
-        else if (triesLeft > 0) { attempt(triesLeft - 1); }
-        else { finish(null); }
-      })
-      .catch(function () {
-        clearTimeout(abortTimer);
-        if (triesLeft > 0 && !done) { attempt(triesLeft - 1); }
-        else { finish(null); }
-      });
+    var t = setTimeout(function () { ctrl.abort(); }, 12000);
+    opts = opts || {};
+    opts.signal = ctrl.signal;
+    opts.credentials = "same-origin";
+    return fetch(url, opts).then(
+      function (r) { clearTimeout(t); return r; },
+      function (e) { clearTimeout(t); throw e; }
+    );
   }
-  attempt(1);
 
   function finish(data) {
     if (done) { return; }
     done = true;
     clearInterval(rotate);
-    clearTimeout(timer);
+    clearTimeout(guard);
 
     if (data) {
       area.innerHTML = '<div class="card portal-card feedback-card">' +
@@ -143,6 +142,30 @@
     var heading = document.getElementById("reveal-heading");
     if (heading && typeof heading.focus === "function") { heading.focus(); }
   }
+
+  function poll() {
+    if (done) { return; }
+    if (Date.now() > deadline) { finish(null); return; }
+    req(statusUrl, {})
+      .then(function (r) { return r.ok ? r.json() : {}; })
+      .then(function (d) {
+        if (done) { return; }
+        if (d && d.ready) { finish(d); }              // feedback is saved — show it
+        else if (d && d.grading === false) { finish(null); }  // grader off; stop waiting
+        else { setTimeout(poll, 2500); }              // still grading — check again
+      })
+      .catch(function () { if (!done) { setTimeout(poll, 2500); } });
+  }
+
+  // Kick off the (idempotent) background grade, then poll for the result. If the
+  // grader isn't configured we fall back immediately instead of spinning.
+  req(startUrl, { method: "POST" })
+    .then(function (r) { return r.ok ? r.json() : {}; })
+    .then(function (d) {
+      if (d && d.grading === false && !d.ready) { finish(null); return; }
+      poll();
+    })
+    .catch(function () { poll(); });
 })();
 </script>
 {% endif %}

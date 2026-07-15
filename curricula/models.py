@@ -269,14 +269,40 @@ class CurriculumPlacement(models.Model):
         )
 
     def progress(self):
-        """Return {done, total, pct} treating lessons before current as done."""
+        """Return {done, total, pct}.
+
+        Progress follows the work the child actually turns in: a non-opener lesson
+        counts as done once the child has submitted a student sheet for it. The
+        ``current_lesson`` pointer is kept only as a floor, so a child a parent
+        placed mid-curriculum still gets credit for the lessons skipped past even
+        before they submit anything new. (The pointer alone never advances on its
+        own, which is why progress must be derived from submitted work.)
+        """
         ids = self._progress_lesson_ids()
         total = len(ids)
-        if self.current_lesson_id in ids:
-            done = ids.index(self.current_lesson_id)
-        else:
-            done = 0
-        pct = round(done / total * 100) if total else 0
+        if not total:
+            return {"done": 0, "total": 0, "pct": 0}
+
+        # Floor: everything before the placement pointer is treated as complete.
+        floor = ids.index(self.current_lesson_id) if self.current_lesson_id in ids else 0
+
+        # Completed by work: non-opener lessons in this curriculum the child has
+        # turned in a student sheet for. Imported here to avoid a circular import
+        # (tutor models reference curricula at module load time).
+        from tutor.models import QuestionSet, ResponseSheet
+
+        completed_lesson_ids = set(
+            ResponseSheet.objects.filter(
+                child_id=self.child_id,
+                status=ResponseSheet.SUBMITTED,
+                question_set__mode=QuestionSet.MODE_STUDENT,
+                question_set__lesson_id__in=ids,
+            ).values_list("question_set__lesson_id", flat=True)
+        )
+        completed = sum(1 for lid in ids if lid in completed_lesson_ids)
+
+        done = min(max(floor, completed), total)
+        pct = round(done / total * 100)
         return {"done": done, "total": total, "pct": pct}
 
     def next_lesson(self):

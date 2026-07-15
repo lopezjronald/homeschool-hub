@@ -9,6 +9,8 @@ import json
 from collections import defaultdict
 from itertools import groupby
 
+from django.contrib.auth import authenticate, login
+from django.core.cache import cache
 from django.db.models import Q
 from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -20,6 +22,7 @@ from django.views.decorators.http import require_POST
 from activities.models import ExternalActivity
 from curricula.models import Curriculum, CurriculumPlacement
 from curricula.subjects import emoji_for, is_spelling
+from tutor import ai, grading
 from tutor.models import Material, QuestionSet, ResponseSheet
 from worklog.models import WorkLogEntry
 
@@ -253,6 +256,60 @@ def portal_material(request, token, pk):
     })
 
 
+# Brute-force guard for the parent gate. Per-worker with the default LocMemCache,
+# so the real ceiling is a small multiple of this — still enough to stop an
+# online guessing attack from a child's device.
+_GATE_MAX_ATTEMPTS = 8
+_GATE_LOCKOUT_SECONDS = 15 * 60
+
+
+def portal_parent_gate(request, token):
+    """Cross back from a child's portal to the parent dashboard.
+
+    The portal is the child's surface — token-authed, no login — so the child
+    also holds this link. We already know *which* parent owns the child from the
+    token, so returning to the parent side asks only for that parent's password
+    (a re-auth, not a fresh sign-in) and then drops them straight on the
+    dashboard, instead of bouncing to the public landing / full login page. A
+    parent who still has a live session skips the prompt entirely.
+    """
+    student = _resolve_student(token)
+    parent = student.parent
+    if parent is None:  # no owner to re-auth against; fall back to normal sign-in
+        return redirect("accounts:login")
+
+    # Live parent session → straight through, no password needed.
+    if request.user.is_authenticated:
+        return redirect("dashboard:dashboard")
+
+    # The child's link is a bookmark on a kid's device, so throttle password
+    # attempts against this (already-identified) parent to blunt brute-forcing.
+    fail_key = f"parentgate:fail:{parent.pk}"
+
+    error = ""
+    if request.method == "POST":
+        if cache.get(fail_key, 0) >= _GATE_MAX_ATTEMPTS:
+            error = "Too many tries. Please wait a few minutes, then try again."
+        else:
+            password = request.POST.get("password", "")
+            # Authenticate the token's parent specifically — a wrong password (or a
+            # different user's password) can't open this dashboard.
+            user = authenticate(request, username=parent.get_username(), password=password)
+            if user is not None:
+                cache.delete(fail_key)
+                login(request, user)
+                return redirect("dashboard:dashboard")
+            cache.set(fail_key, cache.get(fail_key, 0) + 1, _GATE_LOCKOUT_SECONDS)
+            error = "That password doesn't match. Please try again."
+
+    return render(request, "portal/parent_gate.html", {
+        "student": student,
+        "token": token,
+        "parent": parent,
+        "error": error,
+    })
+
+
 def _sheet_for(student, question_set):
     sheet, _ = ResponseSheet.objects.get_or_create(question_set=question_set, child=student)
     return sheet
@@ -387,6 +444,58 @@ def portal_feedback_generate(request, token, set_pk):
         return JsonResponse({"ok": False})
     return JsonResponse({
         "ok": True,
+        "encouragement": assessment.ai_encouragement,
+        "highlights": assessment.ai_kid_highlights or [],
+    })
+
+
+@csrf_exempt
+@require_POST
+def portal_feedback_start(request, token, set_pk):
+    """Kick off (idempotently) the background grade for a submitted sheet.
+
+    Returns immediately — grading runs off the request path (no 30s wall) and the
+    page then polls ``portal_feedback_status``. Safe to call repeatedly: if the
+    assessment already exists we report it ready and skip re-grading; if the
+    grader isn't configured we say so, so the page can stop waiting.
+    """
+    student = _resolve_student(token)
+    question_set = get_object_or_404(_visible_question_sets(student), pk=set_pk)
+    sheet = ResponseSheet.objects.filter(question_set=question_set, child=student).first()
+    if sheet is None or not sheet.is_submitted:
+        return JsonResponse({"ok": False}, status=409)
+
+    from tutor.models import MasteryAssessment
+
+    if MasteryAssessment.objects.filter(work_entry=sheet.work_entry_id).exists():
+        return JsonResponse({"ok": True, "ready": True})
+    if not ai.is_configured():
+        return JsonResponse({"ok": True, "ready": False, "grading": False})
+
+    grading.start_background_grade(sheet.pk)
+    return JsonResponse({"ok": True, "ready": False, "grading": True})
+
+
+def portal_feedback_status(request, token, set_pk):
+    """Poll for the agent's feedback. Returns the child-facing pieces once ready.
+
+    ``ready`` flips true as soon as the background grade has saved the draft
+    assessment. ``grading`` tells the page whether a grade is still expected (the
+    grader is configured) so it knows to keep waiting vs. fall back gracefully.
+    """
+    student = _resolve_student(token)
+    question_set = get_object_or_404(_visible_question_sets(student), pk=set_pk)
+    sheet = ResponseSheet.objects.filter(question_set=question_set, child=student).first()
+    if sheet is None or not sheet.is_submitted:
+        return JsonResponse({"ready": False}, status=409)
+
+    from tutor.models import MasteryAssessment
+
+    assessment = MasteryAssessment.objects.filter(work_entry=sheet.work_entry_id).first()
+    if assessment is None:
+        return JsonResponse({"ready": False, "grading": ai.is_configured()})
+    return JsonResponse({
+        "ready": True,
         "encouragement": assessment.ai_encouragement,
         "highlights": assessment.ai_kid_highlights or [],
     })

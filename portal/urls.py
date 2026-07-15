@@ -6,6 +6,7 @@ app_name = "portal"
 
 urlpatterns = [
     path("<str:token>/", views.portal_home, name="portal_home"),
+    path("<str:token>/parents/", views.portal_parent_gate, name="portal_parent_gate"),
     path("<str:token>/subject/<int:curriculum_id>/", views.portal_subject, name="portal_subject"),
     path("<str:token>/materials/<int:pk>/", views.portal_material, name="portal_material"),
     path("<str:token>/questions/<int:set_pk>/", views.portal_questions, name="portal_questions"),
@@ -22,5 +23,15 @@ urlpatterns = [
         "<str:token>/questions/<int:set_pk>/feedback/generate/",
         views.portal_feedback_generate,
         name="portal_feedback_generate",
+    ),
+    path(
+        "<str:token>/questions/<int:set_pk>/feedback/start/",
+        views.portal_feedback_start,
+        name="portal_feedback_start",
+    ),
+    path(
+        "<str:token>/questions/<int:set_pk>/feedback/status/",
+        views.portal_feedback_status,
+        name="portal_feedback_status",
     ),
 ]

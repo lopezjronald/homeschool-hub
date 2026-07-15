@@ -32,7 +32,7 @@
             </div>
           {% endif %}
           {% if material.has_pages %}
-            <div class="manga-page">
+            <div class="manga-page manga-page--{{ material.manga_text_layout }}">
               {% for panel in material.panels.all %}
                 <figure class="manga-panel manga-span-{{ panel.span }}">
                   <div class="manga-art">

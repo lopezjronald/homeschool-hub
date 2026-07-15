@@ -129,7 +129,9 @@
    young reader reads the words as sitting on top of the picture. */
 .manga-bubble {
   position: absolute;
-  transform: translate(-50%, -50%);
+  transform: translate(-50%, 0);   /* top-anchored: the balloon hangs DOWN from
+                                       its y%, so a tall balloon can never overflow
+                                       and get clipped at the top of the panel. */
   max-width: 42%;
   padding: 0.4rem 0.62rem;
   font-size: 0.88rem;
@@ -196,6 +198,16 @@
    640px cutoff (a 1440px screen at 2x density is 720 CSS px), so they were stuck
    in the cramped grid — 900px catches them. Panels keep their native aspect
    ratios (wide 16/7, full 16/6) so the wide scenes aren't center-cropped. */
+/* Float layout is single-column at EVERY width. Balloons float in the reserved
+   top band of each panel, which only has room when the panel is full width; in a
+   2-column grid the narrow panels squeeze the balloon until its top overflows and
+   is clipped. (Band layout keeps the responsive 2-up grid below — it never overlays
+   the art, so narrow panels are fine.) */
+.manga-page--float { grid-template-columns: 1fr; }
+.manga-page--float .manga-span-wide,
+.manga-page--float .manga-span-full,
+.manga-page--float .manga-span-tall { grid-column: auto; grid-row: auto; }
+
 @media (max-width: 900px) {
   .manga-page { grid-template-columns: 1fr; }
   .manga-span-wide, .manga-span-full, .manga-span-tall { grid-column: auto; grid-row: auto; }

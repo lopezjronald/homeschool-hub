@@ -79,14 +79,14 @@
 .manga-bubble {
   position: absolute;
   transform: translate(-50%, -50%);
-  max-width: 46%;
-  padding: 0.4rem 0.6rem;
-  font-size: 0.8rem;
-  line-height: 1.25;
+  max-width: 40%;
+  padding: 0.28rem 0.5rem;
+  font-size: 0.75rem;
+  line-height: 1.2;
   text-align: center;
   z-index: 2;
 }
-.manga-speaker { display: block; font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.05em; opacity: 0.6; }
+.manga-speaker { display: block; font-size: 0.55rem; text-transform: uppercase; letter-spacing: 0.04em; opacity: 0.55; }
 
 .manga-bubble.kind-speech,
 .manga-bubble.kind-thought {
@@ -140,7 +140,7 @@
   .manga-page { grid-template-columns: 1fr; }
   .manga-span-wide, .manga-span-full, .manga-span-tall { grid-column: auto; grid-row: auto; }
   .manga-span-wide .manga-art, .manga-span-full .manga-art, .manga-span-tall .manga-art { aspect-ratio: 4 / 3; }
-  .manga-bubble { font-size: 0.72rem; max-width: 60%; }
+  .manga-bubble { font-size: 0.72rem; max-width: 50%; }
 }
 
 /* -----------------------------------------------------------------------

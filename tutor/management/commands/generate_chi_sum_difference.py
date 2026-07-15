@@ -73,7 +73,7 @@ PANELS = [
         "refs": ["chi"],
         "caption": "One warm afternoon in the park. Cats everywhere!",
         "bubbles": [
-            {"speaker": "Chi", "kind": "speech", "x": 24, "y": 70, "text": "So many kitties! Chi never saw so many!"},
+            {"speaker": "Chi", "kind": "speech", "x": 45, "y": 16, "text": "So many kitties! Chi never saw so many!"},
         ],
     },
     {
@@ -85,8 +85,8 @@ PANELS = [
                  "BLACKIE sits beside her, watching patiently. The counting gesture is clear and obvious.",
         "refs": ["chi", "blackie"],
         "bubbles": [
-            {"speaker": "Chi", "kind": "thought", "x": 34, "y": 20, "text": "Eight kitties here… five kitties there…"},
-            {"speaker": "Chi", "kind": "speech", "x": 30, "y": 76, "text": "How many all together? Chi wants to know!"},
+            {"speaker": "Chi", "kind": "thought", "x": 27, "y": 15, "text": "Eight kitties here… five kitties there…"},
+            {"speaker": "Chi", "kind": "speech", "x": 27, "y": 44, "text": "How many all together? Chi wants to know!"},
         ],
     },
     {
@@ -96,8 +96,8 @@ PANELS = [
                  "little CHI looks up at him eagerly. Warm mentor moment.",
         "refs": ["chi", "blackie"],
         "bubbles": [
-            {"speaker": "Blackie", "kind": "speech", "x": 42, "y": 18, "text": "Two ways, Chi. Put 'em together… or line 'em up."},
-            {"speaker": "Blackie", "kind": "speech", "x": 42, "y": 80, "text": "Draw a bar. You'll see."},
+            {"speaker": "Blackie", "kind": "speech", "x": 30, "y": 15, "text": "Two ways, Chi. Put 'em together… or line 'em up."},
+            {"speaker": "Blackie", "kind": "speech", "x": 68, "y": 74, "text": "Draw a bar. You'll see."},
         ],
     },
     {
@@ -110,7 +110,7 @@ PANELS = [
         "refs": ["chi", "blackie"],
         "caption": "Put the parts together — the whole is the SUM.   [ 8 ][ 5 ] = 13",
         "bubbles": [
-            {"speaker": "Chi", "kind": "speech", "x": 28, "y": 80, "text": "Thirteen! Chi counted thirteen kitties!"},
+            {"speaker": "Chi", "kind": "speech", "x": 32, "y": 14, "text": "Thirteen! Chi counted thirteen kitties!"},
         ],
     },
     {
@@ -121,7 +121,7 @@ PANELS = [
         "refs": ["chi", "blackie"],
         "caption": "Whole 13, one part 8 — take it away:   13 − 8 = 5",
         "bubbles": [
-            {"speaker": "Chi", "kind": "speech", "x": 34, "y": 22, "text": "Ohh! Five kitties by the pond!"},
+            {"speaker": "Chi", "kind": "speech", "x": 66, "y": 15, "text": "Ohh! Five kitties by the pond!"},
         ],
     },
     {
@@ -131,8 +131,8 @@ PANELS = [
                  "one with fewer. CHI looks at them with a cute pout; BLACKIE beside her, amused and kind.",
         "refs": ["chi", "blackie"],
         "bubbles": [
-            {"speaker": "Chi", "kind": "speech", "x": 28, "y": 18, "text": "Blackieee… you got MORE fishies than Chi!"},
-            {"speaker": "Blackie", "kind": "speech", "x": 60, "y": 80, "text": "Line 'em up. Count what's extra."},
+            {"speaker": "Chi", "kind": "speech", "x": 28, "y": 15, "text": "Blackieee… you got MORE fishies than Chi!"},
+            {"speaker": "Blackie", "kind": "speech", "x": 70, "y": 15, "text": "Line 'em up. Count what's extra."},
         ],
     },
     {
@@ -145,7 +145,7 @@ PANELS = [
         "refs": ["chi", "blackie"],
         "caption": "Line them up — the extra piece is the DIFFERENCE.   8 − 5 = 3",
         "bubbles": [
-            {"speaker": "Blackie", "kind": "speech", "x": 55, "y": 16, "text": "Three more for me. Three fewer for you. Here — share."},
+            {"speaker": "Blackie", "kind": "speech", "x": 28, "y": 16, "text": "Three more for me. Three fewer for you. Here — share."},
         ],
     },
     {
@@ -156,7 +156,7 @@ PANELS = [
         "refs": ["chi", "blackie"],
         "caption": "★ CHI'S RULE ★   Put groups TOGETHER to find the SUM.   Line groups UP to find the DIFFERENCE.   A ? is just the number we're looking for.",
         "bubbles": [
-            {"speaker": "Chi", "kind": "speech", "x": 30, "y": 78, "text": "Sums and diff'rences… Chi loves counting kitties! To be continued →"},
+            {"speaker": "Chi", "kind": "speech", "x": 25, "y": 40, "text": "Sums and diff'rences… Chi loves counting kitties! To be continued →"},
         ],
     },
 ]

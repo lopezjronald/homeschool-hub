@@ -1,0 +1,105 @@
+/* Print + document styling for the administrator reports (base_print.html).
+   Screen: a clean, centered document. Print: a tidy Letter-size PDF via the
+   browser's "Save as PDF". NOTE: Chrome's Save-as-PDF ignores @page margin
+   boxes and CSS page counters, so page numbers come from the print dialog's
+   "Headers and footers" option — we do not fake them in CSS. */
+
+.report-doc { background: var(--ss-parchment, #F6F3EA); }
+.report-main { max-width: 900px; margin: 0 auto; padding: 1.25rem 1rem 3rem; }
+
+/* Screen-only toolbar */
+.report-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: #fff;
+  border-bottom: 1px solid var(--ss-line, rgba(20,35,28,.1));
+  box-shadow: var(--ss-shadow-sm, 0 8px 20px -16px rgba(11,46,34,.5));
+}
+.report-toolbar .container { max-width: 900px; }
+
+/* Letterhead */
+.report-letterhead {
+  background: var(--ss-forest-grad, linear-gradient(135deg,#0B2E22,#0F3D2E 52%,#123f2f));
+  color: #fff;
+  border-radius: var(--ss-r-lg, 18px);
+  padding: 1.6rem 1.5rem;
+  margin-bottom: 1.5rem;
+}
+.report-letterhead h1 { color: #fff; font-size: clamp(1.5rem, 3.5vw, 2.1rem); margin: 0; }
+.report-letterhead .report-kicker {
+  color: var(--ss-amber, #EBA83A); text-transform: uppercase;
+  letter-spacing: .14em; font-size: .72rem; font-weight: 700; margin-bottom: .35rem;
+}
+.report-letterhead .report-meta { color: rgba(233,244,236,.85); font-size: .95rem; }
+
+/* Per-child section */
+.report-child { margin-bottom: 2.25rem; }
+.report-child-name { color: var(--ss-forest, #0F3D2E); font-weight: 700; margin-bottom: .1rem; }
+
+/* Overview stat tiles */
+.report-stats { display: flex; flex-wrap: wrap; gap: .6rem; margin: .6rem 0 1rem; }
+.report-stat {
+  flex: 1 1 8rem; background: #fff; border: 1px solid var(--ss-line, rgba(20,35,28,.1));
+  border-radius: var(--ss-r-md, 14px); padding: .6rem .85rem;
+}
+.report-stat .n { font-size: 1.5rem; font-weight: 800; color: var(--ss-forest, #0F3D2E); line-height: 1.1; }
+.report-stat .lbl { font-size: .72rem; text-transform: uppercase; letter-spacing: .06em; color: var(--ss-muted, #5C6B62); }
+
+/* Mastery distribution strip */
+.report-dist { display: flex; flex-wrap: wrap; gap: .4rem; margin-bottom: 1rem; }
+.report-dist .badge { font-weight: 600; }
+.report-dist .n { font-weight: 800; margin-right: .25rem; }
+
+/* Work cards — the heart of the report */
+.ss-work-card {
+  background: #fff; border: 1px solid var(--ss-line, rgba(20,35,28,.1));
+  border-radius: var(--ss-r-lg, 18px); box-shadow: var(--ss-shadow-sm, 0 8px 20px -16px rgba(11,46,34,.5));
+  padding: 1.1rem 1.15rem; margin-bottom: 1rem;
+}
+.ss-work-head { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: .4rem; margin-bottom: .5rem; }
+.ss-work-title { font-weight: 700; color: var(--ss-forest, #0F3D2E); margin: 0; font-size: 1.08rem; }
+.ss-work-when { color: var(--ss-muted, #5C6B62); font-size: .85rem; }
+.ss-work-label {
+  font-size: .7rem; text-transform: uppercase; letter-spacing: .07em; font-weight: 700;
+  color: var(--ss-muted, #5C6B62); margin: .9rem 0 .35rem;
+}
+.ss-qa { margin-bottom: .7rem; }
+.ss-qa-cat {
+  display: inline-block; font-size: .68rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em;
+  color: var(--ss-green-700, #175E3E); background: var(--ss-green-tint, rgba(30,122,80,.09));
+  border-radius: 100px; padding: .1rem .55rem; margin-bottom: .3rem;
+}
+.ss-qa-prompt { font-weight: 600; color: var(--ss-ink, #14231C); margin-bottom: .3rem; }
+.ss-work-img { max-width: 100%; max-height: 420px; border-radius: .5rem; border: 1px solid var(--ss-line, rgba(20,35,28,.1)); }
+
+/* AI suggestion vs parent stamp */
+.ss-ai-box {
+  background: #f4f8fb; border: 1px solid rgba(47,111,179,.25); border-left: 3px solid var(--ss-blue, #2F6FB3);
+  border-radius: .6rem; padding: .7rem .9rem; margin-top: .8rem;
+}
+.ss-ai-crit { list-style: none; padding-left: 0; margin: .4rem 0 0; }
+.ss-ai-crit li { margin-bottom: .15rem; }
+.ss-stamp {
+  background: #fbfaf5; border: 1px solid var(--ss-line, rgba(20,35,28,.1));
+  border-radius: .6rem; padding: .7rem .9rem; margin-top: .8rem;
+}
+.ss-stamp--done { border-left: 3px solid var(--ss-green-2, #2E9A67); }
+.ss-stamp--todo { border-left: 3px solid var(--ss-amber, #EBA83A); background: #fbf6ec; }
+
+@page { size: Letter; margin: 16mm 14mm; }
+@media print {
+  :root { --ss-parchment: #fff; }
+  .no-print, .report-toolbar { display: none !important; }
+  body, .report-doc { background: #fff !important; }
+  .report-main { max-width: 100%; padding: 0; }
+  * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }  /* keep badge/letterhead colors */
+  .report-letterhead { box-shadow: none; }
+  .ss-work-card { break-inside: avoid; box-shadow: none; border-color: #ccc; }
+  .ss-work-card--long { break-inside: auto; }  /* long/photo cards may split across pages */
+  .ss-work-head, .report-child-name, .ss-work-label { break-after: avoid-page; }
+  .report-child { break-before: auto; }
+  img { max-width: 100% !important; }
+  .ss-work-img { max-height: 9cm; object-fit: contain; }
+  a { text-decoration: none !important; color: inherit !important; }
+}

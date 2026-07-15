@@ -239,8 +239,8 @@ class MasteryTrendsAndCharterTests(TestCase):
         self.assertContains(resp, "Homeschool Progress Report")
         self.assertContains(resp, "Print / Save PDF")
         self.assertContains(resp, "Violet")
-        self.assertContains(resp, "Mastery")
-        self.assertContains(resp, "Work log")
+        self.assertContains(resp, "Work submitted")       # per-item sample work section
+        self.assertContains(resp, "Your grade:")          # the parent's stamped mastery
         self.assertContains(resp, "<polyline")           # trend included
         self.assertNotContains(resp, "SecretSubj")       # family-scoped
         self.assertNotContains(resp, "Zed")

@@ -1,124 +1,196 @@
-{% extends "base.html" %}
-{% block title %}Charter Report · Steadfast Scholars{% endblock %}
-{% block extra_css %}
-<style>
-  .charter-answer { white-space: pre-wrap; }
-  @media print {
-    .no-print { display: none !important; }
-    .navbar, footer { display: none !important; }
-    body { background: #fff !important; }
-    .card, .charter-group { break-inside: avoid; box-shadow: none !important; border-color: #ccc !important; }
-    a { text-decoration: none !important; color: inherit !important; }
-    .container { max-width: 100% !important; }
-  }
-</style>
+{% extends "base_print.html" %}
+{% load tutor_extras %}
+{% block title %}Progress Report · Steadfast Scholars{% endblock %}
+
+{% block toolbar %}
+<div class="report-toolbar no-print">
+  <div class="container py-2">
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+      <a href="{% url 'dashboard:dashboard' %}" class="text-decoration-none fw-semibold" style="color:var(--ss-forest);">🌱 ← Progress</a>
+      <div class="d-flex gap-2">
+        <a href="?{{ csv_qs }}" class="btn btn-outline-secondary btn-sm">⬇️ CSV</a>
+        <button type="button" class="btn btn-amber btn-sm" onclick="window.print()">🖨️ Print / Save PDF</button>
+      </div>
+    </div>
+    <form method="get" class="row g-2 align-items-end mt-1">
+      <div class="col-sm-4 col-md-3">
+        <label for="{{ form.child.id_for_label }}" class="form-label small mb-1">Child</label>
+        {{ form.child }}
+      </div>
+      <div class="col-6 col-sm-3 col-md-2">
+        <label for="{{ form.start.id_for_label }}" class="form-label small mb-1">From</label>
+        {{ form.start }}
+      </div>
+      <div class="col-6 col-sm-3 col-md-2">
+        <label for="{{ form.end.id_for_label }}" class="form-label small mb-1">To</label>
+        {{ form.end }}
+      </div>
+      <div class="col-auto"><button type="submit" class="btn btn-outline-secondary">Update</button></div>
+    </form>
+    <p class="text-muted small mb-0 mt-1">Tip: in the print dialog, turn on “Headers and footers” to add page numbers &amp; the date.</p>
+  </div>
+</div>
 {% endblock %}
 
 {% block content %}
-<div class="container py-4">
+<div class="container">
 
-  <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3 no-print">
-    <div>
-      <h1 class="mb-1">Charter Report</h1>
-      <p class="text-muted mb-0">The work-log record plus finalized mastery — print or save as PDF for your Educational Specialist.</p>
+  <div class="report-letterhead">
+    <div class="report-kicker">Homeschool Progress Report</div>
+    <h1>{% if family %}{{ family.name }}{% else %}Progress Report{% endif %}</h1>
+    <div class="report-meta">
+      {{ start|date:"M j, Y" }} – {{ end|date:"M j, Y" }} ·
+      {{ total_entries }} entr{{ total_entries|pluralize:"y,ies" }} across {{ total_days }} day{{ total_days|pluralize }} ·
+      generated {{ today|date:"M j, Y" }}
     </div>
-    <button type="button" class="btn btn-amber" onclick="window.print()">🖨️ Print / Save PDF</button>
   </div>
 
-  <form method="get" class="row g-2 align-items-end mb-4 no-print">
-    <div class="col-sm-4 col-md-3">
-      <label for="{{ form.child.id_for_label }}" class="form-label small mb-1">Child</label>
-      {{ form.child }}
+  {% if total_ungraded %}
+    <div class="alert alert-warning no-print">
+      <strong>{{ total_ungraded }} item{{ total_ungraded|pluralize }}</strong> still need your grade.
+      Each shows the AI’s suggested level — accept or change it, then stamp it before you print.
     </div>
-    <div class="col-6 col-sm-3 col-md-2">
-      <label for="{{ form.start.id_for_label }}" class="form-label small mb-1">From</label>
-      {{ form.start }}
-    </div>
-    <div class="col-6 col-sm-3 col-md-2">
-      <label for="{{ form.end.id_for_label }}" class="form-label small mb-1">To</label>
-      {{ form.end }}
-    </div>
-    <div class="col-auto"><button type="submit" class="btn btn-outline-secondary">Update</button></div>
-  </form>
-
-  <!-- Report letterhead (prints) -->
-  <div class="border-bottom pb-2 mb-4">
-    <div class="d-flex justify-content-between align-items-baseline flex-wrap">
-      <h2 class="mb-0">Homeschool Progress Report</h2>
-      <span class="text-muted">Generated {{ today|date:"M d, Y" }}</span>
-    </div>
-    <div class="text-muted">
-      {% if family %}{{ family.name }} · {% endif %}{{ start|date:"M d, Y" }} – {{ end|date:"M d, Y" }}
-      · {{ total_entries }} entr{{ total_entries|pluralize:"y,ies" }} across {{ total_days }} day{{ total_days|pluralize }}
-    </div>
-  </div>
+  {% endif %}
 
   {% for g in groups %}
-    <div class="charter-group mb-5">
-      <h3 class="mb-1" style="color:var(--ss-forest);">{{ g.child.get_full_name|default:g.child.first_name }}</h3>
-      <p class="text-muted small">
-        {{ g.child.get_grade_level_display }} · {{ g.count }} entr{{ g.count|pluralize:"y,ies" }} on {{ g.day_count }} day{{ g.day_count|pluralize }}
-        {% if g.subjects %}· {{ g.subjects|join:", " }}{% endif %}
-      </p>
+    <section class="report-child">
+      <h2 class="report-child-name h3">{{ g.child.get_full_name|default:g.child.first_name }}</h2>
+      <div class="text-muted small">{{ g.child.get_grade_level_display }}{% if g.subjects %} · {{ g.subjects|join:", " }}{% endif %}</div>
 
-      {% if g.assessments %}
-        <h5 class="mt-3">Mastery</h5>
-        <table class="table table-sm">
-          <thead><tr><th>Date</th><th>Subject</th><th>Level</th></tr></thead>
-          <tbody>
-            {% for a in g.assessments %}
-              <tr>
-                <td class="text-muted">{{ a.work_entry.date|date:"M d, Y" }}</td>
-                <td>{{ a.work_entry.subject }}</td>
-                <td><span class="badge {{ a.badge_class }}">{{ a.get_final_level_display }}</span></td>
-              </tr>
-            {% endfor %}
-          </tbody>
-        </table>
+      <div class="report-stats">
+        <div class="report-stat"><div class="n">{{ g.count }}</div><div class="lbl">Work items</div></div>
+        <div class="report-stat"><div class="n">{{ g.day_count }}</div><div class="lbl">Days active</div></div>
+        <div class="report-stat"><div class="n">{{ g.subjects|length }}</div><div class="lbl">Subjects</div></div>
+        <div class="report-stat"><div class="n">{{ g.graded_count }}/{{ g.count }}</div><div class="lbl">Graded</div></div>
+      </div>
 
-        {% if g.trends %}
-          <div class="ss-trend-grid mb-3">
-            {% for s in g.trends %}
-              <div class="ss-trend">
-                <div class="ss-trend-head">
-                  <span class="fw-semibold small">{{ s.subject }}</span>
-                  {% if s.latest %}<span class="badge" style="background:{{ s.latest.color }};color:#fff;">{{ s.latest.label }}</span>{% endif %}
-                </div>
-                <svg viewBox="0 0 {{ s.width }} {{ s.height }}" class="ss-trend-svg" role="img" aria-label="{{ s.subject }} mastery trend">
-                  <polyline points="{{ s.polyline }}" fill="none" stroke="#1E7A50" stroke-width="2" stroke-linejoin="round"/>
-                  {% for p in s.points %}<circle cx="{{ p.x }}" cy="{{ p.y }}" r="4" fill="{{ p.color }}" stroke="#fff" stroke-width="1.5"><title>{{ p.date|date:"M d, Y" }} — {{ p.label }}</title></circle>{% endfor %}
-                </svg>
+      {% if g.dist %}
+        <div class="report-dist">
+          {% for d in g.dist %}
+            <span class="badge {{ d.badge }}"><span class="n">{{ d.n }}</span>{{ d.label }}</span>
+          {% endfor %}
+        </div>
+      {% endif %}
+
+      {% if g.trends %}
+        <div class="ss-trend-grid mb-3">
+          {% for s in g.trends %}
+            <div class="ss-trend">
+              <div class="ss-trend-head">
+                <span class="fw-semibold small">{{ s.subject }}</span>
+                {% if s.latest %}<span class="badge" style="background:{{ s.latest.color }};color:#fff;">{{ s.latest.label }}</span>{% endif %}
               </div>
-            {% endfor %}
-          </div>
-        {% endif %}
+              <svg viewBox="0 0 {{ s.width }} {{ s.height }}" class="ss-trend-svg" role="img" aria-label="{{ s.subject }} mastery trend">
+                <polyline points="{{ s.polyline }}" fill="none" stroke="#1E7A50" stroke-width="2" stroke-linejoin="round"/>
+                {% for p in s.points %}<circle cx="{{ p.x }}" cy="{{ p.y }}" r="4" fill="{{ p.color }}" stroke="#fff" stroke-width="1.5"><title>{{ p.date|date:"M j, Y" }} — {{ p.label }}</title></circle>{% endfor %}
+              </svg>
+            </div>
+          {% endfor %}
+        </div>
       {% endif %}
 
-      <h5 class="mt-3">Work log</h5>
-      {% if g.entries %}
-        <table class="table table-sm">
-          <thead><tr><th style="width:6.5rem;">Date</th><th>Subject</th><th>What was done</th></tr></thead>
-          <tbody>
-            {% for e in g.entries %}
-              <tr>
-                <td class="text-muted">{{ e.date|date:"M d" }}</td>
-                <td class="fw-semibold">{{ e.subject }}</td>
-                <td><div class="charter-answer">{{ e.description|default:"—" }}</div>
-                  {% if e.attachment %}<span class="text-muted small">📎 {{ e.attachment_filename }}</span>{% endif %}
-                </td>
-              </tr>
+      {% for it in g.items %}
+        <article class="ss-work-card{% if it.kind == 'image' %} ss-work-card--long{% endif %}">
+          <div class="ss-work-head">
+            <div>
+              <h3 class="ss-work-title h5">{{ it.title }}</h3>
+              <div class="ss-work-when">{{ it.entry.date|date:"M j, Y" }} · {{ it.entry.subject }}</div>
+            </div>
+            {% if it.stamped %}
+              <span class="badge {{ it.assessment.badge_class }}">{{ it.assessment.get_final_level_display }}</span>
+            {% else %}
+              <span class="badge bg-warning text-dark">Awaiting your grade</span>
+            {% endif %}
+          </div>
+
+          {# ---- The sample work ---- #}
+          <div class="ss-work-label">Work submitted</div>
+          {% if it.kind == 'portal' %}
+            {% for row in it.qa_rows %}
+              <div class="ss-qa">
+                <span class="ss-qa-cat">{{ row.question.get_category_display }}</span>
+                {% if row.question.prompt %}<div class="ss-qa-prompt">{{ row.question.prompt|markdownify_inline }}</div>{% endif %}
+                {% if row.question.is_markup %}<p class="text-muted small mb-1" style="font-family:Georgia,serif;">“{{ row.question.passage }}”</p>{% endif %}
+                {% if row.answered %}
+                  <div class="ss-answer-block">{{ row.answer }}</div>
+                {% else %}
+                  <div class="text-muted fst-italic">No answer.</div>
+                {% endif %}
+              </div>
+            {% empty %}
+              <div class="text-muted fst-italic">No answers recorded.</div>
             {% endfor %}
-          </tbody>
-        </table>
-      {% else %}
+          {% elif it.kind == 'image' %}
+            <a href="{{ it.entry.attachment.url }}" target="_blank" rel="noopener">
+              <img src="{{ it.entry.attachment.url }}" alt="{{ it.entry.subject }} work" class="ss-work-img">
+            </a>
+            {% if it.entry.description %}<div class="ss-answer-block mt-2">{{ it.entry.description }}</div>{% endif %}
+          {% elif it.kind == 'file' %}
+            <a href="{{ it.entry.attachment.url }}" target="_blank" rel="noopener" class="btn btn-sm btn-outline-secondary">📎 {{ it.entry.attachment_filename }}</a>
+            {% if it.entry.description %}<div class="ss-answer-block mt-2">{{ it.entry.description }}</div>{% endif %}
+          {% else %}
+            <div class="ss-answer-block">{{ it.entry.description|default:"—" }}</div>
+          {% endif %}
+
+          {# ---- AI suggestion ---- #}
+          {% if it.has_ai %}
+            <div class="ss-ai-box">
+              <div class="d-flex align-items-center gap-2 mb-1">
+                <span class="ss-work-label mb-0" style="color:var(--ss-blue);">🤖 AI suggestion</span>
+                <span class="badge {{ it.assessment.ai_badge_class }}">{{ it.assessment.get_ai_level_display }}</span>
+              </div>
+              {% if it.assessment.ai_summary %}<p class="mb-1 small">{{ it.assessment.ai_summary }}</p>{% endif %}
+              {% if it.assessment.ai_criteria %}
+                <ul class="ss-ai-crit small">
+                  {% for c in it.assessment.ai_criteria %}
+                    <li>{% if c.met %}<span style="color:var(--ss-green);">✓</span>{% else %}<span class="text-danger">✗</span>{% endif %}
+                      <strong>{{ c.criterion }}</strong>{% if c.comment %} — {{ c.comment }}{% endif %}</li>
+                  {% endfor %}
+                </ul>
+              {% endif %}
+            </div>
+          {% endif %}
+
+          {# ---- Parent stamp ---- #}
+          {% if it.stamped %}
+            <div class="ss-stamp ss-stamp--done">
+              <strong>Your grade:</strong>
+              <span class="badge {{ it.assessment.badge_class }}">{{ it.assessment.get_final_level_display }}</span>
+              <span class="text-muted small">· stamped {{ it.assessment.finalized_at|date:"M j, Y" }}{% if it.assessment.parent_override_level %} (you changed the AI’s {{ it.assessment.get_ai_level_display }}){% endif %}</span>
+            </div>
+          {% else %}
+            <div class="ss-stamp ss-stamp--todo">
+              {% if can_edit %}
+                <form method="post" action="{% url 'worklog:report_stamp' it.entry.pk %}" class="row g-2 align-items-center no-print">
+                  {% csrf_token %}
+                  <input type="hidden" name="child" value="{% if selected_child %}{{ selected_child.id }}{% endif %}">
+                  <input type="hidden" name="start" value="{{ start|date:'Y-m-d' }}">
+                  <input type="hidden" name="end" value="{{ end|date:'Y-m-d' }}">
+                  <div class="col-auto fw-semibold">Stamp a grade:</div>
+                  <div class="col-sm-5 col-md-4">
+                    <select name="final_level" class="form-select form-select-sm">
+                      {% for value, label in levels %}
+                        <option value="{{ value }}"{% if value == it.finalize_default %} selected{% endif %}>{{ label }}</option>
+                      {% endfor %}
+                    </select>
+                  </div>
+                  <div class="col-auto"><button type="submit" class="btn btn-primary btn-sm">Stamp</button></div>
+                  {% if it.can_ai_grade_link %}
+                    <div class="col-12"><a href="{% url 'tutor:assess_create' it.entry.pk %}" class="small">…or get a fresh AI assessment first</a></div>
+                  {% endif %}
+                </form>
+              {% endif %}
+              <span class="d-none d-print-block"><strong>Awaiting parent grade.</strong>{% if it.has_ai %} AI suggested: {{ it.assessment.get_ai_level_display }} (not confirmed).{% endif %}</span>
+            </div>
+          {% endif %}
+        </article>
+      {% empty %}
         <p class="text-muted">No work logged in this range.</p>
-      {% endif %}
-    </div>
+      {% endfor %}
+    </section>
   {% empty %}
     <div class="alert alert-info no-print">No work or assessments in this date range{% if selected_child %} for {{ selected_child.first_name }}{% endif %}.</div>
   {% endfor %}
-
-  <a href="{% url 'dashboard:dashboard' %}" class="btn btn-secondary no-print">← Back to Progress</a>
 
 </div>
 {% endblock %}

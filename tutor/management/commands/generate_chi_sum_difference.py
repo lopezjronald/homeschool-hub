@@ -95,8 +95,7 @@ PANELS = [
                  "little CHI looks up at him eagerly. Warm mentor moment.",
         "refs": ["chi", "blackie"],
         "bubbles": [
-            {"speaker": "Blackie", "kind": "speech", "x": 30, "y": 15, "text": "Two ways, Chi. Put 'em together… or line 'em up."},
-            {"speaker": "Blackie", "kind": "speech", "x": 68, "y": 74, "text": "Draw a bar. You'll see."},
+            {"speaker": "Blackie", "kind": "speech", "x": 34, "y": 24, "text": "Two ways, Chi: together, or lined up. Draw a bar — you'll see."},
         ],
     },
     {

@@ -136,11 +136,16 @@
   max-width: 60%;
 }
 
-@media (max-width: 640px) {
+/* Below the 900px design width, drop to a single column so every panel gets the
+   full width. The 2-column comic grid crams each panel into ~half width, which
+   forces the speech bubbles on top of the characters; at full width the bubbles
+   sit in the empty parts of the art. Phones report a CSS width well above the old
+   640px cutoff (a 1440px screen at 2x density is 720 CSS px), so they were stuck
+   in the cramped grid — 900px catches them. Panels keep their native aspect
+   ratios (wide 16/7, full 16/6) so the wide scenes aren't center-cropped. */
+@media (max-width: 900px) {
   .manga-page { grid-template-columns: 1fr; }
   .manga-span-wide, .manga-span-full, .manga-span-tall { grid-column: auto; grid-row: auto; }
-  .manga-span-wide .manga-art, .manga-span-full .manga-art, .manga-span-tall .manga-art { aspect-ratio: 4 / 3; }
-  .manga-bubble { font-size: 0.72rem; max-width: 50%; }
 }
 
 /* -----------------------------------------------------------------------

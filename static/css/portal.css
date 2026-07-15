@@ -178,6 +178,66 @@
 }
 .wordhelp-chip:hover, .wordhelp-chip:focus { border-color: #3f72af; background: #eef3fa; }
 
+/* Our own spell-checker: a backdrop mirrors the textarea and draws a red wavy
+   underline under misspelled words; a bar under the box offers one-tap fixes. */
+.spellwrap { position: relative; }
+.spell-backdrop {
+  position: absolute;
+  top: 0;
+  left: 0;
+  margin: 0;
+  overflow: hidden;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  color: transparent;
+  pointer-events: none;
+  border-style: solid;
+  border-color: transparent;
+  z-index: 1;
+}
+.spell-backdrop .spell-err {
+  text-decoration: underline;
+  text-decoration-skip-ink: none;
+  -webkit-text-decoration-line: underline;
+  -webkit-text-decoration-style: wavy;
+  -webkit-text-decoration-color: #e5484d;
+  text-decoration-style: wavy;
+  text-decoration-color: #e5484d;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 2px;
+}
+.spellwrap textarea.portal-answer { position: relative; z-index: 2; }
+
+.spellfix-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0.4rem 0 0.2rem;
+  padding: 0.5rem 0.6rem;
+  background: rgba(229, 72, 77, 0.07);
+  border: 1px solid rgba(229, 72, 77, 0.3);
+  border-radius: 12px;
+}
+.spellfix-label { font-size: 0.85rem; font-weight: 700; color: #b23840; }
+.spellfix-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  border: 2px solid rgba(229, 72, 77, 0.4);
+  background: #fff;
+  border-radius: 999px;
+  padding: 0.22rem 0.7rem;
+  cursor: pointer;
+  font-size: 0.95rem;
+  line-height: 1.2;
+}
+.spellfix-chip:hover, .spellfix-chip:focus { border-color: #e5484d; background: #fdeff0; }
+.spellfix-wrong { color: #b23840; text-decoration: line-through; }
+.spellfix-arrow { color: #9aa0a6; }
+.spellfix-fix { color: #1e7a50; font-weight: 800; }
+
 .portal-hint { margin: 0 0 0.5rem; }
 .portal-hint summary {
   cursor: pointer;

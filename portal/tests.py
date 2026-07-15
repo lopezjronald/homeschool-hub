@@ -403,6 +403,7 @@ class SpellcheckAndWordHelpTests(TestCase):
         self.assertContains(resp, 'spellcheck="true"')
         self.assertContains(resp, "wordhelp-hint")
         self.assertContains(resp, "data-wordhelp-url")
+        self.assertContains(resp, "data-spellcheck-url")
 
     def test_spelling_curriculum_disables_spellcheck_and_wordhelp(self):
         resp = self.client.get(self._url("portal_questions", set_pk=self.spelling_set.pk))
@@ -410,6 +411,34 @@ class SpellcheckAndWordHelpTests(TestCase):
         self.assertNotContains(resp, 'spellcheck="true"')
         self.assertNotContains(resp, "wordhelp-hint")
         self.assertNotContains(resp, "data-wordhelp-url")
+        self.assertNotContains(resp, "data-spellcheck-url")
+
+    @mock.patch("tutor.ai.check_spelling", return_value=[
+        {"wrong": "speshel", "fixes": ["special"]},
+        {"wrong": "becuse", "fixes": ["because"]},
+    ])
+    def test_spellcheck_endpoint_returns_misspellings(self, _chk):
+        resp = self.client.post(
+            self._url("portal_spellcheck", set_pk=self.writing_set.pk),
+            data=json.dumps({"text": "He was little and speshel becuse of it."}),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertTrue(data["ok"])
+        wrongs = [m["wrong"] for m in data["misspelled"]]
+        self.assertEqual(wrongs, ["speshel", "becuse"])
+
+    @mock.patch("tutor.ai.check_spelling", return_value=[{"wrong": "cat", "fixes": ["cat"]}])
+    def test_spellcheck_disabled_on_spelling_curricula(self, chk):
+        resp = self.client.post(
+            self._url("portal_spellcheck", set_pk=self.spelling_set.pk),
+            data=json.dumps({"text": "kat"}),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()["misspelled"], [])
+        chk.assert_not_called()
 
     @mock.patch("portal.thesaurus.synonyms", return_value=["glad", "joyful", "cheerful"])
     def test_word_help_returns_suggestions(self, _syn):

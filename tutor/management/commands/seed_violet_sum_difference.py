@@ -76,8 +76,7 @@ STUDENT_INTRO = (
 
 PARENT_CONTENT = """## The big idea
 
-This lesson opens the door to **bar models** — the tool she'll use for word
-problems all year. Two numbers can answer **two** questions:
+This lesson opens the door to **bar models** — the tool she'll use for word problems all year. Two numbers can answer **two** questions:
 
 - **Sum** — put the groups *together* → draw a **part-whole** bar.
 - **Difference** — *line the groups up* → draw a **comparison** bar.
@@ -86,45 +85,36 @@ We use one pair, **8 and 5**, so she meets both at once.
 
 ## Part-whole bar (the SUM)
 
-Two parts sit end-to-end under one whole:
+Two parts sit end-to-end under one whole: **8 + 5 = 13**. The **whole is the sum** of the parts.
 
-`[ 8 ][ 5 ]  →  whole = ?`  →  **8 + 5 = 13**
-
-The **whole is the sum** of the parts. The same bar also answers a *subtraction*
-question — if you know the whole and one part, the **missing part = whole − part**:
-
-`whole 13, part 8, part ?`  →  **13 − 8 = 5**
+The same bar also answers a *subtraction* question: if you know the whole and one part, the **missing part = whole − part** — so **13 − 8 = 5**.
 
 > Ask: *"Are we looking for the whole, or a part? If it's a part, we take away."*
 
 ## Comparison bar (the DIFFERENCE)
 
-Two bars line up, longer over shorter; the extra bit is the difference:
-
-`8 over 5, extra = ?`  →  **8 − 5 = 3**  (3 more, or 3 fewer)
+Line the two amounts up, longer over shorter; the extra bit is the difference: **8 − 5 = 3** (3 more, or 3 fewer).
 
 > Ask: *"Which is longer? By how much? That extra bit is the difference."*
 
 ## The classic mix-up
 
-Kids often *add* when a problem says "how many more." Tie it to the picture:
-"more" and "fewer" mean we're **comparing** — line the bars up and find the gap.
+Kids often *add* when a problem says "how many more." Tie it to the picture: "more" and "fewer" mean we're **comparing** — line the bars up and find the gap.
 
 ## Help her hands-on
 
 Use 8 counters (or toy cats!) and 5 counters:
+
 1. **Together:** slide both groups into one line and count → the sum.
 2. **Line up:** set them in two rows, ends matched, and count what sticks out → the difference.
 
 ## Extend it
 
-Give her the whole and one part, ask for the other (a missing-part problem). Then
-hide the difference: *"I have 8, you have 5 — draw the bars; how many more do I have?"*
+Give her the whole and one part, and ask for the other (a missing-part problem). Then hide the difference: *"I have 8, you have 5 — draw the bars; how many more do I have?"*
 
-## Manga note
+## A note on the manga
 
-Chi's world is gentle and cozy — keep the tone warm. The math is exact; let Chi and
-Blackie carry the story while the bars do the teaching. This is Chapter 2, Lesson 8."""
+Chi's world is gentle and cozy, so keep the tone warm. The math stays exact — let Chi and Blackie carry the story while the bar models do the teaching."""
 
 
 class Command(BaseCommand):

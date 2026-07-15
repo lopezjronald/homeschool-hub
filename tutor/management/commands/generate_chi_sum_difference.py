@@ -39,8 +39,19 @@ STYLE = (
     "soft, warm, wholesome COLOR illustration in the gentle style of a cozy "
     "Japanese picture-book about cats: rounded shapes, big expressive eyes, "
     "soft watercolor-like shading, pastel palette, kid-friendly and cheerful, "
-    "high detail. IMPORTANT: do not draw any text, letters, numbers as writing, "
-    "speech bubbles, or captions — leave clear open space for bubbles to be added later."
+    "high detail. IMPORTANT: do NOT draw any text, letters, numbers, writing, "
+    "speech bubbles, word balloons, or captions anywhere in the image."
+)
+
+# Composition rule for PANELS only (not the character sheets): reserve empty
+# space at the TOP for speech balloons and keep the cats low. This is the real
+# fix for balloons covering characters — the art is drawn with a balloon zone,
+# so the overlay lands on open background instead of a cat.
+PANEL_COMPOSITION = (
+    " COMPOSITION: stage the cats in the LOWER two-thirds of the frame and keep the "
+    "UPPER third as calm, plain, low-detail open background (soft sky, a blank wall, "
+    "or ceiling) — generous empty negative space reserved for speech balloons. Do NOT "
+    "let any cat's head rise into the top third of the frame; leave that band clean and empty."
 )
 
 # Character sheets — generated once, then used as reference for every panel so
@@ -73,7 +84,7 @@ PANELS = [
         "refs": ["chi"],
         "caption": "One warm afternoon in the park. Cats everywhere!",
         "bubbles": [
-            {"speaker": "Chi", "kind": "speech", "x": 45, "y": 16, "text": "So many kitties! Chi never saw so many!"},
+            {"speaker": "Chi", "kind": "speech", "x": 50, "y": 15, "text": "So many kitties! Chi never saw so many!"},
         ],
     },
     {
@@ -85,7 +96,7 @@ PANELS = [
                  "BLACKIE sits beside her, watching patiently. The counting gesture is clear and obvious.",
         "refs": ["chi", "blackie"],
         "bubbles": [
-            {"speaker": "Chi", "kind": "speech", "x": 33, "y": 22, "text": "Eight here, five there… how many all together?"},
+            {"speaker": "Chi", "kind": "speech", "x": 30, "y": 14, "text": "Eight here, five there… how many all together?"},
         ],
     },
     {
@@ -95,20 +106,22 @@ PANELS = [
                  "little CHI looks up at him eagerly. Warm mentor moment.",
         "refs": ["chi", "blackie"],
         "bubbles": [
-            {"speaker": "Blackie", "kind": "speech", "x": 34, "y": 24, "text": "Two ways, Chi: together, or lined up. Draw a bar — you'll see."},
+            {"speaker": "Blackie", "kind": "speech", "x": 40, "y": 14, "text": "Two ways, Chi: together, or lined up. Draw a bar — you'll see."},
         ],
     },
     {
         "order": 4, "span": MangaPanel.SPAN_FULL,
-        "alt": "All the park cats gathered together in one happy group around Chi and Blackie.",
-        "scene": "A SMALL, easily countable gathering of cats on the grass: a group of about eight "
-                 "cats on the left and a group of about five cats on the right, gently coming together, "
-                 "with CHI and BLACKIE among them. Keep the two groups distinguishable and the total "
-                 "small — around a dozen cats, NOT a big crowd. Cheerful and cozy.",
-        "refs": ["chi", "blackie"],
-        "caption": "Put the parts together — the whole is the SUM.   [ 8 ][ 5 ] = 13",
+        "alt": "Exactly thirteen cats in two groups on the grass — eight on the left, five on the right — with Chi among them.",
+        "scene": "On the grass, EXACTLY THIRTEEN cats in total, arranged as two clearly separate "
+                 "groups with a gap between them: a group of EXACTLY EIGHT cats on the LEFT and a "
+                 "group of EXACTLY FIVE cats on the RIGHT. Every cat is fully visible and sits or "
+                 "stands slightly apart from its neighbours so each one is easy to count one by one. "
+                 "The grey kitten CHI is one of the cats in the scene. Do NOT draw a crowd, a pile, "
+                 "or any extra cats — exactly thirteen, no more, spread along the lower part of the frame. Cheerful and cozy.",
+        "refs": ["chi"],
+        "caption": "Put the parts together — the whole is the SUM.   8 + 5 = 13",
         "bubbles": [
-            {"speaker": "Chi", "kind": "speech", "x": 32, "y": 14, "text": "Thirteen! Chi counted thirteen kitties!"},
+            {"speaker": "Chi", "kind": "speech", "x": 26, "y": 13, "text": "Thirteen! Chi counted thirteen kitties!"},
         ],
     },
     {
@@ -119,7 +132,7 @@ PANELS = [
         "refs": ["chi", "blackie"],
         "caption": "Whole 13, one part 8 — take it away:   13 − 8 = 5",
         "bubbles": [
-            {"speaker": "Chi", "kind": "speech", "x": 66, "y": 15, "text": "Ohh! Five kitties by the pond!"},
+            {"speaker": "Chi", "kind": "speech", "x": 70, "y": 14, "text": "Ohh! Five kitties by the pond!"},
         ],
     },
     {
@@ -129,8 +142,8 @@ PANELS = [
                  "one with fewer. CHI looks at them with a cute pout; BLACKIE beside her, amused and kind.",
         "refs": ["chi", "blackie"],
         "bubbles": [
-            {"speaker": "Chi", "kind": "speech", "x": 28, "y": 15, "text": "Blackieee… you got MORE fishies than Chi!"},
-            {"speaker": "Blackie", "kind": "speech", "x": 70, "y": 15, "text": "Line 'em up. Count what's extra."},
+            {"speaker": "Chi", "kind": "speech", "x": 26, "y": 13, "text": "Blackieee… you got MORE fishies than Chi!"},
+            {"speaker": "Blackie", "kind": "speech", "x": 73, "y": 13, "text": "Line 'em up. Count what's extra."},
         ],
     },
     {
@@ -143,7 +156,7 @@ PANELS = [
         "refs": ["chi", "blackie"],
         "caption": "Line them up — the extra piece is the DIFFERENCE.   8 − 5 = 3",
         "bubbles": [
-            {"speaker": "Blackie", "kind": "speech", "x": 28, "y": 16, "text": "Three more for me. Three fewer for you. Here — share."},
+            {"speaker": "Blackie", "kind": "speech", "x": 30, "y": 15, "text": "Three more for me. Three fewer for you. Here — share."},
         ],
     },
     {
@@ -154,7 +167,7 @@ PANELS = [
         "refs": ["chi", "blackie"],
         "caption": "★ CHI'S RULE ★   Put groups TOGETHER to find the SUM.   Line groups UP to find the DIFFERENCE.   A ? is just the number we're looking for.",
         "bubbles": [
-            {"speaker": "Chi", "kind": "speech", "x": 25, "y": 40, "text": "Sums and diff'rences… Chi loves counting kitties! To be continued →"},
+            {"speaker": "Chi", "kind": "speech", "x": 26, "y": 16, "text": "Sums and diff'rences… Chi loves counting kitties! To be continued →"},
         ],
     },
 ]
@@ -195,7 +208,10 @@ class Command(BaseCommand):
                 "No REPLICATE_API_TOKEN set — building structure only (placeholder art)."
             ))
 
-        sheets = {} if (dry_run or link_only) else self._generate_character_sheets(options["regenerate"])
+        # Always reuse existing character sheets so Chi and Blackie keep the same
+        # look when panels are re-composed; --regenerate only redraws PANELS. To
+        # intentionally change a cat's design, delete its char-*.jpg first.
+        sheets = {} if (dry_run or link_only) else self._generate_character_sheets(regenerate=False)
 
         built = 0
         for spec in PANELS:
@@ -254,7 +270,7 @@ class Command(BaseCommand):
             image.save(path, format="PNG", optimize=True)
 
     def _panel_prompt(self, spec):
-        return f"{spec['scene']} {STYLE}"
+        return f"{spec['scene']} {STYLE}{PANEL_COMPOSITION}"
 
     def _generate_character_sheets(self, regenerate):
         """Generate (or reuse) each cat's character sheet; return {name: local_path}."""

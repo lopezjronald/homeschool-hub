@@ -8,7 +8,9 @@ from django.urls import reverse
 from django.utils import timezone
 
 from core.models import Family, FamilyMembership
+from curricula.models import Chapter, Curriculum, Lesson
 from students.models import Student
+from tutor.models import MasteryAssessment, Question, QuestionSet, ResponseSheet
 
 from .models import WorkLogEntry
 
@@ -272,3 +274,136 @@ class WorkLogReportTest(TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertContains(resp, "Fractions")
         self.assertNotContains(resp, "ForbiddenSubject")
+
+
+@override_settings(MEDIA_ROOT=MEDIA)
+class CharterReportRedesignTest(TestCase):
+    """The redesigned Charter Report: structured sample work + AI-suggested and
+    parent-stamped mastery, inline stamping, and CSV export."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.parent = User.objects.create_user(username="cparent", email="cp@e.com", password="pw")
+        cls.teacher = User.objects.create_user(username="cteacher", email="ct@e.com", password="pw")
+        cls.fam = Family.objects.create(name="Charter Fam")
+        FamilyMembership.objects.create(user=cls.parent, family=cls.fam, role="parent")
+        FamilyMembership.objects.create(user=cls.teacher, family=cls.fam, role="teacher")
+        cls.violet = Student.objects.create(
+            parent=cls.parent, first_name="Violet", grade_level="G03", family=cls.fam,
+        )
+        cls.today = timezone.localdate()
+
+        cur = Curriculum.objects.create(parent=cls.parent, name="Writing 3", subject="Writing", family=cls.fam)
+        ch = Chapter.objects.create(curriculum=cur, number=1, title="Unit 1")
+        lesson = Lesson.objects.create(chapter=ch, order=1, number=1, title="L1")
+        cls.qset = QuestionSet.objects.create(
+            lesson=lesson, title="Wolfgang Questions", family=cls.fam,
+            status=QuestionSet.APPROVED, rubric="Answer thoughtfully.",
+        )
+        cls.q = Question.objects.create(
+            question_set=cls.qset, order=1, category="editing",
+            response_type=Question.TYPE_TEXT, prompt="Why does Wolfgang feel unhappy?",
+        )
+
+        # (1) portal-submitted work with an AI DRAFT assessment (not yet stamped)
+        cls.entry = WorkLogEntry.objects.create(
+            parent=cls.parent, child=cls.violet, subject="Writing", family=cls.fam,
+            date=cls.today - timedelta(days=2), description="portal submission",
+        )
+        cls.sheet = ResponseSheet.objects.create(
+            question_set=cls.qset, child=cls.violet,
+            answers={str(cls.q.pk): "He was little and special."},
+            status=ResponseSheet.SUBMITTED, work_entry=cls.entry, submitted_at=timezone.now(),
+        )
+        cls.assessment = MasteryAssessment.objects.create(
+            work_entry=cls.entry, rubric="r", answers="a",
+            ai_level="developing", ai_summary="A good start on his feelings.",
+            ai_criteria=[{"criterion": "Explains why", "met": True, "comment": "clear"}],
+            status=MasteryAssessment.DRAFT,
+        )
+        # (2) a photo entry — no sheet, no assessment
+        cls.photo = WorkLogEntry.objects.create(
+            parent=cls.parent, child=cls.violet, subject="Art", family=cls.fam,
+            date=cls.today - timedelta(days=1),
+            attachment=SimpleUploadedFile("art.png", b"\x89PNG\r\n\x1a\n", content_type="image/png"),
+        )
+        # (3) a plain note entry — no sheet, no assessment
+        cls.note = WorkLogEntry.objects.create(
+            parent=cls.parent, child=cls.violet, subject="Nature", family=cls.fam,
+            date=cls.today, description="We went on a nature walk and found acorns.",
+        )
+
+    def _report(self, **params):
+        return self.client.get(reverse("worklog:charter_report"), params)
+
+    def test_renders_structured_work_and_ai_suggestion(self):
+        self.client.login(username="cparent", password="pw")
+        resp = self._report()
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "Why does Wolfgang feel unhappy?")   # the question prompt
+        self.assertContains(resp, "He was little and special.")         # the child's actual answer
+        self.assertContains(resp, "ss-answer-block")                    # structured, not a raw blob
+        self.assertContains(resp, "AI suggestion")                      # AI block surfaces the DRAFT
+        self.assertContains(resp, "We went on a nature walk")           # note entry sample work
+        self.assertContains(resp, "Awaiting your grade")                # nothing stamped yet
+        self.assertContains(resp, 'name="final_level"')                 # inline stamp control
+
+    def test_photo_renders_inline_image(self):
+        self.client.login(username="cparent", password="pw")
+        resp = self._report()
+        self.assertContains(resp, "ss-work-img")
+        self.assertContains(resp, self.photo.attachment.url)
+
+    def test_stamp_finalizes_and_returns_to_report(self):
+        self.client.login(username="cparent", password="pw")
+        resp = self.client.post(
+            reverse("worklog:report_stamp", kwargs={"entry_pk": self.entry.pk}),
+            {"final_level": "proficient", "start": (self.today - timedelta(days=30)).isoformat(),
+             "end": self.today.isoformat()},
+        )
+        self.assertEqual(resp.status_code, 302)
+        self.assertIn("charter-report", resp.url)
+        self.assessment.refresh_from_db()
+        self.assertEqual(self.assessment.status, MasteryAssessment.FINALIZED)
+        self.assertEqual(self.assessment.final_level, "proficient")
+        self.assertEqual(self.assessment.parent_override_level, "proficient")  # differs from AI's developing
+
+    def test_stamp_creates_assessment_for_photo(self):
+        self.client.login(username="cparent", password="pw")
+        resp = self.client.post(
+            reverse("worklog:report_stamp", kwargs={"entry_pk": self.photo.pk}),
+            {"final_level": "mastered"},
+        )
+        self.assertEqual(resp.status_code, 302)
+        a = self.photo.assessments.first()
+        self.assertIsNotNone(a)
+        self.assertEqual(a.final_level, "mastered")
+        self.assertEqual(a.ai_level, "")
+        self.assertEqual(a.status, MasteryAssessment.FINALIZED)
+
+    def test_teacher_cannot_stamp(self):
+        self.client.login(username="cteacher", password="pw")
+        resp = self.client.post(
+            reverse("worklog:report_stamp", kwargs={"entry_pk": self.entry.pk}),
+            {"final_level": "proficient"},
+        )
+        self.assertEqual(resp.status_code, 404)
+
+    def test_finalized_shows_parent_grade(self):
+        self.assessment.final_level = "mastered"
+        self.assessment.status = MasteryAssessment.FINALIZED
+        self.assessment.save()
+        self.client.login(username="cparent", password="pw")
+        resp = self._report()
+        self.assertContains(resp, "Your grade:")
+        self.assertContains(resp, "Mastered")
+
+    def test_csv_export(self):
+        self.client.login(username="cparent", password="pw")
+        resp = self._report(format="csv")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp["Content-Type"], "text/csv")
+        self.assertIn("attachment", resp["Content-Disposition"])
+        body = resp.content.decode()
+        self.assertIn("Date,Child,Subject,Lesson,AI level,Final level,Status", body)
+        self.assertIn("Wolfgang Questions", body)

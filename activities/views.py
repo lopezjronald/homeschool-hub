@@ -14,7 +14,7 @@ from core.utils import get_active_family, get_selected_family
 from students.models import Student
 from worklog.models import WorkLogEntry
 
-from .forms import ExternalActivityForm
+from .forms import ActivityLogForm, ExternalActivityForm, _child_queryset
 from .models import ExternalActivity
 
 
@@ -65,6 +65,70 @@ def activity_checkin(request, pk):
     # The check-in card only ever lives on the home hub, so home is the only
     # redirect target — no caller-supplied `next` (which would be an open redirect).
     return redirect("home")
+
+
+@login_required
+def activity_log(request, pk):
+    """Log an activity session for one or more children on a chosen date.
+
+    Creates one WorkLogEntry per selected child (so each shows on their own
+    report) and lets the parent back-date a forgotten session.
+    """
+    if not user_can_edit(request.user):
+        raise Http404
+    activity = get_object_or_404(
+        editable_queryset(ExternalActivity.objects.all(), request.user), pk=pk,
+    )
+    family = get_selected_family(request)
+
+    if request.method == "POST":
+        form = ActivityLogForm(request.POST, user=request.user, family=family)
+        if form.is_valid():
+            children = form.cleaned_data["children"]
+            when = form.cleaned_data["date"]
+            created = 0
+            for child in children:
+                # Skip a session already logged for this child+activity+date, so
+                # re-submitting (or double-logging via the check-in) can't dupe.
+                already = WorkLogEntry.objects.filter(
+                    child=child, subject=activity.title[:100], date=when,
+                    description__startswith=activity.display_label,
+                ).exists()
+                if already:
+                    continue
+                WorkLogEntry.objects.create(
+                    parent=request.user,
+                    family=activity.family or get_active_family(request.user),
+                    child=child,
+                    subject=activity.title[:100],
+                    description=f"{activity.display_label} — logged from Activities.",
+                    date=when,
+                )
+                created += 1
+            # Advance the reminder clock only when logging on/after the last log.
+            if not activity.last_logged_at or when > activity.last_logged_at:
+                activity.last_logged_at = when
+                activity.snoozed_until = None
+                activity.save(update_fields=["last_logged_at", "snoozed_until", "updated_at"])
+            if created:
+                messages.success(
+                    request,
+                    "Logged %s for %d %s on %s. 🎉" % (
+                        activity.display_label, created,
+                        "child" if created == 1 else "children", when.strftime("%b %d, %Y")),
+                )
+            else:
+                messages.info(request, "Those were already logged for that date.")
+            return redirect("activities:activity_list")
+    else:
+        child_qs = _child_queryset(request.user, family)
+        if activity.student_id:
+            initial_ids = [activity.student_id]           # pre-check the tagged child
+        else:
+            initial_ids = list(child_qs.values_list("id", flat=True))  # whole-family → all pre-checked
+        form = ActivityLogForm(user=request.user, family=family, initial={"children": initial_ids})
+
+    return render(request, "activities/activity_log.html", {"form": form, "activity": activity})
 
 
 @login_required

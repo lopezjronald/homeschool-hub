@@ -8,6 +8,7 @@ from django.utils import timezone
 
 from core.models import Family, FamilyMembership
 from students.models import Student
+from worklog.models import WorkLogEntry
 
 from .models import ExternalActivity
 
@@ -265,3 +266,77 @@ class NullFamilyCheckinTests(TestCase):
         visible = set(_visible_activities(self.a_kid).values_list("pk", flat=True))
         self.assertIn(self.a_activity.pk, visible)       # A's own whole-family activity
         self.assertNotIn(self.b_activity.pk, visible)    # NOT B's null-family activity
+
+
+class ActivityLogTests(TestCase):
+    """Log a session for multiple chosen children on a chosen (back-dateable) date."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.parent = User.objects.create_user(username="lp", email="lp@e.com", password="pw")
+        cls.family = Family.objects.create(name="Log Fam")
+        FamilyMembership.objects.create(user=cls.parent, family=cls.family, role="parent")
+        cls.violet = Student.objects.create(parent=cls.parent, first_name="Violet", grade_level="G03", family=cls.family)
+        cls.kaylin = Student.objects.create(parent=cls.parent, first_name="Kaylin", grade_level="G07", family=cls.family)
+        cls.jj = ExternalActivity.objects.create(
+            parent=cls.parent, family=cls.family, student=None, title="Jiu Jitsu",
+            provider="Dojo", url="https://dojo.example/", emoji="🥋",
+        )
+        cls.today = timezone.localdate()
+
+    def _url(self):
+        return reverse("activities:activity_log", kwargs={"pk": self.jj.pk})
+
+    def test_form_renders_children_and_date(self):
+        self.client.login(username="lp", password="pw")
+        resp = self.client.get(self._url())
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "Violet")
+        self.assertContains(resp, "Kaylin")
+        self.assertContains(resp, 'type="date"')
+
+    def test_logs_one_entry_per_child_on_chosen_date(self):
+        self.client.login(username="lp", password="pw")
+        when = self.today - timedelta(days=3)   # a forgotten day
+        resp = self.client.post(self._url(), {
+            "children": [self.violet.pk, self.kaylin.pk], "date": when.isoformat(),
+        })
+        self.assertEqual(resp.status_code, 302)
+        entries = WorkLogEntry.objects.filter(subject="Jiu Jitsu", date=when)
+        self.assertEqual(entries.count(), 2)
+        self.assertEqual({e.child_id for e in entries}, {self.violet.pk, self.kaylin.pk})
+
+    def test_can_log_a_single_child(self):
+        self.client.login(username="lp", password="pw")
+        self.client.post(self._url(), {"children": [self.kaylin.pk], "date": self.today.isoformat()})
+        self.assertEqual(WorkLogEntry.objects.filter(child=self.kaylin, subject="Jiu Jitsu").count(), 1)
+        self.assertEqual(WorkLogEntry.objects.filter(child=self.violet, subject="Jiu Jitsu").count(), 0)
+
+    def test_relogging_same_day_is_deduped(self):
+        self.client.login(username="lp", password="pw")
+        data = {"children": [self.violet.pk], "date": self.today.isoformat()}
+        self.client.post(self._url(), data)
+        self.client.post(self._url(), data)
+        self.assertEqual(
+            WorkLogEntry.objects.filter(child=self.violet, subject="Jiu Jitsu", date=self.today).count(), 1)
+
+    def test_future_date_rejected(self):
+        self.client.login(username="lp", password="pw")
+        resp = self.client.post(self._url(), {
+            "children": [self.violet.pk], "date": (self.today + timedelta(days=2)).isoformat(),
+        })
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "future")
+        self.assertEqual(WorkLogEntry.objects.filter(subject="Jiu Jitsu").count(), 0)
+
+    def test_no_children_selected_errors(self):
+        self.client.login(username="lp", password="pw")
+        resp = self.client.post(self._url(), {"children": [], "date": self.today.isoformat()})
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(WorkLogEntry.objects.count(), 0)
+
+    def test_viewer_cannot_log(self):
+        teacher = User.objects.create_user(username="lt", email="lt@e.com", password="pw")
+        FamilyMembership.objects.create(user=teacher, family=self.family, role="teacher")
+        self.client.login(username="lt", password="pw")
+        self.assertEqual(self.client.get(self._url()).status_code, 404)

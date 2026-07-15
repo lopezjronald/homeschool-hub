@@ -45,6 +45,7 @@
 
           <form method="post" id="response-form"
                 data-autosave-url="{% url 'portal:portal_autosave' token=token set_pk=question_set.pk %}"
+                {% if wordhelp_on and not sheet.is_submitted %}data-wordhelp-url="{% url 'portal:portal_word_help' token=token set_pk=question_set.pk %}"{% endif %}
                 {% if sheet.is_submitted %}data-submitted="1"{% endif %}>
             {% csrf_token %}
 
@@ -74,7 +75,7 @@
                                   data-character="{{ name }}" rows="3"
                                   placeholder="Who is {{ name }}? What are they like?"
                                   autocomplete="off" autocorrect="off" autocapitalize="off"
-                                  spellcheck="true" data-gramm="false"
+                                  lang="en" spellcheck="{% if spellcheck_on %}true{% else %}false{% endif %}" data-gramm="false"
                                   {% if sheet.is_submitted %}readonly{% endif %}></textarea>
                       </div>
                     {% endfor %}
@@ -120,7 +121,7 @@
                 {% elif q.is_cloze %}
                   <div class="vocab-cloze" data-question-widget="{{ q.pk }}">
                     <div class="cloze-passage">
-                      {% for seg in q.cloze_segments %}{% if seg.blank is None %}{{ seg.text }}{% else %}<input type="text" class="cloze-input" data-blank="{{ seg.blank }}" aria-label="Blank {{ seg.blank|add:1 }}" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="true" data-gramm="false" {% if sheet.is_submitted %}readonly{% endif %}>{% endif %}{% endfor %}
+                      {% for seg in q.cloze_segments %}{% if seg.blank is None %}{{ seg.text }}{% else %}<input type="text" class="cloze-input" data-blank="{{ seg.blank }}" aria-label="Blank {{ seg.blank|add:1 }}" autocomplete="off" autocorrect="off" autocapitalize="off" lang="en" spellcheck="{% if spellcheck_on %}true{% else %}false{% endif %}" data-gramm="false" {% if sheet.is_submitted %}readonly{% endif %}>{% endif %}{% endfor %}
                     </div>
                     <input type="hidden" name="answer_{{ q.pk }}" data-question="{{ q.pk }}" value="{{ q.my_answer }}">
                   </div>
@@ -151,10 +152,13 @@
                     class="form-control portal-answer"
                     placeholder="Type your answer here…"
                     autocomplete="off" autocorrect="off" autocapitalize="off"
-                    spellcheck="true" data-gramm="false"
+                    lang="en" spellcheck="{% if spellcheck_on %}true{% else %}false{% endif %}" data-gramm="false"
                     {% if sheet.is_submitted %}readonly{% endif %}>
 {{ q.my_answer }}</textarea>
                   <div class="portal-wordcount text-muted" data-count-for="{{ q.pk }}"></div>
+                  {% if wordhelp_on and not sheet.is_submitted %}
+                    <div class="wordhelp-hint">✨ Tip: pick a word (double-tap it) to find better words.</div>
+                  {% endif %}
                   {% if q.supports_draft_coach and not sheet.is_submitted %}
                     <div class="coach-widget" data-coach-for="{{ q.pk }}"
                          data-coach-url="{% url 'portal:portal_draft_feedback' token=token set_pk=question_set.pk %}">
@@ -199,4 +203,5 @@
 <script src="{% static 'js/portal-characters.js' %}"></script>
 <script src="{% static 'js/portal-vocab.js' %}"></script>
 <script src="{% static 'js/portal-coach.js' %}"></script>
+<script src="{% static 'js/portal-wordhelp.js' %}"></script>
 {% endblock %}

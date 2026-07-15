@@ -150,6 +150,34 @@
 
 .portal-wordcount { font-size: 0.78rem; margin-top: 0.25rem; min-height: 1em; }
 
+/* Word helper — "better words" suggestions that appear when a word is selected */
+.wordhelp-hint { font-size: 0.78rem; color: #6b7280; margin: 0.15rem 0 0; }
+.wordhelp-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0.4rem 0 0.2rem;
+  padding: 0.5rem 0.6rem;
+  background: rgba(63, 114, 175, 0.08);
+  border: 1px solid rgba(63, 114, 175, 0.3);
+  border-radius: 12px;
+}
+.wordhelp-label { font-size: 0.85rem; font-weight: 700; color: #34557f; }
+.wordhelp-note { font-size: 0.85rem; color: #6b7280; font-style: italic; }
+.wordhelp-chip {
+  border: 2px solid rgba(63, 114, 175, 0.4);
+  background: #fff;
+  color: #24303a;
+  font-weight: 700;
+  font-size: 0.95rem;
+  border-radius: 999px;
+  padding: 0.25rem 0.7rem;
+  cursor: pointer;
+  line-height: 1.2;
+}
+.wordhelp-chip:hover, .wordhelp-chip:focus { border-color: #3f72af; background: #eef3fa; }
+
 .portal-hint { margin: 0 0 0.5rem; }
 .portal-hint summary {
   cursor: pointer;

@@ -151,7 +151,9 @@ class Command(BaseCommand):
                 "child": child,
                 "family": curriculum.family,
                 "status": Material.DRAFT,
-                "manga_text_layout": Material.LAYOUT_BAND,
+                # The Chi art is generated with a reserved balloon zone up top
+                # (see generate_chi_sum_difference), so speech floats over the art.
+                "manga_text_layout": Material.LAYOUT_FLOAT,
             },
         )
         # Refresh authored text on re-run so content edits ship, and self-heal the child link.
@@ -169,8 +171,8 @@ class Command(BaseCommand):
             if child and material.child_id is None:
                 material.child = child
                 updates.append("child")
-            if material.manga_text_layout != Material.LAYOUT_BAND:
-                material.manga_text_layout = Material.LAYOUT_BAND
+            if material.manga_text_layout != Material.LAYOUT_FLOAT:
+                material.manga_text_layout = Material.LAYOUT_FLOAT
                 updates.append("manga_text_layout")
             if updates:
                 material.save(update_fields=updates)

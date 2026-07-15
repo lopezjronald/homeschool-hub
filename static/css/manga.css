@@ -123,18 +123,23 @@
   color: #3a2a08;
 }
 
-/* Speech / thought / sfx bubbles, positioned by inline left/top %. */
+/* Speech / thought / sfx bubbles, positioned by inline left/top %. These float
+   over the art, so they only belong on panels whose art reserves empty space for
+   them (see PANEL_COMPOSITION in the generate command). Bold + a soft shadow so a
+   young reader reads the words as sitting on top of the picture. */
 .manga-bubble {
   position: absolute;
   transform: translate(-50%, -50%);
-  max-width: 40%;
-  padding: 0.28rem 0.5rem;
-  font-size: 0.75rem;
-  line-height: 1.2;
+  max-width: 42%;
+  padding: 0.4rem 0.62rem;
+  font-size: 0.88rem;
+  font-weight: 600;
+  line-height: 1.25;
   text-align: center;
   z-index: 2;
+  box-shadow: 1px 2px 5px rgba(0, 0, 0, 0.22);
 }
-.manga-speaker { display: block; font-size: 0.55rem; text-transform: uppercase; letter-spacing: 0.04em; opacity: 0.55; }
+.manga-speaker { display: block; font-size: 0.6rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; opacity: 0.6; }
 
 .manga-bubble.kind-speech,
 .manga-bubble.kind-thought {

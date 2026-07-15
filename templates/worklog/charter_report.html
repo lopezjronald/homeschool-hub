@@ -104,22 +104,27 @@
           </div>
 
           {# ---- The sample work ---- #}
-          <div class="ss-work-label">Work submitted</div>
+          <div class="ss-work-label">Work submitted{% if it.sheet.submitted_at %} · turned in {{ it.sheet.submitted_at|date:"M j, Y" }}{% endif %}</div>
           {% if it.kind == 'portal' %}
-            {% for row in it.qa_rows %}
-              <div class="ss-qa">
-                <span class="ss-qa-cat">{{ row.question.get_category_display }}</span>
-                {% if row.question.prompt %}<div class="ss-qa-prompt">{{ row.question.prompt|markdownify_inline }}</div>{% endif %}
-                {% if row.question.is_markup %}<p class="text-muted small mb-1" style="font-family:Georgia,serif;">“{{ row.question.passage }}”</p>{% endif %}
-                {% if row.answered %}
-                  <div class="ss-answer-block">{{ row.answer }}</div>
-                {% else %}
-                  <div class="text-muted fst-italic">No answer.</div>
-                {% endif %}
-              </div>
-            {% empty %}
-              <div class="text-muted fst-italic">No answers recorded.</div>
-            {% endfor %}
+            <div class="ss-worksheet">
+              {% for row in it.qa_rows %}
+                <div class="ss-qa">
+                  <div class="d-flex align-items-center gap-2 mb-1">
+                    <span class="portal-chip chip-{{ row.question.category }}">{{ row.question.get_category_display }}</span>
+                    <span class="text-muted small">Question {{ row.question.order }}</span>
+                  </div>
+                  {% if row.question.prompt %}<div class="ss-qa-prompt">{{ row.question.prompt|markdownify_inline }}</div>{% endif %}
+                  {% if row.question.is_markup %}<p class="mb-1" style="font-family:Georgia,serif;font-size:1.1rem;">“{{ row.question.passage }}”</p>{% endif %}
+                  {% if row.answered %}
+                    <div class="ss-answer-block">{{ row.answer }}</div>
+                  {% else %}
+                    <div class="text-muted fst-italic">No answer.</div>
+                  {% endif %}
+                </div>
+              {% empty %}
+                <div class="text-muted fst-italic">No answers recorded.</div>
+              {% endfor %}
+            </div>
           {% elif it.kind == 'image' %}
             <a href="{{ it.entry.attachment.url }}" target="_blank" rel="noopener">
               <img src="{{ it.entry.attachment.url }}" alt="{{ it.entry.subject }} work" class="ss-work-img">

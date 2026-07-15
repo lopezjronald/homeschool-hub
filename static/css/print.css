@@ -64,13 +64,34 @@
   font-size: .7rem; text-transform: uppercase; letter-spacing: .07em; font-weight: 700;
   color: var(--ss-muted, #5C6B62); margin: .9rem 0 .35rem;
 }
-.ss-qa { margin-bottom: .7rem; }
-.ss-qa-cat {
-  display: inline-block; font-size: .68rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em;
-  color: var(--ss-green-700, #175E3E); background: var(--ss-green-tint, rgba(30,122,80,.09));
-  border-radius: 100px; padding: .1rem .55rem; margin-bottom: .3rem;
+/* Submitted-worksheet snapshot: renders the child's work the way it looked in
+   their portal — the same category chips, prompts and answer boxes they saw. */
+.ss-worksheet {
+  background: #fbfaf5; border: 1px solid var(--ss-line, rgba(20,35,28,.1));
+  border-radius: var(--ss-r-md, 14px); padding: .9rem 1rem;
 }
+.ss-qa { padding-bottom: .8rem; margin-bottom: .8rem; border-bottom: 1px dashed var(--ss-line, rgba(20,35,28,.12)); }
+.ss-qa:last-child { border-bottom: 0; margin-bottom: 0; padding-bottom: 0; }
 .ss-qa-prompt { font-weight: 600; color: var(--ss-ink, #14231C); margin-bottom: .3rem; }
+
+/* Portal category chips (copied from portal.css so the snapshot matches). */
+.portal-chip {
+  display: inline-block; font-size: .68rem; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .07em; padding: .15rem .55rem; border-radius: 999px; background: #eef0ec; color: #5f6e66;
+}
+.chip-comprehension { background: #E6F1FB; color: #185FA5; }
+.chip-character     { background: #EEEDFE; color: #534AB7; }
+.chip-setting       { background: #E1F5EE; color: #0F6E56; }
+.chip-plot          { background: #FAEEDA; color: #854F0B; }
+.chip-conflict      { background: #FAECE7; color: #993C1D; }
+.chip-theme         { background: #FBEAF0; color: #993556; }
+.chip-style         { background: #F1EFE8; color: #5F5E5A; }
+.chip-context       { background: #E6F1FB; color: #0C447C; }
+.chip-application   { background: #EAF3DE; color: #3B6D11; }
+.chip-vocabulary    { background: #FCEBEB; color: #A32D2D; }
+.chip-grammar       { background: #EEEDFE; color: #534AB7; }
+.chip-editing       { background: #FAEEDA; color: #854F0B; }
+.chip-writing       { background: #E1F5EE; color: #0F6E56; }
 .ss-work-img { max-width: 100%; max-height: 420px; border-radius: .5rem; border: 1px solid var(--ss-line, rgba(20,35,28,.1)); }
 
 /* AI suggestion vs parent stamp */

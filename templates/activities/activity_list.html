@@ -29,7 +29,10 @@
               </p>
               {% if activity.notes %}<p class="card-text text-muted small mb-0">{{ activity.notes }}</p>{% endif %}
             </div>
-            <div class="card-footer bg-transparent d-flex gap-2">
+            <div class="card-footer bg-transparent d-flex gap-2 flex-wrap">
+              {% if can_edit %}
+                <a href="{% url 'activities:activity_log' activity.pk %}" class="btn btn-sm btn-amber">📝 Log session</a>
+              {% endif %}
               <a href="{{ activity.url }}" target="_blank" rel="noopener noreferrer" class="btn btn-sm btn-outline-primary">Launch ↗</a>
               {% if can_edit %}
                 <a href="{% url 'activities:activity_update' activity.pk %}" class="btn btn-sm btn-outline-secondary ms-auto">Edit</a>

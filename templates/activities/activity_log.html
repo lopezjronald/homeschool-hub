@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}Log {{ activity.title }} · Steadfast Scholars{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+  <div class="row justify-content-center">
+    <div class="col-md-7 col-lg-6">
+
+      <a href="{% url 'activities:activity_list' %}" class="btn btn-outline-secondary btn-sm mb-3">← Activities</a>
+
+      <div class="card">
+        <div class="card-header d-flex align-items-center gap-2">
+          <span class="ss-feature-emoji-inline">{{ activity.emoji }}</span>
+          <h4 class="mb-0">Log a {{ activity.title }} session</h4>
+        </div>
+        <div class="card-body">
+          <p class="text-muted">Mark everyone who took part — each child gets it on their own report — and set the day it happened.</p>
+
+          <form method="post">
+            {% csrf_token %}
+
+            {% if form.non_field_errors %}<div class="alert alert-danger">{{ form.non_field_errors }}</div>{% endif %}
+
+            <fieldset class="mb-3">
+              <legend class="form-label fw-semibold">{{ form.children.label }}</legend>
+              {% if form.children.errors %}<div class="text-danger small mb-1">{{ form.children.errors|striptags }}</div>{% endif %}
+              <div class="ss-checklist-list">
+                {% for choice in form.children %}
+                  <label class="ss-checkin-row d-flex align-items-center gap-2 mb-0">
+                    {{ choice.tag }}
+                    <span>{{ choice.choice_label }}</span>
+                  </label>
+                {% endfor %}
+              </div>
+            </fieldset>
+
+            <div class="mb-3">
+              <label for="{{ form.date.id_for_label }}" class="form-label fw-semibold">{{ form.date.label }}</label>
+              {{ form.date }}
+              {% if form.date.errors %}<div class="text-danger small">{{ form.date.errors|striptags }}</div>{% endif %}
+              <div class="form-text">Pick an earlier day to log a class you missed recording.</div>
+            </div>
+
+            <button type="submit" class="btn btn-amber">Log it 🎉</button>
+          </form>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+{% endblock %}

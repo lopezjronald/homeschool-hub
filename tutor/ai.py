@@ -208,6 +208,67 @@ def suggest_words(word, grade_level="", client=None):
     return out[:6]
 
 
+SPELLCHECK_PROMPT = (
+    "You are a gentle spell checker for a young child's schoolwork. Find words in the "
+    "child's text that are MISSPELLED — not a correct spelling of a real English word. "
+    "Judge spelling ONLY: ignore capitalization, punctuation, grammar, spacing, and real "
+    "names/proper nouns. Treat phonetic kid spellings as misspelled and fix them "
+    "(e.g. 'speshel'->'special', 'becuse'->'because', 'wuz'->'was', 'thay'->'they'). "
+    "For each misspelled word give 1 to 3 most likely intended spellings, best first.\n"
+    'Respond with ONLY a JSON array; each item is {"wrong": "<the misspelled word exactly '
+    'as it appears in the text>", "fixes": ["correct", ...]}. Do not include correctly '
+    "spelled words. If nothing is misspelled, return []."
+)
+
+
+def check_spelling(text, grade_level="", client=None):
+    """Find misspelled words in a child's writing → [{"wrong", "fixes":[...]}].
+
+    Uses the small fast model. Judges spelling only and handles phonetic
+    kid-spellings a plain edit-distance checker would miss. [] on any failure.
+    """
+    text = (text or "").strip()
+    if not text or not is_configured():
+        return []
+    if len(text) > 4000:
+        text = text[:4000]
+    if client is None:
+        client = _make_client()
+    user_prompt = "Grade level: %s\n\nText:\n%s" % (grade_level or "elementary", text)
+    try:
+        response = client.messages.create(
+            model=WORD_HELP_MODEL,
+            max_tokens=500,
+            system=SPELLCHECK_PROMPT,
+            messages=[{"role": "user", "content": user_prompt}],
+        )
+    except Exception:  # noqa: BLE001 — degrade to no squiggles
+        return []
+    body = next((b.text for b in response.content if getattr(b, "type", None) == "text"), "")
+    cleaned = body.strip()
+    if cleaned.startswith("```"):
+        cleaned = cleaned.split("```", 2)[1] if "```" in cleaned[3:] else cleaned
+        cleaned = cleaned.removeprefix("json").strip().strip("`").strip()
+    try:
+        data = json.loads(cleaned)
+    except (ValueError, TypeError):
+        return []
+    if not isinstance(data, list):
+        return []
+    out = []
+    for item in data:
+        if not isinstance(item, dict):
+            continue
+        wrong = str(item.get("wrong", "")).strip()
+        fixes = item.get("fixes", [])
+        if not wrong or not isinstance(fixes, list):
+            continue
+        clean_fixes = [str(f).strip() for f in fixes if str(f).strip()][:3]
+        if clean_fixes:
+            out.append({"wrong": wrong, "fixes": clean_fixes})
+    return out[:20]
+
+
 def review_draft(*, draft, assignment, grade_level, subject, client=None):
     """Coach a child's ROUGH draft: praise + 2-3 actionable suggestions.
 

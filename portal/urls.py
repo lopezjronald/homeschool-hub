@@ -11,6 +11,7 @@ urlpatterns = [
     path("<str:token>/questions/<int:set_pk>/", views.portal_questions, name="portal_questions"),
     path("<str:token>/questions/<int:set_pk>/autosave/", views.portal_autosave, name="portal_autosave"),
     path("<str:token>/questions/<int:set_pk>/word-help/", views.portal_word_help, name="portal_word_help"),
+    path("<str:token>/questions/<int:set_pk>/spellcheck/", views.portal_spellcheck, name="portal_spellcheck"),
     path(
         "<str:token>/questions/<int:set_pk>/coach/",
         views.portal_draft_feedback,

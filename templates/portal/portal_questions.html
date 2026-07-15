@@ -46,6 +46,7 @@
           <form method="post" id="response-form"
                 data-autosave-url="{% url 'portal:portal_autosave' token=token set_pk=question_set.pk %}"
                 {% if wordhelp_on and not sheet.is_submitted %}data-wordhelp-url="{% url 'portal:portal_word_help' token=token set_pk=question_set.pk %}"{% endif %}
+                {% if spellcheck_on and not sheet.is_submitted %}data-spellcheck-url="{% url 'portal:portal_spellcheck' token=token set_pk=question_set.pk %}"{% endif %}
                 {% if sheet.is_submitted %}data-submitted="1"{% endif %}>
             {% csrf_token %}
 
@@ -204,4 +205,5 @@
 <script src="{% static 'js/portal-vocab.js' %}"></script>
 <script src="{% static 'js/portal-coach.js' %}"></script>
 <script src="{% static 'js/portal-wordhelp.js' %}"></script>
+<script src="{% static 'js/portal-spellcheck.js' %}"></script>
 {% endblock %}

@@ -524,3 +524,27 @@ def portal_word_help(request, token, set_pk):
 
     words = thesaurus.synonyms(word, grade_level=student.get_grade_level_display())
     return JsonResponse({"ok": bool(words), "word": word, "words": words})
+
+
+@csrf_exempt
+@require_POST
+def portal_spellcheck(request, token, set_pk):
+    """Find misspelled words in the child's writing so the page can draw its own
+    red squiggle + one-tap fixes. Token-authed; disabled on spelling curricula.
+    Returns [{"wrong", "fixes":[...]}]; empty on any failure.
+    """
+    student = _resolve_student(token)
+    question_set = get_object_or_404(_visible_question_sets(student), pk=set_pk)
+    if is_spelling(question_set.lesson.chapter.curriculum.subject):
+        return JsonResponse({"ok": False, "misspelled": []})
+
+    try:
+        payload = json.loads(request.body.decode("utf-8"))
+    except (ValueError, UnicodeDecodeError):
+        return JsonResponse({"ok": False, "misspelled": []}, status=400)
+    text = str(payload.get("text", ""))[:4000] if isinstance(payload, dict) else ""
+
+    from tutor import ai
+
+    misspelled = ai.check_spelling(text, grade_level=student.get_grade_level_display())
+    return JsonResponse({"ok": True, "misspelled": misspelled})

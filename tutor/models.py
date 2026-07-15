@@ -115,6 +115,17 @@ class Material(models.Model):
         (SKILL_DRILL, "Drill"),
     ]
 
+    # How manga dialogue is laid out. "band" keeps every speech line in a
+    # reserved strip under the art, so text can never cover a character (the
+    # robust default, per professional lettering practice). "float" overlays
+    # balloons on the art and is only safe when the art reserves negative space.
+    LAYOUT_BAND = "band"
+    LAYOUT_FLOAT = "float"
+    LAYOUT_CHOICES = [
+        (LAYOUT_BAND, "Reserved dialogue band (text below the art)"),
+        (LAYOUT_FLOAT, "Floating balloons (text over the art)"),
+    ]
+
     DRAFT = "draft"
     APPROVED = "approved"
     STATUS_CHOICES = [
@@ -150,6 +161,14 @@ class Material(models.Model):
     )
     title = models.CharField(max_length=200)
     skill_type = models.CharField(max_length=20, choices=SKILL_CHOICES, default=SKILL_MANGA)
+    manga_text_layout = models.CharField(
+        max_length=10,
+        choices=LAYOUT_CHOICES,
+        default=LAYOUT_BAND,
+        help_text="How manga dialogue renders: in a reserved band under each panel "
+                  "(never covers the art) or as balloons floating over the art "
+                  "(only use when the art reserves empty space for them).",
+    )
     student_intro = models.TextField(
         blank=True,
         help_text="A short, grade-level explanation for the child of what this lesson is "

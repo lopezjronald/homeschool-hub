@@ -63,6 +63,54 @@
 .manga-placeholder span { font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; font-size: 0.8rem; }
 .manga-placeholder small { max-width: 24ch; line-height: 1.25; }
 
+/* Reserved dialogue band — the speech for a panel lives here, in a strip UNDER
+   the art, so a balloon can never cover a character (the robust, letterer-approved
+   layout for AI art that has no reserved empty space). Each line is a small speech
+   balloon; speakers are colour-coded and alternate sides so a young reader can
+   follow who is talking. */
+.manga-dialogue {
+  background: #fbf8f0;
+  border-top: 3px solid #111;
+  padding: 0.6rem 0.7rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+.manga-line {
+  position: relative;
+  margin: 0;
+  align-self: flex-start;
+  max-width: 88%;
+  background: #fff;
+  border: 2px solid #111;
+  border-radius: 0.5rem 0.95rem 0.95rem 0.95rem;
+  padding: 0.35rem 0.7rem;
+  font-size: 1rem;          /* large, for early readers */
+  line-height: 1.35;
+  color: #1a1a1a;
+  box-shadow: 2px 2px 0 rgba(17, 17, 17, 0.12);
+}
+.manga-line .manga-who {
+  display: block;
+  font-size: 0.6rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  opacity: 0.85;
+  margin-bottom: 0.05rem;
+}
+.manga-line .manga-said { display: block; }
+/* Chi speaks from the left (blue); Blackie answers from the right (ink). */
+.manga-line.speaker-chi { border-color: #3f72af; }
+.manga-line.speaker-chi .manga-who { color: #3f72af; }
+.manga-line.speaker-blackie {
+  align-self: flex-end;
+  border-color: #2b2b2b;
+  border-radius: 0.95rem 0.5rem 0.95rem 0.95rem;
+}
+.manga-line.speaker-blackie .manga-who { color: #2b2b2b; }
+.manga-line.kind-thought { font-style: italic; border-style: dashed; }
+
 /* Narrator / math caption — a full-width band BELOW the art. Always fully
    legible (essential for the math), never clipped, never over the picture. */
 .manga-caption {

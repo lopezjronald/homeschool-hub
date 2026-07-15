@@ -46,12 +46,23 @@
                         <small>{{ panel.alt }}</small>
                       </div>
                     {% endif %}
-                    {% for b in panel.bubbles %}
-                      <div class="manga-bubble kind-{{ b.kind }}" style="left:{{ b.x }}%; top:{{ b.y }}%;">
-                        {% if b.speaker %}<b class="manga-speaker">{{ b.speaker }}</b>{% endif %}{{ b.text }}
-                      </div>
-                    {% endfor %}
+                    {% if material.manga_text_layout == 'float' %}
+                      {% for b in panel.bubbles %}
+                        <div class="manga-bubble kind-{{ b.kind }}" style="left:{{ b.x }}%; top:{{ b.y }}%;">
+                          {% if b.speaker %}<b class="manga-speaker">{{ b.speaker }}</b>{% endif %}{{ b.text }}
+                        </div>
+                      {% endfor %}
+                    {% endif %}
                   </div>
+                  {% if material.manga_text_layout != 'float' and panel.bubbles %}
+                    <div class="manga-dialogue">
+                      {% for b in panel.bubbles %}
+                        <p class="manga-line kind-{{ b.kind }} speaker-{{ b.speaker|lower|default:'narrator' }}">
+                          {% if b.speaker %}<span class="manga-who">{{ b.speaker }}</span>{% endif %}<span class="manga-said">{{ b.text }}</span>
+                        </p>
+                      {% endfor %}
+                    </div>
+                  {% endif %}
                   {% if panel.caption %}<figcaption class="manga-caption">{{ panel.caption }}</figcaption>{% endif %}
                 </figure>
               {% endfor %}

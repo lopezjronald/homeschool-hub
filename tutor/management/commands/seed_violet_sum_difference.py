@@ -151,6 +151,7 @@ class Command(BaseCommand):
                 "child": child,
                 "family": curriculum.family,
                 "status": Material.DRAFT,
+                "manga_text_layout": Material.LAYOUT_BAND,
             },
         )
         # Refresh authored text on re-run so content edits ship, and self-heal the child link.
@@ -168,6 +169,9 @@ class Command(BaseCommand):
             if child and material.child_id is None:
                 material.child = child
                 updates.append("child")
+            if material.manga_text_layout != Material.LAYOUT_BAND:
+                material.manga_text_layout = Material.LAYOUT_BAND
+                updates.append("manga_text_layout")
             if updates:
                 material.save(update_fields=updates)
 

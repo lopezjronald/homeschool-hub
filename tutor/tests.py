@@ -356,13 +356,28 @@ class MangaPanelTests(TestCase):
         self.assertEqual(self.material.panels.count(), 8)
 
     def test_detail_renders_manga_page(self):
+        # Default layout is the reserved dialogue band: speech renders UNDER the art
+        # (never as a floating overlay that could cover a character).
         self._build()
         self.client.login(username="gp", password="pw")
         resp = self.client.get(reverse("tutor:material_detail", kwargs={"pk": self.material.pk}))
         self.assertContains(resp, "manga-page")
-        self.assertContains(resp, "manga-bubble")
-        self.assertContains(resp, "Then borrow me, partner")   # a bubble line
+        self.assertContains(resp, "manga-dialogue")
+        self.assertContains(resp, "manga-line")
+        self.assertContains(resp, "Then borrow me, partner")   # a dialogue line
+        self.assertNotContains(resp, "manga-bubble")           # no floating overlay in band mode
         self.assertContains(resp, "manga-placeholder")          # art not generated yet
+
+    def test_detail_renders_floating_balloons_when_selected(self):
+        # Float layout overlays balloons on the art (only for art that reserves space).
+        self._build()
+        self.material.manga_text_layout = Material.LAYOUT_FLOAT
+        self.material.save(update_fields=["manga_text_layout"])
+        self.client.login(username="gp", password="pw")
+        resp = self.client.get(reverse("tutor:material_detail", kwargs={"pk": self.material.pk}))
+        self.assertContains(resp, "manga-bubble")
+        self.assertContains(resp, "Then borrow me, partner")
+        self.assertNotContains(resp, "manga-dialogue")
 
     def test_imagegen_degrades_without_token(self):
         with override_settings(REPLICATE_API_TOKEN=""):

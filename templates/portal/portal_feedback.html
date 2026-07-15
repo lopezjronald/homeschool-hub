@@ -82,16 +82,32 @@
     if (note) { note.textContent = msgs[i]; }
   }, 3000);
 
-  // Never hold longer than ~28s (Heroku hard-kills the request at 30s).
+  var url = "{% url 'portal:portal_feedback_generate' token=token set_pk=question_set.pk %}";
+  // Overall guard: never hold longer than ~28s (Heroku hard-kills at 30s).
   var timer = setTimeout(function () { finish(null); }, 28000);
 
-  fetch("{% url 'portal:portal_feedback_generate' token=token set_pk=question_set.pk %}", {
-    method: "POST",
-    credentials: "same-origin",
-  })
-    .then(function (resp) { return resp.ok ? resp.json() : { ok: false }; })
-    .then(function (data) { finish(data && data.ok ? data : null); })
-    .catch(function () { finish(null); });
+  // Try up to twice. Grading is idempotent (the server serialises concurrent
+  // grade calls on the sheet row), so a retry either finishes the grade or
+  // returns the one the first attempt just saved — no manual refresh needed.
+  function attempt(triesLeft) {
+    if (done) { return; }
+    var ctrl = new AbortController();
+    var abortTimer = setTimeout(function () { ctrl.abort(); }, 13000);
+    fetch(url, { method: "POST", credentials: "same-origin", signal: ctrl.signal })
+      .then(function (resp) { return resp.ok ? resp.json() : { ok: false }; })
+      .then(function (data) {
+        clearTimeout(abortTimer);
+        if (data && data.ok) { finish(data); }
+        else if (triesLeft > 0) { attempt(triesLeft - 1); }
+        else { finish(null); }
+      })
+      .catch(function () {
+        clearTimeout(abortTimer);
+        if (triesLeft > 0 && !done) { attempt(triesLeft - 1); }
+        else { finish(null); }
+      });
+  }
+  attempt(1);
 
   function finish(data) {
     if (done) { return; }

@@ -85,8 +85,7 @@ PANELS = [
                  "BLACKIE sits beside her, watching patiently. The counting gesture is clear and obvious.",
         "refs": ["chi", "blackie"],
         "bubbles": [
-            {"speaker": "Chi", "kind": "thought", "x": 27, "y": 15, "text": "Eight kitties here… five kitties there…"},
-            {"speaker": "Chi", "kind": "speech", "x": 27, "y": 44, "text": "How many all together? Chi wants to know!"},
+            {"speaker": "Chi", "kind": "speech", "x": 33, "y": 22, "text": "Eight here, five there… how many all together?"},
         ],
     },
     {

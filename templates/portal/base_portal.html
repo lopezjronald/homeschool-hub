@@ -17,7 +17,7 @@
       </a>
       <div class="d-flex align-items-center gap-2">
         <span class="badge portal-level-badge">{{ student.get_grade_level_display }}</span>
-        <a class="portal-nav-parent" href="{% url 'home' %}" title="Back to the parent site">
+        <a class="portal-nav-parent" href="{% url 'portal:portal_parent_gate' token=token %}" title="Back to the parent dashboard">
           👨‍👩‍👧 Parents
         </a>
       </div>
@@ -31,7 +31,7 @@
   <footer class="text-center text-muted small pb-4">
     Steadfast Scholars · keep growing 🌳
     <div class="mt-2">
-      <a class="portal-parent-link" href="{% url 'home' %}">Parent or teacher? Back to Steadfast Scholars →</a>
+      <a class="portal-parent-link" href="{% url 'portal:portal_parent_gate' token=token %}">Parent or teacher? Back to Steadfast Scholars →</a>
     </div>
   </footer>
 

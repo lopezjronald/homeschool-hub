@@ -11,10 +11,61 @@ aligns with what the child was told.
 The agent never finalizes: that stays a parent decision (mastery-not-grades).
 """
 
-from django.db import transaction
+import logging
+import threading
+
+from django.conf import settings
+from django.db import connections, transaction
 
 from . import ai
 from .models import MasteryAssessment
+
+logger = logging.getLogger(__name__)
+
+
+def start_background_grade(sheet_pk):
+    """Grade sheet ``sheet_pk`` off the request path so it can't hit the 30s wall.
+
+    Grading a submission used to run inside the child's web request, racing
+    Heroku's hard 30s router cap; heavier lessons blew past it and the assessment
+    was never saved. Instead we hand the grade to a daemon thread and let the
+    feedback page poll for the result. Grading is idempotent (``auto_grade_sheet``
+    serialises on the sheet row), so a duplicate kickoff is harmless.
+
+    Tests set ``GRADE_IN_BACKGROUND = False`` to run the grade inline (no thread),
+    which keeps the DB transaction and any mocked client on the calling thread.
+    """
+    if getattr(settings, "GRADE_IN_BACKGROUND", True):
+        threading.Thread(target=_threaded_grade, args=(sheet_pk,), daemon=True).start()
+    else:
+        _grade_now(sheet_pk)
+
+
+def _threaded_grade(sheet_pk):
+    """Run a grade in its own thread, then release that thread's DB connection."""
+    try:
+        _grade_now(sheet_pk)
+    finally:
+        # This thread opened its own (thread-local) connection; close it so we
+        # don't leak a Postgres connection per grade on the dyno.
+        connections.close_all()
+
+
+def _grade_now(sheet_pk):
+    """Load the sheet fresh and grade it, swallowing failures (a background grade
+    must never take down the worker). A failed grade leaves no assessment, so the
+    feedback poll simply times out and the parent can still grade from the report."""
+    from .models import ResponseSheet
+
+    try:
+        sheet = (
+            ResponseSheet.objects.select_related(
+                "question_set__lesson__chapter__curriculum", "child", "work_entry",
+            ).get(pk=sheet_pk)
+        )
+        auto_grade_sheet(sheet)
+    except Exception:  # noqa: BLE001 — never let a background grade crash the worker
+        logger.exception("Background grade failed for response sheet %s", sheet_pk)
 
 
 def _grade_context(sheet):

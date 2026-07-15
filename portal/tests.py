@@ -3,8 +3,9 @@ from io import StringIO
 from unittest import mock
 
 from django.contrib.auth import get_user_model
+from django.core.cache import cache
 from django.core.management import call_command
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.urls import reverse
 
 from core.models import Family, FamilyMembership
@@ -1334,3 +1335,166 @@ class AMouseCalledWolfSeedTests(TestCase):
         call_command("seed_a_mouse_called_wolf", "--for-user", "mw", stdout=StringIO())
         after = QuestionSet.objects.filter(lesson__chapter__curriculum=self.curriculum).count()
         self.assertEqual(before, after)
+
+
+class BackgroundGradingTests(TestCase):
+    """HH: submit-time grading runs off the request path; the page polls for it."""
+
+    GRADE_RESULT = {
+        "level": "proficient",
+        "summary": "Solid comprehension against the rubric.",
+        "criteria": [{"criterion": "Complete sentences", "met": True, "comment": "Yes"}],
+        "encouragement": "Rae, your answer about Wolf's bravery was wonderful!",
+        "kid_highlights": ["You used complete sentences.", "Add one more detail next time."],
+        "parent_pointers": ["Ask Rae to point to the part that shows bravery."],
+    }
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.parent = User.objects.create_user(username="bg", email="bg@e.com", password="pw")
+        cls.family = Family.objects.create(name="BG Fam")
+        FamilyMembership.objects.create(user=cls.parent, family=cls.family, role="parent")
+        cls.child = Student.objects.create(
+            parent=cls.parent, first_name="Rae", grade_level="G03", family=cls.family,
+        )
+        cls.cur = Curriculum.objects.create(
+            parent=cls.parent, name="BG Course", subject="Literature",
+            grade_level="G03", family=cls.family,
+        )
+        ch = Chapter.objects.create(curriculum=cls.cur, number=1, title="One")
+        cls.lesson = Lesson.objects.create(chapter=ch, order=1, number=1, title="L1")
+        CurriculumPlacement.objects.create(child=cls.child, curriculum=cls.cur, current_lesson=cls.lesson)
+        cls.qset = QuestionSet.objects.create(
+            lesson=cls.lesson, title="Comprehension", family=cls.family,
+            status=QuestionSet.APPROVED, rubric="Answer in complete sentences.",
+        )
+        cls.q = Question.objects.create(
+            question_set=cls.qset, order=1, category="comprehension", prompt="Why is Wolf brave?",
+        )
+        cls.token = make_portal_token(cls.child)
+
+    def _url(self, name, **kw):
+        return reverse(f"portal:{name}", kwargs={"token": self.token, **kw})
+
+    def _submit(self):
+        return self.client.post(
+            self._url("portal_questions", set_pk=self.qset.pk),
+            data={f"answer_{self.q.pk}": "Wolf sings for help even though he is small."},
+        )
+
+    def test_status_reports_not_ready_then_ready(self):
+        self._submit()
+        body = self.client.get(self._url("portal_feedback_status", set_pk=self.qset.pk)).json()
+        self.assertFalse(body["ready"])
+        self.assertFalse(body["grading"])        # no key configured in tests → nothing to wait for
+        # Grade it (inline via the synchronous fallback with a mocked grader).
+        with mock.patch("tutor.ai.is_configured", return_value=True), \
+             mock.patch("tutor.ai.grade_work", return_value=dict(self.GRADE_RESULT)):
+            self.client.post(self._url("portal_feedback_generate", set_pk=self.qset.pk))
+        body = self.client.get(self._url("portal_feedback_status", set_pk=self.qset.pk)).json()
+        self.assertTrue(body["ready"])
+        self.assertIn("bravery", body["encouragement"])
+        self.assertEqual(len(body["highlights"]), 2)
+        self.assertNotIn("level", body)          # the child never sees a level
+
+    @override_settings(GRADE_IN_BACKGROUND=False)
+    def test_start_grades_and_is_idempotent(self):
+        from tutor.models import MasteryAssessment
+
+        self._submit()
+        with mock.patch("tutor.ai.is_configured", return_value=True), \
+             mock.patch("tutor.ai.grade_work", return_value=dict(self.GRADE_RESULT)) as mocked:
+            r1 = self.client.post(self._url("portal_feedback_start", set_pk=self.qset.pk))
+            self.assertTrue(r1.json()["grading"])            # grade kicked off
+            self.assertEqual(MasteryAssessment.objects.count(), 1)   # ran inline (background off)
+            r2 = self.client.post(self._url("portal_feedback_start", set_pk=self.qset.pk))
+            self.assertTrue(r2.json()["ready"])              # already graded → ready, no re-grade
+        self.assertEqual(mocked.call_count, 1)               # graded exactly once
+
+    def test_start_reports_grader_off_when_unconfigured(self):
+        from tutor.models import MasteryAssessment
+
+        self._submit()
+        body = self.client.post(self._url("portal_feedback_start", set_pk=self.qset.pk)).json()
+        self.assertFalse(body["grading"])                    # no key in tests
+        self.assertEqual(MasteryAssessment.objects.count(), 0)
+
+    @override_settings(GRADE_IN_BACKGROUND=False)
+    def test_grading_is_deferred_to_the_feedback_page(self):
+        # Grading is triggered once, by the feedback page's start endpoint — not
+        # at submit time — so a submission is never graded twice.
+        from tutor.models import MasteryAssessment
+
+        with mock.patch("tutor.ai.is_configured", return_value=True), \
+             mock.patch("tutor.ai.grade_work", return_value=dict(self.GRADE_RESULT)):
+            self._submit()
+            self.assertEqual(MasteryAssessment.objects.count(), 0)   # submit alone doesn't grade
+            self.client.post(self._url("portal_feedback_start", set_pk=self.qset.pk))
+            self.assertEqual(MasteryAssessment.objects.count(), 1)   # the feedback page grades it
+
+    def test_status_scoped_to_own_token(self):
+        self._submit()
+        stranger = Student.objects.create(
+            parent=self.parent, first_name="Nope", grade_level="G03", family=self.family,
+        )
+        url = reverse("portal:portal_feedback_status",
+                      kwargs={"token": make_portal_token(stranger), "set_pk": self.qset.pk})
+        # A different child's token can't even see this question set (not placed in it).
+        self.assertEqual(self.client.get(url).status_code, 404)
+
+
+class ParentGateTests(TestCase):
+    """Portal → parent dashboard: a password-only re-auth that lands on the dashboard."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.parent = User.objects.create_user(
+            username="pg", email="pg@e.com", password="s3cret", first_name="Dana",
+        )
+        cls.family = Family.objects.create(name="Gate Fam")
+        FamilyMembership.objects.create(user=cls.parent, family=cls.family, role="parent")
+        cls.child = Student.objects.create(
+            parent=cls.parent, first_name="Rae", grade_level="G03", family=cls.family,
+        )
+        cls.token = make_portal_token(cls.child)
+
+    def setUp(self):
+        cache.clear()  # the brute-force lockout counter lives in the process cache
+
+    def _gate_url(self):
+        return reverse("portal:portal_parent_gate", kwargs={"token": self.token})
+
+    def test_gate_prompts_for_password_not_the_login_page(self):
+        resp = self.client.get(self._gate_url())
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "Parent access")
+        self.assertContains(resp, "Dana")            # greets the known parent from the token
+        self.assertContains(resp, "password")
+
+    def test_correct_password_signs_in_and_lands_on_dashboard(self):
+        resp = self.client.post(self._gate_url(), data={"password": "s3cret"})
+        self.assertEqual(resp.status_code, 302)
+        self.assertEqual(resp["Location"], reverse("dashboard:dashboard"))
+        self.assertEqual(int(self.client.session["_auth_user_id"]), self.parent.pk)
+
+    def test_wrong_password_shows_error_and_stays_signed_out(self):
+        resp = self.client.post(self._gate_url(), data={"password": "wrong"})
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "Please try again")
+        self.assertNotIn("_auth_user_id", self.client.session)
+
+    def test_live_session_skips_the_gate(self):
+        self.client.login(username="pg", password="s3cret")
+        resp = self.client.get(self._gate_url())
+        self.assertEqual(resp.status_code, 302)
+        self.assertEqual(resp["Location"], reverse("dashboard:dashboard"))
+
+    def test_repeated_wrong_passwords_lock_out_brute_force(self):
+        for _ in range(8):
+            self.client.post(self._gate_url(), data={"password": "wrong"})
+        # further attempts are refused — even the correct password, while locked.
+        resp = self.client.post(self._gate_url(), data={"password": "wrong"})
+        self.assertContains(resp, "Too many tries")
+        resp = self.client.post(self._gate_url(), data={"password": "s3cret"})
+        self.assertContains(resp, "Too many tries")
+        self.assertNotIn("_auth_user_id", self.client.session)

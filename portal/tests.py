@@ -1,5 +1,6 @@
 import json
 from io import StringIO
+from unittest import mock
 
 from django.contrib.auth import get_user_model
 from django.core.management import call_command
@@ -359,6 +360,79 @@ class MarkupTests(TestCase):
         before = QuestionSet.objects.count()
         call_command("seed_eiw_violet", "--for-user", "mup", stdout=StringIO())
         self.assertEqual(QuestionSet.objects.count(), before)
+
+
+class SpellcheckAndWordHelpTests(TestCase):
+    """Red-squiggle spellcheck + 'better words' helper on writing curricula,
+    both switched OFF on spelling curricula."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.parent = User.objects.create_user(username="wh", email="wh@e.com", password="pw")
+        cls.family = Family.objects.create(name="WordHelp Fam")
+        FamilyMembership.objects.create(user=cls.parent, family=cls.family, role="parent")
+        cls.violet = Student.objects.create(
+            parent=cls.parent, first_name="Violet", grade_level="G03", family=cls.family,
+        )
+        cls.writing_set = cls._make_set("Blackbird Writing", "Writing")
+        cls.spelling_set = cls._make_set("Spelling Week 1", "Spelling")
+        cls.token = make_portal_token(cls.violet)
+
+    @classmethod
+    def _make_set(cls, name, subject):
+        cur = Curriculum.objects.create(
+            parent=cls.parent, name=name, subject=subject, family=cls.family,
+        )
+        ch = Chapter.objects.create(curriculum=cur, number=1, title="Unit 1")
+        lesson = Lesson.objects.create(chapter=ch, order=1, number=1, title="L1")
+        CurriculumPlacement.objects.create(child=cls.violet, curriculum=cur, current_lesson=lesson)
+        qset = QuestionSet.objects.create(
+            lesson=lesson, title=name, family=cls.family, status=QuestionSet.APPROVED,
+        )
+        Question.objects.create(
+            question_set=qset, order=1, category="editing",
+            response_type=Question.TYPE_TEXT, prompt="Write about it.",
+        )
+        return qset
+
+    def _url(self, name, **kw):
+        return reverse(f"portal:{name}", kwargs={"token": self.token, **kw})
+
+    def test_writing_curriculum_enables_spellcheck_and_wordhelp(self):
+        resp = self.client.get(self._url("portal_questions", set_pk=self.writing_set.pk))
+        self.assertContains(resp, 'spellcheck="true"')
+        self.assertContains(resp, "wordhelp-hint")
+        self.assertContains(resp, "data-wordhelp-url")
+
+    def test_spelling_curriculum_disables_spellcheck_and_wordhelp(self):
+        resp = self.client.get(self._url("portal_questions", set_pk=self.spelling_set.pk))
+        self.assertContains(resp, 'spellcheck="false"')
+        self.assertNotContains(resp, 'spellcheck="true"')
+        self.assertNotContains(resp, "wordhelp-hint")
+        self.assertNotContains(resp, "data-wordhelp-url")
+
+    @mock.patch("portal.thesaurus.synonyms", return_value=["glad", "joyful", "cheerful"])
+    def test_word_help_returns_suggestions(self, _syn):
+        resp = self.client.post(
+            self._url("portal_word_help", set_pk=self.writing_set.pk),
+            data=json.dumps({"word": "happy"}),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertTrue(data["ok"])
+        self.assertEqual(data["words"], ["glad", "joyful", "cheerful"])
+
+    @mock.patch("portal.thesaurus.synonyms", return_value=["glad"])
+    def test_word_help_is_disabled_on_spelling_curricula(self, syn):
+        resp = self.client.post(
+            self._url("portal_word_help", set_pk=self.spelling_set.pk),
+            data=json.dumps({"word": "happy"}),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()["words"], [])
+        syn.assert_not_called()
 
 
 class SocraticStandardTests(TestCase):

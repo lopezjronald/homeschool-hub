@@ -19,7 +19,7 @@ from django.views.decorators.http import require_POST
 
 from activities.models import ExternalActivity
 from curricula.models import Curriculum, CurriculumPlacement
-from curricula.subjects import emoji_for
+from curricula.subjects import emoji_for, is_spelling
 from tutor.models import Material, QuestionSet, ResponseSheet
 from worklog.models import WorkLogEntry
 
@@ -273,12 +273,18 @@ def portal_questions(request, token, set_pk):
         q.my_answer = sheet.answer_for(q)
         q.my_coach = (sheet.draft_feedback or {}).get(str(q.pk))
 
+    # Spell-check + synonym help everywhere EXCEPT spelling curricula, where the
+    # child is supposed to spell the words unaided.
+    spelling = is_spelling(question_set.lesson.chapter.curriculum.subject)
+
     return render(request, "portal/portal_questions.html", {
         "student": student,
         "token": token,
         "question_set": question_set,
         "questions": questions,
         "sheet": sheet,
+        "spellcheck_on": not spelling,
+        "wordhelp_on": not spelling,
     })
 
 
@@ -493,3 +499,28 @@ def portal_autosave(request, token, set_pk):
         "saved_at": timezone.localtime(sheet.updated_at).strftime("%I:%M %p").lstrip("0"),
         "answered": sheet.answered_count,
     })
+
+
+@csrf_exempt
+@require_POST
+def portal_word_help(request, token, set_pk):
+    """Suggest better/similar words for a word the child selected while writing.
+
+    Token-authed like autosave. Disabled on spelling curricula. Returns only a
+    small list of clean words; degrades to an empty list on any lookup failure.
+    """
+    student = _resolve_student(token)
+    question_set = get_object_or_404(_visible_question_sets(student), pk=set_pk)
+    if is_spelling(question_set.lesson.chapter.curriculum.subject):
+        return JsonResponse({"ok": False, "words": []})
+
+    try:
+        payload = json.loads(request.body.decode("utf-8"))
+    except (ValueError, UnicodeDecodeError):
+        return JsonResponse({"ok": False, "words": []}, status=400)
+    word = str(payload.get("word", "")).strip()[:40] if isinstance(payload, dict) else ""
+
+    from . import thesaurus
+
+    words = thesaurus.synonyms(word, grade_level=student.get_grade_level_display())
+    return JsonResponse({"ok": bool(words), "word": word, "words": words})

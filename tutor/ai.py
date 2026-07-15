@@ -157,6 +157,57 @@ def grade_work(*, rubric, answers, grade_level, subject, objectives="", client=N
     return _parse_response(text)
 
 
+WORD_HELP_MODEL = "claude-haiku-4-5"  # tiny, fast, cheap — right tool for a word lookup
+
+WORD_HELP_PROMPT = (
+    "You help a young student find a better or more interesting word while writing. "
+    "Given ONE word and the student's grade level, list a few common words with a "
+    "similar meaning that a child at that grade already knows and could use instead.\n"
+    "Rules: only real, common, age-appropriate SINGLE words (no phrases, no proper "
+    "nouns); 3 to 6 of them; never include the original word; if the input is not a "
+    "normal English word, return an empty list.\n"
+    'Respond with ONLY a JSON array of lowercase words, e.g. ["glad","cheerful","joyful"].'
+)
+
+
+def suggest_words(word, grade_level="", client=None):
+    """A few kid-friendly alternatives for ``word`` (or []). Uses a small fast model
+    (not the grader), so it stays cheap and quick for an on-demand word lookup."""
+    word = (word or "").strip()
+    if not word or not is_configured():
+        return []
+    if client is None:
+        client = _make_client()
+    user_prompt = "Word: %s\nStudent grade level: %s" % (word, grade_level or "elementary")
+    try:
+        response = client.messages.create(
+            model=WORD_HELP_MODEL,
+            max_tokens=120,
+            system=WORD_HELP_PROMPT,
+            messages=[{"role": "user", "content": user_prompt}],
+        )
+    except Exception:  # noqa: BLE001 — degrade to no suggestions
+        return []
+    text = next((b.text for b in response.content if getattr(b, "type", None) == "text"), "")
+    cleaned = text.strip()
+    if cleaned.startswith("```"):
+        cleaned = cleaned.split("```", 2)[1] if "```" in cleaned[3:] else cleaned
+        cleaned = cleaned.removeprefix("json").strip().strip("`").strip()
+    try:
+        data = json.loads(cleaned)
+    except (ValueError, TypeError):
+        return []
+    if not isinstance(data, list):
+        return []
+    low = word.lower()
+    out = []
+    for w in data:
+        w = str(w).strip().lower()
+        if w and w != low and w.replace("'", "").replace("-", "").isalpha() and w not in out:
+            out.append(w)
+    return out[:6]
+
+
 def review_draft(*, draft, assignment, grade_level, subject, client=None):
     """Coach a child's ROUGH draft: praise + 2-3 actionable suggestions.
 

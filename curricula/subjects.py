@@ -17,3 +17,10 @@ SUBJECT_EMOJI = {
 def emoji_for(subject):
     """Return a friendly emoji for a subject name (book fallback)."""
     return SUBJECT_EMOJI.get((subject or "").strip().lower(), "📘")
+
+
+def is_spelling(subject):
+    """True for a spelling curriculum, where we deliberately DON'T help with
+    spelling (no red squiggle, no synonym suggestions) — the child is meant to
+    spell the words themselves."""
+    return "spell" in (subject or "").strip().lower()

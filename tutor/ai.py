@@ -70,11 +70,21 @@ def is_configured():
 def _make_client():
     import anthropic
 
-    # Bounded timeout: these calls run inside web requests, and Heroku
-    # hard-kills requests at 30s.
+    # These calls run INSIDE a web request and Heroku hard-kills requests at 30s.
+    # So: a tight timeout and NO SDK retries — a retry would stack a second
+    # attempt on top of the first and blow past 30s, killing the request before
+    # the assessment is saved (the child then "never sees results"). On failure
+    # we fail fast; the feedback page re-fires the (idempotent) grade on reload.
     return anthropic.Anthropic(
-        api_key=settings.ANTHROPIC_API_KEY, timeout=25.0, max_retries=1,
+        api_key=settings.ANTHROPIC_API_KEY, timeout=24.0, max_retries=0,
     )
+
+
+def grading_model():
+    """Model used for the in-request grader. Defaults to Opus, but a deployment
+    under a hard request-time budget (e.g. Heroku's 30s cap) can set TUTOR_MODEL
+    to a faster model like claude-sonnet-5 so grading reliably finishes in time."""
+    return getattr(settings, "TUTOR_MODEL", "claude-opus-4-8")
 
 
 def _build_user_prompt(rubric, answers, grade_level, subject, objectives=""):
@@ -133,7 +143,7 @@ def grade_work(*, rubric, answers, grade_level, subject, objectives="", client=N
     user_prompt = _build_user_prompt(rubric, answers, grade_level, subject, objectives)
     try:
         response = client.messages.create(
-            model=getattr(settings, "TUTOR_MODEL", "claude-opus-4-8"),
+            model=grading_model(),
             max_tokens=2500,
             system=SYSTEM_PROMPT,
             messages=[{"role": "user", "content": user_prompt}],
@@ -167,7 +177,7 @@ def review_draft(*, draft, assignment, grade_level, subject, client=None):
     ])
     try:
         response = client.messages.create(
-            model=getattr(settings, "TUTOR_MODEL", "claude-opus-4-8"),
+            model=grading_model(),
             max_tokens=1000,
             system=COACH_PROMPT,
             messages=[{"role": "user", "content": user_prompt}],

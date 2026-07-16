@@ -240,6 +240,7 @@ SITE_ID = 1
 # email-authentication) wipes the local password. Existing users connect Google
 # explicitly from Settings, which links without disturbing their password.
 ACCOUNT_ADAPTER = "accounts.adapters.NoLocalSignupAdapter"
+SOCIALACCOUNT_ADAPTER = "accounts.adapters.SocialSignupAdapter"  # social signup open + safe email link
 ACCOUNT_EMAIL_VERIFICATION = "none"      # the app runs its own verification flow
 SOCIALACCOUNT_LOGIN_ON_GET = True        # one-click provider button (no interstitial)
 

@@ -556,6 +556,40 @@ class SocialAuthTests(TestCase):
         self.assertEqual(User.objects.count(), before)
         self.assertFalse(User.objects.filter(email="sneaky@e.com").exists())
 
+    def test_social_signup_stays_open(self):
+        # Closing LOCAL signup must not close social signup (new Google users).
+        from accounts.adapters import SocialSignupAdapter
+        self.assertTrue(SocialSignupAdapter().is_open_for_signup(None, None))
+
+    def test_social_login_links_existing_account_by_verified_email(self):
+        # A Google login whose verified email matches an existing account is
+        # linked via connect() (password preserved), not dead-ended or duplicated.
+        from unittest.mock import MagicMock
+        from allauth.account.models import EmailAddress
+        from accounts.adapters import SocialSignupAdapter
+
+        user = User.objects.create_user(username="ex", email="ex@e.com", password="keepme123", is_active=True)
+        sl = MagicMock(is_existing=False)
+        sl.user = MagicMock(email="ex@e.com")
+        sl.email_addresses = [EmailAddress(email="ex@e.com", verified=True)]
+        SocialSignupAdapter().pre_social_login(MagicMock(), sl)
+        sl.connect.assert_called_once()
+        self.assertEqual(sl.connect.call_args.args[1], user)
+        user.refresh_from_db()
+        self.assertTrue(user.has_usable_password())   # connect never wipes the password
+
+    def test_social_login_ignores_unverified_email(self):
+        from unittest.mock import MagicMock
+        from allauth.account.models import EmailAddress
+        from accounts.adapters import SocialSignupAdapter
+
+        User.objects.create_user(username="ex2", email="ex2@e.com", password="p", is_active=True)
+        sl = MagicMock(is_existing=False)
+        sl.user = MagicMock(email="ex2@e.com")
+        sl.email_addresses = [EmailAddress(email="ex2@e.com", verified=False)]
+        SocialSignupAdapter().pre_social_login(MagicMock(), sl)
+        sl.connect.assert_not_called()   # unverified provider email must not auto-link
+
     @override_settings(SOCIALACCOUNT_PROVIDERS=_GOOGLE_CONFIGURED)
     def test_settings_shows_connected_accounts_card_when_configured(self):
         User.objects.create_user(username="s", email="s@e.com", password="pw", is_active=True)

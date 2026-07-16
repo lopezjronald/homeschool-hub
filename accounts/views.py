@@ -17,6 +17,7 @@ from .forms import (
     ChangeEmailForm,
     ContactForm,
     NotificationsForm,
+    PreferencesForm,
     RegisterForm,
 )
 from .models import UserProfile
@@ -72,6 +73,13 @@ def post_login(request):
     profile = UserProfile.get_for(request.user)
     if not profile.has_seen_welcome:
         return redirect("accounts:welcome")
+    # Honour an explicit landing preference (inbox only for editors, who have one).
+    if profile.landing == "home":
+        return redirect("home")
+    if profile.landing == "dashboard":
+        return redirect("dashboard:dashboard")
+    if profile.landing == "inbox" and user_can_edit(request.user):
+        return redirect("inbox:inbox")
     if not user_can_edit(request.user):
         return redirect("dashboard:dashboard")
     return redirect("home")
@@ -137,6 +145,7 @@ def settings_view(request):
         "name_form": AccountNameForm(instance=request.user),
         "contact_form": ContactForm(instance=profile),
         "notif_form": NotificationsForm(instance=profile),
+        "pref_form": PreferencesForm(instance=profile),
         "email_form": ChangeEmailForm(user=request.user),
         "pending_email": request.user.pending_email,
     })
@@ -176,6 +185,19 @@ def notifications_update(request):
     if form.is_valid():
         form.save()
         messages.success(request, "Notification preferences saved.")
+    return redirect("accounts:settings")
+
+
+@login_required
+@require_POST
+def preferences_update(request):
+    """Save display preferences (timezone, default landing page)."""
+    form = PreferencesForm(request.POST, instance=UserProfile.get_for(request.user))
+    if form.is_valid():
+        form.save()
+        messages.success(request, "Preferences saved.")
+    else:
+        messages.error(request, "Please fix the errors and try again.")
     return redirect("accounts:settings")
 
 

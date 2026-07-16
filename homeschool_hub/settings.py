@@ -134,6 +134,7 @@ MIDDLEWARE = [
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "allauth.account.middleware.AccountMiddleware",  # allauth
+    "accounts.middleware.TimezoneMiddleware",  # per-user timezone
 ]
 
 ROOT_URLCONF = "homeschool_hub.urls"

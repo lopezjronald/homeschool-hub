@@ -25,6 +25,7 @@ urlpatterns = [
     path("settings/account/", views.account_update, name="account_update"),
     path("settings/contact/", views.contact_update, name="contact_update"),
     path("settings/notifications/", views.notifications_update, name="notifications_update"),
+    path("settings/preferences/", views.preferences_update, name="preferences_update"),
     path("settings/email/", views.change_email, name="change_email"),
     path(
         "settings/email/confirm/<uidb64>/<token>/",

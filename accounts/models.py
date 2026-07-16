@@ -70,6 +70,32 @@ class UserProfile(models.Model):
     )
     inbox_seen_at = models.DateTimeField(null=True, blank=True)
 
+    # Preferences.
+    TIMEZONE_CHOICES = [
+        ("", "Site default"),
+        ("America/New_York", "Eastern (New York)"),
+        ("America/Chicago", "Central (Chicago)"),
+        ("America/Denver", "Mountain (Denver)"),
+        ("America/Phoenix", "Arizona (Phoenix)"),
+        ("America/Los_Angeles", "Pacific (Los Angeles)"),
+        ("America/Anchorage", "Alaska (Anchorage)"),
+        ("Pacific/Honolulu", "Hawaii (Honolulu)"),
+    ]
+    timezone = models.CharField(
+        max_length=64, blank=True, choices=TIMEZONE_CHOICES,
+        help_text="Show dates and times in this timezone.",
+    )
+    LANDING_CHOICES = [
+        ("", "Smart default (based on your role)"),
+        ("home", "Hub"),
+        ("dashboard", "Progress"),
+        ("inbox", "Action inbox"),
+    ]
+    landing = models.CharField(
+        max_length=20, blank=True, choices=LANDING_CHOICES,
+        help_text="Where to go right after you log in.",
+    )
+
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self) -> str:

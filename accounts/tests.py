@@ -590,6 +590,65 @@ class SocialAuthTests(TestCase):
         SocialSignupAdapter().pre_social_login(MagicMock(), sl)
         sl.connect.assert_not_called()   # unverified provider email must not auto-link
 
+
+class PreferencesTests(TestCase):
+    """Per-user preferences: display timezone + default landing page."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = User.objects.create_user(username="pref", email="pref@e.com", password="pw", is_active=True)
+
+    def setUp(self):
+        self.client.login(username="pref", password="pw")
+
+    def test_preferences_card_renders(self):
+        resp = self.client.get(reverse("accounts:settings"))
+        self.assertContains(resp, "Preferences")
+        self.assertContains(resp, "Pacific (Los Angeles)")   # a timezone choice
+
+    def test_save_preferences(self):
+        from accounts.models import UserProfile
+
+        self.client.post(reverse("accounts:preferences_update"), {"timezone": "America/New_York", "landing": "inbox"})
+        prof = UserProfile.get_for(self.user)
+        self.assertEqual(prof.timezone, "America/New_York")
+        self.assertEqual(prof.landing, "inbox")
+
+    def test_timezone_middleware_activates_user_tz(self):
+        from django.test import RequestFactory
+        from django.utils import timezone as djtz
+
+        from accounts.middleware import TimezoneMiddleware
+        from accounts.models import UserProfile
+
+        prof = UserProfile.get_for(self.user)
+        prof.timezone = "America/New_York"
+        prof.save(update_fields=["timezone"])
+
+        captured = {}
+
+        def get_response(req):
+            captured["tz"] = djtz.get_current_timezone_name()
+            return "ok"
+
+        req = RequestFactory().get("/")
+        req.user = self.user
+        try:
+            TimezoneMiddleware(get_response)(req)
+            self.assertEqual(captured["tz"], "America/New_York")
+        finally:
+            djtz.deactivate()
+
+    def test_landing_preference_routes_post_login(self):
+        from accounts.models import UserProfile
+
+        prof = UserProfile.get_for(self.user)
+        prof.has_seen_welcome = True
+        prof.landing = "dashboard"
+        prof.save(update_fields=["has_seen_welcome", "landing"])
+        resp = self.client.get(reverse("accounts:post_login"))
+        self.assertRedirects(resp, reverse("dashboard:dashboard"), fetch_redirect_response=False)
+
     @override_settings(SOCIALACCOUNT_PROVIDERS=_GOOGLE_CONFIGURED)
     def test_settings_shows_connected_accounts_card_when_configured(self):
         User.objects.create_user(username="s", email="s@e.com", password="pw", is_active=True)

@@ -85,6 +85,14 @@ class NotificationsForm(forms.ModelForm):
         labels = {"notify_on_submission": "Email me when a child submits work to finalize"}
 
 
+class PreferencesForm(forms.ModelForm):
+    """Per-user preferences: display timezone + default landing page."""
+
+    class Meta:
+        model = UserProfile
+        fields = ("timezone", "landing")
+
+
 class ChangeEmailForm(forms.Form):
     """Request an email change — requires the current password (verify-then-commit)."""
 

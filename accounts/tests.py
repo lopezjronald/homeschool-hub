@@ -1,4 +1,4 @@
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.core import mail
 from django.contrib.auth import get_user_model
@@ -514,3 +514,40 @@ class SettingsTests(TestCase):
         self.user.refresh_from_db()
         self.assertIsNone(self.user.pending_email)
         self.assertEqual(len(mail.outbox), 0)
+
+
+_GOOGLE_CONFIGURED = {
+    "google": {"APP": {"client_id": "test-id", "secret": "test-secret", "key": ""}},
+}
+
+
+class SocialAuthTests(TestCase):
+    """django-allauth social login is additive and gated on configuration."""
+
+    def test_existing_password_login_still_works(self):
+        User.objects.create_user(username="pw", email="pw@e.com", password="secret123", is_active=True)
+        resp = self.client.post(reverse("accounts:login"), {"username": "pw", "password": "secret123"})
+        self.assertEqual(resp.status_code, 302)
+        self.assertIn("_auth_user_id", self.client.session)
+
+    def test_no_social_button_when_unconfigured(self):
+        resp = self.client.get(reverse("accounts:login"))
+        self.assertEqual(resp.status_code, 200)
+        self.assertNotContains(resp, "Sign in with")
+
+    @override_settings(SOCIALACCOUNT_PROVIDERS=_GOOGLE_CONFIGURED)
+    def test_social_button_shows_when_configured(self):
+        resp = self.client.get(reverse("accounts:login"))
+        self.assertContains(resp, "Sign in with Google")
+        self.assertContains(resp, "/auth/google/login/")   # provider login mounted at /auth/
+
+    def test_allauth_urls_mounted_under_auth(self):
+        self.assertTrue(reverse("socialaccount_connections").startswith("/auth/"))
+
+    @override_settings(SOCIALACCOUNT_PROVIDERS=_GOOGLE_CONFIGURED)
+    def test_settings_shows_connected_accounts_card_when_configured(self):
+        User.objects.create_user(username="s", email="s@e.com", password="pw", is_active=True)
+        self.client.login(username="s", password="pw")
+        resp = self.client.get(reverse("accounts:settings"))
+        self.assertContains(resp, "Connected accounts")
+        self.assertContains(resp, "Connect Google")

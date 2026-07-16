@@ -544,7 +544,9 @@ class Command(BaseCommand):
             )
             set_count += s; q_count += q
 
-            # Explore — writing (rough + final draft, the guide's two pages).
+            # Explore — writing: ONE paragraph exercise that mirrors the guide's two
+            # pages — a rough draft split into Topic/Supporting/Concluding sections,
+            # then a final draft she writes it all into.
             s, q = self._seed_set(
                 explore, family,
                 title=f"Section {n} · Writing",
@@ -552,13 +554,12 @@ class Command(BaseCommand):
                 intro=WRITING_INTRO,
                 rubric=WRITING_RUBRIC,
                 questions=[
-                    ("application",
-                     f"ROUGH DRAFT — {section['writing_prompt']}",
-                     "Topic sentence → supporting sentences → concluding sentence."),
-                    ("application",
-                     "FINAL DRAFT — thoroughly edit your rough draft, make any necessary "
-                     "changes, then write your final version here.",
-                     "Read it out loud — your ears catch what your eyes miss."),
+                    ("writing",
+                     section["writing_prompt"],
+                     "Plan each part in your rough draft, then write it all out as one "
+                     "paragraph in the final draft. Read it out loud — your ears catch "
+                     "what your eyes miss.",
+                     {"response_type": Question.TYPE_PARAGRAPH}),
                 ],
             )
             set_count += s; q_count += q

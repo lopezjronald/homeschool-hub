@@ -363,6 +363,82 @@ class MarkupTests(TestCase):
         self.assertEqual(QuestionSet.objects.count(), before)
 
 
+class ParagraphWritingTests(TestCase):
+    """The paragraph writing exercise: rough-draft sections → final draft."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.parent = User.objects.create_user(username="pwr", email="pwr@e.com", password="pw")
+        cls.family = Family.objects.create(name="Para Fam")
+        FamilyMembership.objects.create(user=cls.parent, family=cls.family, role="parent")
+        cls.violet = Student.objects.create(
+            parent=cls.parent, first_name="Violet", grade_level="G03", family=cls.family,
+        )
+        cur = Curriculum.objects.create(
+            parent=cls.parent, name="A Mouse Called Wolf", subject="Literature", family=cls.family,
+        )
+        ch = Chapter.objects.create(curriculum=cur, number=1, title="Section 1")
+        lesson = Lesson.objects.create(chapter=ch, order=5, number=5, title="Writing")
+        CurriculumPlacement.objects.create(child=cls.violet, curriculum=cur, current_lesson=lesson)
+        cls.qset = QuestionSet.objects.create(
+            lesson=lesson, title="Section 1 · Writing", family=cls.family, status=QuestionSet.APPROVED,
+        )
+        cls.q = Question.objects.create(
+            question_set=cls.qset, order=1, category="writing",
+            response_type=Question.TYPE_PARAGRAPH,
+            prompt="Write a paragraph about Wolfgang Amadeus Mouse.",
+        )
+        cls.token = make_portal_token(cls.violet)
+
+    def _url(self, name, **kw):
+        return reverse(f"portal:{name}", kwargs={"token": self.token, **kw})
+
+    def test_renders_rough_sections_final_and_pull(self):
+        resp = self.client.get(self._url("portal_questions", set_pk=self.qset.pk))
+        self.assertContains(resp, "paragraph-widget")
+        self.assertContains(resp, "Introduction / Topic Sentence")
+        self.assertContains(resp, "Supporting Sentences")
+        self.assertContains(resp, "Concluding Sentence")
+        self.assertContains(resp, "para-final-box")
+        self.assertContains(resp, "Pull in my rough draft")
+        self.assertContains(resp, "portal-paragraph")  # hashed filename under manifest storage
+        # Coach-the-rough: a paragraph question always shows the coach.
+        self.assertContains(resp, "Get feedback on my rough draft")
+
+    def test_custom_sections_via_passage_json(self):
+        self.q.passage = '{"sections": ["Beginning", "Middle", "End"]}'
+        self.q.save()
+        resp = self.client.get(self._url("portal_questions", set_pk=self.qset.pk))
+        self.assertContains(resp, "Beginning")
+        self.assertContains(resp, "Middle")
+        self.assertContains(resp, "End")
+        self.assertNotContains(resp, "Concluding Sentence")
+
+    @override_settings(ANTHROPIC_API_KEY="test-key")
+    @mock.patch("tutor.ai.review_draft",
+                return_value={"praise": "Nice topic sentence!", "suggestions": ["Add one detail."]})
+    def test_coach_does_not_clobber_structured_answer(self, _rev):
+        # Pre-save a structured paragraph answer, then ask the coach for feedback on
+        # the rough draft — the structured answer (with her final draft) must survive.
+        sheet = ResponseSheet.objects.create(question_set=self.qset, child=self.violet)
+        structured = json.dumps({"rough": ["Wolf is brave.", "", ""], "final": "Wolf is a brave mouse."})
+        sheet.answers = {str(self.q.pk): structured}
+        sheet.save()
+        resp = self.client.post(
+            self._url("portal_draft_feedback", set_pk=self.qset.pk),
+            data=json.dumps({
+                "question": str(self.q.pk),
+                "text": "Wolf is a very brave little mouse who loves to sing.",
+            }),
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertTrue(resp.json()["ok"])
+        sheet.refresh_from_db()
+        self.assertEqual(sheet.answers[str(self.q.pk)], structured)  # untouched
+        self.assertIn(str(self.q.pk), sheet.draft_feedback)          # feedback saved
+
+
 class SpellcheckAndWordHelpTests(TestCase):
     """Red-squiggle spellcheck + 'better words' helper on writing curricula,
     both switched OFF on spelling curricula."""

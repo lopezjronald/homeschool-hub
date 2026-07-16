@@ -1,7 +1,8 @@
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.http import Http404
+from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 
@@ -11,7 +12,7 @@ from core.permissions import editable_queryset, user_can_edit, viewable_queryset
 from curricula.models import Curriculum
 from worklog.models import WorkLogEntry
 
-from . import ai, mastery
+from . import ai, grading, mastery
 from .forms import AssessmentRequestForm, FinalizeForm
 from .models import MasteryAssessment, Material, QuestionSet
 
@@ -40,44 +41,35 @@ def assess_create(request, entry_pk):
     if request.method == "POST":
         form = AssessmentRequestForm(request.POST)
         if form.is_valid():
+            if not ai.is_configured():
+                messages.error(
+                    request,
+                    "AI grading isn't set up yet. Add an ANTHROPIC_API_KEY to enable it.",
+                )
+                return redirect("worklog:worklog_detail", pk=entry.pk)
+            # Already graded (e.g. the portal auto-grader beat us here)? Go to it.
+            existing = MasteryAssessment.objects.filter(work_entry=entry).first()
+            if existing:
+                return redirect("tutor:assess_detail", pk=existing.pk)
             # Judge at the curriculum's academic grade when the work links one;
             # otherwise fall back to the child's school Level.
             if entry.curriculum and entry.curriculum.grade_level:
                 grade_context = entry.curriculum.get_grade_level_display()
             else:
                 grade_context = entry.child.get_grade_level_display()
-            try:
-                result = ai.grade_work(
-                    rubric=form.cleaned_data["rubric"],
-                    answers=form.cleaned_data["answers"],
-                    grade_level=grade_context,
-                    subject=entry.subject,
-                    objectives=_entry_objectives(entry),
-                )
-            except ai.GraderNotConfigured:
-                messages.error(
-                    request,
-                    "AI grading isn't set up yet. Add an ANTHROPIC_API_KEY to enable it.",
-                )
-                return redirect("worklog:worklog_detail", pk=entry.pk)
-            except ai.GraderError as exc:
-                messages.error(request, f"The AI grader couldn't complete: {exc}")
-                return render(request, "tutor/assess_form.html", {"form": form, "entry": entry})
-
-            assessment = MasteryAssessment.objects.create(
-                work_entry=entry,
-                graded_by=request.user,
+            # Grade OFF the request path — grading can take longer than Heroku's
+            # hard 30s cap under load, which used to H12 ("Application error").
+            # The pending page polls and lands the parent on the draft when ready.
+            grading.start_manual_grade(
+                entry.pk,
                 rubric=form.cleaned_data["rubric"],
                 answers=form.cleaned_data["answers"],
-                ai_level=result["level"],
-                ai_summary=result["summary"],
-                ai_criteria=result["criteria"],
-                ai_encouragement=result["encouragement"],
-                ai_kid_highlights=result.get("kid_highlights", []),
-                ai_parent_pointers=result.get("parent_pointers", []),
+                grade_level=grade_context,
+                subject=entry.subject,
+                objectives=_entry_objectives(entry),
+                graded_by_id=request.user.pk,
             )
-            messages.success(request, "Draft assessment ready — review and finalize.")
-            return redirect("tutor:assess_detail", pk=assessment.pk)
+            return redirect("tutor:assess_pending", entry_pk=entry.pk)
     else:
         initial = {"answers": entry.description}
         # If this entry came from a portal response sheet, prefill the question
@@ -98,6 +90,44 @@ def assess_create(request, entry_pk):
         "entry": entry,
         "configured": ai.is_configured(),
     })
+
+
+@login_required
+def assess_pending(request, entry_pk):
+    """Waiting page shown while a parent-initiated grade runs in the background.
+
+    Grading was moved off the request path so it can't hit Heroku's 30s cap; this
+    page polls ``assess_status`` and forwards to the draft as soon as it's saved.
+    """
+    if not user_can_edit(request.user):
+        raise Http404
+    entry = get_object_or_404(
+        editable_queryset(WorkLogEntry.objects.all(), request.user), pk=entry_pk,
+    )
+    assessment = MasteryAssessment.objects.filter(work_entry=entry).first()
+    if assessment:
+        return redirect("tutor:assess_detail", pk=assessment.pk)
+    return render(request, "tutor/assess_pending.html", {
+        "entry": entry,
+        "configured": ai.is_configured(),
+    })
+
+
+@login_required
+def assess_status(request, entry_pk):
+    """Poll target for the pending page: has the background grade saved yet?"""
+    if not user_can_edit(request.user):
+        raise Http404
+    entry = get_object_or_404(
+        editable_queryset(WorkLogEntry.objects.all(), request.user), pk=entry_pk,
+    )
+    assessment = MasteryAssessment.objects.filter(work_entry=entry).first()
+    if assessment:
+        return JsonResponse({
+            "ready": True,
+            "url": reverse("tutor:assess_detail", kwargs={"pk": assessment.pk}),
+        })
+    return JsonResponse({"ready": False, "grading": ai.is_configured()})
 
 
 @login_required

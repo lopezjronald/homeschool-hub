@@ -15,13 +15,16 @@
   var WORD_RE = /^[A-Za-z][A-Za-z'-]{1,24}$/;
   var cache = {};
 
-  Array.prototype.slice.call(document.querySelectorAll("textarea.portal-answer")).forEach(function (area) {
+  // Answer textareas AND inline fill-in-the-blank (cloze) inputs, so "better
+  // words" works everywhere the child writes her own words.
+  Array.prototype.slice.call(document.querySelectorAll("textarea.portal-answer, .cloze-input")).forEach(function (area) {
     if (area.readOnly) return;
 
     var bar = document.createElement("div");
     bar.className = "wordhelp-bar";
     bar.hidden = true;
-    area.insertAdjacentElement("afterend", bar);
+    // A cloze blank shows its suggestions below the whole passage, not inline.
+    (area.closest(".vocab-cloze") || area).insertAdjacentElement("afterend", bar);
 
     var current = { start: 0, end: 0 };
     var seq = 0;

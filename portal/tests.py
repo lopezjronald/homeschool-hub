@@ -518,6 +518,18 @@ class SpellcheckAndWordHelpTests(TestCase):
         self.assertContains(resp, "data-wordhelp-url")
         self.assertContains(resp, "data-spellcheck-url")
 
+    def test_cloze_blank_gets_native_spellcheck_on_writing(self):
+        # A fill-in-the-blank (cloze) box is a place the child types her own words,
+        # so it carries native spellcheck; the JS then attaches the AI helpers to
+        # it too (verified with jsdom) — grammar drills aren't a spelling blind spot.
+        Question.objects.create(
+            question_set=self.writing_set, order=2, category="grammar",
+            response_type=Question.TYPE_CLOZE, passage="The ___ ran fast.",
+        )
+        resp = self.client.get(self._url("portal_questions", set_pk=self.writing_set.pk))
+        self.assertContains(resp, "cloze-input")
+        self.assertRegex(resp.content.decode(), r'cloze-input[^>]*spellcheck="true"')
+
     def test_spelling_curriculum_disables_spellcheck_and_wordhelp(self):
         resp = self.client.get(self._url("portal_questions", set_pk=self.spelling_set.pk))
         self.assertContains(resp, 'spellcheck="false"')

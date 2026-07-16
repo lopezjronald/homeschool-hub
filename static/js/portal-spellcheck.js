@@ -19,14 +19,18 @@
   var WORD_CHAR = /[A-Za-z'\-]/;
   function reEscape(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }
 
-  Array.prototype.slice.call(document.querySelectorAll("textarea.portal-answer")).forEach(function (area) {
+  // Every place the child types: the answer textareas AND the inline fill-in-the-
+  // blank (cloze) inputs, so the spelling help is everywhere she writes.
+  Array.prototype.slice.call(document.querySelectorAll("textarea.portal-answer, .cloze-input")).forEach(function (area) {
     if (area.readOnly) return;
     area.spellcheck = true;  // let the browser draw the squiggle; we add the one-tap fixes
 
     var bar = document.createElement("div");
     bar.className = "spellfix-bar";
     bar.hidden = true;
-    area.insertAdjacentElement("afterend", bar);
+    // An inline cloze blank drops its fix bar below the whole passage, not inline
+    // after the input; a textarea keeps its bar right after it.
+    (area.closest(".vocab-cloze") || area).insertAdjacentElement("afterend", bar);
 
     var misspelled = [];   // [{wrong, fixes:[...]}] from the server (no-ops already dropped)
     var timer = null;

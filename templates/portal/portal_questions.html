@@ -144,6 +144,48 @@
                     </div>
                     <input type="hidden" name="answer_{{ q.pk }}" data-question="{{ q.pk }}" value="{{ q.my_answer }}">
                   </div>
+                {% elif q.is_paragraph %}
+                  <div class="paragraph-widget" data-question-widget="{{ q.pk }}">
+                    <div class="para-rough">
+                      <div class="para-heading">✏️ Rough Draft</div>
+                      {% for label in q.paragraph_sections %}
+                        <div class="para-section">
+                          <label class="para-label">{{ label }}</label>
+                          <textarea class="form-control portal-answer para-box" data-section="{{ forloop.counter0 }}"
+                                    rows="{% if forloop.counter == 2 %}4{% else %}2{% endif %}"
+                                    placeholder="{{ label }}…"
+                                    autocomplete="off" autocorrect="off" autocapitalize="sentences"
+                                    lang="en" spellcheck="{% if spellcheck_on %}true{% else %}false{% endif %}" data-gramm="false"
+                                    {% if sheet.is_submitted %}readonly{% endif %}></textarea>
+                        </div>
+                      {% endfor %}
+                    </div>
+                    {% if q.supports_draft_coach and not sheet.is_submitted %}
+                      <div class="coach-widget" data-coach-for="{{ q.pk }}"
+                           data-coach-url="{% url 'portal:portal_draft_feedback' token=token set_pk=question_set.pk %}">
+                        <button type="button" class="coach-btn">✨ Get feedback on my rough draft</button>
+                        <div class="coach-box" {% if not q.my_coach %}hidden{% endif %}>
+                          <div class="coach-heading">✍️ Your writing coach says…</div>
+                          <p class="coach-praise">{% if q.my_coach %}{{ q.my_coach.praise }}{% endif %}</p>
+                          <ul class="coach-suggestions">
+                            {% if q.my_coach %}{% for s in q.my_coach.suggestions %}<li>{{ s }}</li>{% endfor %}{% endif %}
+                          </ul>
+                        </div>
+                      </div>
+                    {% endif %}
+                    <div class="para-final">
+                      <div class="para-heading">📝 Final Draft</div>
+                      {% if not sheet.is_submitted %}
+                        <button type="button" class="btn btn-sm btn-outline-secondary para-pull">⤵️ Pull in my rough draft</button>
+                      {% endif %}
+                      <textarea class="form-control portal-answer para-final-box" rows="6"
+                                placeholder="Write your whole paragraph here…"
+                                autocomplete="off" autocorrect="off" autocapitalize="sentences"
+                                lang="en" spellcheck="{% if spellcheck_on %}true{% else %}false{% endif %}" data-gramm="false"
+                                {% if sheet.is_submitted %}readonly{% endif %}></textarea>
+                    </div>
+                    <input type="hidden" name="answer_{{ q.pk }}" data-question="{{ q.pk }}" value="{{ q.my_answer }}">
+                  </div>
                 {% else %}
                   <textarea
                     id="q{{ q.pk }}"
@@ -202,6 +244,7 @@
 <script src="{% static 'js/portal-autosave.js' %}"></script>
 <script src="{% static 'js/portal-markup.js' %}"></script>
 <script src="{% static 'js/portal-characters.js' %}"></script>
+<script src="{% static 'js/portal-paragraph.js' %}"></script>
 <script src="{% static 'js/portal-vocab.js' %}"></script>
 <script src="{% static 'js/portal-coach.js' %}"></script>
 <script src="{% static 'js/portal-wordhelp.js' %}"></script>

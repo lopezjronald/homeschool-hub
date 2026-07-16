@@ -1,3 +1,4 @@
+import json
 from io import StringIO
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -14,7 +15,7 @@ from students.models import Student
 from worklog.models import WorkLogEntry
 
 from . import ai, grading, imagegen, mastery
-from .models import Material, MasteryAssessment
+from .models import Material, MasteryAssessment, Question, ResponseSheet
 
 User = get_user_model()
 
@@ -73,6 +74,52 @@ class CheckSpellingTests(TestCase):
         fake = FakeAnthropic('[{"wrong": "wuz", "fixes": ["wuz", "was", "Was", "were"]}]')
         out = ai.check_spelling("it wuz fun", client=fake)
         self.assertEqual(out, [{"wrong": "wuz", "fixes": ["was", "were"]}])
+
+
+class ParagraphModelTests(TestCase):
+    """Paragraph question sections + how the answer formats for grading."""
+
+    def test_defaults_and_flags(self):
+        q = Question(response_type=Question.TYPE_PARAGRAPH)
+        self.assertTrue(q.is_paragraph)
+        self.assertTrue(q.supports_draft_coach)
+        self.assertEqual(q.paragraph_sections, Question.DEFAULT_PARAGRAPH_SECTIONS)
+
+    def test_custom_sections_from_passage(self):
+        q = Question(response_type=Question.TYPE_PARAGRAPH, passage='{"sections": ["A", "B"]}')
+        self.assertEqual(q.paragraph_sections, ["A", "B"])
+
+    def test_bad_passage_falls_back_to_defaults(self):
+        q = Question(response_type=Question.TYPE_PARAGRAPH, passage="not json")
+        self.assertEqual(q.paragraph_sections, Question.DEFAULT_PARAGRAPH_SECTIONS)
+
+    def test_format_grades_final_with_planning_notes(self):
+        q = Question(response_type=Question.TYPE_PARAGRAPH)
+        raw = json.dumps({
+            "rough": ["Wolf is brave.", "He sings at night.", "He is a hero."],
+            "final": "Wolf is a brave mouse who sings.",
+        })
+        out = ResponseSheet._format_paragraph(raw, q)
+        self.assertIn("Final draft: Wolf is a brave mouse who sings.", out)
+        self.assertIn("Introduction / Topic Sentence: Wolf is brave.", out)
+        self.assertIn("planning notes (not graded)", out)
+
+    def test_format_empty_answer(self):
+        q = Question(response_type=Question.TYPE_PARAGRAPH)
+        self.assertEqual(ResponseSheet._format_paragraph("", q), "(no answer)")
+        self.assertEqual(ResponseSheet._format_paragraph("{}", q), "(no answer)")
+        self.assertEqual(
+            ResponseSheet._format_paragraph('{"rough": ["", ""], "final": ""}', q), "(no answer)"
+        )
+
+    def test_format_preserves_legacy_plaintext(self):
+        # A text question converted to paragraph keeps a bare plain-text answer
+        # readable instead of dropping it to "(no answer)".
+        q = Question(response_type=Question.TYPE_PARAGRAPH)
+        self.assertEqual(
+            ResponseSheet._format_paragraph("Wolf is a brave little mouse.", q),
+            "Wolf is a brave little mouse.",
+        )
 
 
 class MasteryScaleTests(TestCase):

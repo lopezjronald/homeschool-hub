@@ -17,10 +17,21 @@
     var praiseEl = widget.querySelector(".coach-praise");
     var listEl = widget.querySelector(".coach-suggestions");
     var area = document.getElementById("q" + qid);
-    if (!btn || !area) return;
+    // Paragraph questions have no single textarea — the coach reads the rough
+    // sections instead (the box she plans in, before the final draft).
+    var para = document.querySelector('.paragraph-widget[data-question-widget="' + qid + '"]');
+    if (!btn || (!area && !para)) return;
+
+    function draftText() {
+      if (area) return area.value;
+      return Array.prototype.slice.call(para.querySelectorAll(".para-box"))
+        .map(function (b) { return b.value.trim(); })
+        .filter(Boolean)
+        .join("\n\n");
+    }
 
     btn.addEventListener("click", function () {
-      var text = area.value.trim();
+      var text = draftText().trim();
       if (text.length < 20) {
         show("Write a little more first — then I can give you good feedback!", []);
         return;
@@ -31,7 +42,7 @@
       fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question: qid, text: area.value }),
+        body: JSON.stringify({ question: qid, text: draftText() }),
         credentials: "same-origin",
       })
         .then(function (resp) { return resp.ok ? resp.json() : { ok: false }; })

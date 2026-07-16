@@ -373,6 +373,7 @@ class Question(models.Model):
     TYPE_MATCHING = "matching"
     TYPE_FILL_BLANK = "fill_blank"
     TYPE_CLOZE = "cloze"
+    TYPE_PARAGRAPH = "paragraph"
     RESPONSE_TYPES = [
         (TYPE_TEXT, "Typed answer"),
         (TYPE_MARKUP, "Mark up the sentence (draw)"),
@@ -380,6 +381,15 @@ class Question(models.Model):
         (TYPE_MATCHING, "Match words to numbered definitions"),
         (TYPE_FILL_BLANK, "Fill in the blank from a word bank"),
         (TYPE_CLOZE, "Fill in the blanks with your own words"),
+        (TYPE_PARAGRAPH, "Paragraph: rough draft (sections) → final draft"),
+    ]
+
+    # The rough-draft sections a paragraph question shows by default (the standard
+    # workbook shape); override per-question with passage JSON {"sections": [...]}.
+    DEFAULT_PARAGRAPH_SECTIONS = [
+        "Introduction / Topic Sentence",
+        "Supporting Sentences",
+        "Concluding Sentence",
     ]
 
     question_set = models.ForeignKey(
@@ -422,12 +432,35 @@ class Question(models.Model):
         return self.response_type == self.TYPE_CLOZE
 
     @property
+    def is_paragraph(self):
+        return self.response_type == self.TYPE_PARAGRAPH
+
+    @property
+    def paragraph_sections(self):
+        """Labeled rough-draft sections for a paragraph question.
+
+        Configurable via passage JSON ``{"sections": [...]}``; falls back to the
+        standard three-part paragraph shape from the workbook.
+        """
+        try:
+            data = json.loads(self.passage or "")
+            sections = data.get("sections")
+            if isinstance(sections, list) and sections:
+                return [str(s) for s in sections]
+        except (ValueError, TypeError, AttributeError):
+            pass
+        return list(self.DEFAULT_PARAGRAPH_SECTIONS)
+
+    @property
     def supports_draft_coach(self):
         """True if the writing coach can review this answer as a draft.
 
-        Rough drafts in the literature guides carry a "ROUGH DRAFT" marker;
+        Paragraph questions always coach (the rough-draft sections); otherwise
+        rough drafts in the literature guides carry a "ROUGH DRAFT" marker and
         Essentials-in-Writing paragraph work is category "writing".
         """
+        if self.is_paragraph:
+            return True
         if self.response_type != self.TYPE_TEXT:
             return False
         return "ROUGH DRAFT" in (self.prompt or "").upper() or self.category == "writing"
@@ -593,6 +626,8 @@ class ResponseSheet(models.Model):
             return self._format_fill_blank(raw, question)
         if question.is_cloze:
             return self._format_cloze(raw, question)
+        if question.is_paragraph:
+            return self._format_paragraph(raw, question)
         return raw or "(no answer)"
 
     def as_worklog_text(self):
@@ -623,6 +658,40 @@ class ResponseSheet(models.Model):
         except (ValueError, TypeError):
             data = {}
         return data if isinstance(data, dict) else {}
+
+    @classmethod
+    def _format_paragraph(cls, raw, question):
+        """Render a paragraph answer ({"rough": [...], "final": "..."}).
+
+        The FINAL draft is the graded answer; the rough sections come along as
+        planning notes so the parent can see her process (they aren't the grade).
+        """
+        data = cls._parse_json_answer(raw)
+        final = str(data.get("final", "")).strip()
+        rough = data.get("rough")
+        notes = []
+        if isinstance(rough, list):
+            for i, label in enumerate(question.paragraph_sections):
+                val = str(rough[i]).strip() if i < len(rough) and rough[i] is not None else ""
+                if val:
+                    notes.append(f"{label}: {val}")
+        if not final and not notes:
+            # A legacy plain-text answer (a text question converted to paragraph,
+            # before the widget re-saved it as structured JSON) isn't this shape.
+            # Show it rather than losing her writing to "(no answer)"; a truly
+            # empty or empty-structured answer still reads "(no answer)".
+            stripped = (raw or "").strip()
+            if not stripped:
+                return "(no answer)"
+            try:
+                structured = isinstance(json.loads(stripped), dict)
+            except (ValueError, TypeError):
+                structured = False
+            return "(no answer)" if structured else stripped
+        lines = [f"Final draft: {final}" if final else "Final draft: (not written yet)"]
+        if notes:
+            lines.append("[planning notes (not graded) — " + "; ".join(notes) + "]")
+        return "\n".join(lines)
 
     @classmethod
     def _format_matching(cls, raw, question):

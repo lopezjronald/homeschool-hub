@@ -554,7 +554,12 @@ def portal_draft_feedback(request, token, set_pk):
         if locked.is_submitted:
             return JsonResponse({"ok": False}, status=409)
         answers = dict(locked.answers or {})
-        answers[qid] = draft                     # keep the draft she asked about
+        # A plain-text draft IS the answer, so persist what she asked about. A
+        # paragraph question's answer is structured JSON (rough sections + final
+        # draft) autosaved by its own widget — the coach's joined rough text must
+        # NOT clobber it.
+        if not question.is_paragraph:
+            answers[qid] = draft
         feedback = dict(locked.draft_feedback or {})
         feedback[qid] = {
             "praise": result["praise"],

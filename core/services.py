@@ -189,7 +189,8 @@ def get_inbox_buckets(request, family):
 
     # 4) Activity check-ins due — the recurring nudge (Python is_due, like the hub).
     due_activities = [
-        a for a in scoped_queryset(ExternalActivity.objects.all(), user, family) if a.is_due
+        a for a in scoped_queryset(ExternalActivity.objects.select_related("student"), user, family)
+        if a.is_due
     ]
 
     buckets = []

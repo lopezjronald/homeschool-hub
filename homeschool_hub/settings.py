@@ -196,6 +196,14 @@ AUTH_PASSWORD_VALIDATORS = [
 # argv, so no separate settings module or test runner flag is needed.
 if "test" in sys.argv:
     PASSWORD_HASHERS = ["django.contrib.auth.hashers.MD5PasswordHasher"]
+    # Grade inline (no daemon thread) under the test runner: a background grade
+    # thread races the test's own transaction on SQLite ("table is locked") and
+    # muddies output. Tests that exercise grading mock the AI client anyway.
+    GRADE_IN_BACKGROUND = False
+    # Never reach the real grader from the suite even if the env carries a key
+    # (Heroku config, a developer's .env): a test that mocks is_configured but
+    # not grade_work would otherwise make a live billed API call.
+    ANTHROPIC_API_KEY = ""
 
 
 # Internationalization

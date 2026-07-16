@@ -90,6 +90,7 @@
   // stranded on the reading screen. The assessment is saved server-side either
   // way; a fallback here just means "check back / your teacher will see it."
   var deadline = Date.now() + 75000;  // ~75s guard on the polling loop
+  var lastKick = Date.now();          // when we last (re)kicked the background grade
   // Unconditional backstop: even if a fetch stalls forever (no resolve, no
   // reject — flaky mobile networks / proxies), reveal the page anyway.
   var guard = setTimeout(function () { finish(null); }, 78000);
@@ -146,6 +147,13 @@
   function poll() {
     if (done) { return; }
     if (Date.now() > deadline) { finish(null); return; }
+    // If grading has been running a while with no result, the background thread
+    // may have died (a deploy/restart). Re-kick the idempotent grade so a child
+    // still watching recovers instead of waiting out the deadline.
+    if (Date.now() - lastKick > 25000) {
+      lastKick = Date.now();
+      req(startUrl, { method: "POST" }).catch(function () {});
+    }
     req(statusUrl, {})
       .then(function (r) { return r.ok ? r.json() : {}; })
       .then(function (d) {

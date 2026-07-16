@@ -363,6 +363,42 @@ class MarkupTests(TestCase):
         self.assertEqual(QuestionSet.objects.count(), before)
 
 
+class SubmitKicksGradeTests(TestCase):
+    """Turning work in starts grading immediately — not only when the feedback
+    page's JS fires — so a submission can't sit ungraded."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.parent = User.objects.create_user(username="skg", email="skg@e.com", password="pw")
+        cls.family = Family.objects.create(name="Kick Fam")
+        FamilyMembership.objects.create(user=cls.parent, family=cls.family, role="parent")
+        cls.violet = Student.objects.create(
+            parent=cls.parent, first_name="Violet", grade_level="G03", family=cls.family,
+        )
+        cur = Curriculum.objects.create(
+            parent=cls.parent, name="Writing", subject="Writing", family=cls.family,
+        )
+        ch = Chapter.objects.create(curriculum=cur, number=1, title="U1")
+        lesson = Lesson.objects.create(chapter=ch, order=1, number=1, title="L1")
+        CurriculumPlacement.objects.create(child=cls.violet, curriculum=cur, current_lesson=lesson)
+        cls.qset = QuestionSet.objects.create(
+            lesson=lesson, title="Q", family=cls.family, status=QuestionSet.APPROVED,
+        )
+        cls.q = Question.objects.create(
+            question_set=cls.qset, order=1, category="editing", prompt="Why?",
+        )
+        cls.token = make_portal_token(cls.violet)
+
+    def test_submit_starts_background_grade(self):
+        url = reverse("portal:portal_questions", kwargs={"token": self.token, "set_pk": self.qset.pk})
+        with mock.patch("tutor.grading.start_background_grade") as kick:
+            resp = self.client.post(url, data={f"answer_{self.q.pk}": "Because it is true."})
+        self.assertEqual(resp.status_code, 302)  # off to the feedback page
+        sheet = ResponseSheet.objects.get(question_set=self.qset, child=self.violet)
+        self.assertTrue(sheet.is_submitted)
+        kick.assert_called_once_with(sheet.pk)
+
+
 class ParagraphWritingTests(TestCase):
     """The paragraph writing exercise: rough-draft sections → final draft."""
 
@@ -1164,7 +1200,8 @@ class WritingCoachTests(TestCase):
             parent=self.parent, first_name="Kaylin", grade_level="G07", family=self.family,
         )
         with patch("tutor.ai.is_configured", return_value=True), \
-             patch("tutor.ai.review_draft", return_value=dict(self.COACH_RESULT)):
+             patch("tutor.ai.review_draft", return_value=dict(self.COACH_RESULT)), \
+             patch("tutor.grading.start_background_grade"):  # submit now kicks a grade; don't hit the real one
             resp = self._coach(self.draft_q.pk, "x" * 40, token=make_portal_token(kaylin))
             self.assertEqual(resp.status_code, 404)            # not her course
             self.client.post(reverse("portal:portal_questions", kwargs={
@@ -1496,17 +1533,18 @@ class BackgroundGradingTests(TestCase):
         self.assertEqual(MasteryAssessment.objects.count(), 0)
 
     @override_settings(GRADE_IN_BACKGROUND=False)
-    def test_grading_is_deferred_to_the_feedback_page(self):
-        # Grading is triggered once, by the feedback page's start endpoint — not
-        # at submit time — so a submission is never graded twice.
+    def test_submit_grades_immediately_and_is_never_double_graded(self):
+        # Grading now starts at submit (a head start, not dependent on the
+        # feedback page's JS firing). The feedback page's start endpoint is
+        # idempotent, so re-kicking never produces a second assessment.
         from tutor.models import MasteryAssessment
 
         with mock.patch("tutor.ai.is_configured", return_value=True), \
              mock.patch("tutor.ai.grade_work", return_value=dict(self.GRADE_RESULT)):
             self._submit()
-            self.assertEqual(MasteryAssessment.objects.count(), 0)   # submit alone doesn't grade
+            self.assertEqual(MasteryAssessment.objects.count(), 1)   # submit kicks the grade
             self.client.post(self._url("portal_feedback_start", set_pk=self.qset.pk))
-            self.assertEqual(MasteryAssessment.objects.count(), 1)   # the feedback page grades it
+            self.assertEqual(MasteryAssessment.objects.count(), 1)   # idempotent — not graded twice
 
     def test_status_scoped_to_own_token(self):
         self._submit()

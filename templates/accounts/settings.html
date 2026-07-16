@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% load crispy_forms_tags %}
+{% load crispy_forms_tags socialaccount %}
 {% block title %}Settings · Steadfast Scholars{% endblock %}
 
 {% block content %}
@@ -56,6 +56,41 @@
       </form>
     </div>
   </div>
+
+  {% get_providers as socialaccount_providers %}
+  {% if socialaccount_providers %}
+  <div class="card ss-checkin mb-4" id="connected">
+    <div class="card-body">
+      <h5 class="card-title mb-3"><i class="bi bi-link-45deg me-1"></i> Connected accounts</h5>
+      {% get_social_accounts user as connected %}
+      {% if connected %}
+        <ul class="list-unstyled mb-3">
+          {% for provider_id, accounts in connected.items %}
+            {% for account in accounts %}
+              <li class="d-flex align-items-center justify-content-between mb-2">
+                <span><i class="bi bi-{{ provider_id }} me-1"></i> {{ account }}</span>
+                <form method="post" action="{% url 'socialaccount_connections' %}">
+                  {% csrf_token %}
+                  <input type="hidden" name="account" value="{{ account.id }}">
+                  <button type="submit" class="btn btn-outline-danger btn-sm">Disconnect</button>
+                </form>
+              </li>
+            {% endfor %}
+          {% endfor %}
+        </ul>
+      {% else %}
+        <p class="text-muted small mb-3">You haven't connected any accounts yet.</p>
+      {% endif %}
+      <div class="d-flex gap-2 flex-wrap">
+        {% for provider in socialaccount_providers %}
+          <a href="{% provider_login_url provider process='connect' %}" class="btn btn-outline-secondary btn-sm">
+            <i class="bi bi-{{ provider.id }} me-1"></i> Connect {{ provider.name }}
+          </a>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+  {% endif %}
 
   {% if can_invite_teacher %}
   <div class="card ss-checkin mb-4" id="family">

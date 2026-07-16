@@ -63,6 +63,9 @@ urlpatterns = [
     path("assignments/", include(("assignments.urls", "assignments"), namespace="assignments")),
     path("dashboard/", include(("dashboard.urls", "dashboard"), namespace="dashboard")),
     path("inbox/", include(("inbox.urls", "inbox"), namespace="inbox")),
+    # Social auth (django-allauth) mounted at /auth/ so it doesn't clobber the
+    # app's own /accounts/ login/register/settings routes.
+    path("auth/", include("allauth.urls")),
     path("worklog/", include(("worklog.urls", "worklog"), namespace="worklog")),
     path("tutor/", include(("tutor.urls", "tutor"), namespace="tutor")),
     path("portal/", include(("portal.urls", "portal"), namespace="portal")),

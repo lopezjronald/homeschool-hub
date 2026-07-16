@@ -107,8 +107,14 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    "django.contrib.sites",  # required by allauth
     "crispy_forms",
     "crispy_bootstrap5",
+    # Social auth (additive — the existing email/username + password login stays).
+    "allauth",
+    "allauth.account",
+    "allauth.socialaccount",
+    "allauth.socialaccount.providers.google",
 ]
 
 # Crispy Forms configuration
@@ -127,6 +133,7 @@ MIDDLEWARE = [
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    "allauth.account.middleware.AccountMiddleware",  # allauth
 ]
 
 ROOT_URLCONF = "homeschool_hub.urls"
@@ -217,7 +224,38 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 AUTHENTICATION_BACKENDS = [
     "accounts.backends.EmailOrUsernameModelBackend",
     "django.contrib.auth.backends.ModelBackend",
+    "allauth.account.auth_backends.AuthenticationBackend",  # social login (django-allauth)
 ]
+
+# --- Social auth (django-allauth) -------------------------------------------
+# ADDITIVE: the existing email/username + password login is unchanged; allauth
+# only adds "Sign in with Google". Google credentials come from env vars, so the
+# button appears only once they're set (create a Google OAuth app, then set
+# GOOGLE_OAUTH_CLIENT_ID / GOOGLE_OAUTH_SECRET on Heroku).
+SITE_ID = 1
+# allauth is used for SOCIAL login ONLY — the app keeps its own /accounts/ register,
+# email-verification and login flows. A custom adapter closes allauth's own local
+# email/password signup so it can't mint active, unverified accounts. We do NOT
+# auto-link a social login to an existing account by email: that path (allauth's
+# email-authentication) wipes the local password. Existing users connect Google
+# explicitly from Settings, which links without disturbing their password.
+ACCOUNT_ADAPTER = "accounts.adapters.NoLocalSignupAdapter"
+SOCIALACCOUNT_ADAPTER = "accounts.adapters.SocialSignupAdapter"  # social signup open + safe email link
+ACCOUNT_EMAIL_VERIFICATION = "none"      # the app runs its own verification flow
+SOCIALACCOUNT_LOGIN_ON_GET = True        # one-click provider button (no interstitial)
+
+SOCIALACCOUNT_PROVIDERS = {}
+_google_client_id = os.getenv("GOOGLE_OAUTH_CLIENT_ID", "")
+if _google_client_id:
+    SOCIALACCOUNT_PROVIDERS["google"] = {
+        "APP": {
+            "client_id": _google_client_id,
+            "secret": os.getenv("GOOGLE_OAUTH_SECRET", ""),
+            "key": "",
+        },
+        "SCOPE": ["profile", "email"],
+        "AUTH_PARAMS": {"access_type": "online"},
+    }
 
 # Email: real SMTP (e.g. Amazon SES) when EMAIL_HOST is configured, else the
 # console backend for local dev. Set EMAIL_HOST / EMAIL_HOST_USER /

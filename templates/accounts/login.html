@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% load crispy_forms_tags %}
+{% load crispy_forms_tags socialaccount %}
 
 {% block title %}Login · Steadfast Scholars{% endblock %}
 
@@ -19,6 +19,21 @@
               <button type="submit" class="btn btn-primary">Login</button>
             </div>
           </form>
+
+          {% get_providers as socialaccount_providers %}
+          {% if socialaccount_providers %}
+            <div class="d-flex align-items-center my-3 text-muted">
+              <hr class="flex-grow-1"><span class="px-2 small">or</span><hr class="flex-grow-1">
+            </div>
+            <div class="d-grid gap-2">
+              {% for provider in socialaccount_providers %}
+                <a href="{% provider_login_url provider process='login' %}"
+                   class="btn btn-outline-secondary d-flex align-items-center justify-content-center gap-2">
+                  <i class="bi bi-{{ provider.id }}"></i> Sign in with {{ provider.name }}
+                </a>
+              {% endfor %}
+            </div>
+          {% endif %}
         </div>
         <div class="card-footer text-center">
           <a href="{% url 'accounts:password_reset' %}">Forgot your password?</a>

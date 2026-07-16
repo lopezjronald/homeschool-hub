@@ -562,6 +562,88 @@ GRADE_DICT = {
 }
 
 
+class GradePendingTests(TestCase):
+    """The grade_pending sweep — the backstop that grades submissions whose
+    fire-and-forget background grade died (deploy/restart, worker recycle)."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.parent = User.objects.create_user(username="gpd", email="gpd@e.com", password="pw")
+        cls.family = Family.objects.create(name="Sweep Fam")
+        FamilyMembership.objects.create(user=cls.parent, family=cls.family, role="parent")
+        cls.child = Student.objects.create(
+            parent=cls.parent, first_name="Rae", grade_level="G03", family=cls.family,
+        )
+
+    def _submitted_sheet(self):
+        from django.utils import timezone
+
+        from curricula.models import Chapter
+        from tutor.models import Question, QuestionSet, ResponseSheet
+
+        cur = Curriculum.objects.create(
+            parent=self.parent, name="Writing", subject="Writing", family=self.family, grade_level="G03",
+        )
+        ch = Chapter.objects.create(curriculum=cur, number=1, title="U1")
+        lesson = Lesson.objects.create(chapter=ch, order=1, number=1, title="L1")
+        qset = QuestionSet.objects.create(
+            lesson=lesson, title="Q", family=self.family, status=QuestionSet.APPROVED, rubric="Answer well.",
+        )
+        q = Question.objects.create(question_set=qset, order=1, category="editing", prompt="Why?")
+        entry = WorkLogEntry.objects.create(
+            parent=self.parent, child=self.child, subject="Writing", family=self.family,
+            date=timezone.localdate(),
+        )
+        return ResponseSheet.objects.create(
+            question_set=qset, child=self.child, answers={str(q.pk): "Because."},
+            status=ResponseSheet.SUBMITTED, work_entry=entry, submitted_at=timezone.now(),
+        )
+
+    @override_settings(ANTHROPIC_API_KEY="test-key")
+    def test_grades_ungraded_submission(self):
+        sheet = self._submitted_sheet()
+        with patch("tutor.ai.is_configured", return_value=True), \
+             patch("tutor.ai.grade_work", return_value=dict(GRADE_DICT)):
+            graded, failed = grading.grade_pending_sheets()
+        self.assertEqual((graded, failed), (1, 0))
+        self.assertTrue(MasteryAssessment.objects.filter(work_entry=sheet.work_entry_id).exists())
+
+    @override_settings(ANTHROPIC_API_KEY="test-key")
+    def test_skips_already_graded(self):
+        sheet = self._submitted_sheet()
+        MasteryAssessment.objects.create(
+            work_entry=sheet.work_entry, graded_by=None, ai_level="developing",
+        )
+        with patch("tutor.ai.is_configured", return_value=True), \
+             patch("tutor.ai.grade_work", return_value=dict(GRADE_DICT)) as gw:
+            graded, failed = grading.grade_pending_sheets()
+        self.assertEqual((graded, failed), (0, 0))
+        gw.assert_not_called()  # nothing pending → no API call
+
+    def test_noop_when_grader_not_configured(self):
+        self._submitted_sheet()
+        self.assertFalse(ai.is_configured())
+        self.assertEqual(grading.grade_pending_sheets(), (0, 0))
+
+    @override_settings(ANTHROPIC_API_KEY="test-key")
+    def test_limit_bounds_the_sweep(self):
+        self._submitted_sheet()
+        self._submitted_sheet()
+        with patch("tutor.ai.is_configured", return_value=True), \
+             patch("tutor.ai.grade_work", return_value=dict(GRADE_DICT)):
+            graded, _failed = grading.grade_pending_sheets(limit=1)
+        self.assertEqual(graded, 1)  # only one graded this run; the other stays pending
+
+    @override_settings(ANTHROPIC_API_KEY="test-key")
+    def test_command_reports_counts(self):
+        self._submitted_sheet()
+        out = StringIO()
+        with patch("tutor.ai.is_configured", return_value=True), \
+             patch("tutor.ai.grade_work", return_value=dict(GRADE_DICT)):
+            call_command("grade_pending", stdout=out)
+        self.assertIn("graded 1", out.getvalue())
+
+
 class SubmissionNotifyTests(TestCase):
     """Email the parent when a child's submission produces a draft assessment."""
 

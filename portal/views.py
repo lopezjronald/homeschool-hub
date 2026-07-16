@@ -321,7 +321,13 @@ def portal_questions(request, token, set_pk):
     question_set = get_object_or_404(_visible_question_sets(student), pk=set_pk)
 
     if request.method == "POST":
-        _submit_sheet(student, question_set, request.POST)
+        sheet = _submit_sheet(student, question_set, request.POST)
+        # Start grading the instant she turns it in — a head start during the
+        # celebration, and NOT dependent on the feedback page's JS firing. This is
+        # idempotent; the feedback page re-kicks and the grade_pending sweep are
+        # additional safety nets so a submission can't stay ungraded.
+        if sheet.is_submitted and sheet.work_entry_id:
+            grading.start_background_grade(sheet.pk)
         return redirect("portal:portal_feedback", token=token, set_pk=set_pk)
 
     sheet = _sheet_for(student, question_set)

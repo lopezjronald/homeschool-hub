@@ -163,6 +163,43 @@ def auto_grade_sheet(sheet, client=None, timeout=None):
     return assessment, True
 
 
+def grade_pending_sheets(limit=None):
+    """Grade every submitted sheet that still has no assessment (idempotent).
+
+    The reliable backstop for the fire-and-forget background grade: if that
+    daemon thread ever died mid-grade (a deploy or dyno restart, a worker
+    recycle, thread starvation), the submission would sit ungraded until a
+    parent graded it by hand — the recurring "it gets stuck." This sweep grades
+    whatever slipped through. Safe to run any time: ``auto_grade_sheet`` locks
+    per work entry, so a sheet already being graded elsewhere just no-ops.
+    Returns ``(graded, failed)``.
+    """
+    from .models import ResponseSheet
+
+    if not ai.is_configured():
+        return 0, 0
+    graded_entry_ids = MasteryAssessment.objects.values_list("work_entry_id", flat=True)
+    pending = (
+        ResponseSheet.objects
+        .filter(status=ResponseSheet.SUBMITTED, work_entry__isnull=False)
+        .exclude(work_entry_id__in=graded_entry_ids)
+        .select_related("question_set__lesson__chapter__curriculum", "child", "work_entry")
+        .order_by("submitted_at")
+    )
+    if limit:
+        pending = pending[:limit]
+    graded = failed = 0
+    for sheet in list(pending):
+        try:
+            _assessment, created = auto_grade_sheet(sheet, timeout=_background_timeout())
+            if created:
+                graded += 1
+        except Exception:  # noqa: BLE001 — one bad sheet must never stop the sweep
+            failed += 1
+            logger.exception("grade_pending: failed to grade sheet %s", sheet.pk)
+    return graded, failed
+
+
 def start_manual_grade(entry_pk, *, rubric, answers, grade_level, subject,
                        objectives, graded_by_id):
     """Grade a PARENT-initiated assessment off the request path.

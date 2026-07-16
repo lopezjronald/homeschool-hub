@@ -13,7 +13,7 @@ from curricula.services import apply_blueprint, get_blueprint
 from students.models import Student
 from worklog.models import WorkLogEntry
 
-from . import ai, imagegen, mastery
+from . import ai, grading, imagegen, mastery
 from .models import Material, MasteryAssessment
 
 User = get_user_model()
@@ -42,6 +42,37 @@ GOOD_JSON = (
     '"criteria": [{"criterion": "Bonds to 100", "met": true, "comment": "All correct."}], '
     '"encouragement": "Great work, Violet!"}'
 )
+
+
+class CheckSpellingTests(TestCase):
+    """ai.check_spelling parsing — especially that it never echoes a word back
+    as its own 'fix' (which produced a stuck 'bullied -> bullied' suggestion)."""
+
+    def test_not_configured_returns_empty(self):
+        self.assertFalse(ai.is_configured())
+        self.assertEqual(ai.check_spelling("becuse"), [])
+
+    @override_settings(ANTHROPIC_API_KEY="test-key")
+    def test_parses_misspellings(self):
+        fake = FakeAnthropic('[{"wrong": "becuse", "fixes": ["because"]}]')
+        out = ai.check_spelling("it happened becuse of rain", client=fake)
+        self.assertEqual(out, [{"wrong": "becuse", "fixes": ["because"]}])
+
+    @override_settings(ANTHROPIC_API_KEY="test-key")
+    def test_drops_noop_fix_equal_to_word(self):
+        # A correctly-spelled word flagged with itself as the "fix" must vanish,
+        # not render as "bullied -> bullied".
+        fake = FakeAnthropic('[{"wrong": "bullied", "fixes": ["bullied"]}]')
+        self.assertEqual(ai.check_spelling("he is bullied", client=fake), [])
+        # Even case-different echoes ("Bullied") count as no-ops.
+        fake2 = FakeAnthropic('[{"wrong": "bullied", "fixes": ["Bullied"]}]')
+        self.assertEqual(ai.check_spelling("he is bullied", client=fake2), [])
+
+    @override_settings(ANTHROPIC_API_KEY="test-key")
+    def test_keeps_real_fixes_drops_noop_and_case_dupes(self):
+        fake = FakeAnthropic('[{"wrong": "wuz", "fixes": ["wuz", "was", "Was", "were"]}]')
+        out = ai.check_spelling("it wuz fun", client=fake)
+        self.assertEqual(out, [{"wrong": "wuz", "fixes": ["was", "were"]}])
 
 
 class MasteryScaleTests(TestCase):
@@ -132,18 +163,93 @@ class AssessViewTests(TestCase):
     def _login(self, who="ap"):
         self.client.login(username=who, password="pw")
 
-    @override_settings(ANTHROPIC_API_KEY="test-key")
+    @override_settings(ANTHROPIC_API_KEY="test-key", GRADE_IN_BACKGROUND=False)
     def test_create_assessment_success(self):
+        # The manual grade now runs OFF the request path; GRADE_IN_BACKGROUND=False
+        # runs it inline so the draft exists synchronously, then the pending page
+        # forwards the parent to it.
         self._login()
         with patch("anthropic.Anthropic", return_value=FakeAnthropic(GOOD_JSON)):
             resp = self.client.post(
                 reverse("tutor:assess_create", kwargs={"entry_pk": self.entry.pk}),
                 data={"rubric": "Bonds to 100", "answers": "98+2=100"},
+                follow=True,
             )
-        self.assertEqual(resp.status_code, 302)
         assessment = MasteryAssessment.objects.get(work_entry=self.entry)
         self.assertEqual(assessment.ai_level, "proficient")
         self.assertEqual(assessment.status, MasteryAssessment.DRAFT)
+        self.assertEqual(assessment.graded_by, self.parent)  # parent-initiated, not auto
+        self.assertRedirects(resp, reverse("tutor:assess_detail", kwargs={"pk": assessment.pk}))
+
+    @override_settings(ANTHROPIC_API_KEY="test-key")
+    def test_assess_create_backgrounds_without_blocking(self):
+        # The POST must return immediately to the pending page and hand grading to
+        # the background helper — never grade synchronously in-request (that H12'd).
+        self._login()
+        with patch("tutor.grading.start_manual_grade") as start:
+            resp = self.client.post(
+                reverse("tutor:assess_create", kwargs={"entry_pk": self.entry.pk}),
+                data={"rubric": "r", "answers": "a"},
+            )
+        self.assertRedirects(
+            resp, reverse("tutor:assess_pending", kwargs={"entry_pk": self.entry.pk}),
+            fetch_redirect_response=False,
+        )
+        start.assert_called_once()
+        self.assertEqual(start.call_args.args[0], self.entry.pk)
+
+    @override_settings(ANTHROPIC_API_KEY="test-key", GRADE_IN_BACKGROUND=False,
+                       GRADE_BACKGROUND_TIMEOUT=99)
+    def test_manual_background_grade_uses_generous_timeout(self):
+        # Off-request grades wait longer than the tight 24s in-request cap, so a
+        # slow model doesn't silently drop the grade.
+        with patch("tutor.ai.grade_work", return_value=dict(GRADE_DICT)) as gw:
+            grading.start_manual_grade(
+                self.entry.pk, rubric="r", answers="a", grade_level="3rd Grade",
+                subject="Math", objectives="", graded_by_id=self.parent.pk,
+            )
+        gw.assert_called_once()
+        self.assertEqual(gw.call_args.kwargs["timeout"], 99)
+        self.assertTrue(MasteryAssessment.objects.filter(work_entry=self.entry).exists())
+
+    def test_assess_pending_redirects_when_ready(self):
+        self._login()
+        a = MasteryAssessment.objects.create(
+            work_entry=self.entry, graded_by=self.parent, rubric="r", answers="a",
+            ai_level="proficient",
+        )
+        resp = self.client.get(reverse("tutor:assess_pending", kwargs={"entry_pk": self.entry.pk}))
+        self.assertRedirects(resp, reverse("tutor:assess_detail", kwargs={"pk": a.pk}))
+
+    def test_assess_pending_waits_when_not_ready(self):
+        self._login()
+        resp = self.client.get(reverse("tutor:assess_pending", kwargs={"entry_pk": self.entry.pk}))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "Grading")
+
+    def test_assess_status_reports_ready_with_url(self):
+        self._login()
+        a = MasteryAssessment.objects.create(
+            work_entry=self.entry, graded_by=self.parent, rubric="r", answers="a",
+            ai_level="proficient",
+        )
+        resp = self.client.get(reverse("tutor:assess_status", kwargs={"entry_pk": self.entry.pk}))
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json(), {
+            "ready": True,
+            "url": reverse("tutor:assess_detail", kwargs={"pk": a.pk}),
+        })
+
+    @override_settings(ANTHROPIC_API_KEY="test-key")
+    def test_assess_status_reports_not_ready(self):
+        self._login()
+        resp = self.client.get(reverse("tutor:assess_status", kwargs={"entry_pk": self.entry.pk}))
+        self.assertEqual(resp.json(), {"ready": False, "grading": True})
+
+    def test_assess_status_editor_gated(self):
+        self._login("at")  # teacher is not an editor
+        resp = self.client.get(reverse("tutor:assess_status", kwargs={"entry_pk": self.entry.pk}))
+        self.assertEqual(resp.status_code, 404)
 
     @override_settings(ANTHROPIC_API_KEY="")
     def test_not_configured_shows_message_and_no_assessment(self):

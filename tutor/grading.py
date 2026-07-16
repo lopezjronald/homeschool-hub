@@ -23,6 +23,15 @@ from .models import MasteryAssessment
 logger = logging.getLogger(__name__)
 
 
+def _background_timeout():
+    """API timeout for grades that run off the request path (no 30s router cap).
+
+    A slow model under load used to exceed the tight in-request timeout and the
+    grade was silently dropped ("it didn't grade"). Off-request we can wait.
+    """
+    return getattr(settings, "GRADE_BACKGROUND_TIMEOUT", 110)
+
+
 def start_background_grade(sheet_pk):
     """Grade sheet ``sheet_pk`` off the request path so it can't hit the 30s wall.
 
@@ -63,7 +72,7 @@ def _grade_now(sheet_pk):
                 "question_set__lesson__chapter__curriculum", "child", "work_entry",
             ).get(pk=sheet_pk)
         )
-        auto_grade_sheet(sheet)
+        auto_grade_sheet(sheet, timeout=_background_timeout())
     except Exception:  # noqa: BLE001 — never let a background grade crash the worker
         logger.exception("Background grade failed for response sheet %s", sheet_pk)
 
@@ -87,12 +96,13 @@ def _rubric_for(question_set):
     return rubric
 
 
-def auto_grade_sheet(sheet, client=None):
+def auto_grade_sheet(sheet, client=None, timeout=None):
     """Grade a submitted sheet once, idempotently. Returns (assessment, created).
 
     Returns (None, False) when the sheet has no work entry yet (not submitted)
     or the grader isn't configured. Raises ai.GraderError on API failure so the
-    caller can degrade gracefully.
+    caller can degrade gracefully. ``timeout`` overrides the API timeout (the
+    background caller passes a generous one); ignored when ``client`` is injected.
     """
     if not sheet.is_submitted or sheet.work_entry_id is None:
         return None, False
@@ -116,13 +126,18 @@ def auto_grade_sheet(sheet, client=None):
         subject=entry.subject,
         objectives=question_set.lesson.objectives or "",
         client=client,
+        timeout=timeout if timeout is not None else ai.IN_REQUEST_TIMEOUT,
     )
 
     with transaction.atomic():
-        locked = type(sheet).objects.select_for_update().get(pk=sheet.pk)
-        existing = MasteryAssessment.objects.filter(work_entry=locked.work_entry_id).first()
+        # Lock the WORK ENTRY row — the key both this portal auto-grader and the
+        # parent's manual grader (start_manual_grade) share — so the two paths
+        # can't each create an assessment for the same entry (there's no DB
+        # uniqueness on work_entry, and they'd otherwise lock different rows).
+        type(entry).objects.select_for_update().get(pk=entry.pk)
+        existing = MasteryAssessment.objects.filter(work_entry=entry).first()
         if existing:
-            return existing, False  # a concurrent request won the race
+            return existing, False  # a concurrent grade won the race
         assessment = MasteryAssessment.objects.create(
             work_entry=entry,
             lesson=question_set.lesson,
@@ -146,3 +161,67 @@ def auto_grade_sheet(sheet, client=None):
     except Exception:  # noqa: BLE001
         logger.exception("submission notification failed for sheet %s", sheet.pk)
     return assessment, True
+
+
+def start_manual_grade(entry_pk, *, rubric, answers, grade_level, subject,
+                       objectives, graded_by_id):
+    """Grade a PARENT-initiated assessment off the request path.
+
+    The manual "AI Grade" button used to grade inside the request and could blow
+    past Heroku's hard 30s cap under load (an H12 "Application error"). Now it
+    hands the grade to a daemon thread; the page polls and lands the parent on
+    the draft once it's ready. Idempotent on the work entry (one per entry).
+    """
+    args = (entry_pk, rubric, answers, grade_level, subject, objectives, graded_by_id)
+    if getattr(settings, "GRADE_IN_BACKGROUND", True):
+        threading.Thread(target=_threaded_manual_grade, args=args, daemon=True).start()
+    else:
+        _manual_grade_now(*args)
+
+
+def _threaded_manual_grade(*args):
+    try:
+        _manual_grade_now(*args)
+    finally:
+        connections.close_all()
+
+
+def _manual_grade_now(entry_pk, rubric, answers, grade_level, subject, objectives,
+                      graded_by_id):
+    """Grade one parent-initiated entry and save the DRAFT assessment. Swallows
+    failures (a background grade must never crash the worker); a failed grade
+    leaves no assessment, so the pending page keeps waiting and the parent can
+    retry."""
+    from worklog.models import WorkLogEntry
+
+    try:
+        if MasteryAssessment.objects.filter(work_entry_id=entry_pk).exists():
+            return  # already graded (idempotent)
+        entry = WorkLogEntry.objects.get(pk=entry_pk)
+        result = ai.grade_work(
+            rubric=rubric,
+            answers=answers,
+            grade_level=grade_level,
+            subject=subject,
+            objectives=objectives,
+            timeout=_background_timeout(),
+        )
+        with transaction.atomic():
+            # Re-check under a row lock so a double-submit can't create two.
+            locked = WorkLogEntry.objects.select_for_update().get(pk=entry_pk)
+            if MasteryAssessment.objects.filter(work_entry=locked).exists():
+                return
+            MasteryAssessment.objects.create(
+                work_entry=locked,
+                graded_by_id=graded_by_id,
+                rubric=rubric,
+                answers=answers,
+                ai_level=result["level"],
+                ai_summary=result["summary"],
+                ai_criteria=result["criteria"],
+                ai_encouragement=result["encouragement"],
+                ai_kid_highlights=result.get("kid_highlights", []),
+                ai_parent_pointers=result.get("parent_pointers", []),
+            )
+    except Exception:  # noqa: BLE001 — never let a background grade crash the worker
+        logger.exception("Manual grade failed for work entry %s", entry_pk)

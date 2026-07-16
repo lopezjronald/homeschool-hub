@@ -1,11 +1,13 @@
-/* Our own spell-checker for the writing boxes.
+/* AI-assisted one-tap spelling fixes for the writing boxes.
 
-   The browser's native red squiggle depends on a device setting we can't
-   control (and never offers fixes), so we draw our own: a backdrop div mirrors
-   the textarea's text with a red wavy underline under misspelled words, and a
-   little bar under the box offers one-tap corrections. Detection is AI-backed
-   (see tutor.ai.check_spelling) so it catches phonetic kid spellings. Runs only
-   when the form exposes a spellcheck URL (i.e. NOT on spelling curricula). */
+   The browser draws the red squiggle natively (the textarea keeps
+   spellcheck="true"). On top of that, this adds a small "Fix spelling" bar
+   under the box: on a typing pause we ask the server (tutor.ai.check_spelling —
+   a small fast model that also catches phonetic kid spellings like
+   "becuse"->"because") for misspelled words and offer tap-to-fix corrections.
+   We do NOT draw our own squiggle — the native one handles that, so there is
+   only ever one underline. Runs only when the form exposes a spellcheck URL
+   (i.e. NOT on spelling curricula). */
 (function () {
   "use strict";
 
@@ -14,96 +16,83 @@
   var url = form.dataset.spellcheckUrl;
   if (!url) return;
 
-  var MIRROR = ["fontFamily", "fontSize", "fontWeight", "fontStyle", "fontVariant",
-    "letterSpacing", "wordSpacing", "lineHeight", "textTransform", "textIndent",
-    "paddingTop", "paddingRight", "paddingBottom", "paddingLeft",
-    "borderTopWidth", "borderRightWidth", "borderBottomWidth", "borderLeftWidth",
-    "boxSizing", "tabSize"];
-
-  function esc(s) {
-    return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-  }
+  var WORD_CHAR = /[A-Za-z'\-]/;
   function reEscape(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }
 
   Array.prototype.slice.call(document.querySelectorAll("textarea.portal-answer")).forEach(function (area) {
     if (area.readOnly) return;
-    area.spellcheck = false;  // we draw our own squiggle; the native one is unreliable
-
-    var bg = getComputedStyle(area).backgroundColor;
-
-    // Wrap the textarea so a backdrop can sit exactly behind it.
-    var wrap = document.createElement("div");
-    wrap.className = "spellwrap";
-    area.parentNode.insertBefore(wrap, area);
-    var backdrop = document.createElement("div");
-    backdrop.className = "spell-backdrop";
-    backdrop.setAttribute("aria-hidden", "true");
-    wrap.appendChild(backdrop);
-    wrap.appendChild(area);
-    area.style.background = "transparent";  // let the backdrop (and its squiggles) show
+    area.spellcheck = true;  // let the browser draw the squiggle; we add the one-tap fixes
 
     var bar = document.createElement("div");
     bar.className = "spellfix-bar";
     bar.hidden = true;
-    wrap.insertAdjacentElement("afterend", bar);
+    area.insertAdjacentElement("afterend", bar);
 
-    var misspelled = [];   // [{wrong, fixes}]
+    var misspelled = [];   // [{wrong, fixes:[...]}] from the server (no-ops already dropped)
     var timer = null;
+    var seq = 0;           // guards against out-of-order responses
+    var lastChecked = null;
 
-    function syncStyles() {
-      var cs = getComputedStyle(area);
-      MIRROR.forEach(function (p) { backdrop.style[p] = cs[p]; });
-      backdrop.style.backgroundColor = bg;
-      backdrop.style.borderRadius = cs.borderRadius;
-      backdrop.style.width = area.offsetWidth + "px";
-      backdrop.style.height = area.offsetHeight + "px";
-      // If the textarea shows a scrollbar its text wraps at a narrower width;
-      // pad the mirror by the scrollbar width so the words stay aligned.
-      var sb = area.offsetWidth - area.clientWidth
-        - parseFloat(cs.borderLeftWidth || 0) - parseFloat(cs.borderRightWidth || 0);
-      backdrop.style.paddingRight = (parseFloat(cs.paddingRight || 0) + Math.max(0, sb)) + "px";
+    // The word the caret sits inside right now (lowercased), or null if the
+    // caret is between words, there's a selection, or the box isn't focused.
+    // We never flag that word — she's still typing it.
+    function wordUnderCaret() {
+      if (document.activeElement !== area) return null;
+      if (area.selectionStart !== area.selectionEnd) return null;
+      var v = area.value, i = area.selectionStart, l = i, r = i;
+      while (l > 0 && WORD_CHAR.test(v.charAt(l - 1))) l--;
+      while (r < v.length && WORD_CHAR.test(v.charAt(r))) r++;
+      return r > l ? v.slice(l, r).toLowerCase() : null;
     }
 
-    function paint() {
-      var text = area.value;
-      if (!misspelled.length) {
-        backdrop.textContent = text;   // plain mirror, no marks
-      } else {
-        var words = misspelled.map(function (m) { return m.wrong; })
-          .filter(function (w, i, a) { return a.indexOf(w) === i; })
-          .sort(function (a, b) { return b.length - a.length; })
-          .map(reEscape);
-        var re = new RegExp("\\b(" + words.join("|") + ")\\b", "gi");
-        backdrop.innerHTML = esc(text).replace(re, function (m) {
-          return '<span class="spell-err">' + m + "</span>";
-        });
-      }
-      backdrop.scrollTop = area.scrollTop;
-      backdrop.scrollLeft = area.scrollLeft;
-      renderBar();
+    // Flagged words worth showing: still present in the text, with a real fix,
+    // and not the word she's mid-typing. Returns cleaned {wrong, fixes}.
+    function visible() {
+      var low = area.value.toLowerCase();
+      var skip = wordUnderCaret();
+      var out = [];
+      misspelled.forEach(function (m) {
+        if (!m.wrong) return;
+        var wl = m.wrong.toLowerCase();
+        if (wl === skip || low.indexOf(wl) === -1) return;
+        // Defensive: drop any "fix" that just echoes the word (the server does
+        // this too), so a stray "bullied -> bullied" never renders or loops.
+        var fixes = (m.fixes || []).filter(function (f) { return f && f.toLowerCase() !== wl; });
+        if (fixes.length) out.push({ wrong: m.wrong, fixes: fixes });
+      });
+      return out;
     }
 
     function renderBar() {
-      if (!misspelled.length) { bar.hidden = true; bar.textContent = ""; return; }
+      var items = visible();
+      if (!items.length) { bar.hidden = true; bar.textContent = ""; return; }
       bar.hidden = false;
       bar.textContent = "";
       var label = document.createElement("span");
       label.className = "spellfix-label";
       label.textContent = "✏️ Fix spelling:";
       bar.appendChild(label);
-      misspelled.forEach(function (m) {
-        var fix = m.fixes[0];
-        if (!fix) return;
-        var chip = document.createElement("button");
-        chip.type = "button";
-        chip.className = "spellfix-chip";
-        var a = document.createElement("span"); a.className = "spellfix-wrong"; a.textContent = m.wrong;
-        var arrow = document.createElement("span"); arrow.className = "spellfix-arrow"; arrow.textContent = "→";
-        var b = document.createElement("span"); b.className = "spellfix-fix"; b.textContent = fix;
-        chip.appendChild(a); chip.appendChild(arrow); chip.appendChild(b);
-        chip.addEventListener("mousedown", function (ev) { ev.preventDefault(); });
-        chip.addEventListener("click", function () { applyFix(m.wrong, fix); });
-        bar.appendChild(chip);
+      items.forEach(function (m) {
+        var group = document.createElement("span");
+        group.className = "spellfix-group";
+        var wrong = document.createElement("span");
+        wrong.className = "spellfix-wrong";
+        wrong.textContent = m.wrong;
+        group.appendChild(wrong);
+        var arrow = document.createElement("span");
+        arrow.className = "spellfix-arrow";
+        arrow.textContent = "→";
+        group.appendChild(arrow);
+        m.fixes.slice(0, 3).forEach(function (fix) {
+          var chip = document.createElement("button");
+          chip.type = "button";
+          chip.className = "spellfix-chip";
+          chip.textContent = fix;
+          chip.addEventListener("mousedown", function (ev) { ev.preventDefault(); });  // keep focus/caret
+          chip.addEventListener("click", function () { applyFix(m.wrong, fix); });
+          group.appendChild(chip);
+        });
+        bar.appendChild(group);
       });
     }
 
@@ -117,18 +106,21 @@
       misspelled = misspelled.filter(function (m) {
         return m.wrong.toLowerCase() !== wrong.toLowerCase();
       });
-      paint();
+      renderBar();
       schedule();
     }
 
     function schedule() {
       if (timer) clearTimeout(timer);
-      timer = setTimeout(check, 900);
+      timer = setTimeout(check, 1200);  // wait until she's paused before asking
     }
 
     function check() {
       var text = area.value;
-      if (text.trim().length < 2) { misspelled = []; paint(); return; }
+      if (text.trim().length < 2) { misspelled = []; lastChecked = text; renderBar(); return; }
+      if (text === lastChecked) { renderBar(); return; }  // unchanged → no API call (saves tokens)
+      lastChecked = text;
+      var mine = ++seq;
       fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -137,27 +129,21 @@
       })
         .then(function (r) { return r.ok ? r.json() : { misspelled: [] }; })
         .then(function (d) {
-          var low = area.value.toLowerCase();
-          misspelled = (d.misspelled || []).filter(function (m) {
-            return m.wrong && low.indexOf(m.wrong.toLowerCase()) !== -1;
-          });
-          paint();
+          if (mine !== seq) return;  // a newer check superseded this one
+          misspelled = d.misspelled || [];
+          renderBar();
         })
         .catch(function () { /* keep whatever we had */ });
     }
 
-    area.addEventListener("input", function () { paint(); schedule(); });
-    area.addEventListener("scroll", function () {
-      backdrop.scrollTop = area.scrollTop;
-      backdrop.scrollLeft = area.scrollLeft;
-    });
-    window.addEventListener("resize", syncStyles);
-    if (window.ResizeObserver) {
-      new ResizeObserver(function () { syncStyles(); paint(); }).observe(area);
-    }
+    // Typing schedules a fresh check; moving the caret only re-filters the bar
+    // (cheap, no API call) so the word she's on drops out and reappears once she
+    // moves off it.
+    area.addEventListener("input", function () { renderBar(); schedule(); });
+    area.addEventListener("keyup", renderBar);
+    area.addEventListener("click", renderBar);
+    area.addEventListener("blur", renderBar);
 
-    syncStyles();
-    paint();
     schedule();  // check any pre-filled answer on load
   });
 })();

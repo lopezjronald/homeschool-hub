@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}Grading… · Steadfast Scholars{% endblock %}
+
+{% block content %}
+<div class="container py-5">
+  <div class="row justify-content-center">
+    <div class="col-md-7">
+      <div class="card text-center">
+        <div class="card-body py-5" id="assess-pending"
+             data-status-url="{% url 'tutor:assess_status' entry.pk %}"
+             data-configured="{{ configured|yesno:'1,0' }}">
+          <div class="spinner-border text-primary mb-3" role="status">
+            <span class="visually-hidden">Grading…</span>
+          </div>
+          <h4 class="mb-2">Grading {{ entry.child.first_name }}'s work…</h4>
+          <p class="text-muted mb-0" id="assess-pending-note">
+            The AI is reading it now. This usually takes a few seconds — hang tight,
+            we'll bring you to the draft automatically.
+          </p>
+          <noscript>
+            <p class="mt-3">Grading is running. Refresh this page in a moment to see the draft.</p>
+          </noscript>
+          <div id="assess-pending-slow" class="mt-4" hidden>
+            <a href="{% url 'worklog:worklog_detail' entry.pk %}" class="btn btn-outline-secondary btn-sm">
+              Back to the work log
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+  var el = document.getElementById("assess-pending");
+  if (!el) return;
+  var statusUrl = el.dataset.statusUrl;
+  var note = document.getElementById("assess-pending-note");
+  var slow = document.getElementById("assess-pending-slow");
+
+  if (el.dataset.configured !== "1") {
+    note.textContent = "AI grading isn't set up on the server yet.";
+    if (slow) slow.hidden = false;
+    return;
+  }
+
+  var tries = 0;
+  var MAX_TRIES = 50;   // ~150s at 3s — comfortably past the background grade timeout
+  var timer = setInterval(function () {
+    tries++;
+    fetch(statusUrl, { credentials: "same-origin" })
+      .then(function (r) { return r.ok ? r.json() : {}; })
+      .then(function (d) {
+        if (d && d.ready && d.url) { clearInterval(timer); window.location.href = d.url; return; }
+        if (d && d.grading === false) {   // grader turned out to be unavailable
+          clearInterval(timer);
+          note.textContent = "AI grading isn't available right now.";
+          if (slow) slow.hidden = false;
+        }
+      })
+      .catch(function () { /* transient — keep polling */ });
+    if (tries === 8 && slow) slow.hidden = false;   // ~24s: offer an out but keep polling
+    if (tries >= MAX_TRIES) {
+      clearInterval(timer);
+      note.textContent = "Still working — you can keep waiting, or check back from the work log.";
+      if (slow) slow.hidden = false;
+    }
+  }, 3000);
+})();
+</script>
+{% endblock %}

@@ -67,16 +67,22 @@ def is_configured():
     return bool(getattr(settings, "ANTHROPIC_API_KEY", ""))
 
 
-def _make_client():
+# Grading that runs INSIDE a web request must beat Heroku's hard 30s router cap,
+# so those callers use a tight timeout. Grading that runs OFF the request path (a
+# background thread) has no such cap, so it can wait longer for a slow model — a
+# 24s cap there silently dropped grades when the model ran long under load.
+IN_REQUEST_TIMEOUT = 24.0
+
+
+def _make_client(timeout=IN_REQUEST_TIMEOUT):
     import anthropic
 
-    # These calls run INSIDE a web request and Heroku hard-kills requests at 30s.
-    # So: a tight timeout and NO SDK retries — a retry would stack a second
-    # attempt on top of the first and blow past 30s, killing the request before
-    # the assessment is saved (the child then "never sees results"). On failure
-    # we fail fast; the feedback page re-fires the (idempotent) grade on reload.
+    # NO SDK retries — a retry would stack a second attempt and, in-request, blow
+    # past 30s, killing the request before the assessment is saved (the child
+    # then "never sees results"). On failure we fail fast; the caller re-fires the
+    # (idempotent) grade on reload.
     return anthropic.Anthropic(
-        api_key=settings.ANTHROPIC_API_KEY, timeout=24.0, max_retries=0,
+        api_key=settings.ANTHROPIC_API_KEY, timeout=timeout, max_retries=0,
     )
 
 
@@ -129,16 +135,19 @@ def _parse_response(text):
     }
 
 
-def grade_work(*, rubric, answers, grade_level, subject, objectives="", client=None):
+def grade_work(*, rubric, answers, grade_level, subject, objectives="", client=None,
+               timeout=IN_REQUEST_TIMEOUT):
     """Grade a piece of work against a rubric. Returns a parsed result dict.
 
     ``client`` is injectable so tests can supply a fake Anthropic client.
+    ``timeout`` is the API timeout for the built client; background callers pass
+    a longer value since they aren't bound by the 30s request cap.
     """
     if not is_configured():
         raise GraderNotConfigured("Anthropic API key is not configured.")
 
     if client is None:
-        client = _make_client()
+        client = _make_client(timeout=timeout)
 
     user_prompt = _build_user_prompt(rubric, answers, grade_level, subject, objectives)
     try:
@@ -263,9 +272,22 @@ def check_spelling(text, grade_level="", client=None):
         fixes = item.get("fixes", [])
         if not wrong or not isinstance(fixes, list):
             continue
-        clean_fixes = [str(f).strip() for f in fixes if str(f).strip()][:3]
+        # Drop "fixes" that just echo the word back. The small model sometimes
+        # flags a correctly-spelled word and lists it as its own correction,
+        # which produced a useless "word -> word" chip that reappeared after
+        # every recheck. If no real alternative is left, the word wasn't
+        # actually misspelled, so skip it. Dedupe case-insensitively too, so we
+        # don't offer both "was" and "Was".
+        wrong_low = wrong.lower()
+        clean_fixes, seen = [], set()
+        for f in fixes:
+            f = str(f).strip()
+            fl = f.lower()
+            if f and fl != wrong_low and fl not in seen:
+                seen.add(fl)
+                clean_fixes.append(f)
         if clean_fixes:
-            out.append({"wrong": wrong, "fixes": clean_fixes})
+            out.append({"wrong": wrong, "fixes": clean_fixes[:3]})
     return out[:20]
 
 

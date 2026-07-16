@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Steadfast Scholars{% endblock %}</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
   <link href="{% static 'css/aurora-scholars.css' %}" rel="stylesheet">
   {% block extra_css %}{% endblock %}
 </head>
@@ -43,6 +44,19 @@
                 </ul>
               </li>
             {% endif %}
+            {% if inbox_visible %}
+              <li class="nav-item">
+                <a class="nav-link position-relative" href="{% url 'inbox:inbox' %}"
+                   aria-label="Action inbox{% if inbox_badge_count %}, {{ inbox_badge_count }} item{{ inbox_badge_count|pluralize }} need your attention{% endif %}">
+                  <i class="bi {% if inbox_badge_count %}bi-bell-fill{% else %}bi-bell{% endif %} fs-5"></i>
+                  {% if inbox_badge_count %}
+                    <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger">
+                      {{ inbox_badge_count }}<span class="visually-hidden"> items need your attention</span>
+                    </span>
+                  {% endif %}
+                </a>
+              </li>
+            {% endif %}
             <li class="nav-item dropdown">
               <a class="nav-link dropdown-toggle" href="#" id="accountMenu" role="button" data-bs-toggle="dropdown" aria-expanded="false">
                 <span class="d-lg-none">Account</span>
@@ -50,6 +64,7 @@
               </a>
               <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="accountMenu">
                 <li><span class="dropdown-header">Signed in as {{ user.username }}</span></li>
+                <li><a class="dropdown-item" href="{% url 'accounts:settings' %}"><i class="bi bi-gear me-2"></i>Settings</a></li>
                 {% if can_invite_teacher %}
                   <li><a class="dropdown-item" href="{% url 'core:invite_teacher' %}">Invite people</a></li>
                 {% endif %}

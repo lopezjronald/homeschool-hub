@@ -1502,3 +1502,32 @@ class SetupProgressTests(TestCase):
         resp = self.client.get(reverse("worklog:sample_report"))
         self.assertEqual(resp.status_code, 200)
         self.assertContains(resp, "sample report")
+
+
+class FamilyRenameTests(TestCase):
+    """Renaming the household is editor-only."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.parent = CustomUser.objects.create_user(username="frp", email="frp@e.com", password="pw")
+        cls.teacher = CustomUser.objects.create_user(username="frt", email="frt@e.com", password="pw")
+        cls.family = Family.objects.create(name="Old Name")
+        FamilyMembership.objects.create(user=cls.parent, family=cls.family, role="parent")
+        FamilyMembership.objects.create(user=cls.teacher, family=cls.family, role="teacher")
+        cls.url = reverse("core:family_settings")
+
+    def test_editor_can_rename(self):
+        self.client.login(username="frp", password="pw")
+        resp = self.client.post(self.url, {"name": "New Name"})
+        self.assertRedirects(resp, self.url)
+        self.family.refresh_from_db()
+        self.assertEqual(self.family.name, "New Name")
+
+    def test_teacher_gets_404(self):
+        self.client.login(username="frt", password="pw")
+        self.assertEqual(self.client.get(self.url).status_code, 404)
+
+    def test_requires_login(self):
+        resp = self.client.get(self.url)
+        self.assertEqual(resp.status_code, 302)
+        self.assertIn("login", resp.url)

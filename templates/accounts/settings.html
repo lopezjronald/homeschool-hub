@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% load crispy_forms_tags %}
+{% block title %}Settings · Steadfast Scholars{% endblock %}
+
+{% block content %}
+<div class="container py-4" style="max-width: 46rem;">
+  <h1 class="h3 mb-4"><i class="bi bi-gear me-1"></i> Settings</h1>
+
+  <div class="card ss-checkin mb-4" id="account">
+    <div class="card-body">
+      <h5 class="card-title mb-3"><i class="bi bi-person me-1"></i> Account</h5>
+      <form method="post" action="{% url 'accounts:account_update' %}">
+        {% csrf_token %}
+        {{ name_form|crispy }}
+        <button type="submit" class="btn btn-amber">Save name</button>
+      </form>
+      <hr>
+      <p class="mb-1"><strong>Username:</strong> {{ user.username }}</p>
+      <p class="mb-1"><strong>Email:</strong> {{ user.email }}
+        {% if pending_email %}<span class="badge bg-warning text-dark ms-1">Change pending: {{ pending_email }}</span>{% endif %}
+      </p>
+      <div class="d-flex gap-2 mt-2">
+        <a class="btn btn-outline-secondary btn-sm" data-bs-toggle="collapse" href="#changeEmail">Change email</a>
+        <a class="btn btn-outline-secondary btn-sm" href="{% url 'accounts:password_change' %}">Change password</a>
+      </div>
+      <div class="collapse mt-3" id="changeEmail">
+        <form method="post" action="{% url 'accounts:change_email' %}">
+          {% csrf_token %}
+          {{ email_form|crispy }}
+          <button type="submit" class="btn btn-amber">Send confirmation link</button>
+          <p class="text-muted small mt-2 mb-0">We'll email a link to the new address; your email changes only when you click it.</p>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <div class="card ss-checkin mb-4" id="contact">
+    <div class="card-body">
+      <h5 class="card-title mb-3"><i class="bi bi-telephone me-1"></i> Contact information</h5>
+      <p class="text-muted small">Optional — kept on record for charter / Educational Specialist communication.</p>
+      <form method="post" action="{% url 'accounts:contact_update' %}">
+        {% csrf_token %}
+        {{ contact_form|crispy }}
+        <button type="submit" class="btn btn-amber">Save contact info</button>
+      </form>
+    </div>
+  </div>
+
+  <div class="card ss-checkin mb-4" id="notifications">
+    <div class="card-body">
+      <h5 class="card-title mb-3"><i class="bi bi-bell me-1"></i> Notifications</h5>
+      <form method="post" action="{% url 'accounts:notifications_update' %}">
+        {% csrf_token %}
+        {{ notif_form|crispy }}
+        <button type="submit" class="btn btn-amber">Save preferences</button>
+      </form>
+    </div>
+  </div>
+
+  {% if can_invite_teacher %}
+  <div class="card ss-checkin mb-4" id="family">
+    <div class="card-body">
+      <h5 class="card-title mb-3"><i class="bi bi-people me-1"></i> Family</h5>
+      <div class="d-flex gap-2 flex-wrap">
+        <a class="btn btn-outline-secondary btn-sm" href="{% url 'core:family_settings' %}">Rename household</a>
+        <a class="btn btn-outline-secondary btn-sm" href="{% url 'core:invite_teacher' %}">Manage members</a>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

@@ -20,6 +20,33 @@ urlpatterns = [
         name="login",
     ),
     path("logout/", views.logout_view, name="logout"),
+    # Settings hub + per-section handlers
+    path("settings/", views.settings_view, name="settings"),
+    path("settings/account/", views.account_update, name="account_update"),
+    path("settings/contact/", views.contact_update, name="contact_update"),
+    path("settings/notifications/", views.notifications_update, name="notifications_update"),
+    path("settings/email/", views.change_email, name="change_email"),
+    path(
+        "settings/email/confirm/<uidb64>/<token>/",
+        views.change_email_confirm,
+        name="change_email_confirm",
+    ),
+    # Change password while signed in (Django built-ins, like the reset flow).
+    path(
+        "settings/password/",
+        auth_views.PasswordChangeView.as_view(
+            template_name="accounts/password_change.html",
+            success_url=reverse_lazy("accounts:password_change_done"),
+        ),
+        name="password_change",
+    ),
+    path(
+        "settings/password/done/",
+        auth_views.PasswordChangeDoneView.as_view(
+            template_name="accounts/password_change_done.html"
+        ),
+        name="password_change_done",
+    ),
     # Password reset flow (Django built-ins)
     path(
         "password-reset/",

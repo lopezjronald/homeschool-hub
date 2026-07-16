@@ -99,6 +99,7 @@ INSTALLED_APPS = [
     "tutor",  # AI tutor layer (mastery grader)
     "portal",  # Tokenless student portal (kids see only their own work)
     "activities",  # External activities (School of Rock, CodaKid) + check-in nudge
+    "inbox",  # Parent action inbox (aggregates items needing the parent)
     "storages",  # django-storages for R2/S3
     "django.contrib.admin",
     "django.contrib.auth",
@@ -233,6 +234,11 @@ if EMAIL_HOST:
 else:
     EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
 DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "no-reply@homeschool.local")
+
+# Absolute base URL for links in emails sent OUTSIDE a request (e.g. the action-
+# inbox submission notifier runs in a background grading thread with no request).
+# Set to the prod origin on Heroku; falls back to a relative link when unset.
+SITE_BASE_URL = os.getenv("SITE_BASE_URL", "")
 
 LOGIN_URL = "accounts:login"
 # Route through post_login so first-time users see the welcome page and

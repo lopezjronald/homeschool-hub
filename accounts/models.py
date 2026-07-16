@@ -15,6 +15,14 @@ class CustomUser(AbstractUser):
     """
 
     email = models.EmailField("email address", unique=True, db_index=True)
+    pending_email = models.EmailField(
+        "pending email address",
+        blank=True,
+        null=True,
+        default=None,
+        help_text="A new email awaiting verification; committed to `email` once the "
+        "owner clicks the confirmation link. Not unique — validated at commit time.",
+    )
 
     objects = CustomerUserManager()
 
@@ -24,11 +32,11 @@ class CustomUser(AbstractUser):
 
 
 class UserProfile(models.Model):
-    """Per-user onboarding state (not authorization — roles stay on FamilyMembership).
+    """Per-user profile (not authorization — roles stay on FamilyMembership).
 
-    Holds only "have we welcomed / oriented this person" flags: the one-time
-    welcome survey, whether they've dismissed the hub setup checklist, and which
-    just-in-time hints they've already closed.
+    Holds onboarding state (the one-time welcome survey, setup-checklist dismissal,
+    closed hints), optional contact info, and notification preferences plus the
+    action-inbox "last seen" marker.
     """
 
     GOAL_CHARTER = "charter"
@@ -47,6 +55,21 @@ class UserProfile(models.Model):
     has_seen_welcome = models.BooleanField(default=False)
     setup_dismissed = models.BooleanField(default=False)
     dismissed_hints = models.JSONField(default=list, blank=True)
+
+    # Contact info (optional) — kept per-user for charter/ES communication.
+    phone = models.CharField(max_length=32, blank=True)
+    address_line1 = models.CharField("street address", max_length=200, blank=True)
+    city = models.CharField(max_length=100, blank=True)
+    state = models.CharField(max_length=64, blank=True)
+    postal_code = models.CharField(max_length=16, blank=True)
+
+    # Notifications + action inbox.
+    notify_on_submission = models.BooleanField(
+        default=True,
+        help_text="Email me when a child submits work that needs my finalization.",
+    )
+    inbox_seen_at = models.DateTimeField(null=True, blank=True)
+
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self) -> str:

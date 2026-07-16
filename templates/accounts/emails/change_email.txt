@@ -1,0 +1,10 @@
+Hi,
+
+You asked to change the email on your Steadfast Scholars account to this address.
+
+Confirm the change:
+{{ confirm_url }}
+
+If you didn't request this, you can ignore this email — nothing will change.
+
+— Steadfast Scholars

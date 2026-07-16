@@ -6,6 +6,7 @@ app_name = "core"
 
 urlpatterns = [
     path("how-it-works/", views.how_it_works, name="how_it_works"),
+    path("families/settings/", views.family_settings, name="family_settings"),
     path("invites/new/", views.invite_teacher, name="invite_teacher"),
     path(
         "invites/<uuid:invite_id>/resend/",

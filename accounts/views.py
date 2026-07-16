@@ -2,6 +2,7 @@ from django.contrib import messages
 from django.contrib.auth import logout, get_user_model
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.tokens import default_token_generator
+from django.db import IntegrityError
 from django.http import HttpResponseForbidden
 from django.shortcuts import render, redirect
 from django.utils.encoding import force_str
@@ -11,7 +12,13 @@ from django.views.decorators.http import require_POST
 
 from core.permissions import user_can_edit
 
-from .forms import RegisterForm
+from .forms import (
+    AccountNameForm,
+    ChangeEmailForm,
+    ContactForm,
+    NotificationsForm,
+    RegisterForm,
+)
 from .models import UserProfile
 from .services import UserService
 
@@ -120,3 +127,116 @@ def logout_view(request):
     logout(request)
     messages.success(request, "You have been logged out.")
     return redirect("home")
+
+
+@login_required
+def settings_view(request):
+    """The account settings hub: name, contact, notifications, email, password."""
+    profile = UserProfile.get_for(request.user)
+    return render(request, "accounts/settings.html", {
+        "name_form": AccountNameForm(instance=request.user),
+        "contact_form": ContactForm(instance=profile),
+        "notif_form": NotificationsForm(instance=profile),
+        "email_form": ChangeEmailForm(user=request.user),
+        "pending_email": request.user.pending_email,
+    })
+
+
+@login_required
+@require_POST
+def account_update(request):
+    """Save the display name."""
+    form = AccountNameForm(request.POST, instance=request.user)
+    if form.is_valid():
+        form.save()
+        messages.success(request, "Your name was updated.")
+    else:
+        messages.error(request, "Please fix the errors and try again.")
+    return redirect("accounts:settings")
+
+
+@login_required
+@require_POST
+def contact_update(request):
+    """Save contact info."""
+    form = ContactForm(request.POST, instance=UserProfile.get_for(request.user))
+    if form.is_valid():
+        form.save()
+        messages.success(request, "Contact info saved.")
+    else:
+        messages.error(request, "Please fix the errors and try again.")
+    return redirect("accounts:settings")
+
+
+@login_required
+@require_POST
+def notifications_update(request):
+    """Save notification preferences."""
+    form = NotificationsForm(request.POST, instance=UserProfile.get_for(request.user))
+    if form.is_valid():
+        form.save()
+        messages.success(request, "Notification preferences saved.")
+    return redirect("accounts:settings")
+
+
+@login_required
+@require_POST
+def change_email(request):
+    """Start an email change: stash the new address and email it a confirm link.
+
+    The current email is left untouched until the link is clicked (verify-then-
+    commit), so a mistyped address can never lock the account. Requires the
+    current password.
+    """
+    form = ChangeEmailForm(request.POST, user=request.user)
+    if form.is_valid():
+        request.user.pending_email = form.cleaned_data["new_email"]
+        request.user.save(update_fields=["pending_email"])
+        confirm_url = UserService.build_change_email_link(request, request.user)
+        UserService.send_change_email(
+            user=request.user,
+            pending_email=request.user.pending_email,
+            confirm_url=confirm_url,
+        )
+        messages.success(request, "Almost there — click the link we sent to your new address to confirm.")
+    else:
+        for field_errors in form.errors.values():
+            messages.error(request, field_errors[0])
+    return redirect("accounts:settings")
+
+
+@login_required
+def change_email_confirm(request, uidb64: str, token: str):
+    """Commit a pending email change once the new-address link is clicked."""
+    try:
+        uid = force_str(urlsafe_base64_decode(uidb64))
+        user = User.objects.get(pk=uid)
+    except (User.DoesNotExist, ValueError, TypeError):
+        user = None
+
+    # Must be the signed-in user, with a matching token and a pending change.
+    if (
+        user is None
+        or user.pk != request.user.pk
+        or not user.pending_email
+        or not default_token_generator.check_token(user, token)
+    ):
+        messages.error(request, "That confirmation link is invalid or has expired.")
+        return redirect("accounts:settings")
+
+    new_email = user.pending_email
+    # The target may have been registered since the request — re-check.
+    if User.objects.filter(email__iexact=new_email).exclude(pk=user.pk).exists():
+        user.pending_email = None
+        user.save(update_fields=["pending_email"])
+        messages.error(request, "That email was just taken by another account.")
+        return redirect("accounts:settings")
+
+    try:
+        user.email = new_email
+        user.pending_email = None
+        user.save(update_fields=["email", "pending_email"])
+        messages.success(request, "Your email address was updated.")
+    except IntegrityError:
+        messages.error(request, "That email is already in use.")
+    return redirect("accounts:settings")

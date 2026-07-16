@@ -1,0 +1,12 @@
+Hi,
+
+{{ student.first_name }} just turned in work for {{ subject_name }}, and the
+reading helper drafted feedback. It's waiting for you to review and confirm the
+mastery level so the record matches what your child was told.
+
+Review & finalize:
+{{ review_url }}
+
+You can turn these emails off in Settings › Notifications.
+
+— Steadfast Scholars

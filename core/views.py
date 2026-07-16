@@ -9,8 +9,9 @@ from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 
-from core.forms import InviteSignupForm, TeacherInviteForm
+from core.forms import FamilyForm, InviteSignupForm, TeacherInviteForm
 from core.models import FamilyMembership, Invitation
+from core.permissions import can_edit_family
 from core.utils import get_active_family
 
 # Friendly label for an invitation role (co-parent stores as "parent").
@@ -60,6 +61,24 @@ def how_it_works(request):
     users); linked prominently in-app for signed-in parents and teachers.
     """
     return render(request, "core/how_it_works.html", {})
+
+
+@login_required
+def family_settings(request):
+    """Rename the household (editors only). Members are managed on the invite page."""
+    family = get_active_family(request.user)
+    if family is None or not can_edit_family(request.user, family):
+        raise Http404
+
+    if request.method == "POST":
+        form = FamilyForm(request.POST, instance=family)
+        if form.is_valid():
+            form.save()
+            messages.success(request, "Family name updated.")
+            return redirect("core:family_settings")
+    else:
+        form = FamilyForm(instance=family)
+    return render(request, "core/family_settings.html", {"form": form, "family": family})
 
 
 @login_required

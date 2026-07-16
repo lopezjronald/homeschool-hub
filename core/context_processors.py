@@ -14,10 +14,20 @@ def family_context(request):
             user=request.user, family=selected, role="parent",
         ).exists()
 
+    # Action-inbox nav badge. Only editors have actionable items, and the count is
+    # kept to a few COUNTs (it runs on every authenticated page — see inbox_count).
+    from core.permissions import user_can_edit
+    from core.services import inbox_count
+
+    can_edit = user_can_edit(request.user)
+    badge = inbox_count(request, selected) if can_edit else 0
+
     return {
         "user_families": get_user_families(request.user),
         "selected_family": selected,
         "can_invite_teacher": can_invite,
+        "inbox_visible": can_edit,
+        "inbox_badge_count": badge,
     }
 
 

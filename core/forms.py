@@ -3,9 +3,18 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
 
-from core.models import Invitation
+from core.models import Family, Invitation
 
 User = get_user_model()
+
+
+class FamilyForm(forms.ModelForm):
+    """Rename the household / family."""
+
+    class Meta:
+        model = Family
+        fields = ("name",)
+        widgets = {"name": forms.TextInput(attrs={"class": "form-control", "autocomplete": "off"})}
 
 
 class TeacherInviteForm(forms.Form):

@@ -64,6 +64,7 @@
               </a>
               <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="accountMenu">
                 <li><span class="dropdown-header">Signed in as {{ user.username }}</span></li>
+                <li><a class="dropdown-item" href="{% url 'accounts:settings' %}"><i class="bi bi-gear me-2"></i>Settings</a></li>
                 {% if can_invite_teacher %}
                   <li><a class="dropdown-item" href="{% url 'core:invite_teacher' %}">Invite people</a></li>
                 {% endif %}

@@ -42,3 +42,20 @@ class UserService:
         subject = render_to_string("accounts/emails/verify_subject.txt", ctx).strip()
         body = render_to_string("accounts/emails/verify_email.txt", ctx)
         send_mail(subject, body, getattr(settings, "DEFAULT_FROM_EMAIL", None), [user.email])
+
+    @staticmethod
+    def build_change_email_link(request, user: User) -> str:
+        """Signed URL that confirms and commits a pending email change."""
+        uid = urlsafe_base64_encode(force_bytes(user.pk))
+        token = default_token_generator.make_token(user)
+        return request.build_absolute_uri(
+            reverse("accounts:change_email_confirm", kwargs={"uidb64": uid, "token": token})
+        )
+
+    @staticmethod
+    def send_change_email(*, user: User, pending_email: str, confirm_url: str) -> None:
+        """Send the confirmation link to the NEW address (proves ownership)."""
+        ctx = {"user": user, "pending_email": pending_email, "confirm_url": confirm_url}
+        subject = render_to_string("accounts/emails/change_email_subject.txt", ctx).strip()
+        body = render_to_string("accounts/emails/change_email.txt", ctx)
+        send_mail(subject, body, getattr(settings, "DEFAULT_FROM_EMAIL", None), [pending_email])

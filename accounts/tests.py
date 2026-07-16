@@ -423,3 +423,94 @@ class HintDismissTests(TestCase):
             {"key": "curricula_online", "next": "https://evil.example.com/"},
         )
         self.assertRedirects(resp, reverse("home"), fetch_redirect_response=False)
+
+
+class SettingsTests(TestCase):
+    """The logged-in settings hub: name, contact, notifications, email, password."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = User.objects.create_user(
+            username="su", email="su@e.com", password="pw-orig-123", is_active=True, first_name="Sam",
+        )
+
+    def setUp(self):
+        self.client.login(username="su", password="pw-orig-123")
+
+    def test_settings_requires_login(self):
+        self.client.logout()
+        resp = self.client.get(reverse("accounts:settings"))
+        self.assertEqual(resp.status_code, 302)
+        self.assertIn("login", resp.url)
+
+    def test_settings_renders(self):
+        resp = self.client.get(reverse("accounts:settings"))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "Settings")
+        self.assertContains(resp, "su@e.com")
+
+    def test_update_name(self):
+        self.client.post(reverse("accounts:account_update"), {"first_name": "Samuel", "last_name": "Jones"})
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.first_name, "Samuel")
+        self.assertEqual(self.user.last_name, "Jones")
+
+    def test_update_contact_and_notifications(self):
+        from accounts.models import UserProfile
+
+        self.client.post(reverse("accounts:contact_update"), {
+            "phone": "555-1234", "address_line1": "1 Main St", "city": "Town", "state": "CA", "postal_code": "90000",
+        })
+        self.client.post(reverse("accounts:notifications_update"), {})   # checkbox omitted -> False
+        prof = UserProfile.get_for(self.user)
+        self.assertEqual(prof.phone, "555-1234")
+        self.assertEqual(prof.city, "Town")
+        self.assertFalse(prof.notify_on_submission)
+
+    def test_change_password_keeps_session(self):
+        resp = self.client.post(reverse("accounts:password_change"), {
+            "old_password": "pw-orig-123", "new_password1": "brand-new-456", "new_password2": "brand-new-456",
+        })
+        self.assertRedirects(resp, reverse("accounts:password_change_done"))
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password("brand-new-456"))
+        self.assertEqual(self.client.get(reverse("accounts:settings")).status_code, 200)   # still signed in
+
+    def test_change_email_requires_correct_password(self):
+        self.client.post(reverse("accounts:change_email"), {"new_email": "new@e.com", "current_password": "wrong"})
+        self.user.refresh_from_db()
+        self.assertIsNone(self.user.pending_email)
+        self.assertEqual(len(mail.outbox), 0)
+
+    def test_change_email_sends_link_and_defers_commit(self):
+        self.client.post(reverse("accounts:change_email"), {"new_email": "New@e.com", "current_password": "pw-orig-123"})
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.pending_email, "new@e.com")   # normalized/lowercased
+        self.assertEqual(self.user.email, "su@e.com")            # not committed yet
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(mail.outbox[0].to, ["new@e.com"])       # link goes to the NEW address
+
+    def test_change_email_confirm_commits(self):
+        self.client.post(reverse("accounts:change_email"), {"new_email": "new@e.com", "current_password": "pw-orig-123"})
+        self.user.refresh_from_db()
+        uid = urlsafe_base64_encode(force_bytes(self.user.pk))
+        token = default_token_generator.make_token(self.user)
+        resp = self.client.get(reverse("accounts:change_email_confirm", kwargs={"uidb64": uid, "token": token}))
+        self.assertRedirects(resp, reverse("accounts:settings"))
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.email, "new@e.com")
+        self.assertIsNone(self.user.pending_email)
+
+    def test_change_email_confirm_bad_token_does_nothing(self):
+        self.client.post(reverse("accounts:change_email"), {"new_email": "new@e.com", "current_password": "pw-orig-123"})
+        uid = urlsafe_base64_encode(force_bytes(self.user.pk))
+        self.client.get(reverse("accounts:change_email_confirm", kwargs={"uidb64": uid, "token": "bad-token"}))
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.email, "su@e.com")            # unchanged
+
+    def test_change_email_rejects_taken_address(self):
+        User.objects.create_user(username="taken", email="taken@e.com", password="pw", is_active=True)
+        self.client.post(reverse("accounts:change_email"), {"new_email": "taken@e.com", "current_password": "pw-orig-123"})
+        self.user.refresh_from_db()
+        self.assertIsNone(self.user.pending_email)
+        self.assertEqual(len(mail.outbox), 0)

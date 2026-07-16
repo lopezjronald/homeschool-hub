@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block title %}Inbox · Steadfast Scholars{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+  <div class="d-flex align-items-center gap-2 mb-1">
+    <h1 class="h3 mb-0"><i class="bi bi-bell-fill me-1"></i> Action inbox</h1>
+    {% if inbox.total %}<span class="badge rounded-pill bg-danger">{{ inbox.total }}</span>{% endif %}
+  </div>
+  <p class="text-muted mb-4">Everything waiting on you, in one place.</p>
+
+  {% if not inbox.buckets %}
+    <div class="card ss-checkin">
+      <div class="card-body text-center py-5">
+        <div class="display-6 mb-2">🎉</div>
+        <p class="mb-0 fw-semibold">You're all caught up — nothing needs you right now.</p>
+      </div>
+    </div>
+  {% endif %}
+
+  {% for bucket in inbox.buckets %}
+    <div class="card ss-checkin mb-4">
+      <div class="card-body">
+        <h5 class="card-title mb-3">
+          <i class="bi {{ bucket.icon }} me-1"></i> {{ bucket.title }}
+          <span class="badge rounded-pill bg-secondary ms-1">{{ bucket.items|length }}</span>
+        </h5>
+        <div class="d-flex flex-column gap-2">
+          {% if bucket.kind == "activity" %}
+            {% for activity in bucket.items %}
+              <div class="ss-checkin-row d-flex flex-wrap align-items-center justify-content-between gap-2">
+                <div class="me-auto">
+                  <span class="ss-feature-emoji-inline">{{ activity.emoji }}</span>
+                  <span class="fw-semibold">
+                    Did {% if activity.student %}{{ activity.student.first_name }}{% else %}the kids{% endif %} do {{ activity.title }}{% if activity.provider %} <span class="text-muted fw-normal">({{ activity.provider }})</span>{% endif %}?
+                  </span>
+                </div>
+                <div class="d-flex gap-1">
+                  <form method="post" action="{% url 'activities:activity_checkin' activity.pk %}">
+                    {% csrf_token %}<input type="hidden" name="action" value="log">
+                    <button type="submit" class="btn btn-amber btn-sm">✓ Log it</button>
+                  </form>
+                  <form method="post" action="{% url 'activities:activity_checkin' activity.pk %}">
+                    {% csrf_token %}<input type="hidden" name="action" value="snooze">
+                    <button type="submit" class="btn btn-outline-secondary btn-sm">Snooze</button>
+                  </form>
+                  <form method="post" action="{% url 'activities:activity_checkin' activity.pk %}">
+                    {% csrf_token %}<input type="hidden" name="action" value="mute">
+                    <button type="submit" class="btn btn-link btn-sm text-muted px-2">Mute</button>
+                  </form>
+                </div>
+              </div>
+            {% endfor %}
+          {% else %}
+            {% for item in bucket.items %}
+              <div class="ss-checkin-row d-flex flex-wrap align-items-center justify-content-between gap-2">
+                <div class="me-auto">
+                  <span class="fw-semibold">{{ item.label }}</span>
+                  {% if item.is_new %}<span class="badge rounded-pill bg-success ms-1">New</span>{% endif %}
+                  {% if item.sub %}<small class="text-muted d-block">{{ item.sub }}</small>{% endif %}
+                </div>
+                <a href="{{ item.url }}" class="btn btn-amber btn-sm">{{ item.cta }}</a>
+              </div>
+            {% endfor %}
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  {% endfor %}
+</div>
+{% endblock %}

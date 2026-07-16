@@ -136,4 +136,13 @@ def auto_grade_sheet(sheet, client=None):
             ai_kid_highlights=result.get("kid_highlights", []),
             ai_parent_pointers=result.get("parent_pointers", []),
         )
+
+    # A fresh draft means a parent needs to finalize — ping them (best-effort;
+    # the notifier is fail-soft too, but never let it break grading).
+    try:
+        from core.notifications import notify_parents_of_submission
+
+        notify_parents_of_submission(assessment)
+    except Exception:  # noqa: BLE001
+        logger.exception("submission notification failed for sheet %s", sheet.pk)
     return assessment, True

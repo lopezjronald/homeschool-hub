@@ -397,3 +397,97 @@ class MangaPanelTests(TestCase):
         with override_settings(REPLICATE_API_TOKEN="tok"):
             data = imagegen.generate_image("prompt", client=FakeClient())
         self.assertEqual(data, b"PNGDATA")
+
+
+GRADE_DICT = {
+    "level": "developing",
+    "summary": "A good start.",
+    "criteria": [],
+    "encouragement": "Nice work, Rae!",
+    "kid_highlights": ["You tried hard."],
+    "parent_pointers": ["Re-read together."],
+}
+
+
+class SubmissionNotifyTests(TestCase):
+    """Email the parent when a child's submission produces a draft assessment."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.parent = User.objects.create_user(username="np", email="np@e.com", password="pw")
+        cls.family = Family.objects.create(name="Notify Fam")
+        FamilyMembership.objects.create(user=cls.parent, family=cls.family, role="parent")
+        cls.child = Student.objects.create(parent=cls.parent, first_name="Rae", grade_level="G03", family=cls.family)
+
+    def _make_sheet(self, family):
+        from django.utils import timezone
+
+        from curricula.models import Chapter
+        from tutor.models import Question, QuestionSet, ResponseSheet
+
+        cur = Curriculum.objects.create(parent=self.parent, name="Writing", subject="Writing", family=family, grade_level="G03")
+        ch = Chapter.objects.create(curriculum=cur, number=1, title="U1")
+        lesson = Lesson.objects.create(chapter=ch, order=1, number=1, title="L1")
+        qset = QuestionSet.objects.create(lesson=lesson, title="Q", family=family, status=QuestionSet.APPROVED, rubric="Answer well.")
+        q = Question.objects.create(question_set=qset, order=1, category="editing", prompt="Why?")
+        entry = WorkLogEntry.objects.create(parent=self.parent, child=self.child, subject="Writing", family=family, date=timezone.localdate())
+        return ResponseSheet.objects.create(
+            question_set=qset, child=self.child, answers={str(q.pk): "Because."},
+            status=ResponseSheet.SUBMITTED, work_entry=entry, submitted_at=timezone.now(),
+        )
+
+    @override_settings(ANTHROPIC_API_KEY="test-key")
+    def test_emails_parent_on_draft(self):
+        from django.core import mail
+
+        from tutor import grading
+
+        sheet = self._make_sheet(self.family)
+        with patch("tutor.ai.is_configured", return_value=True), \
+             patch("tutor.ai.grade_work", return_value=dict(GRADE_DICT)):
+            _assessment, created = grading.auto_grade_sheet(sheet)
+        self.assertTrue(created)
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(mail.outbox[0].to, ["np@e.com"])
+        self.assertIn("Rae", mail.outbox[0].subject)
+
+    @override_settings(ANTHROPIC_API_KEY="test-key")
+    def test_respects_opt_out(self):
+        from django.core import mail
+
+        from accounts.models import UserProfile
+        from tutor import grading
+
+        prof = UserProfile.get_for(self.parent)
+        prof.notify_on_submission = False
+        prof.save(update_fields=["notify_on_submission"])
+        sheet = self._make_sheet(self.family)
+        with patch("tutor.ai.is_configured", return_value=True), \
+             patch("tutor.ai.grade_work", return_value=dict(GRADE_DICT)):
+            grading.auto_grade_sheet(sheet)
+        self.assertEqual(len(mail.outbox), 0)
+
+    @override_settings(ANTHROPIC_API_KEY="test-key")
+    def test_mail_failure_never_breaks_grading(self):
+        from tutor import grading
+
+        sheet = self._make_sheet(self.family)
+        with patch("tutor.ai.is_configured", return_value=True), \
+             patch("tutor.ai.grade_work", return_value=dict(GRADE_DICT)), \
+             patch("core.notifications.send_mail", side_effect=RuntimeError("smtp down")):
+            _assessment, created = grading.auto_grade_sheet(sheet)
+        self.assertTrue(created)
+        self.assertEqual(MasteryAssessment.objects.count(), 1)   # grading survived the mail failure
+
+    @override_settings(ANTHROPIC_API_KEY="test-key")
+    def test_null_family_falls_back_to_child_parent(self):
+        from django.core import mail
+
+        from tutor import grading
+
+        sheet = self._make_sheet(None)   # null-family work
+        with patch("tutor.ai.is_configured", return_value=True), \
+             patch("tutor.ai.grade_work", return_value=dict(GRADE_DICT)):
+            grading.auto_grade_sheet(sheet)
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(mail.outbox[0].to, ["np@e.com"])

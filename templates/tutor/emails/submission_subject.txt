@@ -1,0 +1,1 @@
+{{ student.first_name }} turned in {{ subject_name }} — ready to finalize

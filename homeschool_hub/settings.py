@@ -233,11 +233,15 @@ AUTHENTICATION_BACKENDS = [
 # button appears only once they're set (create a Google OAuth app, then set
 # GOOGLE_OAUTH_CLIENT_ID / GOOGLE_OAUTH_SECRET on Heroku).
 SITE_ID = 1
+# allauth is used for SOCIAL login ONLY — the app keeps its own /accounts/ register,
+# email-verification and login flows. A custom adapter closes allauth's own local
+# email/password signup so it can't mint active, unverified accounts. We do NOT
+# auto-link a social login to an existing account by email: that path (allauth's
+# email-authentication) wipes the local password. Existing users connect Google
+# explicitly from Settings, which links without disturbing their password.
+ACCOUNT_ADAPTER = "accounts.adapters.NoLocalSignupAdapter"
 ACCOUNT_EMAIL_VERIFICATION = "none"      # the app runs its own verification flow
 SOCIALACCOUNT_LOGIN_ON_GET = True        # one-click provider button (no interstitial)
-# Link a social login to an existing account by its (Google-verified) email.
-SOCIALACCOUNT_EMAIL_AUTHENTICATION = True
-SOCIALACCOUNT_EMAIL_AUTHENTICATION_AUTO_CONNECT = True
 
 SOCIALACCOUNT_PROVIDERS = {}
 _google_client_id = os.getenv("GOOGLE_OAUTH_CLIENT_ID", "")

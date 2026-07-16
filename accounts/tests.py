@@ -544,6 +544,18 @@ class SocialAuthTests(TestCase):
     def test_allauth_urls_mounted_under_auth(self):
         self.assertTrue(reverse("socialaccount_connections").startswith("/auth/"))
 
+    def test_allauth_local_signup_is_closed(self):
+        # allauth's own /auth/signup/ must NOT create accounts — the app owns
+        # registration (with email verification). This is the security gate that
+        # keeps allauth from minting active, unverified accounts.
+        before = User.objects.count()
+        self.client.post("/auth/signup/", {
+            "email": "sneaky@e.com", "username": "sneaky",
+            "password1": "xyzpass12345", "password2": "xyzpass12345",
+        })
+        self.assertEqual(User.objects.count(), before)
+        self.assertFalse(User.objects.filter(email="sneaky@e.com").exists())
+
     @override_settings(SOCIALACCOUNT_PROVIDERS=_GOOGLE_CONFIGURED)
     def test_settings_shows_connected_accounts_card_when_configured(self):
         User.objects.create_user(username="s", email="s@e.com", password="pw", is_active=True)

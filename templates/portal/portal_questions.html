@@ -144,6 +144,30 @@
                     </div>
                     <input type="hidden" name="answer_{{ q.pk }}" data-question="{{ q.pk }}" value="{{ q.my_answer }}">
                   </div>
+                {% elif q.is_write_markup %}
+                  <div class="writemark-widget" data-question-widget="{{ q.pk }}">
+                    <textarea class="form-control portal-answer writemark-input" rows="2"
+                              placeholder="Write your sentence here…"
+                              autocomplete="off" autocorrect="off" autocapitalize="sentences"
+                              lang="en" spellcheck="{% if spellcheck_on %}true{% else %}false{% endif %}" data-gramm="false"
+                              {% if sheet.is_submitted %}readonly{% endif %}></textarea>
+                    <div class="writemark-hint">✍️ Write your sentence, then use the pens to underline or circle right on it.</div>
+                    <div class="markup-toolbar" role="toolbar" aria-label="Drawing tools">
+                      <span class="markup-tool-label">Pens:</span>
+                      <button type="button" class="markup-pen is-active" data-color="#333333" style="--pen:#333333" title="Pencil" aria-label="Pencil"></button>
+                      <button type="button" class="markup-pen" data-color="#d64545" style="--pen:#d64545" title="Red pen" aria-label="Red pen"></button>
+                      <button type="button" class="markup-pen" data-color="#2b6cb0" style="--pen:#2b6cb0" title="Blue pen" aria-label="Blue pen"></button>
+                      <button type="button" class="markup-pen" data-color="#1E7A50" style="--pen:#1E7A50" title="Green pen" aria-label="Green pen"></button>
+                      <span class="markup-tool-sep"></span>
+                      <button type="button" class="markup-btn" data-tool="undo">↶ Undo</button>
+                      <button type="button" class="markup-btn" data-tool="clear">Erase marks</button>
+                    </div>
+                    <div class="markup-surface writemark-surface">
+                      <div class="markup-passage writemark-passage" aria-hidden="true"></div>
+                      <canvas class="markup-canvas"></canvas>
+                    </div>
+                    <input type="hidden" name="answer_{{ q.pk }}" data-question="{{ q.pk }}" value="{{ q.my_answer }}">
+                  </div>
                 {% elif q.is_paragraph %}
                   <div class="paragraph-widget" data-question-widget="{{ q.pk }}">
                     <div class="para-rough">
@@ -243,6 +267,7 @@
 {% block extra_js %}
 <script src="{% static 'js/portal-autosave.js' %}"></script>
 <script src="{% static 'js/portal-markup.js' %}"></script>
+<script src="{% static 'js/portal-writemarkup.js' %}"></script>
 <script src="{% static 'js/portal-characters.js' %}"></script>
 <script src="{% static 'js/portal-paragraph.js' %}"></script>
 <script src="{% static 'js/portal-vocab.js' %}"></script>

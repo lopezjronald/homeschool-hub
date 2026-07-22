@@ -104,11 +104,20 @@ class Command(BaseCommand):
                     exercise["kind"], ("grammar", Question.TYPE_TEXT, "Practice"),
                 )
                 is_markup = response_type == Question.TYPE_MARKUP
+                # Some writing practice ALSO asks her to circle/underline parts of
+                # the sentence SHE writes → a write-then-markup box (type it, then
+                # draw right on it).
+                wants_writemark = bool(
+                    response_type == Question.TYPE_TEXT
+                    and re.search(r"\b(circle|underline)\b", exercise["instructions"], re.I)
+                )
                 title = f"Lesson {lesson_num} · {title_base} — {label}"
                 used[title] = used.get(title, 0) + 1
                 if used[title] > 1:
                     title = f"{title} ({used[title]})"
-                intro = exercise["instructions"] + (MARKUP_INTRO_HINT if is_markup else "")
+                intro = exercise["instructions"] + (
+                    MARKUP_INTRO_HINT if is_markup or wants_writemark else ""
+                )
 
                 qset, _ = QuestionSet.objects.update_or_create(
                     lesson=lesson_row, title=title,
@@ -136,6 +145,13 @@ class Command(BaseCommand):
                             "response_type": Question.TYPE_CLOZE,
                             "passage": item,
                             "prompt": "",
+                        }
+                    elif wants_writemark:
+                        defaults = {
+                            "category": category,
+                            "response_type": Question.TYPE_WRITE_MARKUP,
+                            "passage": "",
+                            "prompt": item,
                         }
                     else:
                         defaults = {

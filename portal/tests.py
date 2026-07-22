@@ -362,6 +362,18 @@ class MarkupTests(TestCase):
         call_command("seed_eiw_violet", "--for-user", "mup", stdout=StringIO())
         self.assertEqual(QuestionSet.objects.count(), before)
 
+    def test_eiw_seed_builds_write_markup_forms(self):
+        # "Write sentences… circle/underline X" exercises become write-then-markup
+        # boxes: she types the sentence, then draws on it. They keep the writing
+        # prompt and have no fixed passage (she supplies the sentence).
+        call_command("seed_eiw_violet", "--for-user", "mup", stdout=StringIO())
+        wm = Question.objects.filter(response_type=Question.TYPE_WRITE_MARKUP)
+        self.assertGreater(wm.count(), 0)
+        q = wm.first()
+        self.assertTrue(q.prompt)
+        self.assertEqual(q.passage, "")
+        self.assertRegex(q.question_set.intro.lower(), r"circle|underline")
+
 
 class SubmitKicksGradeTests(TestCase):
     """Turning work in starts grading immediately — not only when the feedback
@@ -517,6 +529,20 @@ class SpellcheckAndWordHelpTests(TestCase):
         self.assertContains(resp, "wordhelp-hint")
         self.assertContains(resp, "data-wordhelp-url")
         self.assertContains(resp, "data-spellcheck-url")
+
+    def test_write_markup_question_renders_the_widget(self):
+        # A "write a sentence, then circle/underline it" question renders the
+        # write-then-markup widget: a typing box + a drawing canvas + the script.
+        Question.objects.create(
+            question_set=self.writing_set, order=3, category="grammar",
+            response_type=Question.TYPE_WRITE_MARKUP,
+            prompt="Write a sentence, then circle the verb.",
+        )
+        resp = self.client.get(self._url("portal_questions", set_pk=self.writing_set.pk))
+        self.assertContains(resp, "writemark-widget")
+        self.assertContains(resp, "writemark-input")
+        self.assertContains(resp, "markup-canvas")
+        self.assertContains(resp, "portal-writemarkup")  # the widget's script is loaded
 
     def test_cloze_blank_gets_native_spellcheck_on_writing(self):
         # A fill-in-the-blank (cloze) box is a place the child types her own words,

@@ -374,6 +374,7 @@ class Question(models.Model):
     TYPE_FILL_BLANK = "fill_blank"
     TYPE_CLOZE = "cloze"
     TYPE_PARAGRAPH = "paragraph"
+    TYPE_WRITE_MARKUP = "write_markup"
     RESPONSE_TYPES = [
         (TYPE_TEXT, "Typed answer"),
         (TYPE_MARKUP, "Mark up the sentence (draw)"),
@@ -382,6 +383,7 @@ class Question(models.Model):
         (TYPE_FILL_BLANK, "Fill in the blank from a word bank"),
         (TYPE_CLOZE, "Fill in the blanks with your own words"),
         (TYPE_PARAGRAPH, "Paragraph: rough draft (sections) → final draft"),
+        (TYPE_WRITE_MARKUP, "Write a sentence, then mark it up (draw)"),
     ]
 
     # The rough-draft sections a paragraph question shows by default (the standard
@@ -400,7 +402,7 @@ class Question(models.Model):
     order = models.PositiveIntegerField()
     category = models.CharField(max_length=20, choices=CATEGORY_CHOICES, default="comprehension")
     prompt = models.TextField()
-    response_type = models.CharField(max_length=10, choices=RESPONSE_TYPES, default=TYPE_TEXT)
+    response_type = models.CharField(max_length=20, choices=RESPONSE_TYPES, default=TYPE_TEXT)
     passage = models.TextField(
         blank=True,
         help_text="For markup questions: the sentence/text the child draws on. "
@@ -434,6 +436,10 @@ class Question(models.Model):
     @property
     def is_paragraph(self):
         return self.response_type == self.TYPE_PARAGRAPH
+
+    @property
+    def is_write_markup(self):
+        return self.response_type == self.TYPE_WRITE_MARKUP
 
     @property
     def paragraph_sections(self):
@@ -628,6 +634,15 @@ class ResponseSheet(models.Model):
             return self._format_cloze(raw, question)
         if question.is_paragraph:
             return self._format_paragraph(raw, question)
+        if question.is_write_markup:
+            data = self._parse_json_answer(raw)
+            if data:
+                text = str(data.get("text", "")).strip()
+                marked = bool(data.get("strokes"))
+                if text:
+                    return f"{text}  [marked up the sentence: {'yes' if marked else 'no'}]"
+                return "[marked up the sentence, no words typed]" if marked else "(no answer)"
+            return raw or "(no answer)"  # legacy plain-text answer from before this was a markup box
         return raw or "(no answer)"
 
     def as_worklog_text(self):

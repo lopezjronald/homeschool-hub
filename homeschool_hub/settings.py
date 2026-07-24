@@ -127,6 +127,9 @@ AUTH_USER_MODEL = "accounts.CustomUser"
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    # CSP is OFF site-wide (SECURE_CSP unset) — lingua views opt in per-response
+    # via @lingua_csp, so legacy pages are untouched (D-13).
+    "django.middleware.csp.ContentSecurityPolicyMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
@@ -151,6 +154,7 @@ TEMPLATES = [
                 "django.template.context_processors.request",
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
+                "django.template.context_processors.csp",  # {{ csp_nonce }} for lingua templates
                 "core.context_processors.family_context",
                 "core.context_processors.onboarding_hints",
             ],

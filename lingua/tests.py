@@ -11,7 +11,7 @@ import pathlib
 
 from django.contrib.auth import get_user_model
 from django.db import models as dj_models
-from django.test import TestCase, override_settings
+from django.test import RequestFactory, TestCase, override_settings
 
 from students.models import Student
 
@@ -264,3 +264,63 @@ class OrphanCleanupTests(TestCase):
         Learner.create_for_host_student(999998, profiles.KIDS_OLDER)
         call_command("lingua_prune_orphans", "--dry-run", stdout=StringIO())
         self.assertTrue(Learner.objects.filter(host_student_id=999998).exists())
+
+
+class CspScopingTests(TestCase):
+    """D-13: CSP is scoped per-response to lingua views; no site-wide header."""
+
+    def _through_middleware(self, view):
+        from django.middleware.csp import ContentSecurityPolicyMiddleware
+        return ContentSecurityPolicyMiddleware(view)(RequestFactory().get("/x"))
+
+    def test_decorator_sets_a_strict_clean_policy(self):
+        from django.http import HttpResponse
+        from django.utils.csp import CSP
+
+        from lingua.csp import lingua_csp
+
+        @lingua_csp
+        def view(request):
+            return HttpResponse("ok")
+
+        cfg = view(RequestFactory().get("/x"))._csp_config
+        self.assertEqual(cfg["default-src"], [CSP.SELF])
+        self.assertEqual(cfg["object-src"], [CSP.NONE])
+        # CSP-clean: never 'unsafe-inline' in script/style.
+        self.assertNotIn(CSP.UNSAFE_INLINE, cfg["script-src"])
+        self.assertNotIn(CSP.UNSAFE_INLINE, cfg["style-src"])
+
+    def test_middleware_emits_header_for_a_lingua_view(self):
+        from django.http import HttpResponse
+
+        from lingua.csp import lingua_csp
+
+        @lingua_csp
+        def view(request):
+            return HttpResponse("ok")
+
+        resp = self._through_middleware(view)
+        self.assertIn("Content-Security-Policy", resp.headers)
+        self.assertIn("default-src 'self'", resp.headers["Content-Security-Policy"])
+
+    def test_no_site_wide_header_for_an_undecorated_view(self):
+        from django.http import HttpResponse
+
+        def plain(request):
+            return HttpResponse("ok")
+
+        resp = self._through_middleware(plain)
+        self.assertNotIn("Content-Security-Policy", resp.headers)
+
+
+class LinguaTablePrefixTests(TestCase):
+    """D-07 (replaced): every lingua table is lingua_-prefixed, so
+    `pg_dump --table='lingua_*'` is a complete extraction (see EXTRACTION.md)."""
+
+    def test_all_lingua_tables_are_prefixed(self):
+        from django.apps import apps
+        for model in apps.get_app_config("lingua").get_models():
+            self.assertTrue(
+                model._meta.db_table.startswith("lingua_"),
+                f"{model._meta.label} table {model._meta.db_table!r} not lingua_-prefixed",
+            )

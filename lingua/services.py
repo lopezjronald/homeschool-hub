@@ -9,11 +9,11 @@ import json
 
 from django.conf import settings
 from django.db import transaction
-from django.db.models import Count, Q
+from django.db.models import Count, Q, Sum
 from django.utils.module_loading import import_string
 
-from . import assets, audio, leveling, storage
-from .models import AuditEvent, Learner, Story, StoryAudio, Theme
+from . import assets, audio, cognates, leveling, storage
+from .models import AuditEvent, KnownWord, Learner, ReadingSession, Story, StoryAudio, Theme
 from .ports import AIClient
 from .prompts import CRITIC_SYSTEM, STORY_SYSTEM
 
@@ -105,6 +105,52 @@ def bake_story_audio(story, *, voice=None, engine=None, provider="polly",
                   "timings": timings, "duration_ms": duration_ms},
     )
     return obj, action
+
+
+def record_reading(learner, story, *, seconds=0):
+    """Log one reading of ``story`` by ``learner`` — a ReadingSession carrying the
+    story's word count + time spent (D-60/61). The atom behind the reading-volume
+    hero metric; call it when a read completes (the kid reader, E-08)."""
+    words = len((story.body or "").split())
+    return ReadingSession.objects.create(
+        learner=learner, story=story, words=words, seconds=max(0, int(seconds or 0)),
+    )
+
+
+def credit_known_word(learner, word):
+    """Credit ``learner`` with knowing ``word`` (stored normalized). Idempotent per
+    word — the known-words counter never double-counts (D-60/61). Returns
+    ``(KnownWord | None, created)``; a blank/punctuation-only word is a no-op.
+
+    Canonicalize on the word's letter-run only (via cognates.WORD_RE) BEFORE folding
+    case/diacritics, so "gato" / "gato." / "¡Gató!" all collapse to one entry — a bare
+    normalize() would leave punctuation attached and leak duplicates. Capped to the
+    field's 64 chars so an overlong token can't DataError on Postgres."""
+    m = cognates.WORD_RE.search(word or "")
+    norm = cognates.normalize(m.group())[:64] if m else ""
+    if not norm:
+        return None, False
+    return KnownWord.objects.get_or_create(learner=learner, word=norm)
+
+
+def reading_totals(learner):
+    """The learner's warm, non-competitive hero metric (D-60/61): cumulative words
+    read, minutes of comprehensible input, distinct stories, and known-words count.
+    No streaks — a milestone, not a scoreboard.
+
+    ``words_read``/``minutes``/``known_words`` are monotonic. ``stories`` counts
+    distinct NON-deleted stories (Story FK is SET_NULL), so deleting a story — a rare
+    admin action — drops it from the breadth count while the words already read stay
+    counted; that's an accepted trade of keeping history without snapshotting ids."""
+    agg = learner.reading_sessions.aggregate(
+        words=Sum("words"), secs=Sum("seconds"), stories=Count("story", distinct=True),
+    )
+    return {
+        "words_read": agg["words"] or 0,
+        "minutes": round((agg["secs"] or 0) / 60),
+        "stories": agg["stories"] or 0,
+        "known_words": learner.known_words.count(),
+    }
 
 
 def get_ai_client() -> AIClient:

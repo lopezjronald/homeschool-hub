@@ -1,6 +1,8 @@
 from django.contrib import admin
 
-from .models import Learner, LearnerProfile, Story, StoryAudio, Theme
+from .models import (
+    KnownWord, Learner, LearnerProfile, ReadingSession, Story, StoryAudio, Theme,
+)
 
 
 class LearnerProfileInline(admin.StackedInline):
@@ -40,3 +42,15 @@ class StoryAudioAdmin(admin.ModelAdmin):
     @admin.display(boolean=True, description="Current")
     def is_current(self, obj):
         return obj.is_current
+
+
+@admin.register(ReadingSession)
+class ReadingSessionAdmin(admin.ModelAdmin):
+    list_display = ("learner", "story", "words", "seconds", "created_at")
+    list_filter = ("created_at",)
+
+
+@admin.register(KnownWord)
+class KnownWordAdmin(admin.ModelAdmin):
+    list_display = ("learner", "word", "created_at")
+    search_fields = ("word",)

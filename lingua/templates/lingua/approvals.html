@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Story approvals · Lingua{% endblock %}
+{% block content %}
+<div class="container py-4">
+  <h1 class="h3 mb-1">Spanish story drafts to review</h1>
+  <p class="text-muted">You're approving pedagogical fit + safety. The critic has
+    already pre-screened language quality; flagged items and rare words are shown below.</p>
+
+  {% if drafts %}
+  <form method="post">
+    {% csrf_token %}
+    <div class="mb-3">
+      <button type="submit" name="action" value="approve" class="btn btn-success">Approve selected</button>
+      <button type="submit" name="action" value="reject" class="btn btn-outline-danger">Reject selected</button>
+    </div>
+    <div class="list-group">
+      {% for s in drafts %}
+      <label class="list-group-item d-block">
+        <div>
+          <input class="form-check-input me-2" type="checkbox" name="story_ids" value="{{ s.pk }}">
+          <strong>{{ s.title }}</strong>
+          <span class="badge bg-secondary">{{ s.level }}</span>
+          {% if s.suggested_level %}
+            <span class="badge bg-info text-dark">reads as {{ s.suggested_level }} ({{ s.out_of_band_pct }}%)</span>
+          {% endif %}
+        </div>
+        {% if s.critic_flags %}
+          <div class="text-danger small mt-1">Critic flags:
+            {% for f in s.critic_flags %}{{ f }}{% if not forloop.last %}; {% endif %}{% endfor %}</div>
+        {% endif %}
+        {% if s.flagged_words %}
+          <div class="text-muted small">Rare words: {{ s.flagged_words|join:", " }}</div>
+        {% endif %}
+        <div class="small mt-1">{{ s.body|truncatewords:40 }}</div>
+      </label>
+      {% endfor %}
+    </div>
+  </form>
+  {% else %}
+  <p class="text-muted">No drafts pending review. 🎉</p>
+  {% endif %}
+</div>
+{% endblock %}

@@ -19,7 +19,10 @@ from django.urls import reverse
 
 from students.models import Student
 
+from django.core.files.storage import InMemoryStorage, storages
+
 from . import assets, audio, cognates, leveling, profiles, services
+from . import storage as lingua_storage
 from .integrations import directory
 from .models import AuditEvent, Learner, LearnerProfile, Story, StoryAudio, Theme
 from .ports import AIClient, AIResult
@@ -1061,6 +1064,72 @@ class StoryAudioModelTests(TestCase):
         self.assertTrue(StoryAudio.objects.filter(story_id=sid).exists())
         s.delete()
         self.assertFalse(StoryAudio.objects.filter(story_id=sid).exists())
+
+
+_INMEM_STORAGES = {
+    "default": {"BACKEND": "django.core.files.storage.InMemoryStorage"},
+    "staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"},
+    "lingua_readalong": {
+        "BACKEND": "django.core.files.storage.InMemoryStorage",
+        "OPTIONS": {"base_url": "https://cdn.test/"},
+    },
+}
+
+
+class ReadalongStorageTests(TestCase):
+    """LGA-36 / N-03: public, immutably-cached read-along asset path."""
+
+    def test_cache_control_is_public_immutable_long(self):
+        self.assertEqual(lingua_storage.IMMUTABLE_CACHE_CONTROL,
+                         "public, max-age=31536000, immutable")
+
+    def test_alias_configured_and_distinct_from_default(self):
+        from django.conf import settings as dj_settings
+        self.assertIn("lingua_readalong", dj_settings.STORAGES)
+        # the public read-along path is a SEPARATE entry from the private-media default
+        self.assertIsNot(dj_settings.STORAGES["lingua_readalong"],
+                         dj_settings.STORAGES["default"])
+
+    @override_settings(STORAGES=_INMEM_STORAGES)
+    def test_save_audio_stable_url_and_skips_reupload(self):
+        key = "lingua/readalong/abc123.mp3"
+        url1 = lingua_storage.save_audio(key, b"first-bytes")
+        self.assertEqual(url1, "https://cdn.test/lingua/readalong/abc123.mp3")
+        # content-addressed: a second save of the SAME key must be a no-op (skip),
+        # NOT overwrite or write a suffixed duplicate. Feed different bytes to prove
+        # the guard: the original survives and no second object is created.
+        url2 = lingua_storage.save_audio(key, b"DIFFERENT-bytes")
+        self.assertEqual(url1, url2)  # stable URL
+        store = lingua_storage.readalong_storage()
+        with store.open(key) as fh:
+            self.assertEqual(fh.read(), b"first-bytes")  # original untouched
+        _dirs, files = store.listdir("lingua/readalong")
+        self.assertEqual(len(files), 1)  # no suffixed duplicate written
+        self.assertEqual(lingua_storage.public_url(key), url1)
+
+    @override_settings(STORAGES=_INMEM_STORAGES)
+    def test_readalong_storage_resolves_the_alias(self):
+        self.assertIsInstance(lingua_storage.readalong_storage(), InMemoryStorage)
+
+    def test_public_capable_guard(self):
+        from types import SimpleNamespace
+        cap = lingua_storage._public_capable
+        # unsigned backend with no custom_domain would 403 → not capable
+        self.assertFalse(cap(SimpleNamespace(querystring_auth=False, custom_domain=None)))
+        # unsigned + a public domain → capable
+        self.assertTrue(cap(SimpleNamespace(querystring_auth=False, custom_domain="cdn.example")))
+        # signed backend (default media) → capable
+        self.assertTrue(cap(SimpleNamespace(querystring_auth=True, custom_domain=None)))
+        # non-S3 backend (no querystring_auth attr, e.g. filesystem) → capable
+        self.assertTrue(cap(InMemoryStorage()))
+
+    def test_falls_back_to_default_when_alias_missing(self):
+        no_alias = {
+            "default": {"BACKEND": "django.core.files.storage.InMemoryStorage"},
+            "staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"},
+        }
+        with override_settings(STORAGES=no_alias):
+            self.assertIs(lingua_storage.readalong_storage(), storages["default"])
 
 
 class PurgeStaleTests(TestCase):

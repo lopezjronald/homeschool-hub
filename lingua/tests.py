@@ -713,6 +713,15 @@ class CognateTests(TestCase):
         self.assertNotIn("gato", r["cognates"])
         self.assertNotIn("gato", r["false_friends"])
 
+    def test_token_flags_aligns_to_tokens(self):
+        flags = cognates.token_flags(["El", "animal", "está", "librería.", "..."])
+        self.assertTrue(flags[1]["cognate"])                       # animal
+        self.assertIsNone(flags[1]["false_friend"])
+        self.assertEqual(flags[3]["false_friend"], ("library", "bookstore"))  # librería.
+        self.assertFalse(flags[3]["cognate"])                     # false friend ≠ cognate
+        self.assertFalse(flags[0]["cognate"])                     # El
+        self.assertIsNone(flags[4]["false_friend"])              # punctuation-only token
+
 
 class ThemeRotationTests(TestCase):
     """LGA-46 / D-51 / N-01: age-banded theme rotation + bounded choice."""
@@ -1305,6 +1314,24 @@ class ReaderViewTests(TestCase):
         csp = self.client.get(self._url(self.story)).headers.get("Content-Security-Policy", "")
         self.assertIn("default-src", csp)
         self.assertNotIn("unsafe-inline", csp)           # strict kid-page policy (D-13)
+
+    def test_cognate_and_false_friend_treatments(self):
+        s = Story.objects.create(title="Biblioteca", body="El animal está en la librería.",
+                                 level="L1", status=Story.APPROVED)
+        html = self.client.get(self._url(s)).content.decode()
+        # Assert the WORD-SPAN treatment (class "w cognate"/"w false-friend"), NOT the
+        # legend chips ("chip cognate"/"chip false-friend") which would match a bare
+        # "cognate"/"false-friend" substring even if the span treatment were removed.
+        self.assertIn('class="w cognate"', html)        # "animal" span treated
+        self.assertIn('class="w false-friend"', html)   # "librería" span flagged
+        self.assertIn("significa", html)                # false-friend warning (title text)
+        self.assertIn("bookstore", html)                # the true meaning surfaced
+        self.assertIn("cognado", html)                  # legend shown when flags exist
+
+    def test_no_legend_without_flags(self):
+        # a plain story (no cognates/false-friends) shows no legend
+        html = self.client.get(self._url(self.story)).content.decode()
+        self.assertNotIn("cognado", html)
 
 
 class PurgeStaleTests(TestCase):

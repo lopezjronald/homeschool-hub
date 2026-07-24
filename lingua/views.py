@@ -13,7 +13,7 @@ from django.views.decorators.http import require_http_methods
 
 from core.permissions import user_can_edit
 
-from . import storage
+from . import cognates, storage
 from .csp import LINGUA_CSP, lingua_csp
 from .models import Story
 
@@ -80,10 +80,18 @@ def read_story(request, story_id):
     has_audio = bool(audio_url and timings and timings.get("words"))
     # Render tokens that align with the timing word indices when we have audio;
     # otherwise a plain whitespace split, purely for display.
-    tokens = timings.get("tokens") if has_audio else story.body.split()
+    # `or []` guards a corrupt timings blob (words present but tokens missing) from
+    # crashing token_flags — degrade to text, never 500 (LGA-54).
+    tokens = (timings.get("tokens") or []) if has_audio else story.body.split()
+    # Per-token cognate / false-friend flags (LGA-51), computed against the SAME
+    # tokens we render so span indices line up with the player's word indices.
+    flags = cognates.token_flags(tokens)
+    token_ctx = [{"i": i, "text": tok, "cognate": fl["cognate"], "ff": fl["false_friend"]}
+                 for i, (tok, fl) in enumerate(zip(tokens, flags))]
+    has_flags = any(t["cognate"] or t["ff"] for t in token_ctx)
     response = render(request, "lingua/read.html", {
         "story": story, "audio_url": audio_url, "timings": timings if has_audio else None,
-        "tokens": tokens, "has_audio": has_audio,
+        "token_ctx": token_ctx, "has_audio": has_audio, "has_flags": has_flags,
     })
     if has_audio:
         parts = urlsplit(audio_url)

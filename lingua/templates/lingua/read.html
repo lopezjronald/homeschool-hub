@@ -21,12 +21,19 @@
     {% endif %}
 
     <p class="story" id="lingua-story">
-      {% for tok in tokens %}<span class="w" data-i="{{ forloop.counter0 }}">{{ tok }}</span>
+      {% for t in token_ctx %}<span class="w{% if t.cognate %} cognate{% endif %}{% if t.ff %} false-friend{% endif %}" data-i="{{ t.i }}"{% if t.ff %} title="Parece «{{ t.ff.0 }}» en inglés, pero significa «{{ t.ff.1 }}»"{% endif %}>{{ t.text }}</span>
       {% endfor %}
     </p>
 
     {% if not has_audio %}
       <p class="note">Audio is being prepared — read along on your own for now.</p>
+    {% endif %}
+
+    {% if has_flags %}
+    <p class="legend">
+      <span class="chip cognate">cognado</span> parecido al inglés &nbsp;·&nbsp;
+      <span class="chip false-friend">amigo falso</span> ¡cuidado! no es lo que parece
+    </p>
     {% endif %}
   </main>
 

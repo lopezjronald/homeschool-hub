@@ -7,7 +7,10 @@ Run: `python manage.py collectstatic --noinput && python manage.py test lingua`.
 """
 import ast
 import inspect
+import io
+import json
 import pathlib
+import re
 
 from django.contrib.auth import get_user_model
 from django.db import models as dj_models
@@ -16,7 +19,7 @@ from django.urls import reverse
 
 from students.models import Student
 
-from . import cognates, leveling, profiles, services
+from . import audio, cognates, leveling, profiles, services
 from .integrations import directory
 from .models import AuditEvent, Learner, LearnerProfile, Story, Theme
 from .ports import AIClient, AIResult
@@ -789,6 +792,178 @@ class ThemeRotationTests(TestCase):
         call_command("seed_themes", "--band", profiles.KIDS_OLDER, stdout=StringIO())
         self.assertFalse(Theme.objects.filter(age_band=profiles.KIDS_EARLY).exists())
         self.assertTrue(Theme.objects.filter(age_band=profiles.KIDS_OLDER).exists())
+
+
+class _FakePolly:
+    """Fake boto3 Polly client: mp3 bytes for OutputFormat=mp3, JSON-Lines word
+    marks for OutputFormat=json. Records calls so tests can assert the API contract."""
+
+    def __init__(self, marks, audio_bytes=b"ID3\x03fake-mp3", raises=None):
+        self._marks = marks
+        self._audio = audio_bytes
+        self._raises = raises
+        self.calls = []
+
+    def synthesize_speech(self, **kw):
+        self.calls.append(kw)
+        if self._raises:
+            raise self._raises
+        if kw["OutputFormat"] == "mp3":
+            return {"AudioStream": io.BytesIO(self._audio)}
+        lines = "\n".join(json.dumps(m) for m in self._marks)
+        return {"AudioStream": io.BytesIO(lines.encode("utf-8"))}
+
+
+def _simulate_polly_marks(text):
+    """Simulate Polly word marks for ``text``: for each whitespace token, mark the
+    leading word-character run (Polly reports the word, not trailing punctuation),
+    with UTF-8 BYTE offsets — exactly the hazard build_timings must undo."""
+    marks = []
+    for k, tok in enumerate(re.finditer(r"\S+", text)):
+        wm = re.search(r"[^\W]+", tok.group(), re.UNICODE)  # word run inside the token
+        if not wm:
+            continue
+        cs = tok.start() + wm.start()
+        ce = tok.start() + wm.end()
+        marks.append({
+            "time": k * 300, "type": "word",
+            "start": len(text[:cs].encode("utf-8")),
+            "end": len(text[:ce].encode("utf-8")),
+            "value": wm.group(),
+        })
+    return marks
+
+
+# Accents (á é í ó ú ñ) + inverted punctuation (¿ ¡) — the 2-byte hazard.
+_ACCENT_STORY = "¿Dónde está el pájaro? ¡Ñoño corre rápido!"
+
+
+class AudioSynthTests(TestCase):
+    """LGA-34: Polly synthesis boundary (D-17/D-18). Client injected, no AWS."""
+
+    def test_returns_audio_and_word_marks(self):
+        marks = _simulate_polly_marks(_ACCENT_STORY)
+        client = _FakePolly(marks)
+        out = audio.synthesize(_ACCENT_STORY, client=client)
+        self.assertEqual(out["audio"], b"ID3\x03fake-mp3")
+        # one word mark per word token (all tokens here have word chars)
+        self.assertEqual(len(out["marks"]), len(marks))
+        self.assertTrue(all(m["type"] == "word" for m in out["marks"]))
+        # two calls: mp3 then json marks, both plain text
+        self.assertEqual([c["OutputFormat"] for c in client.calls], ["mp3", "json"])
+        self.assertEqual(client.calls[1]["SpeechMarkTypes"], ["word"])
+        self.assertTrue(all(c["TextType"] == "text" for c in client.calls))
+
+    def test_filters_non_word_marks(self):
+        marks = [{"time": 0, "type": "sentence", "start": 0, "end": 5, "value": "x"},
+                 {"time": 10, "type": "word", "start": 0, "end": 5, "value": "Hola"}]
+        out = audio.synthesize("Hola", client=_FakePolly(marks))
+        self.assertEqual(len(out["marks"]), 1)
+        self.assertEqual(out["marks"][0]["value"], "Hola")
+
+    def test_reads_voice_engine_from_settings(self):
+        # Override with values DISTINCT from the hardcoded .get() fallbacks so this
+        # actually exercises the settings->synthesize wiring (not the fallback).
+        from django.conf import settings as dj_settings
+        cfg = {**dj_settings.LINGUA, "TTS_VOICE": "Lupe", "TTS_ENGINE": "standard"}
+        with override_settings(LINGUA=cfg):
+            client = _FakePolly(_simulate_polly_marks("Hola mundo"))
+            out = audio.synthesize("Hola mundo", client=client)
+        self.assertEqual((out["voice"], out["engine"]), ("Lupe", "standard"))
+        self.assertEqual(client.calls[0]["VoiceId"], "Lupe")
+        self.assertEqual(client.calls[0]["Engine"], "standard")
+
+    def test_explicit_args_override_settings(self):
+        client = _FakePolly(_simulate_polly_marks("Hola"))
+        audio.synthesize("Hola", voice="Andres", engine="standard", client=client)
+        self.assertEqual(client.calls[0]["VoiceId"], "Andres")
+        self.assertEqual(client.calls[0]["Engine"], "standard")
+
+    def test_empty_text_raises(self):
+        with self.assertRaises(audio.TTSError):
+            audio.synthesize("   ", client=_FakePolly([]))
+
+    def test_client_error_is_wrapped(self):
+        client = _FakePolly([], raises=RuntimeError("boom"))
+        with self.assertRaises(audio.TTSError):
+            audio.synthesize("Hola", client=client)
+
+    def test_malformed_marks_line_is_wrapped_as_ttserror(self):
+        # A truncated/garbage marks line must surface as TTSError (so tts_build skips
+        # one story), NOT a raw JSONDecodeError that aborts the whole batch run.
+        class _BadMarksPolly:
+            def __init__(self):
+                self.calls = []
+
+            def synthesize_speech(self, **kw):
+                self.calls.append(kw)
+                if kw["OutputFormat"] == "mp3":
+                    return {"AudioStream": io.BytesIO(b"ID3\x03mp3")}
+                return {"AudioStream": io.BytesIO(b'{"time":0,"type":"wo')}  # truncated
+        with self.assertRaises(audio.TTSError):
+            audio.synthesize("Hola", client=_BadMarksPolly())
+
+
+class AudioTimingTests(TestCase):
+    """LGA-35 / D-21: byte→char mapping + flat char-offset timing JSON."""
+
+    def test_byte_to_char_map_recovers_accented_words(self):
+        text = _ACCENT_STORY
+        b2c = audio.byte_to_char_map(text)
+        # naive byte-as-char slicing is wrong; the map recovers the true word.
+        for m in re.finditer(r"[^\W]+", text, re.UNICODE):
+            bstart = len(text[:m.start()].encode("utf-8"))
+            bend = len(text[:m.end()].encode("utf-8"))
+            self.assertEqual(text[b2c[bstart]:b2c[bend]], m.group())
+
+    def test_char_offsets_correct_across_accents(self):
+        marks = _simulate_polly_marks(_ACCENT_STORY)
+        t = audio.build_timings(_ACCENT_STORY, marks)
+        self.assertEqual(len(t["words"]), len(marks))
+        for w, m in zip(t["words"], marks):
+            # cs/ce are CHARACTER offsets that slice the true word out of the source
+            self.assertEqual(_ACCENT_STORY[w["cs"]:w["ce"]], m["value"])
+            self.assertNotIn("start", w)  # no byte offsets exposed (D-21)
+            self.assertNotIn("end", w)
+
+    def test_words_are_monotonic_and_end_chains_to_next(self):
+        marks = _simulate_polly_marks(_ACCENT_STORY)
+        words = audio.build_timings(_ACCENT_STORY, marks, tail_ms=400)["words"]
+        starts = [w["s_ms"] for w in words]
+        self.assertEqual(starts, sorted(starts))  # binary-searchable
+        for i in range(len(words) - 1):
+            self.assertEqual(words[i]["e_ms"], words[i + 1]["s_ms"])
+        self.assertEqual(words[-1]["e_ms"], words[-1]["s_ms"] + 400)  # tail
+
+    def test_word_maps_to_containing_display_token(self):
+        t = audio.build_timings(_ACCENT_STORY, _simulate_polly_marks(_ACCENT_STORY))
+        # first word "Dónde" sits inside display token 0 "¿Dónde"
+        self.assertEqual(t["tokens"][0], "¿Dónde")
+        self.assertEqual(t["words"][0]["i"], 0)
+        # every word's token index is valid and its char span lies within that token
+        for w in t["words"]:
+            cs_lo, cs_hi = t["token_spans"][w["i"]]
+            self.assertTrue(cs_lo <= w["cs"] < cs_hi)
+
+    def test_skips_offset_that_misses_a_char_boundary(self):
+        # A mark starting mid-accent (byte offset lands inside a 2-byte char) must be
+        # dropped, not crash or corrupt the array.
+        good = _simulate_polly_marks("Dónde")[0]
+        bad = dict(good, start=good["start"] + 2)  # +2 bytes = inside "ó"
+        t = audio.build_timings("Dónde", [good, bad])
+        self.assertEqual(len(t["words"]), 1)
+
+    def test_empty_marks_yields_empty_words_with_tokens(self):
+        t = audio.build_timings("Hola mundo", [])
+        self.assertEqual(t["words"], [])
+        self.assertEqual(t["tokens"], ["Hola", "mundo"])
+
+    def test_synthesize_story_combines_audio_and_timings(self):
+        client = _FakePolly(_simulate_polly_marks(_ACCENT_STORY))
+        out = audio.synthesize_story(_ACCENT_STORY, client=client)
+        self.assertEqual(out["audio"], b"ID3\x03fake-mp3")
+        self.assertTrue(out["timings"]["words"])
+        self.assertEqual(out["voice"], "Mia")
 
 
 class PurgeStaleTests(TestCase):

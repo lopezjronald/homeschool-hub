@@ -9,10 +9,11 @@ import json
 
 from django.conf import settings
 from django.db import transaction
+from django.db.models import Count, Q
 from django.utils.module_loading import import_string
 
 from . import leveling
-from .models import AuditEvent, Learner, Story
+from .models import AuditEvent, Learner, Story, Theme
 from .ports import AIClient
 from .prompts import CRITIC_SYSTEM, STORY_SYSTEM
 
@@ -27,6 +28,40 @@ def delete_learner_for_student(host_student_id):
     """
     deleted, _ = Learner.objects.filter(host_student_id=host_student_id).delete()
     return deleted
+
+
+def rotate_themes(age_band, count=3):
+    """Bounded "pick 1 of N" theme choices for an age band (D-51, N-01).
+
+    Returns the band's active themes ordered least-covered first — by number of
+    APPROVED (servable) stories, then name for a stable tie-break — capped at
+    ``count`` (default 3). Rotation is usage-driven, not random: as a theme
+    accrues approved stories it sinks in priority, so the choice set keeps
+    surfacing under-served themes and the corpus balances out instead of piling
+    onto one favourite. Feeds both the daily plan's bounded choice and the
+    generator's "top up the thinnest theme" decision. APPROVED (not total) is the
+    right signal for both: pending/rejected drafts aren't servable content, so a
+    theme with only unapproved drafts should still rank as under-covered.
+    Returns fewer than ``count`` when the band has fewer active themes, and []
+    for a non-positive ``count``.
+    """
+    if count <= 0:
+        return []
+    approved = Q(stories__status=Story.APPROVED)
+    return list(
+        Theme.objects.filter(age_band=age_band, active=True)
+        .annotate(n_approved=Count("stories", filter=approved))
+        # slug (unique) is the final tiebreak so the order is fully deterministic
+        # even if two same-band themes shared a name and an approved-count.
+        .order_by("n_approved", "name", "slug")[:count]
+    )
+
+
+def next_theme(age_band):
+    """The single least-covered active theme for a band, or None if the band has
+    no active themes. Used by the generator to top up the thinnest theme first."""
+    themes = rotate_themes(age_band, count=1)
+    return themes[0] if themes else None
 
 
 def get_ai_client() -> AIClient:

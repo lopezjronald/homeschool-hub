@@ -707,6 +707,90 @@ class CognateTests(TestCase):
         self.assertNotIn("gato", r["false_friends"])
 
 
+class ThemeRotationTests(TestCase):
+    """LGA-46 / D-51 / N-01: age-banded theme rotation + bounded choice."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.early = [
+            Theme.objects.create(slug=f"e{i}", name=f"Early {i}",
+                                 age_band=profiles.KIDS_EARLY)
+            for i in range(4)
+        ]
+        cls.older = Theme.objects.create(slug="o1", name="Older 1",
+                                         age_band=profiles.KIDS_OLDER)
+
+    def _approve(self, theme, n):
+        for i in range(n):
+            Story.objects.create(title=f"t{i}", body="...", level="L1",
+                                 theme=theme, status=Story.APPROVED)
+
+    def test_rotate_is_bounded_and_band_scoped(self):
+        picks = services.rotate_themes(profiles.KIDS_EARLY, count=3)
+        self.assertEqual(len(picks), 3)                     # capped at count
+        self.assertTrue(all(t.age_band == profiles.KIDS_EARLY for t in picks))
+
+    def test_rotate_orders_least_covered_first(self):
+        # Give the alphabetically-first theme the MOST approved stories, so a
+        # naive name-only sort would surface it first — coverage ordering must not.
+        self._approve(self.early[0], 5)   # "Early 0"
+        self._approve(self.early[1], 1)   # "Early 1"
+        picks = services.rotate_themes(profiles.KIDS_EARLY, count=4)
+        # Two untouched themes (0 approved) come first, then the 1-story, then 5.
+        self.assertEqual(picks[0].n_approved, 0)
+        self.assertEqual([t.slug for t in picks[-2:]], ["e1", "e0"])
+
+    def test_only_approved_stories_count_toward_coverage(self):
+        # Pending/draft/rejected drafts are not servable, so they must NOT sink a
+        # theme's rotation priority (else a theme of unapproved drafts starves).
+        for status in (Story.PENDING, Story.DRAFT, Story.REJECTED):
+            Story.objects.create(title="x", body="...", level="L1",
+                                 theme=self.early[0], status=status)
+        picks = services.rotate_themes(profiles.KIDS_EARLY, count=4)
+        self.assertTrue(all(t.n_approved == 0 for t in picks))
+
+    def test_rotate_excludes_inactive(self):
+        self.early[0].active = False
+        self.early[0].save(update_fields=["active"])
+        slugs = {t.slug for t in services.rotate_themes(profiles.KIDS_EARLY, count=9)}
+        self.assertNotIn("e0", slugs)
+        self.assertEqual(len(slugs), 3)   # 4 seeded − 1 inactive
+
+    def test_rotate_nonpositive_count_is_empty(self):
+        self.assertEqual(services.rotate_themes(profiles.KIDS_EARLY, count=0), [])
+
+    def test_next_theme_picks_thinnest_or_none(self):
+        self._approve(self.early[0], 2)
+        pick = services.next_theme(profiles.KIDS_EARLY)
+        self.assertEqual(pick.n_approved, 0)              # thinnest, not e0
+        self.assertIsNone(services.next_theme(profiles.TEEN))  # empty band
+
+    def test_seed_themes_is_idempotent(self):
+        from io import StringIO
+
+        from django.core.management import call_command
+
+        # Start clean so the seed count is deterministic regardless of setUpTestData.
+        Theme.objects.all().delete()
+        call_command("seed_themes", stdout=StringIO())
+        first = Theme.objects.count()
+        self.assertGreater(first, 0)
+        self.assertTrue(Theme.objects.filter(age_band=profiles.KIDS_EARLY).exists())
+        self.assertTrue(Theme.objects.filter(age_band=profiles.KIDS_OLDER).exists())
+        call_command("seed_themes", stdout=StringIO())     # re-run
+        self.assertEqual(Theme.objects.count(), first)     # no duplicates
+
+    def test_seed_themes_band_filter(self):
+        from io import StringIO
+
+        from django.core.management import call_command
+
+        Theme.objects.all().delete()
+        call_command("seed_themes", "--band", profiles.KIDS_OLDER, stdout=StringIO())
+        self.assertFalse(Theme.objects.filter(age_band=profiles.KIDS_EARLY).exists())
+        self.assertTrue(Theme.objects.filter(age_band=profiles.KIDS_OLDER).exists())
+
+
 class PurgeStaleTests(TestCase):
     """D-56: retention is enforced, not indefinite."""
 

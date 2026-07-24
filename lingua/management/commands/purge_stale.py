@@ -27,6 +27,12 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         cfg = getattr(settings, "LINGUA", {})
         days = cfg.get("AUDIT_RETENTION_DAYS", DEFAULT_AUDIT_RETENTION_DAYS)
+        if days <= 0:
+            self.stderr.write(
+                f"Refusing to purge: AUDIT_RETENTION_DAYS={days} would delete "
+                f"everything. Set a positive retention window."
+            )
+            return
         cutoff = timezone.now() - timedelta(days=days)
         stale = AuditEvent.objects.filter(ts__lt=cutoff)
         count = stale.count()

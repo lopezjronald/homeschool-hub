@@ -114,7 +114,7 @@ class AuditEvent(models.Model):
     ts = models.DateTimeField(auto_now_add=True, db_index=True)
     actor_type = models.CharField(max_length=8, choices=ACTOR_CHOICES, default=SYSTEM)
     actor_id = models.IntegerField(null=True, blank=True, help_text="Host user id or Student id — never a name.")
-    action = models.CharField(max_length=40, db_index=True)
+    action = models.CharField(max_length=40)  # covered by the (action, ts) composite index
     target_type = models.CharField(max_length=40, blank=True)
     target_id = models.IntegerField(null=True, blank=True)
     summary = models.CharField(max_length=200, blank=True, help_text="Short human line — no child free-text.")
@@ -126,17 +126,30 @@ class AuditEvent(models.Model):
         indexes = [models.Index(fields=["action", "ts"])]
 
     def __str__(self):
-        return f"{self.action} @ {self.ts:%Y-%m-%d %H:%M}"
+        when = f"{self.ts:%Y-%m-%d %H:%M}" if self.ts else "unsaved"
+        return f"{self.action} @ {when}"
+
+    # Max length of any string value in metadata — structured facts are short
+    # (model names, token counts). Longer = someone smuggling a payload (D-57).
+    METADATA_STR_MAX = 200
 
     @classmethod
     def record(cls, action, *, actor_type="system", actor_id=None, target_type="",
                target_id=None, summary="", metadata=None, ip=None):
         """Write one audit event. ``action`` must be in ACTIONS (closed vocab).
-        Pass only structured facts — NEVER a prompt, answer, or child free-text."""
+        Pass only structured facts — NEVER a prompt, answer, or child free-text.
+        Long string values in ``metadata`` are rejected to enforce that (D-57)."""
         if action not in cls.ACTIONS:
             raise ValueError(f"Unknown audit action: {action!r}")
+        metadata = metadata or {}
+        for key, value in metadata.items():
+            if isinstance(value, str) and len(value) > cls.METADATA_STR_MAX:
+                raise ValueError(
+                    f"Audit metadata[{key!r}] is too long — the audit trail stores "
+                    f"decisions, not payloads (D-57)."
+                )
         return cls.objects.create(
             action=action, actor_type=actor_type, actor_id=actor_id,
             target_type=target_type, target_id=target_id,
-            summary=(summary or "")[:200], metadata=metadata or {}, ip=ip,
+            summary=(summary or "")[:200], metadata=metadata, ip=ip,
         )

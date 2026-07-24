@@ -73,8 +73,10 @@ class LearnerSeamTests(TestCase):
         self.assertFalse(field.is_relation)
 
     def test_no_lingua_model_fks_out_to_a_host_app(self):
-        """No FK from any lingua model points outside the lingua app label."""
-        for model in (Learner, LearnerProfile):
+        """No FK from ANY lingua model points outside the lingua app label (D-03).
+        Iterates every current + future lingua model, not a hardcoded list."""
+        from django.apps import apps
+        for model in apps.get_app_config("lingua").get_models():
             for f in model._meta.get_fields():
                 if isinstance(f, (dj_models.ForeignKey, dj_models.OneToOneField)):
                     self.assertEqual(
@@ -368,6 +370,15 @@ class AuditEventTests(TestCase):
         names = {f.name for f in AuditEvent._meta.get_fields()}
         for banned in ("prompt", "answer", "text", "body", "content", "output"):
             self.assertNotIn(banned, names)
+
+    def test_record_rejects_payload_smuggled_in_metadata(self):
+        # D-57 teeth: a long string value in metadata (a smuggled prompt/answer)
+        # is rejected — metadata is for structured facts only.
+        with self.assertRaises(ValueError):
+            AuditEvent.record("ai.generate_completed", metadata={"prompt": "x" * 500})
+        # short structured values are fine
+        e = AuditEvent.record("ai.generate_completed", metadata={"model": "haiku", "output_tokens": 12})
+        self.assertEqual(e.metadata["model"], "haiku")
 
 
 class PurgeStaleTests(TestCase):

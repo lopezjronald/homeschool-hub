@@ -198,6 +198,23 @@ class StudentViewsTest(TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertFalse(Student.objects.filter(pk=self.student1.pk).exists())
 
+    def test_delete_student_with_worklog_is_graceful(self):
+        """LGA-20: a child with work-log history can't be hard-deleted (worklog
+        PROTECTs). The view must degrade gracefully, not 500 (was unguarded)."""
+        from worklog.models import WorkLogEntry
+        WorkLogEntry.objects.create(
+            parent=self.parent1, child=self.student1, subject="Math",
+        )
+        self.client.login(username="parent1", password="testpass123")
+        response = self.client.post(
+            reverse("students:student_delete", kwargs={"pk": self.student1.pk}),
+            follow=True,
+        )
+        self.assertEqual(response.status_code, 200)  # graceful, not a 500
+        self.assertTrue(Student.objects.filter(pk=self.student1.pk).exists())  # preserved
+        msgs = [str(m) for m in response.context["messages"]]
+        self.assertTrue(any("work-log history" in m for m in msgs))
+
 
 class StudentFormValidationTest(TestCase):
     """Tests for student form validation."""

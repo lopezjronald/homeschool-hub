@@ -8,7 +8,20 @@ from settings, so lingua never imports the adapter (or tutor) directly.
 from django.conf import settings
 from django.utils.module_loading import import_string
 
+from .models import Learner
 from .ports import AIClient
+
+
+def delete_learner_for_student(host_student_id):
+    """Purge the lingua Learner (+ cascaded lingua rows) for a host Student that
+    was deleted. Idempotent — safe to call when no Learner exists.
+
+    D-03 means no FK/cascade links a Student to lingua, so the host must call this
+    explicitly from its delete path; ``lingua_prune_orphans`` is the scheduled
+    backstop for any inline call that didn't run. Returns the rows-deleted count.
+    """
+    deleted, _ = Learner.objects.filter(host_student_id=host_student_id).delete()
+    return deleted
 
 
 def get_ai_client() -> AIClient:

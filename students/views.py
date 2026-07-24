@@ -1,6 +1,6 @@
 from django.contrib.auth import logout
 from django.contrib.auth.decorators import login_required
-from django.db.models import Q
+from django.db.models import Q, ProtectedError
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
 from django.urls import reverse
@@ -13,6 +13,10 @@ from portal.tokens import make_portal_token
 
 from .models import Student
 from .forms import StudentForm
+
+# Host is the composition root that wires the extractable lingua module (D-04):
+# no FK links Student -> lingua (D-03), so deletion must purge lingua explicitly.
+from lingua import services as lingua_services
 
 
 @login_required
@@ -237,7 +241,20 @@ def student_delete(request, pk):
 
     if request.method == "POST":
         name = student.first_name
-        student.delete()
+        try:
+            student.delete()
+        except ProtectedError:
+            # worklog.WorkLogEntry uses on_delete=PROTECT to guard a child's
+            # work history. Fail gracefully instead of a 500 (was unguarded).
+            messages.error(
+                request,
+                f"{name}'s profile can't be deleted yet because it has work-log "
+                f"history. Remove those entries first, then try again.",
+            )
+            return redirect("students:student_list")
+        # Student is gone; purge the lingua rows it can't cascade to (D-03).
+        # Best-effort inline; lingua_prune_orphans is the scheduled backstop.
+        lingua_services.delete_learner_for_student(pk)
         messages.success(request, f"{name}'s profile has been deleted.")
         return redirect("students:student_list")
 

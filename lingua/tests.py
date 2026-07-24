@@ -25,7 +25,10 @@ from django.core.files.storage import InMemoryStorage, storages
 from . import assets, audio, cognates, leveling, profiles, services
 from . import storage as lingua_storage
 from .integrations import directory
-from .models import AuditEvent, Learner, LearnerProfile, Story, StoryAudio, Theme
+from .models import (
+    AuditEvent, KnownWord, Learner, LearnerProfile, ReadingSession, Story,
+    StoryAudio, Theme,
+)
 from .ports import AIClient, AIResult
 
 User = get_user_model()
@@ -1332,6 +1335,79 @@ class ReaderViewTests(TestCase):
         # a plain story (no cognates/false-friends) shows no legend
         html = self.client.get(self._url(self.story)).content.decode()
         self.assertNotIn("cognado", html)
+
+
+class ReadingMetricTests(TestCase):
+    """LGA-53 / D-60-61: reading-volume + known-words hero metric."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.learner = Learner.create_for_host_student(501, profiles.KIDS_EARLY)
+        cls.s1 = Story.objects.create(title="A", body="uno dos tres", level="L1")  # 3 words
+        cls.s2 = Story.objects.create(title="B", body="cuatro cinco", level="L1")  # 2 words
+
+    def test_record_reading_counts_words_and_time(self):
+        sess = services.record_reading(self.learner, self.s1, seconds=90)
+        self.assertEqual(sess.words, 3)
+        self.assertEqual(sess.seconds, 90)
+        self.assertEqual(sess.learner, self.learner)
+
+    def test_reading_totals_aggregate(self):
+        services.record_reading(self.learner, self.s1, seconds=90)  # 3 words
+        services.record_reading(self.learner, self.s2, seconds=30)  # 2 words
+        services.record_reading(self.learner, self.s1, seconds=60)  # reread s1, +3
+        t = services.reading_totals(self.learner)
+        self.assertEqual(t["words_read"], 8)   # 3 + 2 + 3
+        self.assertEqual(t["minutes"], 3)      # (90+30+60)/60
+        self.assertEqual(t["stories"], 2)      # distinct s1, s2 (reread not double-counted)
+        self.assertEqual(t["known_words"], 0)
+
+    def test_credit_known_word_dedups_and_normalizes(self):
+        _, c1 = services.credit_known_word(self.learner, "Gato")
+        _, c2 = services.credit_known_word(self.learner, "gato")    # same normalized form
+        _, c3 = services.credit_known_word(self.learner, "gató")    # diacritic-stripped → gato
+        _, c4 = services.credit_known_word(self.learner, "¡Gato!")  # punctuation stripped → gato
+        self.assertTrue(c1)
+        self.assertFalse(c2)
+        self.assertFalse(c3)
+        self.assertFalse(c4)
+        self.assertEqual(self.learner.known_words.count(), 1)  # all four collapse to one
+        for junk in ("   ", "!!!", "123", "..."):              # blank / punctuation / digits
+            obj, created = services.credit_known_word(self.learner, junk)
+            self.assertIsNone(obj, junk)
+            self.assertFalse(created, junk)
+        self.assertEqual(self.learner.known_words.count(), 1)  # no junk stored
+        self.assertEqual(services.reading_totals(self.learner)["known_words"], 1)
+
+    def test_overlong_known_word_is_capped(self):
+        obj, _ = services.credit_known_word(self.learner, "a" * 200)
+        self.assertLessEqual(len(obj.word), 64)  # capped to the field width (no DataError)
+
+    def test_seconds_clamped_nonnegative(self):
+        self.assertEqual(services.record_reading(self.learner, self.s1, seconds=-5).seconds, 0)
+
+    def test_cascade_delete_learner(self):
+        services.record_reading(self.learner, self.s1)
+        services.credit_known_word(self.learner, "gato")
+        lid = self.learner.pk  # capture BEFORE delete
+        self.learner.delete()
+        self.assertFalse(ReadingSession.objects.filter(learner_id=lid).exists())
+        self.assertFalse(KnownWord.objects.filter(learner_id=lid).exists())
+
+    def test_story_delete_preserves_session_history(self):
+        sess = services.record_reading(self.learner, self.s1, seconds=60)
+        sid = sess.pk
+        self.s1.delete()  # SET_NULL — you don't un-read a story
+        sess = ReadingSession.objects.get(pk=sid)  # still exists
+        self.assertIsNone(sess.story)
+        self.assertEqual(sess.words, 3)  # words already read are retained
+
+    def test_credit_known_word_unique_constraint(self):
+        from django.db import IntegrityError, transaction
+        KnownWord.objects.create(learner=self.learner, word="perro")
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                KnownWord.objects.create(learner=self.learner, word="perro")
 
 
 class PurgeStaleTests(TestCase):

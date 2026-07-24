@@ -318,3 +318,49 @@ class StoryAudio(models.Model):
         return self.content_hash == self.story.audio_hash(
             self.voice, self.engine, provider=self.provider,
         )
+
+
+class ReadingSession(models.Model):
+    """One reading of a story by a learner — the atom behind the reading-volume hero
+    metric (D-60/61): cumulative words read + minutes of comprehensible input. FK to
+    Learner is a lingua-internal CASCADE; Story is SET_NULL so the history (the words
+    the child already read) survives the story being deleted — you don't un-read a
+    story. No FK to any host model (D-03)."""
+
+    learner = models.ForeignKey(
+        Learner, on_delete=models.CASCADE, related_name="reading_sessions",
+    )
+    story = models.ForeignKey(
+        Story, on_delete=models.SET_NULL, null=True, blank=True, related_name="+",
+    )
+    words = models.IntegerField(default=0)
+    seconds = models.IntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [models.Index(fields=["learner", "created_at"])]
+
+    def __str__(self):
+        return f"ReadingSession<learner={self.learner_id} words={self.words}>"
+
+
+class KnownWord(models.Model):
+    """A word the learner has been credited as knowing — LingQ's known-words idea and
+    the warm hero counter (D-60/61). Unique per (learner, word) so the count can never
+    double-count. Credited from reading exposure / SRS mastery / tap-a-word (later)."""
+
+    learner = models.ForeignKey(
+        Learner, on_delete=models.CASCADE, related_name="known_words",
+    )
+    word = models.CharField(max_length=64)  # normalized form (dedup-friendly)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["word"]
+        constraints = [
+            models.UniqueConstraint(fields=["learner", "word"], name="uniq_learner_word"),
+        ]
+
+    def __str__(self):
+        return f"KnownWord<learner={self.learner_id} {self.word!r}>"

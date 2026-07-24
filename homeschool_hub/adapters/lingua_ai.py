@@ -31,6 +31,10 @@ class TutorAIClient(AIClient):
         text = next(
             (b.text for b in resp.content if getattr(b, "type", None) == "text"), ""
         )
+        if not text:
+            # Mirror tutor.ai.grade_work: a text-less reply (refusal / non-text
+            # stop) is an error, not a silent empty success.
+            raise ai.GraderError("The AI returned an empty response.")
         usage = {}
         u = getattr(resp, "usage", None)
         if u is not None:

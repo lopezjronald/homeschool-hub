@@ -1,13 +1,17 @@
-"""Foundation tests: profile constants + the no-FK learner seam.
+"""Foundation tests: profile constants, the no-FK learner seam, the host-identity
+directory, and the AIClient port/adapter — plus AST guards that ENFORCE the D-03/D-04
+extractability rules (the module's whole reason to exist).
 
-Repo convention (see recon): django.test.TestCase + setUpTestData, no pytest.
+Repo convention: django.test.TestCase + setUpTestData, no pytest.
 Run: `python manage.py collectstatic --noinput && python manage.py test lingua`.
 """
+import ast
 import inspect
+import pathlib
 
 from django.contrib.auth import get_user_model
 from django.db import models as dj_models
-from django.test import TestCase
+from django.test import TestCase, override_settings
 
 from students.models import Student
 
@@ -17,6 +21,17 @@ from .models import Learner, LearnerProfile
 from .ports import AIClient, AIResult
 
 User = get_user_model()
+
+
+def _import_roots(source):
+    """Top-level package name of every import in a Python source string."""
+    roots = set()
+    for node in ast.walk(ast.parse(source)):
+        if isinstance(node, ast.Import):
+            roots.update(a.name.split(".")[0] for a in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.level == 0:  # absolute only
+            roots.add((node.module or "").split(".")[0])
+    return roots
 
 
 class ProfileConstantsTests(TestCase):
@@ -61,7 +76,7 @@ class LearnerSeamTests(TestCase):
         """No FK from any lingua model points outside the lingua app label."""
         for model in (Learner, LearnerProfile):
             for f in model._meta.get_fields():
-                if isinstance(f, dj_models.ForeignKey) or isinstance(f, dj_models.OneToOneField):
+                if isinstance(f, (dj_models.ForeignKey, dj_models.OneToOneField)):
                     self.assertEqual(
                         f.related_model._meta.app_label, "lingua",
                         f"{model.__name__}.{f.name} FKs out of lingua -> "
@@ -96,6 +111,13 @@ class LearnerCreationTests(TestCase):
             104, profiles.KIDS_EARLY, content_ceiling="L8",
         )
         self.assertEqual(bright.profile.session_minutes, 10)  # same as any PARENT_MEDIATED
+
+    def test_unknown_override_raises(self):
+        # Guards typos (e.g. content_ceilng) before the service layer.
+        with self.assertRaises(ValueError):
+            Learner.create_for_host_student(
+                105, profiles.KIDS_EARLY, content_ceilng="L8",
+            )
 
     def test_host_student_id_is_unique(self):
         from django.db import IntegrityError, transaction
@@ -136,28 +158,36 @@ class PortsAndAdapterTests(TestCase):
     """The AIClient port + host adapter seam (D-04)."""
 
     def test_ports_module_has_no_django_or_host_imports(self):
-        """ports.py must IMPORT no Django/host coupling — enforced, not just documented.
-        Checks actual import statements via AST (docstring prose may mention them)."""
-        import ast
-
+        """ports.py must IMPORT no Django/host coupling — AST-checked (prose may mention them)."""
         from lingua import ports as ports_mod
-        tree = ast.parse(inspect.getsource(ports_mod))
-        roots = set()
-        for node in ast.walk(tree):
-            if isinstance(node, ast.Import):
-                roots.update(a.name.split(".")[0] for a in node.names)
-            elif isinstance(node, ast.ImportFrom):
-                roots.add((node.module or "").split(".")[0])
-        self.assertNotIn("django", roots)
-        self.assertNotIn("tutor", roots)
-        self.assertNotIn("students", roots)
+        roots = _import_roots(inspect.getsource(ports_mod))
+        for forbidden in ("django", "tutor", "students", "homeschool_hub"):
+            self.assertNotIn(forbidden, roots)
+
+    def test_no_lingua_module_imports_host_except_directory(self):
+        """D-04, generalized: across ALL of lingua/, only integrations/directory.py
+        may import `students`, and NOTHING may import `tutor` or the host adapter.
+        This is the enforcement the whole extractable-module design rests on."""
+        root = pathlib.Path(inspect.getfile(services)).parent
+        offenders = []
+        for py in root.rglob("*.py"):
+            rel = py.relative_to(root).as_posix()
+            if rel == "tests.py" or rel.startswith("spikes/"):
+                continue
+            roots = _import_roots(py.read_text(encoding="utf-8"))
+            if "tutor" in roots:
+                offenders.append(f"{rel} imports tutor")
+            if "homeschool_hub" in roots:
+                offenders.append(f"{rel} imports the host (homeschool_hub)")
+            if "students" in roots and rel != "integrations/directory.py":
+                offenders.append(f"{rel} imports students")
+        self.assertEqual(offenders, [], f"D-04 boundary violations: {offenders}")
 
     def test_factory_returns_an_aiclient(self):
-        client = services.get_ai_client()
-        self.assertIsInstance(client, AIClient)
+        self.assertIsInstance(services.get_ai_client(), AIClient)
 
+    @override_settings(ANTHROPIC_API_KEY="")
     def test_factory_adapter_reports_unconfigured_without_key(self):
-        # Test env has no ANTHROPIC_API_KEY -> adapter degrades, no crash.
         self.assertFalse(services.get_ai_client().is_configured())
 
     def test_fake_client_satisfies_the_contract(self):
@@ -173,3 +203,18 @@ class PortsAndAdapterTests(TestCase):
         self.assertIsInstance(r, AIResult)
         self.assertEqual(r.text, "hola")
         self.assertEqual(r.model, "fake")
+
+    def test_adapter_raises_on_empty_text(self):
+        """A text-less model reply must raise, not return a silent empty success."""
+        from types import SimpleNamespace
+        from unittest import mock
+
+        from homeschool_hub.adapters.lingua_ai import TutorAIClient
+        from tutor import ai
+
+        fake_client = mock.Mock()
+        fake_client.messages.create.return_value = SimpleNamespace(content=[], usage=None)
+        with mock.patch("tutor.ai.is_configured", return_value=True), \
+                mock.patch("tutor.ai._make_client", return_value=fake_client):
+            with self.assertRaises(ai.GraderError):
+                TutorAIClient().generate(system="s", user="u")

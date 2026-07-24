@@ -6,6 +6,7 @@ integer, resolved at display time through the UserDirectory adapter (LGA-17).
 FKs *within* lingua are ordinary CASCADE relations.
 """
 
+from django.conf import settings
 from django.db import models, transaction
 
 from . import profiles
@@ -33,17 +34,24 @@ class Learner(models.Model):
         # No host import — identify by the plain id (name comes from the adapter).
         return f"Learner<host_student_id={self.host_student_id}>"
 
+    ALLOWED_OVERRIDES = {"language", "variant", "support_level", "content_ceiling"}
+
     @classmethod
     @transaction.atomic
     def create_for_host_student(cls, host_student_id, track_profile, **overrides):
         """Create a Learner + its LearnerProfile, seeded from the track's
-        DEFAULTS (profiles.PROFILES). ``overrides`` may set support_level /
-        content_ceiling independently of the track's defaults (D-64/65)."""
+        DEFAULTS (profiles.PROFILES). ``overrides`` may set language / variant /
+        support_level / content_ceiling independently of the defaults (D-64/65).
+        Unknown override keys raise, to catch typos before the service layer."""
+        unknown = set(overrides) - cls.ALLOWED_OVERRIDES
+        if unknown:
+            raise ValueError(f"Unknown override(s): {sorted(unknown)}")
         defaults = profiles.defaults_for(track_profile)
+        cfg = getattr(settings, "LINGUA", {})
         learner = cls.objects.create(
             host_student_id=host_student_id,
-            language=overrides.get("language", "es"),
-            variant=overrides.get("variant", "es-MX"),
+            language=overrides.get("language", cfg.get("DEFAULT_LANGUAGE", "es")),
+            variant=overrides.get("variant", cfg.get("DEFAULT_VARIANT", "es-MX")),
         )
         LearnerProfile.objects.create(
             learner=learner,

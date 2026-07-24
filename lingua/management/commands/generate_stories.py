@@ -7,7 +7,7 @@ flags recorded (D-48/49/50). Requires the Anthropic key to be configured.
 """
 from django.core.management.base import BaseCommand, CommandError
 
-from lingua import services
+from lingua import profiles, services
 from lingua.models import Theme
 
 
@@ -20,6 +20,9 @@ class Command(BaseCommand):
         parser.add_argument("--count", type=int, default=1)
 
     def handle(self, *args, **options):
+        level = options["level"]
+        if level not in profiles.LADDER:
+            raise CommandError(f"--level must be one of {profiles.LADDER}, got {level!r}.")
         try:
             theme = Theme.objects.get(slug=options["theme_slug"])
         except Theme.DoesNotExist:
@@ -29,10 +32,13 @@ class Command(BaseCommand):
         if not ai.is_configured():
             raise CommandError("AI client is not configured (set ANTHROPIC_API_KEY).")
 
-        for _ in range(options["count"]):
-            story = services.create_story_draft(
-                theme=theme, level=options["level"], ai_client=ai,
-            )
+        count = options["count"]
+        for i in range(count):
+            try:
+                story = services.create_story_draft(theme=theme, level=level, ai_client=ai)
+            except Exception as exc:  # noqa: BLE001 — one bad reply must not abort the batch
+                self.stderr.write(f"  story {i + 1}/{count} failed: {exc}")
+                continue
             flags = f" flags={story.critic_flags}" if story.critic_flags else ""
             self.stdout.write(
                 f"[{story.status}] {story.title!r} (critic_passed={story.critic_passed}){flags}"

@@ -447,7 +447,8 @@ class _ScriptedAIClient(AIClient):
         from lingua.prompts import CRITIC_SYSTEM
         self.calls += 1
         payload = self._critic if system == CRITIC_SYSTEM else self._story
-        return AIResult(text=payload, usage={}, model="fake")
+        return AIResult(text=payload, usage={"input_tokens": 5, "output_tokens": 10},
+                        model="fake")
 
 
 class GenerationTests(TestCase):
@@ -485,13 +486,42 @@ class GenerationTests(TestCase):
         self.assertEqual(s.title, "T")
         self.assertEqual(s.body, "B")
 
-    def test_generation_writes_one_audit_event(self):
+    def test_generation_writes_one_audit_event_with_tokens(self):
         fake = _ScriptedAIClient('{"title":"T","body":"B"}', '{"passed":true,"flags":[]}')
         s = services.create_story_draft(theme=self.theme, level="L1", ai_client=fake)
         evs = AuditEvent.objects.filter(action="ai.generate_completed", target_id=s.pk)
         self.assertEqual(evs.count(), 1)
         self.assertEqual(evs.first().actor_type, AuditEvent.AI)
         self.assertTrue(evs.first().metadata["critic_passed"])
+        # summed tokens across generate + critic (15 each) feed the cost ceiling
+        self.assertEqual(evs.first().metadata["tokens"], 30)
+
+    def test_empty_title_falls_back(self):
+        fake = _ScriptedAIClient('{"title":"","body":"Hay un gato."}',
+                                 '{"passed":true,"flags":[]}')
+        s = services.create_story_draft(theme=self.theme, level="L1", ai_client=fake)
+        self.assertEqual(s.title, "(sin título)")
+
+    def test_generation_failure_audits_and_raises_no_partial(self):
+        # A malformed model reply -> ai.generate_failed recorded, exception raised,
+        # and NO Story / no generate_completed left behind.
+        fake = _ScriptedAIClient("this is not json", '{"passed":true,"flags":[]}')
+        with self.assertRaises(Exception):
+            services.create_story_draft(theme=self.theme, level="L1", ai_client=fake)
+        self.assertTrue(
+            AuditEvent.objects.filter(action="ai.generate_failed",
+                                      target_id=self.theme.pk).exists()
+        )
+        self.assertFalse(Story.objects.exists())
+        self.assertFalse(AuditEvent.objects.filter(action="ai.generate_completed").exists())
+
+    def test_command_rejects_bad_level_and_missing_theme(self):
+        from django.core.management import CommandError, call_command
+        from io import StringIO
+        with self.assertRaises(CommandError):
+            call_command("generate_stories", "animals", "--level", "L99", stderr=StringIO())
+        with self.assertRaises(CommandError):
+            call_command("generate_stories", "nope", "--level", "L1", stderr=StringIO())
 
 
 class PurgeStaleTests(TestCase):

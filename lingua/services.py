@@ -8,6 +8,7 @@ from settings, so lingua never imports the adapter (or tutor) directly.
 import json
 
 from django.conf import settings
+from django.db import transaction
 from django.utils.module_loading import import_string
 
 from .models import AuditEvent, Learner, Story
@@ -40,18 +41,25 @@ def get_ai_client() -> AIClient:
 
 
 def _parse_json(text):
-    """Parse a model's JSON reply, tolerating accidental markdown fences
-    (mirrors tutor.ai._parse_response)."""
+    """Parse a model's JSON OBJECT reply, tolerating accidental markdown fences
+    (mirrors tutor.ai._parse_response). Raises on non-JSON or a non-object."""
     cleaned = (text or "").strip()
     if cleaned.startswith("```"):
         cleaned = cleaned.split("```", 2)[1] if "```" in cleaned[3:] else cleaned
         cleaned = cleaned.removeprefix("json").strip().strip("`").strip()
-    return json.loads(cleaned)
+    data = json.loads(cleaned)
+    if not isinstance(data, dict):
+        raise ValueError("Expected a JSON object from the model")
+    return data
+
+
+def _tokens(usage):
+    return (usage.get("input_tokens") or 0) + (usage.get("output_tokens") or 0)
 
 
 def generate_story(*, theme_hint, level, ai_client=None):
     """Generate one leveled Spanish story via the AIClient port (D-48).
-    Returns {"title", "body"}. Raises on an unparseable reply."""
+    Returns {"title", "body", "usage"}. Raises on an unparseable reply."""
     ai = ai_client or get_ai_client()
     user = f"Theme: {theme_hint}\nLevel: {level}\nWrite the story now."
     result = ai.generate(system=STORY_SYSTEM, user=user, max_tokens=800)
@@ -59,12 +67,13 @@ def generate_story(*, theme_hint, level, ai_client=None):
     return {
         "title": str(data.get("title", "")).strip(),
         "body": str(data.get("body", "")).strip(),
+        "usage": result.usage or {},
     }
 
 
 def critique_story(*, title, body, level, ai_client=None):
     """LLM-critic pre-filter (D-49): rate a generated story for naturalness,
-    correctness, and level fit. Returns {"passed": bool, "flags": [str]}."""
+    correctness, and level fit. Returns {"passed": bool, "flags": [str], "usage"}."""
     ai = ai_client or get_ai_client()
     user = f"Level: {level}\nTitle: {title}\nStory:\n{body}\n\nReview it now."
     result = ai.generate(system=CRITIC_SYSTEM, user=user, max_tokens=400)
@@ -72,6 +81,7 @@ def critique_story(*, title, body, level, ai_client=None):
     return {
         "passed": bool(data.get("passed", False)),
         "flags": [str(f) for f in data.get("flags", []) if str(f).strip()],
+        "usage": result.usage or {},
     }
 
 
@@ -81,28 +91,43 @@ def create_story_draft(*, theme, level, ai_client=None):
     Critic-PASSED drafts land PENDING (ready for the parent's batch approval);
     FLAGGED drafts land DRAFT with the flags recorded, so the human queue only
     surfaces pre-vetted candidates — the mitigation for the accepted vetting risk.
-    Records an audit event (D-57). ``theme`` is a lingua.Theme instance.
+    On an AI/parse failure, records an ``ai.generate_failed`` audit event (that
+    write is outside the persist transaction so it survives the re-raise) and
+    re-raises. On success, the Story + ``ai.generate_completed`` event commit
+    together, with summed token usage for the cost ceiling (D-52/57).
+    ``theme`` is a lingua.Theme instance.
     """
     ai = ai_client or get_ai_client()
-    story = generate_story(theme_hint=theme.name, level=level, ai_client=ai)
-    review = critique_story(
-        title=story["title"], body=story["body"], level=level, ai_client=ai,
-    )
-    obj = Story.objects.create(
-        title=story["title"] or "(sin título)",
-        body=story["body"],
-        level=level,
-        theme=theme,
-        source=Story.SOURCE_GENERATED,
-        status=Story.PENDING if review["passed"] else Story.DRAFT,
-        critic_passed=review["passed"],
-        critic_flags=review["flags"],
-    )
-    AuditEvent.record(
-        "ai.generate_completed", actor_type=AuditEvent.AI,
-        target_type="Story", target_id=obj.pk,
-        summary=f"generated {level} ({'passed' if review['passed'] else 'flagged'})",
-        metadata={"critic_passed": review["passed"], "level": level,
-                  "flag_count": len(review["flags"])},
-    )
+    try:
+        story = generate_story(theme_hint=theme.name, level=level, ai_client=ai)
+        review = critique_story(
+            title=story["title"], body=story["body"], level=level, ai_client=ai,
+        )
+    except Exception as exc:  # noqa: BLE001 — log the failure, then re-raise
+        AuditEvent.record(
+            "ai.generate_failed", actor_type=AuditEvent.AI,
+            target_type="Theme", target_id=theme.pk,
+            summary=f"generation failed: {type(exc).__name__}",
+            metadata={"level": level, "error": type(exc).__name__},
+        )
+        raise
+    tokens = _tokens(story["usage"]) + _tokens(review["usage"])
+    with transaction.atomic():
+        obj = Story.objects.create(
+            title=story["title"] or "(sin título)",
+            body=story["body"],
+            level=level,
+            theme=theme,
+            source=Story.SOURCE_GENERATED,
+            status=Story.PENDING if review["passed"] else Story.DRAFT,
+            critic_passed=review["passed"],
+            critic_flags=review["flags"],
+        )
+        AuditEvent.record(
+            "ai.generate_completed", actor_type=AuditEvent.AI,
+            target_type="Story", target_id=obj.pk,
+            summary=f"generated {level} ({'passed' if review['passed'] else 'flagged'})",
+            metadata={"critic_passed": review["passed"], "level": level,
+                      "flag_count": len(review["flags"]), "tokens": tokens},
+        )
     return obj

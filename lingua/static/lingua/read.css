@@ -1,0 +1,44 @@
+/* Lingua read-along reader (LGA-47). Self-contained, CSP-clean (no inline styles).
+   Large, calm, high-contrast type for young readers; the highlighted word is the
+   only strong accent. */
+:root {
+  --bg: #fbfaf7;
+  --ink: #22201c;
+  --muted: #6b6659;
+  --accent: #ffd54a;      /* highlighted word */
+  --accent-ink: #22201c;
+  --link: #2a6f97;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #1c1b18; --ink: #ece7dd; --muted: #a29a8b; --accent: #ffcf33; --accent-ink: #201d15; --link: #7cc4e6; }
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 400 1.5rem/2.0 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+.reader { max-width: 44rem; margin: 0 auto; padding: 1.5rem 1.25rem 4rem; }
+.crumb { font-size: 0.95rem; margin: 0 0 0.5rem; }
+.crumb a { color: var(--link); text-decoration: none; }
+.crumb a:hover { text-decoration: underline; }
+.title { font-size: 1.7rem; line-height: 1.2; margin: 0.25rem 0 1rem; }
+.player { position: sticky; top: 0; padding: 0.6rem 0; background: var(--bg); z-index: 1; }
+.player audio { width: 100%; }
+.story { margin: 1rem 0; }
+.w {
+  padding: 0.02em 0.06em;
+  border-radius: 0.25em;
+  cursor: pointer;
+  transition: background-color 90ms linear;
+}
+.w:hover { background: rgba(0, 0, 0, 0.06); }
+@media (prefers-color-scheme: dark) { .w:hover { background: rgba(255, 255, 255, 0.08); } }
+.w.on {
+  background: var(--accent);
+  color: var(--accent-ink);
+  box-shadow: 0 0 0 0.08em var(--accent);
+}
+.note { color: var(--muted); font-size: 1.05rem; font-style: italic; margin-top: 1.5rem; }
+@media (max-width: 30rem) { body { font-size: 1.3rem; } .title { font-size: 1.4rem; } }

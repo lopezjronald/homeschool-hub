@@ -1,0 +1,38 @@
+{% load static %}<!doctype html>
+<html lang="{{ story.language|default:'es' }}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ story.title }} · Lingua</title>
+  {# CSP-clean: external stylesheet only, no inline styles or CDN (strict LINGUA_CSP, D-13). #}
+  <link rel="stylesheet" href="{% static 'lingua/read.css' %}">
+</head>
+<body>
+  <main class="reader">
+    <p class="crumb"><a href="{% url 'lingua:approvals' %}">&larr; Lingua</a></p>
+    <h1 class="title">{{ story.title }}</h1>
+
+    {% if has_audio %}
+      <div class="player">
+        <audio id="lingua-audio" src="{{ audio_url }}" controls preload="metadata"></audio>
+      </div>
+      {# json_script safely embeds the timing JSON (escapes < > &); the player reads it. #}
+      {{ timings|json_script:"lingua-timings" }}
+    {% endif %}
+
+    <p class="story" id="lingua-story">
+      {% for tok in tokens %}<span class="w" data-i="{{ forloop.counter0 }}">{{ tok }}</span>
+      {% endfor %}
+    </p>
+
+    {% if not has_audio %}
+      <p class="note">Audio is being prepared — read along on your own for now.</p>
+    {% endif %}
+  </main>
+
+  {% if has_audio %}
+    {# external player, CSP-clean: no inline JS, no inline handlers (data-* + JSON block). #}
+    <script src="{% static 'lingua/readalong.js' %}"></script>
+  {% endif %}
+</body>
+</html>

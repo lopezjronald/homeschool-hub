@@ -1,0 +1,6 @@
+# If a real corpus (SUBTLEX-ESP export / wordfreq dump) is dropped here for
+# calibration, don't commit large data blobs — regenerate/load them instead.
+*.csv
+*.xlsx
+*.pkl
+*.json.gz

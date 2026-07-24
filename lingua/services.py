@@ -114,7 +114,11 @@ def create_story_draft(*, theme, level, ai_client=None):
         raise
     tokens = _tokens(story["usage"]) + _tokens(review["usage"])
     # Soft leveling signal (D-25/LGA-44): what level the text reads as + rare words.
-    lvl = leveling.analyze(story["body"])
+    # A soft signal must never lose or block a paid-for story, so degrade on failure.
+    try:
+        lvl = leveling.analyze(story["body"])
+    except Exception:  # noqa: BLE001 — leveling is advisory, not a gate
+        lvl = {"suggested_level": None, "out_of_band_pct": 0.0, "out_of_band_words": []}
     with transaction.atomic():
         obj = Story.objects.create(
             title=story["title"] or "(sin título)",
@@ -127,6 +131,7 @@ def create_story_draft(*, theme, level, ai_client=None):
             critic_flags=review["flags"],
             suggested_level=lvl["suggested_level"] or "",
             flagged_words=lvl["out_of_band_words"],
+            out_of_band_pct=lvl["out_of_band_pct"],
         )
         AuditEvent.record(
             "ai.generate_completed", actor_type=AuditEvent.AI,

@@ -25,6 +25,6 @@ class ThemeAdmin(admin.ModelAdmin):
 
 @admin.register(Story)
 class StoryAdmin(admin.ModelAdmin):
-    list_display = ("title", "level", "status", "source", "theme", "created_at")
+    list_display = ("title", "level", "suggested_level", "status", "source", "theme", "created_at")
     list_filter = ("status", "level", "source", "language")
     search_fields = ("title",)

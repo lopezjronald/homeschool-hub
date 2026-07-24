@@ -212,6 +212,7 @@ class Story(models.Model):
     # level: what level the text reads as, and its out-of-band (rare) words.
     suggested_level = models.CharField(max_length=4, blank=True)
     flagged_words = models.JSONField(default=list, blank=True)
+    out_of_band_pct = models.FloatField(default=0.0)
     # Approval (D-49/50). approved_by is a plain host user id — NO FK (D-03).
     approved_by = models.IntegerField(null=True, blank=True)
     approved_at = models.DateTimeField(null=True, blank=True)

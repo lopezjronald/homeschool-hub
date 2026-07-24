@@ -41,11 +41,13 @@ def analyze(text, language="es"):
     if not toks:
         return {"suggested_level": None, "out_of_band_pct": 0.0, "out_of_band_words": []}
     scored = [(t, zipf_frequency(t, language)) for t in toks]
-    oob_words = sorted({t for t, z in scored if z < RARE_ZIPF})
     n_oob = sum(1 for _, z in scored if z < RARE_ZIPF)
     pct = 100 * n_oob / len(toks)
+    # Unique out-of-band words, RAREST first (most useful to surface), capped.
+    oob = {t: z for t, z in scored if z < RARE_ZIPF}
+    oob_words = [w for w, _ in sorted(oob.items(), key=lambda kv: kv[1])][:50]
     return {
         "suggested_level": _level_for(pct),
         "out_of_band_pct": round(pct, 1),
-        "out_of_band_words": oob_words[:50],
+        "out_of_band_words": oob_words,
     }

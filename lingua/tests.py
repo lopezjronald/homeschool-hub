@@ -530,6 +530,19 @@ class GenerationTests(TestCase):
         self.assertEqual(s.suggested_level, "L1")     # simple text reads easy
         self.assertIsInstance(s.flagged_words, list)  # soft signal populated
 
+    def test_leveling_failure_does_not_abort_generation(self):
+        # A soft signal must never lose a paid-for story: leveling errors degrade.
+        from unittest import mock
+        fake = _ScriptedAIClient('{"title":"T","body":"B"}', '{"passed":true,"flags":[]}')
+        with mock.patch("lingua.services.leveling.analyze",
+                        side_effect=RuntimeError("boom")):
+            s = services.create_story_draft(theme=self.theme, level="L1", ai_client=fake)
+        self.assertEqual(s.status, Story.PENDING)     # story still created
+        self.assertEqual(s.suggested_level, "")       # degraded signal
+        self.assertTrue(
+            AuditEvent.objects.filter(action="ai.generate_completed", target_id=s.pk).exists()
+        )
+
 
 class LevelingTests(TestCase):
     """D-25/LGA-44: frequency-band leveling as a soft signal (from SPIKE-03)."""
@@ -551,6 +564,13 @@ class LevelingTests(TestCase):
         r = leveling.analyze("")
         self.assertIsNone(r["suggested_level"])
         self.assertEqual(r["out_of_band_words"], [])
+
+    def test_level_for_boundaries(self):
+        self.assertEqual(leveling._level_for(0), "L1")
+        self.assertEqual(leveling._level_for(6), "L1")
+        self.assertEqual(leveling._level_for(6.01), "L2")
+        self.assertEqual(leveling._level_for(70), "L7")
+        self.assertEqual(leveling._level_for(70.1), "L8")
 
 
 class PurgeStaleTests(TestCase):

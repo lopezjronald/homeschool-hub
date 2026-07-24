@@ -153,6 +153,12 @@ class UserDirectoryTests(TestCase):
         # The student has no family set, so no family id lists it.
         self.assertEqual(directory.list_for_family(999999), [])
 
+    def test_existing_student_ids_returns_only_real_ids(self):
+        self.assertEqual(
+            directory.existing_student_ids([self.student.pk, 999999]),
+            {self.student.pk},
+        )
+
 
 class PortsAndAdapterTests(TestCase):
     """The AIClient port + host adapter seam (D-04)."""
@@ -218,3 +224,43 @@ class PortsAndAdapterTests(TestCase):
                 mock.patch("tutor.ai._make_client", return_value=fake_client):
             with self.assertRaises(ai.GraderError):
                 TutorAIClient().generate(system="s", user="u")
+
+
+class OrphanCleanupTests(TestCase):
+    """LGA-20: purge lingua rows when a host Student is deleted (D-03 = no cascade)."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.parent = User.objects.create_user(
+            username="op", email="op@example.com", password="x", is_active=True,
+        )
+        cls.student = Student.objects.create(
+            parent=cls.parent, first_name="Bo", grade_level="G04",
+        )
+        cls.learner = Learner.create_for_host_student(cls.student.pk, profiles.KIDS_EARLY)
+
+    def test_delete_learner_for_student_is_idempotent(self):
+        n = services.delete_learner_for_student(self.student.pk)
+        self.assertGreaterEqual(n, 1)  # learner + its profile
+        self.assertFalse(Learner.objects.filter(host_student_id=self.student.pk).exists())
+        # second call is a safe no-op
+        self.assertEqual(services.delete_learner_for_student(self.student.pk), 0)
+
+    def test_prune_orphans_deletes_orphans_keeps_valid(self):
+        from io import StringIO
+
+        from django.core.management import call_command
+
+        Learner.create_for_host_student(999999, profiles.KIDS_OLDER)  # orphan: no host student
+        call_command("lingua_prune_orphans", stdout=StringIO())
+        self.assertFalse(Learner.objects.filter(host_student_id=999999).exists())
+        self.assertTrue(Learner.objects.filter(host_student_id=self.student.pk).exists())
+
+    def test_prune_orphans_dry_run_deletes_nothing(self):
+        from io import StringIO
+
+        from django.core.management import call_command
+
+        Learner.create_for_host_student(999998, profiles.KIDS_OLDER)
+        call_command("lingua_prune_orphans", "--dry-run", stdout=StringIO())
+        self.assertTrue(Learner.objects.filter(host_student_id=999998).exists())

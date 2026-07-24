@@ -198,6 +198,39 @@ class StudentViewsTest(TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertFalse(Student.objects.filter(pk=self.student1.pk).exists())
 
+    def test_delete_student_with_worklog_is_graceful(self):
+        """LGA-20: a child with work-log history can't be hard-deleted (worklog
+        PROTECTs). The view must degrade gracefully, not 500 (was unguarded)."""
+        from worklog.models import WorkLogEntry
+        WorkLogEntry.objects.create(
+            parent=self.parent1, child=self.student1, subject="Math",
+        )
+        self.client.login(username="parent1", password="testpass123")
+        response = self.client.post(
+            reverse("students:student_delete", kwargs={"pk": self.student1.pk}),
+            follow=True,
+        )
+        self.assertEqual(response.status_code, 200)  # graceful, not a 500
+        self.assertTrue(Student.objects.filter(pk=self.student1.pk).exists())  # preserved
+        msgs = [str(m) for m in response.context["messages"]]
+        self.assertTrue(any("work log entries" in m for m in msgs))
+
+    def test_delete_student_purges_lingua_learner(self):
+        """LGA-20: a successful delete removes the associated lingua Learner
+        (D-03 has no cascade, so the view must purge explicitly)."""
+        from lingua import profiles as lingua_profiles
+        from lingua.models import Learner
+        Learner.create_for_host_student(self.student1.pk, lingua_profiles.KIDS_EARLY)
+        self.client.login(username="parent1", password="testpass123")
+        response = self.client.post(
+            reverse("students:student_delete", kwargs={"pk": self.student1.pk})
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertFalse(Student.objects.filter(pk=self.student1.pk).exists())
+        self.assertFalse(
+            Learner.objects.filter(host_student_id=self.student1.pk).exists()
+        )
+
 
 class StudentFormValidationTest(TestCase):
     """Tests for student form validation."""

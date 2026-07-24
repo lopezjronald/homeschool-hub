@@ -38,3 +38,13 @@ def list_for_family(host_family_id):
     return list(
         Student.objects.filter(family_id=host_family_id).values_list("pk", flat=True)
     )
+
+
+def existing_student_ids(host_student_ids):
+    """The subset of the given ids that still exist as host Students (one query).
+    Used by lingua_prune_orphans to find orphaned learners efficiently."""
+    return set(
+        Student.objects
+        .filter(pk__in=list(host_student_ids))
+        .values_list("pk", flat=True)
+    )

@@ -688,13 +688,23 @@ class CognateTests(TestCase):
         # a false friend is never a cognate even if orthographically similar
         self.assertFalse(cognates.looks_cognate("embarazada", "embarrassed"))
 
+    def test_dice_edge_cases(self):
+        self.assertEqual(cognates.dice_similarity("", ""), 1.0)
+        self.assertEqual(cognates.dice_similarity("", "x"), 0.0)
+        self.assertEqual(cognates.dice_similarity("a", "a"), 1.0)
+
     def test_analyze_text(self):
         r = cognates.analyze_text(
-            "El animal está en el hospital. La librería es grande."
+            "El animal está en el hospital. La librería es grande. El gato duerme."
         )
         self.assertIn("animal", r["cognates"])
         self.assertIn("hospital", r["cognates"])
         self.assertIn("librería", r["false_friends"])
+        # safety net at the text level: a false friend never lands in cognates,
+        # and a plain non-cognate word appears in neither.
+        self.assertNotIn("librería", r["cognates"])
+        self.assertNotIn("gato", r["cognates"])
+        self.assertNotIn("gato", r["false_friends"])
 
 
 class PurgeStaleTests(TestCase):

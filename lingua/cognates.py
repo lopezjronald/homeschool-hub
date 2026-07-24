@@ -60,6 +60,12 @@ FALSE_FRIENDS = {
     "colegio": ("college", "school"),
     "vaso": ("vase", "drinking glass"),
     "carta": ("cart", "letter"),
+    # Common identical-spelling traps (the ones most likely to auto-credit wrongly).
+    "red": ("red (color)", "net / network"),
+    "once": ("once", "eleven"),
+    "sin": ("sin", "without"),
+    "pie": ("pie", "foot"),
+    "sale": ("sale", "he/she leaves"),
 }
 
 # Curated common es↔en cognates transparent to an English L1 reader.
@@ -68,7 +74,7 @@ COGNATES = {
     "diferente", "historia", "información", "actividad", "chocolate", "elefante",
     "planta", "color", "favorito", "música", "delicioso", "idea", "grupo",
     "área", "tigre", "león", "jirafa", "dragón", "princesa", "monstruo",
-    "computadora", "teléfono", "familia", "posible", "necesario",
+    "computadora", "teléfono", "posible", "necesario",
 }
 
 _FF_NORM = {normalize(k): (k, v) for k, v in FALSE_FRIENDS.items()}
@@ -92,8 +98,13 @@ def is_cognate(word):
 
 
 def looks_cognate(spanish, english, threshold=0.6):
-    """Dynamic check for when both forms are known (e.g. tap-a-word): high
-    orthographic similarity AND not a curated false friend."""
+    """Orthographic-similarity check for a pair where ``english`` is the word's
+    ACTUAL translation (e.g. from the tap-a-word dictionary), NOT a guessed
+    look-alike: high similarity to the TRUE gloss ⇒ cognate. Curated false friends
+    are excluded outright, but this is NOT a standalone false-friend filter — pass
+    the real gloss (red→'net' scores low, correctly), never a look-alike
+    (red→'red' would score high). Do not use for D-28 auto-crediting without a
+    verified es→en gloss (M3)."""
     if is_false_friend(spanish):
         return False
     return dice_similarity(spanish, english) >= threshold
@@ -103,7 +114,8 @@ def analyze_text(text):
     """Scan a Spanish text and return the curated cognates + false friends found.
     Feeds the reader's flagging (E-05) and the approval view's warnings."""
     cognates, false_friends = {}, {}  # normalized -> original surface form (for display)
-    for tok in {m.group() for m in WORD_RE.finditer(text)}:
+    # sorted() makes the chosen surface form deterministic across processes.
+    for tok in sorted({m.group() for m in WORD_RE.finditer(text)}):
         if is_false_friend(tok):
             false_friends.setdefault(normalize(tok), tok)
         elif is_cognate(tok):

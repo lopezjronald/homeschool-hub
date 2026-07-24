@@ -204,7 +204,7 @@ class Story(models.Model):
         Theme, null=True, blank=True, on_delete=models.SET_NULL, related_name="stories",
     )
     source = models.CharField(max_length=16, choices=SOURCE_CHOICES, default=SOURCE_GENERATED)
-    status = models.CharField(max_length=16, choices=STATUS_CHOICES, default=DRAFT, db_index=True)
+    status = models.CharField(max_length=16, choices=STATUS_CHOICES, default=DRAFT)  # covered by the (status, level) index
     # LLM-critic pre-filter results (D-49), populated by the generation pipeline.
     critic_passed = models.BooleanField(null=True, blank=True)
     critic_flags = models.JSONField(default=list, blank=True)
@@ -226,8 +226,10 @@ class Story(models.Model):
         """Only approved content is ever shown to a learner (D-49)."""
         return self.status == self.APPROVED
 
+    @transaction.atomic
     def approve(self, host_user_id):
-        """Parent approves this story for serving. Records an audit event (D-57)."""
+        """Parent approves this story for serving. Records an audit event (D-57).
+        Atomic so the status change and its audit trail commit together."""
         self.status = self.APPROVED
         self.approved_by = host_user_id
         self.approved_at = timezone.now()
@@ -237,10 +239,14 @@ class Story(models.Model):
             target_type="Story", target_id=self.pk, summary=f"approved {self.level}",
         )
 
+    @transaction.atomic
     def reject(self, host_user_id):
-        """Parent rejects this draft. Records an audit event (D-57)."""
+        """Parent rejects this draft. Clears any prior approval provenance and
+        records an audit event (D-57)."""
         self.status = self.REJECTED
-        self.save(update_fields=["status", "updated_at"])
+        self.approved_by = None
+        self.approved_at = None
+        self.save(update_fields=["status", "approved_by", "approved_at", "updated_at"])
         AuditEvent.record(
             "content.rejected", actor_type=AuditEvent.PARENT, actor_id=host_user_id,
             target_type="Story", target_id=self.pk, summary=f"rejected {self.level}",

@@ -401,9 +401,9 @@ class StoryContentTests(TestCase):
         self.assertIsNotNone(s.approved_at)
         self.assertTrue(s.is_servable)
         # approval wrote an audit event (D-57), reusing the LGA-27 seed
-        ev = AuditEvent.objects.filter(action="content.approved", target_id=s.pk).first()
-        self.assertIsNotNone(ev)
-        self.assertEqual(ev.actor_id, 7)
+        evs = AuditEvent.objects.filter(action="content.approved", target_id=s.pk)
+        self.assertEqual(evs.count(), 1)  # exactly one audit event
+        self.assertEqual(evs.first().actor_id, 7)
 
     def test_reject_is_not_servable_and_audits(self):
         s = Story.objects.create(title="x", body="y", level="L1", status=Story.PENDING)
@@ -421,6 +421,15 @@ class StoryContentTests(TestCase):
         s = Story.objects.create(title="El gato", body="...", level="L1", theme=t)
         self.assertEqual(s.theme.name, "Animals")
         self.assertEqual(t.stories.count(), 1)
+
+    def test_deleting_theme_keeps_story(self):
+        # SET_NULL: an expensively-approved story must survive losing its theme.
+        t = Theme.objects.create(slug="space", name="Space",
+                                 age_band=profiles.KIDS_OLDER)
+        s = Story.objects.create(title="La luna", body="...", level="L2", theme=t)
+        t.delete()
+        s.refresh_from_db()
+        self.assertIsNone(s.theme)
 
 
 class PurgeStaleTests(TestCase):

@@ -6,6 +6,8 @@ private ~1h signed URLs, wrong for reread/offline. This module targets a dedicat
 dev) and writes content-addressed keys (assets.asset_keys), so the same content maps
 to the same stable URL forever — safe to cache immutably.
 """
+import json
+
 from django.core.exceptions import ImproperlyConfigured
 from django.core.files.base import ContentFile
 from django.core.files.storage import InvalidStorageError, storages
@@ -62,3 +64,22 @@ def save_audio(key, data):
 def public_url(key):
     """Stable public URL for an already-saved read-along asset."""
     return readalong_storage().url(key)
+
+
+def save_timings(key, timings):
+    """Save the flat timing JSON at content-addressed ``key`` and return its URL.
+    Uploaded alongside the mp3 so a prod ``tts_build --link-only`` run can rebuild
+    the StoryAudio row (with inline timings) WITHOUT calling Polly. Idempotent."""
+    storage = readalong_storage()
+    if not storage.exists(key):
+        payload = json.dumps(timings, ensure_ascii=False).encode("utf-8")
+        storage.save(key, ContentFile(payload))
+    return storage.url(key)
+
+
+def read_timings(key):
+    """Read back timing JSON previously saved at ``key`` (for --link-only). Raises
+    if the object is missing (the local authoring run must have uploaded it first)."""
+    storage = readalong_storage()
+    with storage.open(key) as fh:
+        return json.loads(fh.read().decode("utf-8"))

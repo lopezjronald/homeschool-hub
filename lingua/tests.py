@@ -11,6 +11,7 @@ import io
 import json
 import pathlib
 import re
+from unittest import mock
 
 from django.contrib.auth import get_user_model
 from django.db import models as dj_models
@@ -1130,6 +1131,101 @@ class ReadalongStorageTests(TestCase):
         }
         with override_settings(STORAGES=no_alias):
             self.assertIs(lingua_storage.readalong_storage(), storages["default"])
+
+
+@override_settings(STORAGES=_INMEM_STORAGES)
+class TtsBuildCommandTests(TestCase):
+    """LGA-38: tts_build bakes/links StoryAudio rows; idempotent; --link-only skips Polly."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.story = Story.objects.create(
+            title="El gato", body="Hay un gato pequeño en la casa.",
+            level="L1", status=Story.APPROVED,
+        )
+
+    def _run(self, *args, polly=True, **kwargs):
+        from django.core.management import call_command
+        out, err = io.StringIO(), io.StringIO()
+        ctx = (mock.patch("lingua.audio._polly_client",
+                          return_value=_FakePolly(_simulate_polly_marks(self.story.body)))
+               if polly else mock.patch("lingua.audio._polly_client",
+                                        side_effect=AssertionError("Polly must not be called")))
+        with ctx:
+            call_command("tts_build", *args, stdout=out, stderr=err, **kwargs)
+        return out.getvalue(), err.getvalue()
+
+    def test_bake_creates_row_and_uploads_assets(self):
+        out, _ = self._run(str(self.story.pk))
+        sa = self.story.current_audio("Mia", "neural")
+        self.assertIsNotNone(sa)
+        self.assertTrue(sa.timings["words"])
+        self.assertEqual(sa.audio_key, assets.asset_keys(sa.content_hash)["audio"])
+        self.assertIn("[baked]", out)  # per-story action tag, not the summary's "N baked"
+        store = lingua_storage.readalong_storage()
+        self.assertTrue(store.exists(assets.asset_keys(sa.content_hash)["audio"]))
+        self.assertTrue(store.exists(assets.asset_keys(sa.content_hash)["timings"]))
+
+    def test_bake_is_idempotent(self):
+        self._run(str(self.story.pk))
+        # 2nd pass must SKIP: polly=False makes any re-synthesis blow up, and the
+        # bracketed tag (not the summary's "N skipped") proves the skip path ran.
+        out, _ = self._run(str(self.story.pk), polly=False)
+        self.assertIn("[skipped]", out)
+        self.assertEqual(self.story.audios.count(), 1)
+
+    def test_force_rebakes_in_place(self):
+        self._run(str(self.story.pk))
+        out, _ = self._run(str(self.story.pk), "--force")
+        self.assertIn("[baked]", out)  # action tag: fails if --force is ignored (would be [skipped])
+        self.assertEqual(self.story.audios.count(), 1)  # update_or_create, not a dupe
+
+    def test_link_only_rebuilds_without_polly(self):
+        self._run(str(self.story.pk))              # full bake uploads mp3 + timings
+        self.story.audios.all().delete()           # simulate a fresh prod DB
+        # --link-only must NOT call Polly (patched to blow up if it does)
+        out, _ = self._run(str(self.story.pk), "--link-only", polly=False)
+        self.assertIn("[linked]", out)
+        sa = self.story.current_audio("Mia", "neural")
+        self.assertIsNotNone(sa)                    # link path succeeded (Polly never called)
+        self.assertTrue(sa.timings["words"])       # rebuilt from the stored timings
+
+    def test_link_only_without_assets_fails_gracefully(self):
+        # A never-baked story (unique body -> unique hash -> no timings in the store)
+        # must fail cleanly on --link-only, not crash. (Unique body avoids the
+        # in-memory store leaking a prior test's assets across methods.)
+        from django.core.management import call_command
+        s = Story.objects.create(title="Nunca", body="Texto jamás sintetizado todavía.",
+                                 level="L1", status=Story.APPROVED)
+        out, err = io.StringIO(), io.StringIO()
+        call_command("tts_build", str(s.pk), "--link-only", stdout=out, stderr=err)
+        # the per-story stderr line "story N failed:" (colon) is discriminating —
+        # the summary's "0 failed." (period) would match a bare "failed" tautologically.
+        self.assertIn("failed:", err.getvalue())
+        self.assertIsNone(s.current_audio("Mia", "neural"))
+
+    def test_digits_in_body_warn(self):
+        s = Story.objects.create(title="Números", body="Hay 5 gatos.",
+                                 level="L1", status=Story.APPROVED)
+        from django.core.management import call_command
+        err = io.StringIO()
+        with mock.patch("lingua.audio._polly_client",
+                        return_value=_FakePolly(_simulate_polly_marks(s.body))):
+            call_command("tts_build", str(s.pk), stdout=io.StringIO(), stderr=err)
+        self.assertIn("digits", err.getvalue())
+
+    def test_all_approved_targets_only_approved(self):
+        draft = Story.objects.create(title="Draft", body="Un perro corre.",
+                                     level="L1", status=Story.DRAFT)
+        self._run("--all-approved")
+        self.assertIsNotNone(self.story.current_audio("Mia", "neural"))
+        self.assertIsNone(draft.current_audio("Mia", "neural"))
+
+    def test_no_target_raises(self):
+        from django.core.management import call_command
+        from django.core.management.base import CommandError
+        with self.assertRaises(CommandError):
+            call_command("tts_build", stdout=io.StringIO())
 
 
 class PurgeStaleTests(TestCase):

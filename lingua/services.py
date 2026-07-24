@@ -12,8 +12,8 @@ from django.db import transaction
 from django.db.models import Count, Q
 from django.utils.module_loading import import_string
 
-from . import leveling
-from .models import AuditEvent, Learner, Story, Theme
+from . import assets, audio, leveling, storage
+from .models import AuditEvent, Learner, Story, StoryAudio, Theme
 from .ports import AIClient
 from .prompts import CRITIC_SYSTEM, STORY_SYSTEM
 
@@ -62,6 +62,49 @@ def next_theme(age_band):
     no active themes. Used by the generator to top up the thinnest theme first."""
     themes = rotate_themes(age_band, count=1)
     return themes[0] if themes else None
+
+
+def bake_story_audio(story, *, voice=None, engine=None, provider="polly",
+                     link_only=False, force=False, client=None):
+    """Bake (or link) the read-along audio asset for one story in one voice (LGA-38).
+
+    Full mode (local authoring, off the web dyno per N-05): synthesize via Polly,
+    upload the mp3 to the public read-along path, upload the timing JSON too (so a
+    later prod ``--link-only`` run can rebuild the row without Polly), and upsert the
+    StoryAudio row with inline timings. ``link_only`` (prod): NO synthesis — read the
+    timings back from the public store and upsert the row pointing at the
+    already-uploaded mp3.
+
+    Idempotent by content hash: if a current (non-stale) StoryAudio exists and not
+    ``force``, returns ``(existing, "skipped")``. Otherwise returns
+    ``(StoryAudio, "baked"|"linked")``. Raises (TTSError / OSError) on failure — the
+    command is batch-resilient and catches per story. ``client`` injects a fake Polly
+    for tests.
+    """
+    voice = voice or settings.LINGUA.get("TTS_VOICE", "Mia")
+    engine = engine or settings.LINGUA.get("TTS_ENGINE", "neural")
+    existing = story.current_audio(voice, engine, provider=provider)
+    if existing and not force:
+        return existing, "skipped"
+    digest = story.audio_hash(voice, engine, provider=provider)
+    keys = assets.asset_keys(digest)
+    if link_only:
+        timings = storage.read_timings(keys["timings"])
+        action = "linked"
+    else:
+        out = audio.synthesize_story(story.body, voice=voice, engine=engine, client=client)
+        storage.save_audio(keys["audio"], out["audio"])
+        storage.save_timings(keys["timings"], out["timings"])
+        timings = out["timings"]
+        action = "baked"
+    words = timings.get("words") or []
+    duration_ms = words[-1]["e_ms"] if words else 0
+    obj, _ = StoryAudio.objects.update_or_create(
+        story=story, voice=voice, engine=engine, provider=provider,
+        defaults={"content_hash": digest, "audio_key": keys["audio"],
+                  "timings": timings, "duration_ms": duration_ms},
+    )
+    return obj, action
 
 
 def get_ai_client() -> AIClient:

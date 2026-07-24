@@ -41,7 +41,9 @@ def lingua_csp(view):
     def _wrapped(request, *args, **kwargs):
         response = view(request, *args, **kwargs)
         if getattr(response, "_csp_config", None) is None:
-            response._csp_config = dict(LINGUA_CSP)
+            # Copy the value-lists too, so a view widening a directive (append)
+            # can't mutate the module-global policy for every future response.
+            response._csp_config = {k: list(v) for k, v in LINGUA_CSP.items()}
         return response
 
     return _wrapped

@@ -19,9 +19,9 @@ from django.urls import reverse
 
 from students.models import Student
 
-from . import audio, cognates, leveling, profiles, services
+from . import assets, audio, cognates, leveling, profiles, services
 from .integrations import directory
-from .models import AuditEvent, Learner, LearnerProfile, Story, Theme
+from .models import AuditEvent, Learner, LearnerProfile, Story, StoryAudio, Theme
 from .ports import AIClient, AIResult
 
 User = get_user_model()
@@ -964,6 +964,103 @@ class AudioTimingTests(TestCase):
         self.assertEqual(out["audio"], b"ID3\x03fake-mp3")
         self.assertTrue(out["timings"]["words"])
         self.assertEqual(out["voice"], "Mia")
+
+
+class ContentHashTests(TestCase):
+    """LGA-37 / N-04: content-addressed keys — an edit busts the cache."""
+
+    def _h(self, text, provider="polly", voice="Mia", engine="neural"):
+        return assets.content_hash(text, provider=provider, voice=voice, engine=engine)
+
+    def test_stable_and_sensitive(self):
+        base = self._h("Hola")
+        self.assertEqual(base, self._h("Hola"))                       # deterministic
+        self.assertNotEqual(base, self._h("Hola."))                   # text edit
+        self.assertNotEqual(base, self._h("Hola", voice="Lupe"))      # voice
+        self.assertNotEqual(base, self._h("Hola", engine="standard"))  # engine
+        self.assertNotEqual(base, self._h("Hola", provider="edge"))   # provider
+
+    def test_whitespace_change_busts_cache(self):
+        # whitespace shifts char offsets → timings would mis-align → must be a new key
+        self.assertNotEqual(self._h("un gato"), self._h("un  gato"))
+
+    def test_separator_prevents_field_collision(self):
+        # ("ab","c") must not hash the same as ("a","bc")
+        self.assertNotEqual(
+            assets.content_hash("t", provider="ab", voice="c", engine="e"),
+            assets.content_hash("t", provider="a", voice="bc", engine="e"),
+        )
+
+    def test_asset_keys_derive_from_hash(self):
+        keys = assets.asset_keys("deadbeef")
+        self.assertEqual(keys["audio"], "lingua/readalong/deadbeef.mp3")
+        self.assertEqual(keys["timings"], "lingua/readalong/deadbeef.json")
+
+
+class StoryAudioModelTests(TestCase):
+    """LGA-37: StoryAudio staleness detection, uniqueness, cascade."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.story = Story.objects.create(title="El gato", body="Hay un gato.", level="L1")
+
+    def _bake(self, story=None, voice="Mia", engine="neural", provider="polly"):
+        story = story or self.story
+        digest = story.audio_hash(voice, engine, provider=provider)
+        return StoryAudio.objects.create(
+            story=story, voice=voice, engine=engine, provider=provider,
+            content_hash=digest, audio_key=assets.asset_keys(digest)["audio"],
+            timings={"words": []},
+        )
+
+    def test_audio_hash_matches_assets_module(self):
+        self.assertEqual(
+            self.story.audio_hash("Mia", "neural"),
+            assets.content_hash(self.story.body, provider="polly", voice="Mia", engine="neural"),
+        )
+
+    def test_is_current_true_then_stale_after_text_edit(self):
+        sa = self._bake()
+        self.assertTrue(sa.is_current)
+        self.story.body = "Hay dos gatos."
+        self.story.save(update_fields=["body"])
+        sa = StoryAudio.objects.get(pk=sa.pk)  # fresh fetch (story text changed)
+        self.assertFalse(sa.is_current)
+
+    def test_current_audio_fresh_missing_and_stale(self):
+        self.assertIsNone(self.story.current_audio("Mia", "neural"))   # missing
+        sa = self._bake()
+        self.assertEqual(self.story.current_audio("Mia", "neural"), sa)  # fresh
+        self.story.body = "Otro texto distinto."
+        self.story.save(update_fields=["body"])
+        self.assertIsNone(self.story.current_audio("Mia", "neural"))   # stale → None
+
+    def test_unique_per_story_voice_engine_provider(self):
+        from django.db import IntegrityError, transaction
+        self._bake()
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                self._bake()  # same (story, voice, engine, provider)
+
+    def test_same_story_different_voice_coexists(self):
+        self._bake(voice="Mia")
+        self._bake(voice="Lupe")
+        self.assertEqual(self.story.audios.count(), 2)
+
+    def test_same_voice_different_provider_coexists(self):
+        # provider is part of the identity, so a future edge-tts asset can sit
+        # alongside the Polly one for the same (story, voice, engine).
+        self._bake(provider="polly")
+        self._bake(provider="edge")
+        self.assertEqual(self.story.audios.count(), 2)
+
+    def test_cascade_delete_with_story(self):
+        s = Story.objects.create(title="x", body="y", level="L1")
+        self._bake(story=s)
+        sid = s.pk  # capture BEFORE delete — s.delete() sets s.pk = None
+        self.assertTrue(StoryAudio.objects.filter(story_id=sid).exists())
+        s.delete()
+        self.assertFalse(StoryAudio.objects.filter(story_id=sid).exists())
 
 
 class PurgeStaleTests(TestCase):

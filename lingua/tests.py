@@ -432,6 +432,98 @@ class StoryContentTests(TestCase):
         self.assertIsNone(s.theme)
 
 
+class _ScriptedAIClient(AIClient):
+    """Fake AIClient: returns critic JSON when handed the critic system prompt,
+    otherwise the story JSON. Counts calls."""
+
+    def __init__(self, story_json, critic_json):
+        self._story, self._critic = story_json, critic_json
+        self.calls = 0
+
+    def is_configured(self):
+        return True
+
+    def generate(self, *, system, user, max_tokens=1024, timeout=None, meta=None):
+        from lingua.prompts import CRITIC_SYSTEM
+        self.calls += 1
+        payload = self._critic if system == CRITIC_SYSTEM else self._story
+        return AIResult(text=payload, usage={"input_tokens": 5, "output_tokens": 10},
+                        model="fake")
+
+
+class GenerationTests(TestCase):
+    """D-48/49: generate -> LLM-critic -> persist a Story draft."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.theme = Theme.objects.create(slug="animals", name="Animals",
+                                         age_band=profiles.KIDS_EARLY)
+
+    def test_passed_draft_lands_pending(self):
+        fake = _ScriptedAIClient('{"title":"El gato","body":"Hay un gato pequeño."}',
+                                 '{"passed":true,"flags":[]}')
+        s = services.create_story_draft(theme=self.theme, level="L1", ai_client=fake)
+        self.assertEqual(s.status, Story.PENDING)
+        self.assertTrue(s.critic_passed)
+        self.assertEqual(s.title, "El gato")
+        self.assertEqual(s.theme, self.theme)
+        self.assertEqual(s.source, Story.SOURCE_GENERATED)
+        self.assertEqual(fake.calls, 2)  # generate + critic
+
+    def test_flagged_draft_lands_draft_with_flags(self):
+        fake = _ScriptedAIClient('{"title":"x","body":"y"}',
+                                 '{"passed":false,"flags":["gender error: la problema"]}')
+        s = services.create_story_draft(theme=self.theme, level="L2", ai_client=fake)
+        self.assertEqual(s.status, Story.DRAFT)
+        self.assertFalse(s.critic_passed)
+        self.assertIn("gender error: la problema", s.critic_flags)
+        self.assertFalse(s.is_servable)
+
+    def test_tolerates_markdown_json_fences(self):
+        fake = _ScriptedAIClient('```json\n{"title":"T","body":"B"}\n```',
+                                 '```\n{"passed":true,"flags":[]}\n```')
+        s = services.create_story_draft(theme=self.theme, level="L1", ai_client=fake)
+        self.assertEqual(s.title, "T")
+        self.assertEqual(s.body, "B")
+
+    def test_generation_writes_one_audit_event_with_tokens(self):
+        fake = _ScriptedAIClient('{"title":"T","body":"B"}', '{"passed":true,"flags":[]}')
+        s = services.create_story_draft(theme=self.theme, level="L1", ai_client=fake)
+        evs = AuditEvent.objects.filter(action="ai.generate_completed", target_id=s.pk)
+        self.assertEqual(evs.count(), 1)
+        self.assertEqual(evs.first().actor_type, AuditEvent.AI)
+        self.assertTrue(evs.first().metadata["critic_passed"])
+        # summed tokens across generate + critic (15 each) feed the cost ceiling
+        self.assertEqual(evs.first().metadata["tokens"], 30)
+
+    def test_empty_title_falls_back(self):
+        fake = _ScriptedAIClient('{"title":"","body":"Hay un gato."}',
+                                 '{"passed":true,"flags":[]}')
+        s = services.create_story_draft(theme=self.theme, level="L1", ai_client=fake)
+        self.assertEqual(s.title, "(sin título)")
+
+    def test_generation_failure_audits_and_raises_no_partial(self):
+        # A malformed model reply -> ai.generate_failed recorded, exception raised,
+        # and NO Story / no generate_completed left behind.
+        fake = _ScriptedAIClient("this is not json", '{"passed":true,"flags":[]}')
+        with self.assertRaises(Exception):
+            services.create_story_draft(theme=self.theme, level="L1", ai_client=fake)
+        self.assertTrue(
+            AuditEvent.objects.filter(action="ai.generate_failed",
+                                      target_id=self.theme.pk).exists()
+        )
+        self.assertFalse(Story.objects.exists())
+        self.assertFalse(AuditEvent.objects.filter(action="ai.generate_completed").exists())
+
+    def test_command_rejects_bad_level_and_missing_theme(self):
+        from django.core.management import CommandError, call_command
+        from io import StringIO
+        with self.assertRaises(CommandError):
+            call_command("generate_stories", "animals", "--level", "L99", stderr=StringIO())
+        with self.assertRaises(CommandError):
+            call_command("generate_stories", "nope", "--level", "L1", stderr=StringIO())
+
+
 class PurgeStaleTests(TestCase):
     """D-56: retention is enforced, not indefinite."""
 

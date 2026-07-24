@@ -316,6 +316,8 @@ LINGUA = {
     "DEFAULT_VARIANT": "es-MX",
     # Per-family AI+TTS hard-stop ceiling in USD/month (D-52).
     "MONTHLY_COST_CEILING_USD": _env_int("LINGUA_MONTHLY_COST_CEILING_USD", 25),
+    # Audit-trail retention in days (~18 months); enforced by `purge_stale` (D-56).
+    "AUDIT_RETENTION_DAYS": _env_int("LINGUA_AUDIT_RETENTION_DAYS", 548),
     # TTS provider order (SPIKE-01: Polly primary, edge-tts fallback — D-17/D-18).
     "TTS_PROVIDER": os.getenv("LINGUA_TTS_PROVIDER", "polly"),
     # Host-provided AIClient adapter (D-04). The ONLY lingua-side reference to the

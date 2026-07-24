@@ -208,6 +208,10 @@ class Story(models.Model):
     # LLM-critic pre-filter results (D-49), populated by the generation pipeline.
     critic_passed = models.BooleanField(null=True, blank=True)
     critic_flags = models.JSONField(default=list, blank=True)
+    # Frequency-band leveling signal (D-25, LGA-44) — soft, atop the hand/requested
+    # level: what level the text reads as, and its out-of-band (rare) words.
+    suggested_level = models.CharField(max_length=4, blank=True)
+    flagged_words = models.JSONField(default=list, blank=True)
     # Approval (D-49/50). approved_by is a plain host user id — NO FK (D-03).
     approved_by = models.IntegerField(null=True, blank=True)
     approved_at = models.DateTimeField(null=True, blank=True)

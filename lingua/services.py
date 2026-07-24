@@ -11,6 +11,7 @@ from django.conf import settings
 from django.db import transaction
 from django.utils.module_loading import import_string
 
+from . import leveling
 from .models import AuditEvent, Learner, Story
 from .ports import AIClient
 from .prompts import CRITIC_SYSTEM, STORY_SYSTEM
@@ -112,6 +113,8 @@ def create_story_draft(*, theme, level, ai_client=None):
         )
         raise
     tokens = _tokens(story["usage"]) + _tokens(review["usage"])
+    # Soft leveling signal (D-25/LGA-44): what level the text reads as + rare words.
+    lvl = leveling.analyze(story["body"])
     with transaction.atomic():
         obj = Story.objects.create(
             title=story["title"] or "(sin título)",
@@ -122,6 +125,8 @@ def create_story_draft(*, theme, level, ai_client=None):
             status=Story.PENDING if review["passed"] else Story.DRAFT,
             critic_passed=review["passed"],
             critic_flags=review["flags"],
+            suggested_level=lvl["suggested_level"] or "",
+            flagged_words=lvl["out_of_band_words"],
         )
         AuditEvent.record(
             "ai.generate_completed", actor_type=AuditEvent.AI,

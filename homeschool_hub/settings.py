@@ -100,6 +100,7 @@ INSTALLED_APPS = [
     "portal",  # Tokenless student portal (kids see only their own work)
     "activities",  # External activities (School of Rock, CodaKid) + check-in nudge
     "inbox",  # Parent action inbox (aggregates items needing the parent)
+    "lingua",  # Spanish acquisition module (extractable; see lingua/SPEC.md)
     "storages",  # django-storages for R2/S3
     "django.contrib.admin",
     "django.contrib.auth",
@@ -301,6 +302,19 @@ INVITE_MAX_AGE_DAYS = 7
 # ---------------------------------------------------------------------------
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 TUTOR_MODEL = os.getenv("TUTOR_MODEL", "claude-opus-4-8")
+
+# ---------------------------------------------------------------------------
+# Lingua (Spanish acquisition module) — namespaced config (D-06). Extractable
+# module: no FK to host models; learner carried as host_student_id (D-03).
+# ---------------------------------------------------------------------------
+LINGUA = {
+    "DEFAULT_LANGUAGE": "es",
+    "DEFAULT_VARIANT": "es-MX",
+    # Per-family AI+TTS hard-stop ceiling in USD/month (D-52).
+    "MONTHLY_COST_CEILING_USD": _env_int("LINGUA_MONTHLY_COST_CEILING_USD", 25),
+    # TTS provider order (SPIKE-01: Polly primary, edge-tts fallback — D-17/D-18).
+    "TTS_PROVIDER": os.getenv("LINGUA_TTS_PROVIDER", "polly"),
+}
 
 # ---------------------------------------------------------------------------
 # Manga art generation (Replicate) — server-side only, disabled until a token

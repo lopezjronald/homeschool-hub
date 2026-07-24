@@ -12,8 +12,8 @@ if [ "$BRANCH" = "main" ]; then
   exit 1
 fi
 
-# Require branch name: HH-123-... or HH-123/...
-PATTERN='^HH-[0-9]+[-/].+'
+# Require branch name: <PROJECT>-123-... or <PROJECT>-123/...  (PROJECT = HH or LGA)
+PATTERN='^(HH|LGA)-[0-9]+[-/].+'
 
 if echo "$BRANCH" | grep -Eq "$PATTERN"; then
   exit 0
@@ -24,12 +24,12 @@ echo "❌ Push rejected."
 echo "Branch name must start with a Jira issue key."
 echo ""
 echo "Required format:"
-echo "  HH-<number>-<description>"
-echo "  HH-<number>/<description>"
+echo "  <PROJECT>-<number>-<description>   (PROJECT = HH or LGA)"
+echo "  <PROJECT>-<number>/<description>"
 echo ""
 echo "Examples:"
 echo "  HH-60-auth-flow-tests"
-echo "  HH-60/auth-flow-tests"
+echo "  LGA-23/polly-timings-spike"
 echo ""
 echo "Current branch: $BRANCH"
 echo ""

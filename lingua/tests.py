@@ -303,6 +303,7 @@ class CspScopingTests(TestCase):
         self.assertIn("Content-Security-Policy", resp.headers)
         self.assertIn("default-src 'self'", resp.headers["Content-Security-Policy"])
 
+    @override_settings(SECURE_CSP={}, SECURE_CSP_REPORT_ONLY={})
     def test_no_site_wide_header_for_an_undecorated_view(self):
         from django.http import HttpResponse
 
@@ -311,6 +312,21 @@ class CspScopingTests(TestCase):
 
         resp = self._through_middleware(plain)
         self.assertNotIn("Content-Security-Policy", resp.headers)
+
+    def test_csp_middleware_and_context_processor_are_wired(self):
+        from django.conf import settings
+        self.assertIn(
+            "django.middleware.csp.ContentSecurityPolicyMiddleware",
+            settings.MIDDLEWARE,
+        )
+
+    def test_legacy_page_gets_no_csp_header(self):
+        # The anti-leak guarantee, full-stack through the real middleware chain:
+        # a non-lingua page must carry no CSP header (enforce or report-only).
+        resp = self.client.get("/accounts/login/")
+        self.assertEqual(resp.status_code, 200)
+        self.assertNotIn("Content-Security-Policy", resp.headers)
+        self.assertNotIn("Content-Security-Policy-Report-Only", resp.headers)
 
 
 class LinguaTablePrefixTests(TestCase):

@@ -1,8 +1,9 @@
 # Extracting Lingua to a standalone product
 
 Lingua is built to lift out of Steadfast Scholars with minimal refactoring
-(D-01…D-09). This is the documented, tested extraction path. It replaces the
-dedicated-Postgres-schema idea (D-07), which fought Django's migration model —
+(D-01…D-09). This is the documented extraction path (table-name completeness is test-enforced;
+run it once against a scratch DB to validate dump/restore end-to-end). It replaces
+the dedicated-Postgres-schema idea (D-07), which fought Django's migration model —
 Django already prefixes every table with the app label, so the `lingua` app's
 tables are all named `lingua_*` for free (verified by
 `LinguaTablePrefixTests.test_all_lingua_tables_are_prefixed`).
@@ -22,15 +23,25 @@ tables are all named `lingua_*` for free (verified by
 
 ## Data extraction
 
-All lingua data lives in `lingua_*` tables in the default (`public`) schema:
+All lingua data lives in `lingua_*` tables in the default (`public`) schema. Move
+it in the right ORDER — build the schema from migrations first, then load data. A
+plain `pg_dump --table='lingua_*'` includes `CREATE TABLE` but NOT lingua's rows
+in `django_migrations` (that table isn't `lingua_`-prefixed), so restoring it and
+then running `migrate` collides with "relation already exists":
 
 ```bash
-pg_dump "$DATABASE_URL" --table='lingua_*' > lingua_data.sql
+# 1. In the standalone project, build the schema from migrations:
+python manage.py migrate                       # creates lingua_* + django_migrations
+
+# 2. Copy just the lingua DATA from the source DB:
+pg_dump "$SOURCE_DATABASE_URL" --data-only --table='lingua_*' > lingua_data.sql
+psql "$TARGET_DATABASE_URL" < lingua_data.sql
 ```
 
-That captures every lingua table (`lingua_learner`, `lingua_learnerprofile`, and
-future content/review tables). Restore into the standalone DB, then let Django
-create the rest of a fresh schema via `migrate`.
+(Alternatively, dump schema+data and run `manage.py migrate lingua --fake` so the
+migration state matches the restored tables.) The `--table='lingua_*'` glob is a
+complete capture — every lingua table is `lingua_`-prefixed (test-enforced by
+`LinguaTablePrefixTests`).
 
 ### Shared tables the subset references (host-owned, NOT dumped by the glob)
 
@@ -46,7 +57,7 @@ the adapter's job in the new host.
 ## Code extraction checklist
 
 1. Copy the `lingua/` package into the new project; add `"lingua"` to `INSTALLED_APPS`.
-2. Provide the four settings keys under `LINGUA` (`DEFAULT_LANGUAGE`, `DEFAULT_VARIANT`,
+2. Provide the five settings keys under `LINGUA` (`DEFAULT_LANGUAGE`, `DEFAULT_VARIANT`,
    `MONTHLY_COST_CEILING_USD`, `TTS_PROVIDER`, `AI_CLIENT`).
 3. Implement two adapters for the new host:
    - an `AIClient` (see `lingua/ports.py`) and point `LINGUA["AI_CLIENT"]` at it;

@@ -231,6 +231,21 @@ class Story(models.Model):
         """Only approved content is ever shown to a learner (D-49)."""
         return self.status == self.APPROVED
 
+    def audio_hash(self, voice, engine, provider="polly"):
+        """Content-addressed hash of THIS story's current body in a given voice
+        (LGA-37). Changes whenever the body/voice/engine changes, so a baked asset
+        can be checked for staleness."""
+        from . import assets
+        return assets.content_hash(self.body, provider=provider, voice=voice, engine=engine)
+
+    def current_audio(self, voice, engine, provider="polly"):
+        """The fresh StoryAudio for (voice, engine), or None if it's missing or
+        stale (i.e. the story text changed since it was baked)."""
+        want = self.audio_hash(voice, engine, provider=provider)
+        return self.audios.filter(
+            voice=voice, engine=engine, provider=provider, content_hash=want,
+        ).first()
+
     @transaction.atomic
     def approve(self, host_user_id):
         """Parent approves this story for serving. Records an audit event (D-57).
@@ -255,4 +270,51 @@ class Story(models.Model):
         AuditEvent.record(
             "content.rejected", actor_type=AuditEvent.PARENT, actor_id=host_user_id,
             target_type="Story", target_id=self.pk, summary=f"rejected {self.level}",
+        )
+
+
+class StoryAudio(models.Model):
+    """A baked read-along asset for a Story in one voice (LGA-37, D-16/D-21/N-04).
+
+    Content-addressed: ``content_hash`` = assets.content_hash(story.body, provider,
+    voice, engine). When the story text or voice changes the hash changes, so a stale
+    row is detectable (``is_current``) and re-baked by ``tts_build``; the old R2 object
+    is simply orphaned. One row per (story, voice, engine), updated in place on
+    regenerate. The flat timing JSON (D-21) is stored INLINE — it's small and the
+    reader embeds it in the CSP-clean page (no cross-origin fetch), so only the larger
+    mp3 lives in R2 (``audio_key``, LGA-36). The FK to Story is a lingua-internal
+    CASCADE — no FK to any host model (D-03)."""
+
+    story = models.ForeignKey(Story, on_delete=models.CASCADE, related_name="audios")
+    provider = models.CharField(max_length=16, default="polly")
+    voice = models.CharField(max_length=32)
+    engine = models.CharField(max_length=16, default="neural")
+    content_hash = models.CharField(max_length=64, db_index=True)
+    audio_key = models.CharField(max_length=200, help_text="R2 object key for the mp3.")
+    timings = models.JSONField(default=dict, blank=True, help_text="Flat read-along timing JSON (D-21).")
+    duration_ms = models.IntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["story_id", "voice"]
+        constraints = [
+            # provider is a first-class identity axis (it's in content_hash,
+            # current_audio, and is_current), so it belongs in the uniqueness key
+            # too — this lets a future edge-tts asset (D-17/18) coexist with the
+            # Polly one for the same (story, voice, engine).
+            models.UniqueConstraint(
+                fields=["story", "voice", "engine", "provider"],
+                name="uniq_story_voice_engine_provider",
+            ),
+        ]
+
+    def __str__(self):
+        return f"StoryAudio<story={self.story_id} {self.voice}/{self.engine}>"
+
+    @property
+    def is_current(self):
+        """True if this asset was baked from the story's CURRENT text (not stale)."""
+        return self.content_hash == self.story.audio_hash(
+            self.voice, self.engine, provider=self.provider,
         )

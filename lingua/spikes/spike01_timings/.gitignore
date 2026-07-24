@@ -1,0 +1,4 @@
+# Generated spike outputs — regenerate with spike01.py; keep only the harness.
+*.mp3
+*.timings.json
+readalong.html

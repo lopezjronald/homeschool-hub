@@ -26,7 +26,11 @@ def batch_approval(request):
         if action not in ("approve", "reject"):
             messages.info(request, "No action taken.")
             return redirect("lingua:approvals")
-        ids = request.POST.getlist("story_ids")
+        # Sanitize ids: digits only, within bigint range — a hand-crafted POST
+        # with junk/oversized values must not 500 the query.
+        max_pk = 9223372036854775807
+        ids = [int(x) for x in request.POST.getlist("story_ids")
+               if x.isdigit() and int(x) <= max_pk]
         pending = Story.objects.filter(pk__in=ids, status=Story.PENDING)
         count = 0
         for story in pending:

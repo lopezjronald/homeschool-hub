@@ -566,17 +566,44 @@ class ApprovalUITests(TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertContains(resp, "El gato pendiente")
 
-    def test_approve_selected_flips_status(self):
-        s = self._pending()
+    def test_approve_selected_flips_status_multi_and_audits(self):
+        s1, s2 = self._pending("uno"), self._pending("dos")
+        self.client.force_login(self.parent)
+        resp = self.client.post(
+            reverse("lingua:approvals"),
+            {"action": "approve", "story_ids": [s1.pk, s2.pk]}, follow=True,
+        )
+        self.assertEqual(resp.status_code, 200)
+        for s in (s1, s2):
+            s.refresh_from_db()
+            self.assertEqual(s.status, Story.APPROVED)
+            self.assertTrue(s.is_servable)
+        self.assertContains(resp, "2 stories approved")
+        self.assertEqual(AuditEvent.objects.filter(action="content.approved").count(), 2)
+
+    def test_non_pending_id_is_a_noop(self):
+        # The status=PENDING filter is the replay/forgery guard: re-POSTing an
+        # already-approved id must not re-approve or alter it.
+        s = Story.objects.create(title="done", body="x", level="L1",
+                                 theme=self.theme, status=Story.APPROVED)
         self.client.force_login(self.parent)
         resp = self.client.post(
             reverse("lingua:approvals"),
             {"action": "approve", "story_ids": [s.pk]}, follow=True,
         )
-        self.assertEqual(resp.status_code, 200)
         s.refresh_from_db()
         self.assertEqual(s.status, Story.APPROVED)
-        self.assertTrue(s.is_servable)
+        self.assertContains(resp, "No stories selected")
+        self.assertFalse(AuditEvent.objects.filter(action="content.approved").exists())
+
+    def test_forged_junk_ids_do_not_500(self):
+        self.client.force_login(self.parent)
+        resp = self.client.post(
+            reverse("lingua:approvals"),
+            {"action": "approve", "story_ids": ["abc", "1x", "99999999999999999999"]},
+            follow=True,
+        )
+        self.assertEqual(resp.status_code, 200)
 
     def test_reject_selected(self):
         s = self._pending()

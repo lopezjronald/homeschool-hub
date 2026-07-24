@@ -17,7 +17,7 @@ from students.models import Student
 
 from . import profiles, services
 from .integrations import directory
-from .models import Learner, LearnerProfile
+from .models import AuditEvent, Learner, LearnerProfile
 from .ports import AIClient, AIResult
 
 User = get_user_model()
@@ -73,8 +73,10 @@ class LearnerSeamTests(TestCase):
         self.assertFalse(field.is_relation)
 
     def test_no_lingua_model_fks_out_to_a_host_app(self):
-        """No FK from any lingua model points outside the lingua app label."""
-        for model in (Learner, LearnerProfile):
+        """No FK from ANY lingua model points outside the lingua app label (D-03).
+        Iterates every current + future lingua model, not a hardcoded list."""
+        from django.apps import apps
+        for model in apps.get_app_config("lingua").get_models():
             for f in model._meta.get_fields():
                 if isinstance(f, (dj_models.ForeignKey, dj_models.OneToOneField)):
                     self.assertEqual(
@@ -340,3 +342,75 @@ class LinguaTablePrefixTests(TestCase):
                 model._meta.db_table.startswith("lingua_"),
                 f"{model._meta.label} table {model._meta.db_table!r} not lingua_-prefixed",
             )
+
+
+class AuditEventTests(TestCase):
+    """D-57: audit logs decisions/events, never payloads; closed action vocab."""
+
+    def test_record_writes_a_structured_event(self):
+        e = AuditEvent.record(
+            "ai.generate_completed", actor_type=AuditEvent.AI,
+            target_type="Story", target_id=5, summary="generated 1 story",
+            metadata={"model": "x", "output_tokens": 10},
+        )
+        self.assertEqual(e.action, "ai.generate_completed")
+        self.assertEqual(e.actor_type, AuditEvent.AI)
+        self.assertEqual(e.metadata["output_tokens"], 10)
+
+    def test_record_rejects_unknown_action(self):
+        with self.assertRaises(ValueError):
+            AuditEvent.record("ai.exfiltrate")
+
+    def test_record_truncates_summary(self):
+        e = AuditEvent.record("data.exported", summary="x" * 500)
+        self.assertLessEqual(len(e.summary), 200)
+
+    def test_audit_has_no_free_text_payload_field(self):
+        # D-57: never store prompts/answers/child text in the audit trail.
+        names = {f.name for f in AuditEvent._meta.get_fields()}
+        for banned in ("prompt", "answer", "text", "body", "content", "output"):
+            self.assertNotIn(banned, names)
+
+    def test_record_rejects_payload_smuggled_in_metadata(self):
+        # D-57 teeth: a long string value in metadata (a smuggled prompt/answer)
+        # is rejected — metadata is for structured facts only.
+        with self.assertRaises(ValueError):
+            AuditEvent.record("ai.generate_completed", metadata={"prompt": "x" * 500})
+        # short structured values are fine
+        e = AuditEvent.record("ai.generate_completed", metadata={"model": "haiku", "output_tokens": 12})
+        self.assertEqual(e.metadata["model"], "haiku")
+
+
+class PurgeStaleTests(TestCase):
+    """D-56: retention is enforced, not indefinite."""
+
+    def _backdate(self, event, days):
+        from datetime import timedelta
+
+        from django.utils import timezone
+        # auto_now_add blocks a create kwarg, so update() past the window.
+        AuditEvent.objects.filter(pk=event.pk).update(
+            ts=timezone.now() - timedelta(days=days)
+        )
+
+    def test_purges_past_retention_keeps_recent(self):
+        from io import StringIO
+
+        from django.core.management import call_command
+
+        recent = AuditEvent.record("data.exported", summary="recent")
+        old = AuditEvent.record("data.exported", summary="old")
+        self._backdate(old, 1000)
+        call_command("purge_stale", stdout=StringIO())
+        self.assertFalse(AuditEvent.objects.filter(pk=old.pk).exists())
+        self.assertTrue(AuditEvent.objects.filter(pk=recent.pk).exists())
+
+    def test_dry_run_purges_nothing(self):
+        from io import StringIO
+
+        from django.core.management import call_command
+
+        old = AuditEvent.record("data.exported")
+        self._backdate(old, 1000)
+        call_command("purge_stale", "--dry-run", stdout=StringIO())
+        self.assertTrue(AuditEvent.objects.filter(pk=old.pk).exists())

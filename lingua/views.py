@@ -1,14 +1,20 @@
 """lingua views. Parent-facing pages extend the host base.html (so NOT @lingua_csp
 — that strict policy is reserved for the CSP-clean kid reader). Editors-only views
 raise Http404 for non-editors, matching the rest of the app (tutor/views.py)."""
+from urllib.parse import urlsplit
+
+from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.http import Http404
-from django.shortcuts import redirect, render
+from django.shortcuts import get_object_or_404, redirect, render
+from django.utils.csp import CSP
 from django.views.decorators.http import require_http_methods
 
 from core.permissions import user_can_edit
 
+from . import storage
+from .csp import LINGUA_CSP, lingua_csp
 from .models import Story
 
 
@@ -46,3 +52,43 @@ def batch_approval(request):
 
     drafts = Story.objects.filter(status=Story.PENDING).order_by("level", "-created_at")
     return render(request, "lingua/approvals.html", {"drafts": drafts})
+
+
+@login_required
+@lingua_csp
+def read_story(request, story_id):
+    """Read-along reader (LGA-47) — the CSP-clean kid page. Only APPROVED stories are
+    servable (D-49). With baked audio the page carries the ``<audio>`` + inline timing
+    JSON and the rAF player highlights each word; with no audio it degrades to plain
+    readable text (LGA-54) — the reading loop never hard-depends on audio/AI, so a
+    missing/broken asset shows text, never a 500.
+
+    The strict LINGUA_CSP allows media only from SELF; the read-along mp3 lives on the
+    public R2 host, so when the audio URL is cross-origin we widen ``media-src`` to
+    that host (the @lingua_csp decorator leaves a view-set policy untouched)."""
+    story = get_object_or_404(Story, pk=story_id, status=Story.APPROVED)
+    voice = settings.LINGUA.get("TTS_VOICE", "Mia")
+    engine = settings.LINGUA.get("TTS_ENGINE", "neural")
+    audio = story.current_audio(voice, engine)
+    audio_url, timings = "", None
+    if audio:
+        try:
+            audio_url = storage.public_url(audio.audio_key)
+            timings = audio.timings or None
+        except Exception:  # noqa: BLE001 — audio is enhancement; degrade to text (LGA-54)
+            audio_url, timings = "", None
+    has_audio = bool(audio_url and timings and timings.get("words"))
+    # Render tokens that align with the timing word indices when we have audio;
+    # otherwise a plain whitespace split, purely for display.
+    tokens = timings.get("tokens") if has_audio else story.body.split()
+    response = render(request, "lingua/read.html", {
+        "story": story, "audio_url": audio_url, "timings": timings if has_audio else None,
+        "tokens": tokens, "has_audio": has_audio,
+    })
+    if has_audio:
+        parts = urlsplit(audio_url)
+        if parts.scheme and parts.netloc:  # cross-origin (prod R2) — widen media-src
+            policy = {k: list(v) for k, v in LINGUA_CSP.items()}
+            policy["media-src"] = [CSP.SELF, f"{parts.scheme}://{parts.netloc}"]
+            response._csp_config = policy
+    return response

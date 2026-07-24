@@ -1228,6 +1228,85 @@ class TtsBuildCommandTests(TestCase):
             call_command("tts_build", stdout=io.StringIO())
 
 
+class ReaderViewTests(TestCase):
+    """LGA-47 / LGA-54: read-along reader page + graceful degradation."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = User.objects.create_user("reader_parent", password="pw")
+        cls.story = Story.objects.create(
+            title="El gato", body="Hay un gato feliz.", level="L1", status=Story.APPROVED,
+        )
+
+    def setUp(self):
+        self.client.force_login(self.user)
+
+    def _url(self, story):
+        return reverse("lingua:read", args=[story.pk])
+
+    def _add_audio(self, story):
+        digest = story.audio_hash("Mia", "neural")
+        return StoryAudio.objects.create(
+            story=story, voice="Mia", engine="neural", provider="polly",
+            content_hash=digest, audio_key=assets.asset_keys(digest)["audio"],
+            timings={
+                "tokens": ["Hay", "un", "gato", "feliz."],
+                "token_spans": [[0, 3], [4, 6], [7, 11], [12, 18]],
+                "words": [{"i": 0, "s_ms": 0, "e_ms": 300, "cs": 0, "ce": 3},
+                          {"i": 2, "s_ms": 300, "e_ms": 600, "cs": 7, "ce": 11}],
+            },
+            duration_ms=600,
+        )
+
+    def test_requires_login(self):
+        self.client.logout()
+        self.assertIn(self.client.get(self._url(self.story)).status_code, (301, 302))
+
+    def test_only_approved_is_servable(self):
+        draft = Story.objects.create(title="d", body="x y", level="L1", status=Story.DRAFT)
+        self.assertEqual(self.client.get(self._url(draft)).status_code, 404)  # D-49
+
+    def test_degrades_to_text_without_audio(self):
+        html = self.client.get(self._url(self.story)).content.decode()
+        self.assertNotIn("<audio", html)                 # no player element
+        self.assertNotIn("lingua-timings", html)         # no timing block (hash-stable marker)
+        self.assertNotIn("<script", html)                # no player script emitted at all
+        self.assertIn('data-i="0"', html)                # words still rendered as spans
+        self.assertIn("Audio is being prepared", html)   # degradation note (LGA-54)
+
+    @override_settings(STORAGES=_INMEM_STORAGES)
+    def test_renders_player_with_audio(self):
+        self._add_audio(self.story)
+        html = self.client.get(self._url(self.story)).content.decode()
+        self.assertIn("<audio", html)
+        self.assertIn('id="lingua-timings"', html)       # json_script data block (not static-hashed)
+        self.assertIn("readalong", html)                 # player script (matches hashed name too)
+        self.assertIn('data-i="0"', html)
+
+    def test_degrades_when_public_url_raises(self):
+        # A present StoryAudio whose public_url() blows up must still render text,
+        # not 500 — the reading loop never hard-depends on the asset store (LGA-54).
+        self._add_audio(self.story)
+        with mock.patch("lingua.storage.public_url", side_effect=RuntimeError("R2 down")):
+            r = self.client.get(self._url(self.story))
+        self.assertEqual(r.status_code, 200)
+        html = r.content.decode()
+        self.assertNotIn("<audio", html)
+        self.assertIn("Audio is being prepared", html)
+
+    @override_settings(STORAGES=_INMEM_STORAGES)
+    def test_csp_widened_to_audio_host(self):
+        self._add_audio(self.story)                       # InMem base_url is https://cdn.test/
+        csp = self.client.get(self._url(self.story)).headers.get("Content-Security-Policy", "")
+        self.assertIn("media-src", csp)
+        self.assertIn("cdn.test", csp)                   # widened to the cross-origin R2 host
+
+    def test_csp_is_strict(self):
+        csp = self.client.get(self._url(self.story)).headers.get("Content-Security-Policy", "")
+        self.assertIn("default-src", csp)
+        self.assertNotIn("unsafe-inline", csp)           # strict kid-page policy (D-13)
+
+
 class PurgeStaleTests(TestCase):
     """D-56: retention is enforced, not indefinite."""
 

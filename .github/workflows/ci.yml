@@ -28,5 +28,8 @@ jobs:
       - name: Run tests
         run: python manage.py test
 
+      - name: Run JS player tests (lingua read-along)
+        run: node lingua/static/lingua/readalong.test.js
+
 # Deploys are manual (owner preference): `git push heroku <branch>:main`.
 # (The auto-deploy job was intentionally removed.)

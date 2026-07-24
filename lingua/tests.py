@@ -16,7 +16,7 @@ from django.urls import reverse
 
 from students.models import Student
 
-from . import leveling, profiles, services
+from . import cognates, leveling, profiles, services
 from .integrations import directory
 from .models import AuditEvent, Learner, LearnerProfile, Story, Theme
 from .ports import AIClient, AIResult
@@ -657,6 +657,44 @@ class LevelingTests(TestCase):
         self.assertEqual(leveling._level_for(6.01), "L2")
         self.assertEqual(leveling._level_for(70), "L7")
         self.assertEqual(leveling._level_for(70.1), "L8")
+
+
+class CognateTests(TestCase):
+    """pedagogy-8 / D-28: cognate detection + the false-friend safety net."""
+
+    def test_dice_similarity(self):
+        self.assertEqual(cognates.dice_similarity("animal", "animal"), 1.0)
+        self.assertGreater(cognates.dice_similarity("información", "information"), 0.6)
+        self.assertLess(cognates.dice_similarity("perro", "dog"), 0.3)  # clearly non-cognate
+
+    def test_normalize_strips_diacritics(self):
+        self.assertEqual(cognates.normalize("Ñoño"), "nono")
+        self.assertEqual(cognates.normalize("ÉXITO"), "exito")
+
+    def test_false_friend_detection(self):
+        self.assertTrue(cognates.is_false_friend("embarazada"))
+        self.assertTrue(cognates.is_false_friend("Librería"))  # accent + case insensitive
+        self.assertEqual(cognates.false_friend_note("sopa"), ("soap", "soup"))
+        self.assertIsNone(cognates.false_friend_note("gato"))
+
+    def test_cognate_detection_excludes_false_friends(self):
+        self.assertTrue(cognates.is_cognate("animal"))
+        self.assertTrue(cognates.is_cognate("hospital"))
+        self.assertFalse(cognates.is_cognate("gato"))          # not a cognate
+        self.assertFalse(cognates.is_cognate("embarazada"))    # false friend, never a cognate
+
+    def test_looks_cognate_respects_false_friends(self):
+        self.assertTrue(cognates.looks_cognate("información", "information"))
+        # a false friend is never a cognate even if orthographically similar
+        self.assertFalse(cognates.looks_cognate("embarazada", "embarrassed"))
+
+    def test_analyze_text(self):
+        r = cognates.analyze_text(
+            "El animal está en el hospital. La librería es grande."
+        )
+        self.assertIn("animal", r["cognates"])
+        self.assertIn("hospital", r["cognates"])
+        self.assertIn("librería", r["false_friends"])
 
 
 class PurgeStaleTests(TestCase):

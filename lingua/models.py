@@ -8,6 +8,7 @@ FKs *within* lingua are ordinary CASCADE relations.
 
 from django.conf import settings
 from django.db import models, transaction
+from django.utils import timezone
 
 from . import profiles
 
@@ -152,4 +153,95 @@ class AuditEvent(models.Model):
             action=action, actor_type=actor_type, actor_id=actor_id,
             target_type=target_type, target_id=target_id,
             summary=(summary or "")[:200], metadata=metadata, ip=ip,
+        )
+
+
+class Theme(models.Model):
+    """A content theme for the age-banded rotation (D-51, N-01). The daily plan
+    draws a learner's next-story choices from active themes matching their band."""
+
+    slug = models.SlugField(max_length=40, unique=True)
+    name = models.CharField(max_length=80)
+    age_band = models.CharField(max_length=16, choices=profiles.TRACK_CHOICES)
+    active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["age_band", "name"]
+
+    def __str__(self):
+        return self.name
+
+
+class Story(models.Model):
+    """A leveled Spanish reading text. Content-bearing, so it carries ``language``
+    (D-02). Only AI-generated stories and public-domain texts are ever stored/
+    rendered — never copyrighted book text (D-47).
+
+    The draft→approve lifecycle lives on ``status`` (one table, mirroring the
+    host's Material pattern) rather than a separate ContentDraft: AI drafts land
+    as PENDING_APPROVAL, a parent approves, and only APPROVED stories are servable
+    (D-48/49/50). ``approved_by`` is a plain host user id — NO FK (D-03)."""
+
+    DRAFT, PENDING, APPROVED, REJECTED = (
+        "draft", "pending_approval", "approved", "rejected",
+    )
+    STATUS_CHOICES = [
+        (DRAFT, "Draft"), (PENDING, "Pending approval"),
+        (APPROVED, "Approved"), (REJECTED, "Rejected"),
+    ]
+    SOURCE_GENERATED, SOURCE_PUBLIC_DOMAIN = "generated", "public_domain"
+    SOURCE_CHOICES = [
+        (SOURCE_GENERATED, "AI-generated"), (SOURCE_PUBLIC_DOMAIN, "Public domain"),
+    ]
+
+    language = models.CharField(max_length=8, default="es")
+    variant = models.CharField(max_length=16, default="es-MX")
+    title = models.CharField(max_length=200)
+    body = models.TextField()
+    level = models.CharField(max_length=4, choices=profiles.LEVEL_CHOICES)
+    theme = models.ForeignKey(
+        Theme, null=True, blank=True, on_delete=models.SET_NULL, related_name="stories",
+    )
+    source = models.CharField(max_length=16, choices=SOURCE_CHOICES, default=SOURCE_GENERATED)
+    status = models.CharField(max_length=16, choices=STATUS_CHOICES, default=DRAFT, db_index=True)
+    # LLM-critic pre-filter results (D-49), populated by the generation pipeline.
+    critic_passed = models.BooleanField(null=True, blank=True)
+    critic_flags = models.JSONField(default=list, blank=True)
+    # Approval (D-49/50). approved_by is a plain host user id — NO FK (D-03).
+    approved_by = models.IntegerField(null=True, blank=True)
+    approved_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [models.Index(fields=["status", "level"])]
+
+    def __str__(self):
+        return f"{self.title} ({self.level}, {self.status})"
+
+    @property
+    def is_servable(self):
+        """Only approved content is ever shown to a learner (D-49)."""
+        return self.status == self.APPROVED
+
+    def approve(self, host_user_id):
+        """Parent approves this story for serving. Records an audit event (D-57)."""
+        self.status = self.APPROVED
+        self.approved_by = host_user_id
+        self.approved_at = timezone.now()
+        self.save(update_fields=["status", "approved_by", "approved_at", "updated_at"])
+        AuditEvent.record(
+            "content.approved", actor_type=AuditEvent.PARENT, actor_id=host_user_id,
+            target_type="Story", target_id=self.pk, summary=f"approved {self.level}",
+        )
+
+    def reject(self, host_user_id):
+        """Parent rejects this draft. Records an audit event (D-57)."""
+        self.status = self.REJECTED
+        self.save(update_fields=["status", "updated_at"])
+        AuditEvent.record(
+            "content.rejected", actor_type=AuditEvent.PARENT, actor_id=host_user_id,
+            target_type="Story", target_id=self.pk, summary=f"rejected {self.level}",
         )

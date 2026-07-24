@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import Learner, LearnerProfile
+from .models import Learner, LearnerProfile, Story, Theme
 
 
 class LearnerProfileInline(admin.StackedInline):
@@ -15,3 +15,16 @@ class LearnerAdmin(admin.ModelAdmin):
     list_display = ("host_student_id", "language", "variant", "created_at")
     search_fields = ("host_student_id",)
     inlines = [LearnerProfileInline]
+
+
+@admin.register(Theme)
+class ThemeAdmin(admin.ModelAdmin):
+    list_display = ("name", "slug", "age_band", "active")
+    list_filter = ("age_band", "active")
+
+
+@admin.register(Story)
+class StoryAdmin(admin.ModelAdmin):
+    list_display = ("title", "level", "status", "source", "theme", "created_at")
+    list_filter = ("status", "level", "source", "language")
+    search_fields = ("title",)

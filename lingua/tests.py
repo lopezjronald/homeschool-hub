@@ -17,7 +17,7 @@ from students.models import Student
 
 from . import profiles, services
 from .integrations import directory
-from .models import AuditEvent, Learner, LearnerProfile
+from .models import AuditEvent, Learner, LearnerProfile, Story, Theme
 from .ports import AIClient, AIResult
 
 User = get_user_model()
@@ -379,6 +379,48 @@ class AuditEventTests(TestCase):
         # short structured values are fine
         e = AuditEvent.record("ai.generate_completed", metadata={"model": "haiku", "output_tokens": 12})
         self.assertEqual(e.metadata["model"], "haiku")
+
+
+class StoryContentTests(TestCase):
+    """D-48/49/50: content lifecycle draft -> approve; only approved is servable."""
+
+    def test_story_defaults_and_language(self):
+        s = Story.objects.create(title="El gato", body="Hay un gato.", level="L1")
+        self.assertEqual(s.status, Story.DRAFT)
+        self.assertEqual(s.language, "es")   # D-02
+        self.assertEqual(s.variant, "es-MX")
+        self.assertFalse(s.is_servable)
+
+    def test_approve_marks_servable_and_audits(self):
+        s = Story.objects.create(title="El perro", body="Hay un perro.", level="L2",
+                                 status=Story.PENDING)
+        s.approve(host_user_id=7)
+        s.refresh_from_db()
+        self.assertEqual(s.status, Story.APPROVED)
+        self.assertEqual(s.approved_by, 7)
+        self.assertIsNotNone(s.approved_at)
+        self.assertTrue(s.is_servable)
+        # approval wrote an audit event (D-57), reusing the LGA-27 seed
+        ev = AuditEvent.objects.filter(action="content.approved", target_id=s.pk).first()
+        self.assertIsNotNone(ev)
+        self.assertEqual(ev.actor_id, 7)
+
+    def test_reject_is_not_servable_and_audits(self):
+        s = Story.objects.create(title="x", body="y", level="L1", status=Story.PENDING)
+        s.reject(host_user_id=7)
+        s.refresh_from_db()
+        self.assertEqual(s.status, Story.REJECTED)
+        self.assertFalse(s.is_servable)
+        self.assertTrue(
+            AuditEvent.objects.filter(action="content.rejected", target_id=s.pk).exists()
+        )
+
+    def test_theme_age_band(self):
+        t = Theme.objects.create(slug="animals", name="Animals",
+                                 age_band=profiles.KIDS_EARLY)
+        s = Story.objects.create(title="El gato", body="...", level="L1", theme=t)
+        self.assertEqual(s.theme.name, "Animals")
+        self.assertEqual(t.stories.count(), 1)
 
 
 class PurgeStaleTests(TestCase):

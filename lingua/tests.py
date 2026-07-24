@@ -15,7 +15,7 @@ from django.test import RequestFactory, TestCase, override_settings
 
 from students.models import Student
 
-from . import profiles, services
+from . import leveling, profiles, services
 from .integrations import directory
 from .models import AuditEvent, Learner, LearnerProfile, Story, Theme
 from .ports import AIClient, AIResult
@@ -522,6 +522,55 @@ class GenerationTests(TestCase):
             call_command("generate_stories", "animals", "--level", "L99", stderr=StringIO())
         with self.assertRaises(CommandError):
             call_command("generate_stories", "nope", "--level", "L1", stderr=StringIO())
+
+    def test_generation_populates_leveling_signal(self):
+        fake = _ScriptedAIClient('{"title":"El gato","body":"Hay un gato pequeño."}',
+                                 '{"passed":true,"flags":[]}')
+        s = services.create_story_draft(theme=self.theme, level="L1", ai_client=fake)
+        self.assertEqual(s.suggested_level, "L1")     # simple text reads easy
+        self.assertIsInstance(s.flagged_words, list)  # soft signal populated
+
+    def test_leveling_failure_does_not_abort_generation(self):
+        # A soft signal must never lose a paid-for story: leveling errors degrade.
+        from unittest import mock
+        fake = _ScriptedAIClient('{"title":"T","body":"B"}', '{"passed":true,"flags":[]}')
+        with mock.patch("lingua.services.leveling.analyze",
+                        side_effect=RuntimeError("boom")):
+            s = services.create_story_draft(theme=self.theme, level="L1", ai_client=fake)
+        self.assertEqual(s.status, Story.PENDING)     # story still created
+        self.assertEqual(s.suggested_level, "")       # degraded signal
+        self.assertTrue(
+            AuditEvent.objects.filter(action="ai.generate_completed", target_id=s.pk).exists()
+        )
+
+
+class LevelingTests(TestCase):
+    """D-25/LGA-44: frequency-band leveling as a soft signal (from SPIKE-03)."""
+
+    def test_simple_text_scores_low(self):
+        r = leveling.analyze("Hay un gato pequeño. El niño ve el gato.")
+        self.assertEqual(r["suggested_level"], "L1")
+        self.assertLess(r["out_of_band_pct"], 6)
+
+    def test_rich_text_scores_higher_and_flags_words(self):
+        r = leveling.analyze(
+            "El felino acechaba sigilosamente entre la espesura contemplando el ocaso."
+        )
+        self.assertGreater(profiles.level_rank(r["suggested_level"]),
+                           profiles.level_rank("L1"))
+        self.assertIn("felino", r["out_of_band_words"])
+
+    def test_empty_text(self):
+        r = leveling.analyze("")
+        self.assertIsNone(r["suggested_level"])
+        self.assertEqual(r["out_of_band_words"], [])
+
+    def test_level_for_boundaries(self):
+        self.assertEqual(leveling._level_for(0), "L1")
+        self.assertEqual(leveling._level_for(6), "L1")
+        self.assertEqual(leveling._level_for(6.01), "L2")
+        self.assertEqual(leveling._level_for(70), "L7")
+        self.assertEqual(leveling._level_for(70.1), "L8")
 
 
 class PurgeStaleTests(TestCase):

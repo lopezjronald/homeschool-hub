@@ -3,11 +3,20 @@
 Repo convention (see recon): django.test.TestCase + setUpTestData, no pytest.
 Run: `python manage.py collectstatic --noinput && python manage.py test lingua`.
 """
+import inspect
+
+from django.contrib.auth import get_user_model
 from django.db import models as dj_models
 from django.test import TestCase
 
-from . import profiles
+from students.models import Student
+
+from . import profiles, services
+from .integrations import directory
 from .models import Learner, LearnerProfile
+from .ports import AIClient, AIResult
+
+User = get_user_model()
 
 
 class ProfileConstantsTests(TestCase):
@@ -93,3 +102,74 @@ class LearnerCreationTests(TestCase):
         with self.assertRaises(IntegrityError):
             with transaction.atomic():
                 Learner.objects.create(host_student_id=101)
+
+
+class UserDirectoryTests(TestCase):
+    """The single host-identity coupling point (D-04)."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.parent = User.objects.create_user(
+            username="p1", email="p1@example.com", password="x", is_active=True,
+        )
+        cls.student = Student.objects.create(
+            parent=cls.parent, first_name="Ada", last_name="Lopez", grade_level="G03",
+        )
+
+    def test_learner_exists(self):
+        self.assertTrue(directory.learner_exists(self.student.pk))
+        self.assertFalse(directory.learner_exists(999999))
+
+    def test_get_learner_display_resolves_name_and_level(self):
+        info = directory.get_learner_display(self.student.pk)
+        self.assertEqual(info, {"name": "Ada Lopez", "grade_level": "G03"})
+
+    def test_get_learner_display_missing_returns_none(self):
+        self.assertIsNone(directory.get_learner_display(999999))
+
+    def test_list_for_family_scopes_by_family(self):
+        # The student has no family set, so no family id lists it.
+        self.assertEqual(directory.list_for_family(999999), [])
+
+
+class PortsAndAdapterTests(TestCase):
+    """The AIClient port + host adapter seam (D-04)."""
+
+    def test_ports_module_has_no_django_or_host_imports(self):
+        """ports.py must IMPORT no Django/host coupling — enforced, not just documented.
+        Checks actual import statements via AST (docstring prose may mention them)."""
+        import ast
+
+        from lingua import ports as ports_mod
+        tree = ast.parse(inspect.getsource(ports_mod))
+        roots = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                roots.update(a.name.split(".")[0] for a in node.names)
+            elif isinstance(node, ast.ImportFrom):
+                roots.add((node.module or "").split(".")[0])
+        self.assertNotIn("django", roots)
+        self.assertNotIn("tutor", roots)
+        self.assertNotIn("students", roots)
+
+    def test_factory_returns_an_aiclient(self):
+        client = services.get_ai_client()
+        self.assertIsInstance(client, AIClient)
+
+    def test_factory_adapter_reports_unconfigured_without_key(self):
+        # Test env has no ANTHROPIC_API_KEY -> adapter degrades, no crash.
+        self.assertFalse(services.get_ai_client().is_configured())
+
+    def test_fake_client_satisfies_the_contract(self):
+        class _FakeAIClient(AIClient):
+            def is_configured(self):
+                return True
+
+            def generate(self, *, system, user, max_tokens=1024, timeout=None, meta=None):
+                return AIResult(text="hola", usage={"input_tokens": 1, "output_tokens": 1},
+                                model="fake")
+
+        r = _FakeAIClient().generate(system="s", user="u")
+        self.assertIsInstance(r, AIResult)
+        self.assertEqual(r.text, "hola")
+        self.assertEqual(r.model, "fake")

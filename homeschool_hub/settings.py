@@ -314,6 +314,11 @@ LINGUA = {
     "MONTHLY_COST_CEILING_USD": _env_int("LINGUA_MONTHLY_COST_CEILING_USD", 25),
     # TTS provider order (SPIKE-01: Polly primary, edge-tts fallback — D-17/D-18).
     "TTS_PROVIDER": os.getenv("LINGUA_TTS_PROVIDER", "polly"),
+    # Host-provided AIClient adapter (D-04). The ONLY lingua-side reference to the
+    # host adapter; swapping this swaps the provider with zero lingua changes.
+    "AI_CLIENT": os.getenv(
+        "LINGUA_AI_CLIENT", "homeschool_hub.adapters.lingua_ai.TutorAIClient"
+    ),
 }
 
 # ---------------------------------------------------------------------------

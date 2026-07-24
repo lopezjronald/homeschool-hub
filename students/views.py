@@ -1,3 +1,5 @@
+import logging
+
 from django.contrib.auth import logout
 from django.contrib.auth.decorators import login_required
 from django.db.models import Q, ProtectedError
@@ -17,6 +19,8 @@ from .forms import StudentForm
 # Host is the composition root that wires the extractable lingua module (D-04):
 # no FK links Student -> lingua (D-03), so deletion must purge lingua explicitly.
 from lingua import services as lingua_services
+
+logger = logging.getLogger(__name__)
 
 
 @login_required
@@ -243,18 +247,28 @@ def student_delete(request, pk):
         name = student.first_name
         try:
             student.delete()
-        except ProtectedError:
-            # worklog.WorkLogEntry uses on_delete=PROTECT to guard a child's
-            # work history. Fail gracefully instead of a 500 (was unguarded).
+        except ProtectedError as err:
+            # Several host models PROTECT a child's records (worklog entries,
+            # assignments). Name what's actually blocking so the parent isn't
+            # sent chasing the wrong records. (Was an unguarded 500.)
+            kinds = sorted({
+                str(obj._meta.verbose_name_plural).lower()
+                for obj in err.protected_objects
+            })
+            what = ", ".join(kinds) if kinds else "related records"
             messages.error(
                 request,
-                f"{name}'s profile can't be deleted yet because it has work-log "
-                f"history. Remove those entries first, then try again.",
+                f"{name}'s profile can't be deleted yet because it still has "
+                f"{what}. Remove those first, then try again.",
             )
             return redirect("students:student_list")
         # Student is gone; purge the lingua rows it can't cascade to (D-03).
-        # Best-effort inline; lingua_prune_orphans is the scheduled backstop.
-        lingua_services.delete_learner_for_student(pk)
+        # Best-effort: a purge failure must NOT 500 an already-committed delete —
+        # lingua_prune_orphans is the scheduled backstop that reconciles.
+        try:
+            lingua_services.delete_learner_for_student(pk)
+        except Exception:  # noqa: BLE001 — backstop command cleans up orphans
+            logger.exception("lingua purge failed for deleted student %s", pk)
         messages.success(request, f"{name}'s profile has been deleted.")
         return redirect("students:student_list")
 

@@ -452,9 +452,40 @@ if USE_R2:
         },
     }
     MEDIA_URL = ""  # URLs come from signed S3 URLs
+    # Public, immutably-cached read-along assets (lingua, LGA-36 / D-16 / N-03).
+    # A SEPARATE public path: querystring_auth OFF so URLs are stable + public (not
+    # the default's ~1h signed URLs, wrong for reread/offline), served with an
+    # immutable long cache. Private media (uploads) stays on the signed-URL
+    # "default" backend above. Requires a public bucket reachable at R2_PUBLIC_DOMAIN
+    # (Cloudflare r2.dev or a custom domain); without it R2 can't serve unsigned.
+    # CacheControl comes from lingua.storage (single source of truth — no drift).
+    from lingua.storage import IMMUTABLE_CACHE_CONTROL
+
+    STORAGES["lingua_readalong"] = {
+        "BACKEND": "storages.backends.s3boto3.S3Boto3Storage",
+        "OPTIONS": {
+            "access_key": os.getenv("R2_ACCESS_KEY_ID"),
+            "secret_key": os.getenv("R2_SECRET_ACCESS_KEY"),
+            "bucket_name": os.getenv("R2_PUBLIC_BUCKET_NAME",
+                                     os.getenv("R2_BUCKET_NAME", "steadfast-scholars-media")),
+            "endpoint_url": os.getenv("R2_ENDPOINT_URL"),
+            "region_name": os.getenv("R2_REGION", "auto"),
+            "custom_domain": os.getenv("R2_PUBLIC_DOMAIN"),  # public host -> unsigned URLs
+            "default_acl": None,
+            "querystring_auth": False,       # stable public URLs, not signed
+            "file_overwrite": True,          # content-addressed keys: same key == same bytes
+            "object_parameters": {"CacheControl": IMMUTABLE_CACHE_CONTROL},
+        },
+    }
 else:
     # Local filesystem storage for development
     STORAGES["default"] = {
+        "BACKEND": "django.core.files.storage.FileSystemStorage",
+    }
+    # Read-along assets: same local filesystem in dev (the "lingua/readalong/<hash>"
+    # key prefix keeps them separated); the public/immutable behavior is an R2-only
+    # concern. Defined so storages["lingua_readalong"] always resolves.
+    STORAGES["lingua_readalong"] = {
         "BACKEND": "django.core.files.storage.FileSystemStorage",
     }
     MEDIA_ROOT = BASE_DIR / "media"

@@ -1,57 +1,32 @@
-"""SPIKE-03 (LGA-25): validate frequency-band leveling on Spanish text.
+"""SPIKE-03 (LGA-25): frequency-band leveling on Spanish text, calibrated.
 
-Validates the MECHANISM of coverage-first leveling (D-25/D-28): tokenize
-accent-aware, look each token up in a Spanish frequency band, compute the
-out-of-band ("unknown") rate, and map it to an L1..L8 level. Shows that an
-easy top-frequency text scores low and a lexically rich / archaic text scores
-high — i.e. the coverage signal discriminates difficulty.
+Coverage-first leveling (D-25/D-28): tokenize accent-aware, look each token up in
+a real Spanish frequency corpus (wordfreq, chosen over the OSF SUBTLEX download),
+compute the "out-of-band" (rare/unknown) rate, and map it to an L1..L8 level.
 
-HONESTY / SCOPE: this uses a small ~150-word SAMPLE frequency list (a stand-in
-for the real corpus) and legally-clean texts (hand-authored + public-domain Don
-Quijote). It validates the ALGORITHM, not final CALIBRATION. Calibrating
-"Fluency Matters L1 actually scores as L1" needs two decisions (see DECISIONS.md
-SPIKE-03):
-  1. the real frequency corpus — SUBTLEX-ESP (OSF download) or the `wordfreq`
-     package (pip; bundles Spanish incl. SUBTLEX-derived data);
-  2. legally-sourced graded L2 texts — their published text is copyrighted
-     (D-47), so validate against owned copies (local fair-use analysis) or
-     public-domain graded readers.
-Swapping the sample list for the real corpus is a one-line data change; the
-scorer below is the reusable M1 engine core.
+Corpus: `wordfreq.zipf_frequency(word, "es")` — a 0–8 scale (higher = more common:
+`el`≈7.4, `gato`≈4.6, `felino`≈3.1, `adarga`≈1.7, unknown=0.0). A word is
+"out-of-band" for a beginner if its zipf is below RARE_ZIPF.
+
+Calibration set is LEGALLY CLEAN (D-47): a hand-authored L1 text + public-domain
+graded texts spanning easy→hard (a traditional nursery rhyme; a Samaniego fable,
+public domain d.1801; the Don Quijote opening). No copyrighted graded-reader text.
+
+Production refinement (M1): add lemmatization (simplemma, D-26) so conjugations
+collapse to lemmas before the frequency lookup; pin `wordfreq` in requirements.
 """
 import re
+import statistics
 
-# ~150 most-common Spanish words (rough frequency order) — SAMPLE stand-in for
-# SUBTLEX-ESP. Rank = list position. Function words + common kid-story vocab +
-# frequent verb surface forms (production uses lemmatization — simplemma, D-26 —
-# so conjugations collapse to lemmas; here we include a few surface forms so the
-# demo doesn't over-count unknowns for lack of a lemmatizer).
-FREQ_SAMPLE = [
-    "el", "la", "de", "que", "y", "a", "en", "un", "una", "ser", "es", "se",
-    "no", "haber", "por", "con", "su", "para", "como", "estar", "está", "tener",
-    "tiene", "le", "lo", "los", "las", "del", "al", "pero", "más", "o", "si",
-    "sí", "ya", "muy", "cuando", "porque", "este", "esta", "eso", "ese", "me",
-    "mi", "te", "tu", "nos", "yo", "él", "ella", "hay", "son", "fue", "era",
-    "dos", "tres", "también", "hasta", "desde", "donde", "aquí", "allí", "bien",
-    "poco", "mucho", "todo", "toda", "todos", "nada", "algo", "cada", "otro",
-    "otra", "uno", "primero",
-    # verbs (base + frequent conjugations)
-    "ir", "va", "voy", "ver", "ve", "veo", "dar", "hacer", "hace", "decir",
-    "dice", "poder", "puede", "querer", "quiere", "saber", "sabe", "comer",
-    "come", "jugar", "juega", "juegan", "mirar", "mira", "correr", "corre",
-    "dormir", "duerme", "vivir", "vive", "llegar", "llega", "gustar", "gusta",
-    "leer", "lee",
-    # common kid-story nouns
-    "gato", "perro", "casa", "niño", "niña", "mamá", "papá", "agua", "pan",
-    "libro", "escuela", "amigo", "amiga", "sol", "luna", "árbol", "pájaro",
-    "flor", "día", "noche", "mano", "cosa", "tiempo", "año", "vez", "hombre",
-    "mujer", "gente", "vida",
-    # adjectives / descriptors
-    "grande", "pequeño", "pequeña", "bueno", "buen", "buena", "malo", "nuevo",
-    "feliz", "blanco", "negro", "rojo", "azul", "verde", "bonito", "alto",
-    "bajo", "contento",
-]
-RANK = {w: i for i, w in enumerate(FREQ_SAMPLE)}
+from wordfreq import zipf_frequency
+
+# Words rarer than this zipf are "out-of-band". Calibrated on the gradient below:
+# 3.5 orders the texts correctly for the BEGINNER range (simple→L1, folk texts→L2,
+# classic→L3). 4.5 saturates (~32% for every literary text, so Quijote stopped
+# separating from a nursery rhyme) AND flagged conjugations (come/duerme/juegan) as
+# false-rare — which is why production needs lemmatization (D-26) and, for a wider
+# spread + true i+1, learner-known-words coverage (M3), not corpus frequency alone.
+RARE_ZIPF = 3.5
 
 WORD_RE = re.compile(r"[^\W\d_]+", re.UNICODE)  # letters only; keeps á é í ó ú ñ
 
@@ -60,11 +35,11 @@ def tokenize(text):
     return [m.group().lower() for m in WORD_RE.finditer(text)]
 
 
-def level_for(unknown_pct):
+def level_for(rare_pct):
     """Coverage-first ladder (D-28 spirit): fewer out-of-band words => lower level."""
-    for cap, lvl in [(2, "L1"), (5, "L2"), (10, "L3"), (18, "L4"),
-                     (28, "L5"), (40, "L6"), (55, "L7")]:
-        if unknown_pct <= cap:
+    for cap, lvl in [(6, "L1"), (12, "L2"), (20, "L3"), (30, "L4"),
+                     (42, "L5"), (55, "L6"), (70, "L7")]:
+        if rare_pct <= cap:
             return lvl
     return "L8"
 
@@ -73,38 +48,46 @@ def score(text):
     toks = tokenize(text)
     if not toks:
         return None
-    unknown = [t for t in toks if t not in RANK]
-    unknown_pct = 100 * len(unknown) / len(toks)
+    zipfs = [zipf_frequency(t, "es") for t in toks]
+    rare = sorted({t for t, z in zip(toks, zipfs) if z < RARE_ZIPF})
+    rare_pct = 100 * sum(1 for z in zipfs if z < RARE_ZIPF) / len(toks)
     return {
         "tokens": len(toks),
-        "unknown_pct": round(unknown_pct, 1),
-        "level": level_for(unknown_pct),
-        "sample_unknown": sorted(set(unknown))[:8],
+        "rare_pct": round(rare_pct, 1),
+        "median_zipf": round(statistics.median(zipfs), 2),
+        "level": level_for(rare_pct),
+        "rare_sample": rare[:8],
     }
 
 
-TEXTS = {
-    "L1 hand-authored (top-frequency only)": (
-        "Hay un gato pequeño. El gato es blanco. El gato come pan y agua. "
-        "Un niño ve el gato. El niño y el gato juegan en la casa. La mamá "
-        "mira y está feliz. El gato duerme. Es un buen día."
-    ),
-    "Rich vocabulary (hand-authored, harder)": (
-        "El felino acechaba sigilosamente entre la espesura, contemplando el "
-        "ocaso mientras reflexionaba sobre su melancólica existencia."
-    ),
-    "Public-domain (Don Quijote opening)": (
-        "En un lugar de la Mancha, de cuyo nombre no quiero acordarme, no ha "
-        "mucho tiempo que vivía un hidalgo de los de lanza en astillero, adarga "
-        "antigua, rocín flaco y galgo corredor."
-    ),
-}
+# Ordered easy -> hard. All legally clean (hand-authored or public domain).
+TEXTS = [
+    ("L1 hand-authored (simple story)",
+     "Hay un gato pequeño. El gato es blanco. El gato come pan y agua. Un niño "
+     "ve el gato. El niño y el gato juegan en la casa. La mamá mira y está "
+     "feliz. El gato duerme. Es un buen día."),
+    ("Public-domain nursery rhyme (Los pollitos)",
+     "Los pollitos dicen pío, pío, pío, cuando tienen hambre, cuando tienen "
+     "frío. La gallina busca el maíz y el trigo, les da la comida y les presta "
+     "abrigo. Bajo sus dos alas, acurrucaditos, duermen los pollitos hasta el "
+     "otro día."),
+    ("Public-domain fable (Samaniego, La cigarra y la hormiga)",
+     "Cantando la Cigarra pasó el verano entero, sin hacer provisiones allá "
+     "para el invierno. Los fríos la obligaron a guardar el silencio y a "
+     "acogerse al abrigo de su estrecho aposento."),
+    ("Public-domain classic (Don Quijote opening)",
+     "En un lugar de la Mancha, de cuyo nombre no quiero acordarme, no ha mucho "
+     "tiempo que vivía un hidalgo de los de lanza en astillero, adarga antigua, "
+     "rocín flaco y galgo corredor."),
+]
 
 
 if __name__ == "__main__":
-    print(f"Sample corpus: {len(FREQ_SAMPLE)} words. Level = out-of-band %% -> L1..L8.\n")
-    for name, text in TEXTS.items():
+    print(f"Corpus: wordfreq (es). RARE_ZIPF={RARE_ZIPF}. Level = out-of-band %% -> L1..L8.\n")
+    for name, text in TEXTS:
         r = score(text)
-        print(f"{r['level']:>3}  unknown={r['unknown_pct']:>5}%  "
-              f"({r['tokens']:>2} tokens)  {name}")
-        print(f"      out-of-band e.g.: {', '.join(r['sample_unknown'])}\n")
+        print(f"{r['level']:>3}  rare={r['rare_pct']:>5}%  median_zipf={r['median_zipf']:>4}  "
+              f"({r['tokens']:>2} tok)  {name}")
+        if r["rare_sample"]:
+            print(f"      out-of-band e.g.: {', '.join(r['rare_sample'])}")
+        print()

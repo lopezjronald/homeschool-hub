@@ -320,6 +320,11 @@ LINGUA = {
     "AUDIT_RETENTION_DAYS": _env_int("LINGUA_AUDIT_RETENTION_DAYS", 548),
     # TTS provider order (SPIKE-01: Polly primary, edge-tts fallback — D-17/D-18).
     "TTS_PROVIDER": os.getenv("LINGUA_TTS_PROVIDER", "polly"),
+    # Polly synthesis defaults (es-MX neural). Authoring-time only (tts_build);
+    # region falls back to ambient AWS config when unset (D-17).
+    "TTS_VOICE": os.getenv("LINGUA_TTS_VOICE", "Mia"),
+    "TTS_ENGINE": os.getenv("LINGUA_TTS_ENGINE", "neural"),
+    "TTS_REGION": os.getenv("LINGUA_TTS_REGION") or None,
     # Host-provided AIClient adapter (D-04). The ONLY lingua-side reference to the
     # host adapter; swapping this swaps the provider with zero lingua changes.
     "AI_CLIENT": os.getenv(

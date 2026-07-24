@@ -110,6 +110,26 @@ def looks_cognate(spanish, english, threshold=0.6):
     return dice_similarity(spanish, english) >= threshold
 
 
+def token_flags(tokens):
+    """Per-token cognate / false-friend flags aligned to a list of display tokens,
+    for the reader UI (LGA-51). Deterministic curated-set membership — NOT runtime
+    NLP or a dictionary load — so it's cheap enough to run at render for the handful
+    of tokens on a page (a precompute-to-a-field is a trivial future step if the
+    corpus ever grows large enough to matter).
+
+    Each token's leading letter-run is classified (so "gato." / "¿Dónde" resolve to
+    "gato" / "Dónde"); punctuation/number-only tokens get no flag. False friends are
+    never also marked cognate (the safety net, D-28). Returns, aligned to ``tokens``,
+    ``[{"cognate": bool, "false_friend": (looks_like, means) | None}]``."""
+    out = []
+    for tok in tokens:
+        m = WORD_RE.search(tok)
+        word = m.group() if m else ""
+        ff = false_friend_note(word) if word else None
+        out.append({"cognate": bool(word) and is_cognate(word), "false_friend": ff})
+    return out
+
+
 def analyze_text(text):
     """Scan a Spanish text and return the curated cognates + false friends found.
     Feeds the reader's flagging (E-05) and the approval view's warnings."""

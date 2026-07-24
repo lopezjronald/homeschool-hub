@@ -41,4 +41,23 @@ body {
   box-shadow: 0 0 0 0.08em var(--accent);
 }
 .note { color: var(--muted); font-size: 1.05rem; font-style: italic; margin-top: 1.5rem; }
+
+/* Cognate hint (subtle: "you can probably guess this") and false-friend warning
+   ("looks familiar but isn't"). The highlighted read-along word (.w.on) still wins. */
+:root { --cognate: #2e7d32; --ff: #c1440e; }
+@media (prefers-color-scheme: dark) { :root { --cognate: #8bd18f; --ff: #ff9e6d; } }
+.cognate { border-bottom: 2px dotted var(--cognate); }
+.false-friend {
+  border-bottom: 2px wavy var(--ff);
+  cursor: help;
+}
+.false-friend::after { content: "\26A0"; font-size: 0.7em; vertical-align: super; color: var(--ff); margin-left: 0.05em; }
+.w.on.cognate, .w.on.false-friend { border-bottom-color: transparent; }  /* don't fight the highlight */
+
+.legend { margin-top: 2rem; font-size: 0.95rem; color: var(--muted); }
+.chip { padding: 0.05em 0.4em; border-radius: 0.3em; font-weight: 600; }
+.chip.cognate { border-bottom: 2px dotted var(--cognate); color: var(--cognate); }
+.chip.false-friend { border-bottom: 2px wavy var(--ff); color: var(--ff); }
+.chip.false-friend::after { content: ""; }  /* no warning glyph on the legend chip */
+
 @media (max-width: 30rem) { body { font-size: 1.3rem; } .title { font-size: 1.4rem; } }

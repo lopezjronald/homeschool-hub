@@ -71,6 +71,7 @@ urlpatterns = [
     path("portal/", include(("portal.urls", "portal"), namespace="portal")),
     path("activities/", include(("activities.urls", "activities"), namespace="activities")),
     path("core/", include(("core.urls", "core"), namespace="core")),
+    path("lingua/", include(("lingua.urls", "lingua"), namespace="lingua")),
 ]
 
 # Serve static files in DEBUG mode (fallback if WhiteNoise isn't handling them)

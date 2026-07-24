@@ -1,9 +1,9 @@
 from django.urls import path
 
+from . import views
+
 app_name = "lingua"
 
-# Views arrive with the reading UI (LGA-47+). Namespace reserved now so links
-# resolve as `lingua:<name>` from day one.
 urlpatterns = [
-    # path("", views.home, name="home"),
+    path("approvals/", views.batch_approval, name="approvals"),
 ]

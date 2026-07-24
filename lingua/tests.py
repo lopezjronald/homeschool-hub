@@ -12,6 +12,7 @@ import pathlib
 from django.contrib.auth import get_user_model
 from django.db import models as dj_models
 from django.test import RequestFactory, TestCase, override_settings
+from django.urls import reverse
 
 from students.models import Student
 
@@ -542,6 +543,64 @@ class GenerationTests(TestCase):
         self.assertTrue(
             AuditEvent.objects.filter(action="ai.generate_completed", target_id=s.pk).exists()
         )
+
+
+class ApprovalUITests(TestCase):
+    """D-50: parent batch-approves pending drafts; editors only."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.parent = User.objects.create_user(
+            username="ap", email="ap@example.com", password="pw", is_active=True,
+        )
+        cls.theme = Theme.objects.create(slug="a", name="A", age_band=profiles.KIDS_EARLY)
+
+    def _pending(self, title="T"):
+        return Story.objects.create(title=title, body="Hay un gato.", level="L1",
+                                    theme=self.theme, status=Story.PENDING)
+
+    def test_editor_sees_pending_drafts(self):
+        self._pending("El gato pendiente")
+        self.client.force_login(self.parent)
+        resp = self.client.get(reverse("lingua:approvals"))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "El gato pendiente")
+
+    def test_approve_selected_flips_status(self):
+        s = self._pending()
+        self.client.force_login(self.parent)
+        resp = self.client.post(
+            reverse("lingua:approvals"),
+            {"action": "approve", "story_ids": [s.pk]}, follow=True,
+        )
+        self.assertEqual(resp.status_code, 200)
+        s.refresh_from_db()
+        self.assertEqual(s.status, Story.APPROVED)
+        self.assertTrue(s.is_servable)
+
+    def test_reject_selected(self):
+        s = self._pending()
+        self.client.force_login(self.parent)
+        self.client.post(reverse("lingua:approvals"),
+                         {"action": "reject", "story_ids": [s.pk]})
+        s.refresh_from_db()
+        self.assertEqual(s.status, Story.REJECTED)
+
+    def test_requires_login(self):
+        resp = self.client.get(reverse("lingua:approvals"))
+        self.assertEqual(resp.status_code, 302)
+        self.assertIn("/accounts/login", resp.url)
+
+    def test_non_editor_gets_404(self):
+        from core.models import Family, FamilyMembership
+        teacher = User.objects.create_user(
+            username="tt", email="tt@example.com", password="pw", is_active=True,
+        )
+        fam = Family.objects.create(name="F")
+        FamilyMembership.objects.create(user=teacher, family=fam, role="teacher")
+        self.client.force_login(teacher)
+        resp = self.client.get(reverse("lingua:approvals"))
+        self.assertEqual(resp.status_code, 404)
 
 
 class LevelingTests(TestCase):

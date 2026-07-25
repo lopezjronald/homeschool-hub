@@ -13,11 +13,13 @@ from django.urls import reverse
 from django.utils.csp import CSP
 from django.views.decorators.http import require_http_methods
 
-from core.permissions import user_can_edit
+from core.permissions import can_edit_family, user_can_edit
+from core.utils import get_selected_family
 
-from . import cognates, storage
+from . import cognates, services, storage
 from .csp import LINGUA_CSP
-from .models import Story
+from .integrations import directory
+from .models import Learner, Story
 
 
 @login_required
@@ -117,3 +119,64 @@ def read_story(request, story_id):
     The kid-facing TOKENLESS reader lives in the host portal and reuses render_reader."""
     story = get_object_or_404(Story, pk=story_id, status=Story.APPROVED)
     return render_reader(request, story, back_url=reverse("lingua:approvals"))
+
+
+@login_required
+@require_http_methods(["GET", "POST"])
+def progress(request):
+    """Parent progress + advancement page (editors only). For each Lingua learner in
+    the selected family: the warm hero metric, the advancement recommendation (LGA-67,
+    confirm to apply — never auto), and the D-67 'testing above defaults' nudge. POST
+    confirms a level change or dismisses a nudge. Learners are resolved via the
+    directory adapter (the only host-identity seam, D-04)."""
+    if not user_can_edit(request.user):
+        raise Http404
+
+    family = get_selected_family(request)
+    # Editors OF THIS family only: user_can_edit is global (edit rights in ANY family),
+    # but this page reads/mutates the SELECTED family — a view-only member (teacher/
+    # grandparent) of it must not confirm level changes for its learners.
+    if family is not None and not can_edit_family(request.user, family):
+        raise Http404
+    ids = directory.list_for_family(family.id) if family else []
+    learners = {l.host_student_id: l for l in
+                Learner.objects.filter(host_student_id__in=ids).select_related("profile")}
+
+    if request.method == "POST":
+        learner = learners.get(_int_or_none(request.POST.get("host_student_id")))
+        if learner is None:
+            raise Http404  # only act on a learner in the user's own family
+        action = request.POST.get("action")
+        if action == "advance":
+            rec = services.advancement_recommendation(learner)
+            to_level = request.POST.get("to_level")
+            # only honor the level the engine actually recommended (no arbitrary jumps)
+            if rec["action"] in ("promote", "demote") and to_level == rec["to_level"]:
+                services.apply_advancement(learner, to_level, host_user_id=request.user.id)
+                messages.success(request, f"Level updated to {to_level}.")
+            else:
+                messages.info(request, "No level change applied.")
+        elif action == "dismiss_nudge":
+            services.mark_nudge_shown(learner)
+        return redirect("lingua:progress")
+
+    rows = []
+    for learner in sorted(learners.values(), key=lambda l: l.host_student_id):
+        display = directory.get_learner_display(learner.host_student_id) or {}
+        rows.append({
+            "learner": learner,
+            "name": display.get("name") or f"Learner {learner.host_student_id}",
+            "level": learner.profile.content_ceiling,
+            "band": learner.profile.get_track_profile_display(),
+            "totals": services.reading_totals(learner),
+            "rec": services.advancement_recommendation(learner),
+            "nudge": services.nudge_testing_above_defaults(learner),
+        })
+    return render(request, "lingua/progress.html", {"rows": rows, "no_family": family is None})
+
+
+def _int_or_none(value):
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None

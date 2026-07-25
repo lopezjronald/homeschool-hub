@@ -2,7 +2,7 @@ from django.contrib import admin
 
 from .models import (
     AiUsage, ComprehensionCheck, KnownWord, Learner, LearnerProfile, MilestoneAward,
-    PhonicsRule, ReadingSession, Story, StoryAudio, Theme,
+    PhonicsRule, ReadingSession, ReviewItem, Story, StoryAudio, Theme,
 )
 
 
@@ -71,6 +71,13 @@ class StoryAudioAdmin(admin.ModelAdmin):
 class ReadingSessionAdmin(admin.ModelAdmin):
     list_display = ("learner", "story", "words", "seconds", "created_at")
     list_filter = ("created_at",)
+
+
+@admin.register(ReviewItem)
+class ReviewItemAdmin(admin.ModelAdmin):
+    list_display = ("learner", "target_kind", "target_ref", "scheduler", "due", "paused_until")
+    list_filter = ("scheduler", "target_kind")
+    search_fields = ("target_ref",)
 
 
 @admin.register(KnownWord)

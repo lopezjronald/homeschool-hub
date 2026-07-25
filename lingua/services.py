@@ -18,7 +18,7 @@ from . import (
 )
 from .models import (
     AiUsage, AuditEvent, ComprehensionCheck, KnownWord, Learner, MilestoneAward,
-    PhonicsRule, ReadingSession, Story, StoryAudio, Theme,
+    PhonicsRule, ReadingSession, ReviewItem, Story, StoryAudio, Theme,
 )
 from .ports import AIClient
 from .prompts import CRITIC_SYSTEM, STORY_SYSTEM
@@ -440,6 +440,19 @@ def mark_nudge_shown(learner):
 def phonics_rules():
     """The active Spanish phonics rules for the mini-lesson (F-04, LGA-64), ordered."""
     return list(PhonicsRule.objects.filter(active=True))
+
+
+def due_review_items(learner, *, now=None):
+    """The learner's due spaced-repetition cards, soonest-first — the single indexed
+    "what's due" query that serves BOTH schedulers (D-30, LGA-58). A card is due when
+    ``due <= now`` and it isn't paused past now (``paused_until`` null or already
+    elapsed). Ordering falls back to id so equal-due cards are stable."""
+    now = now or timezone.now()
+    return list(
+        ReviewItem.objects.filter(learner=learner, due__lte=now)
+        .filter(Q(paused_until__isnull=True) | Q(paused_until__lte=now))
+        .order_by("due", "id")
+    )
 
 
 def get_ai_client() -> AIClient:

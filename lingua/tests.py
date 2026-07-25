@@ -27,7 +27,7 @@ from . import storage as lingua_storage
 from .integrations import directory
 from .models import (
     AiUsage, AuditEvent, ComprehensionCheck, KnownWord, Learner, LearnerProfile,
-    MilestoneAward, PhonicsRule, ReadingSession, Story, StoryAudio, Theme,
+    MilestoneAward, PhonicsRule, ReadingSession, ReviewItem, Story, StoryAudio, Theme,
 )
 from .ports import AIClient, AIResult
 
@@ -2374,6 +2374,51 @@ class PhonicsTests(TestCase):
         older = self.client.get(reverse("portal:lingua_plan", kwargs={"token": self.older_token})).content.decode()
         self.assertIn("Los sonidos", early)     # phonics card for the youngest band
         self.assertNotIn("Los sonidos", older)  # not for older kids
+
+
+class ReviewItemTests(TestCase):
+    """LGA-58 / D-30: one ReviewItem table + a single indexed 'what's due' query
+    across both scheduler types."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.learner = Learner.create_for_host_student(4058, profiles.KIDS_OLDER)
+
+    def _item(self, ref, due_delta_min, *, scheduler=ReviewItem.LEITNER, paused_delta_min=None):
+        from datetime import timedelta
+
+        from django.utils import timezone
+        now = timezone.now()
+        paused = None if paused_delta_min is None else now + timedelta(minutes=paused_delta_min)
+        return ReviewItem.objects.create(
+            learner=self.learner, target_ref=ref, scheduler=scheduler,
+            scheduler_state={"box": 1}, due=now + timedelta(minutes=due_delta_min),
+            paused_until=paused,
+        )
+
+    def test_due_query_soonest_first_across_schedulers(self):
+        self._item("gato", -30, scheduler=ReviewItem.LEITNER)
+        self._item("perro", -90, scheduler=ReviewItem.FSRS)
+        self._item("casa", -5, scheduler=ReviewItem.LEITNER)
+        due = services.due_review_items(self.learner)
+        self.assertEqual([r.target_ref for r in due], ["perro", "gato", "casa"])  # soonest-due first
+
+    def test_future_due_excluded(self):
+        self._item("manana", 60)                       # due in the future
+        self.assertEqual(services.due_review_items(self.learner), [])
+
+    def test_paused_card_excluded_until_pause_elapses(self):
+        self._item("pausado", -30, paused_delta_min=60)     # due, but paused into the future
+        self.assertEqual(services.due_review_items(self.learner), [])
+        self._item("listo", -30, paused_delta_min=-5)       # due + pause already elapsed
+        self.assertEqual([r.target_ref for r in services.due_review_items(self.learner)], ["listo"])
+
+    def test_unique_per_target(self):
+        from django.db import IntegrityError, transaction
+        self._item("gato", -10)
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                self._item("gato", -20)   # same (learner, kind, ref) → constraint
 
 
 class PurgeStaleTests(TestCase):

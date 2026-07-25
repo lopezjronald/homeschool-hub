@@ -452,6 +452,53 @@ class MilestoneAward(models.Model):
         return f"MilestoneAward<learner={self.learner_id} {self.kind}={self.threshold}>"
 
 
+class ReviewItem(models.Model):
+    """One spaced-repetition card behind the pluggable scheduler port (D-30, LGA-58).
+
+    ONE table serves both schedulers — Leitner (KIDS_EARLY) and FSRS (KIDS_OLDER):
+    ``scheduler`` names which one owns this card and ``scheduler_state`` (JSON) is its
+    SOURCE OF TRUTH. ``due`` is a mirrored, indexed column derived from that state so
+    "what's due" is a single indexed query regardless of scheduler (never two tables).
+    ``paused_until`` supports the return-flood cap (LGA-62): a card paused past its due
+    date is skipped until then. The target is a generic (kind, ref) pair — no FK to a
+    vocab/question row — to keep the SRS scheduler-agnostic and extractable (D-03/D-30).
+
+    NOTE for LGA-60: the FSRS ``scheduler_state`` blob schema is owned by the FSRS
+    scheduler; pin ``fsrs==6.x`` there to keep that JSON stable."""
+
+    LEITNER, FSRS = "leitner", "fsrs"
+    SCHEDULER_CHOICES = [(LEITNER, "Leitner"), (FSRS, "FSRS")]
+
+    VOCAB, QUESTION = "vocab", "question"
+    TARGET_CHOICES = [(VOCAB, "Vocabulary"), (QUESTION, "Question")]
+
+    learner = models.ForeignKey(
+        Learner, on_delete=models.CASCADE, related_name="review_items",
+    )
+    target_kind = models.CharField(max_length=16, choices=TARGET_CHOICES, default=VOCAB)
+    target_ref = models.CharField(
+        max_length=128, help_text="Generic target id (e.g. a normalized word) — no FK (D-30).")
+    scheduler = models.CharField(max_length=8, choices=SCHEDULER_CHOICES, default=LEITNER)
+    scheduler_state = models.JSONField(default=dict, blank=True)  # source of truth for the scheduler
+    due = models.DateTimeField(db_index=True)                     # mirrored from state, for querying
+    paused_until = models.DateTimeField(null=True, blank=True)    # return-flood cap (LGA-62)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["due", "id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["learner", "target_kind", "target_ref"],
+                name="uniq_review_item_per_target",
+            ),
+        ]
+        indexes = [models.Index(fields=["learner", "due"])]
+
+    def __str__(self):
+        return f"ReviewItem<learner={self.learner_id} {self.target_kind}:{self.target_ref} due={self.due:%Y-%m-%d}>"
+
+
 class KnownWord(models.Model):
     """A word the learner has been credited as knowing — LingQ's known-words idea and
     the warm hero counter (D-60/61). Unique per (learner, word) so the count can never

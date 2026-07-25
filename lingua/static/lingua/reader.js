@@ -11,11 +11,13 @@
     var start = Date.now();
     var submitted = false;
     form.addEventListener("submit", function (e) {
-      if (submitted) { e.preventDefault(); return; }   // guard double-tap → no double log
+      // The `submitted` flag (not disabling buttons) guards the double-tap: disabling
+      // the CLICKED submit button would drop its name/value ("felt") from the POST —
+      // a disabled field is excluded from the form entry list — silently losing the
+      // comprehension self-check. So never disable the submitter here.
+      if (submitted) { e.preventDefault(); return; }
       submitted = true;
       if (secs) secs.value = String(Math.max(0, Math.round((Date.now() - start) / 1000)));
-      var btn = form.querySelector("button[type=submit]");
-      if (btn) btn.disabled = true;
     });
   });
 })();

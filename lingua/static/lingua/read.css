@@ -42,18 +42,25 @@ body {
 }
 .note { color: var(--muted); font-size: 1.05rem; font-style: italic; margin-top: 1.5rem; }
 
-.finish { margin: 2rem 0 0; }
-.finish-btn {
-  font: 600 1.2rem/1 system-ui, sans-serif;
-  padding: 0.7em 1.4em;
-  color: #fff;
-  background: #2e7d32;
-  border: none;
-  border-radius: 0.6em;
+.finish { margin: 2.5rem 0 0; border-top: 1px solid rgba(0,0,0,.1); padding-top: 1.5rem; }
+@media (prefers-color-scheme: dark) { .finish { border-top-color: rgba(255,255,255,.12); } }
+.finish-q { font-weight: 600; margin: 0 0 0.75rem; }
+.finish-choices { display: flex; gap: 0.75rem; flex-wrap: wrap; }
+.felt {
+  flex: 1 1 6rem;
+  display: flex; flex-direction: column; align-items: center; gap: 0.2rem;
+  font: 1.9rem/1 system-ui, sans-serif;
+  padding: 0.8rem 0.5rem;
+  background: var(--bg);
+  color: var(--ink);
+  border: 2px solid rgba(0,0,0,.15);
+  border-radius: 0.7em;
   cursor: pointer;
 }
-.finish-btn:hover { background: #276a2b; }
-@media (prefers-color-scheme: dark) { .finish-btn { background: #3a9440; } }
+.felt span { font-size: 0.85rem; font-weight: 600; }
+.felt:hover { border-color: var(--accent); background: rgba(255,213,74,.12); }
+.felt:disabled { opacity: 0.5; cursor: default; }
+@media (prefers-color-scheme: dark) { .felt { border-color: rgba(255,255,255,.18); } }
 
 /* Cognate hint (subtle: "you can probably guess this") and false-friend warning
    ("looks familiar but isn't"). The highlighted read-along word (.w.on) still wins. */

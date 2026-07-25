@@ -30,12 +30,20 @@ PROFICIENT_BAR = PROFICIENT  # the "understood it" threshold (advancement, LGA-6
 PICTURE_MATCH = "picture_match"
 RETELL = "retell"
 SHORT_ANSWER = "short_answer"
+SELF_CHECK = "self_check"       # v1 low-stakes emoji self-assessment (auto-graded)
 KIND_CHOICES = [
     (PICTURE_MATCH, "Picture match"),
     (RETELL, "Retell"),
     (SHORT_ANSWER, "Short answer"),
+    (SELF_CHECK, "Self check"),
 ]
-AUTO_GRADED_KINDS = {PICTURE_MATCH}  # unambiguous recognition can auto-grade (F-01)
+# Kinds that carry their own result at creation (no parent review). SELF_CHECK is
+# included: advancement stays PARENT-CONFIRMED (LGA-67), so a child who always taps
+# "great" can't self-promote — the parent is the safeguard.
+AUTO_GRADED_KINDS = {PICTURE_MATCH, SELF_CHECK}
+
+# The reader's 3-emoji self-check maps to a comprehension result.
+FELT_TO_RESULT = {"great": PROFICIENT, "ok": DEVELOPING, "hard": BEGINNING}
 
 
 def rank(result):

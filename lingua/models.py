@@ -345,6 +345,36 @@ class ReadingSession(models.Model):
         return f"ReadingSession<learner={self.learner_id} words={self.words}>"
 
 
+class MilestoneAward(models.Model):
+    """A comprehension/volume milestone a learner has crossed — the warm celebration
+    engine (D-60/61). Tied to WORDS READ and WORDS KNOWN only — never streaks or
+    accuracy (streaks punish sick days). Unique per (learner, kind, threshold) so a
+    milestone is celebrated exactly once. FK to Learner is a lingua-internal CASCADE
+    (D-03)."""
+
+    WORDS, KNOWN = "words", "known"
+    KIND_CHOICES = [(WORDS, "Words read"), (KNOWN, "Words known")]
+
+    learner = models.ForeignKey(
+        Learner, on_delete=models.CASCADE, related_name="milestones",
+    )
+    kind = models.CharField(max_length=8, choices=KIND_CHOICES)
+    threshold = models.IntegerField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["learner", "kind", "threshold"],
+                name="uniq_learner_kind_threshold",
+            ),
+        ]
+
+    def __str__(self):
+        return f"MilestoneAward<learner={self.learner_id} {self.kind}={self.threshold}>"
+
+
 class KnownWord(models.Model):
     """A word the learner has been credited as knowing — LingQ's known-words idea and
     the warm hero counter (D-60/61). Unique per (learner, word) so the count can never

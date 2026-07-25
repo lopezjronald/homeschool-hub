@@ -9,6 +9,20 @@
     <p class="mb-0">¡Vamos a leer, {{ student.first_name }}! 🌱</p>
   </div>
 
+  {% if celebrate %}
+    {# Warm milestone celebration (D-60/61): volume/known-words only, no streaks.
+       Louder for the youngest band, calmer for the older one. #}
+    <div class="alert {% if band == 'KIDS_EARLY' %}alert-warning{% else %}alert-success{% endif %} text-center" role="status">
+      {% if band == 'KIDS_EARLY' %}🎉🌟{% else %}🎉{% endif %}
+      {% if celebrate.kind == 'known' %}
+        ¡{{ celebrate.threshold }} palabras que ya sabes!
+      {% else %}
+        ¡{{ celebrate.threshold }} palabras leídas!
+      {% endif %}
+      {% if band == 'KIDS_EARLY' %} ¡Increíble!{% else %} Buen trabajo.{% endif %}
+    </div>
+  {% endif %}
+
   {# Warm, non-competitive hero metric (D-60/61) — words read, words known, minutes. #}
   <div class="row text-center g-2 mb-4">
     <div class="col">

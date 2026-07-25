@@ -1,8 +1,8 @@
 from django.contrib import admin
 
 from .models import (
-    KnownWord, Learner, LearnerProfile, MilestoneAward, ReadingSession, Story,
-    StoryAudio, Theme,
+    ComprehensionCheck, KnownWord, Learner, LearnerProfile, MilestoneAward,
+    ReadingSession, Story, StoryAudio, Theme,
 )
 
 
@@ -61,3 +61,9 @@ class KnownWordAdmin(admin.ModelAdmin):
 class MilestoneAwardAdmin(admin.ModelAdmin):
     list_display = ("learner", "kind", "threshold", "created_at")
     list_filter = ("kind",)
+
+
+@admin.register(ComprehensionCheck)
+class ComprehensionCheckAdmin(admin.ModelAdmin):
+    list_display = ("learner", "story", "kind", "result", "reviewed_by", "created_at")
+    list_filter = ("kind", "result")

@@ -12,10 +12,10 @@ from django.db import IntegrityError, transaction
 from django.db.models import Count, Max, Q, Sum
 from django.utils.module_loading import import_string
 
-from . import assets, audio, cognates, leveling, profiles, storage
+from . import assets, audio, cognates, comprehension, leveling, profiles, storage
 from .models import (
-    AuditEvent, KnownWord, Learner, MilestoneAward, ReadingSession, Story,
-    StoryAudio, Theme,
+    AuditEvent, ComprehensionCheck, KnownWord, Learner, MilestoneAward, ReadingSession,
+    Story, StoryAudio, Theme,
 )
 from .ports import AIClient
 from .prompts import CRITIC_SYSTEM, STORY_SYSTEM
@@ -328,6 +328,50 @@ def award_milestones(learner):
                     newly.append(award)
     newly.sort(key=lambda a: a.threshold, reverse=True)
     return newly
+
+
+def record_comprehension(learner, story, kind, result=None):
+    """Record an after-reading comprehension check (F-01, LGA-52). The grade path is
+    driven by ``kind``, not by whether a result was passed: a recognition kind
+    (AUTO_GRADED_KINDS, e.g. picture-match) MUST carry a valid auto-grade result; an
+    open kind (retell/short-answer) ALWAYS lands PENDING for parent review — any result
+    passed for an open kind is ignored, so an open answer can never skip review and leak
+    an ungraded signal into advancement (D-53/F-01). Only the rating is stored, never
+    the child's free text. Returns the ComprehensionCheck."""
+    if kind not in dict(comprehension.KIND_CHOICES):
+        raise ValueError(f"Unknown comprehension kind: {kind!r}")
+    if kind in comprehension.AUTO_GRADED_KINDS:
+        if not comprehension.is_signal(result):
+            raise ValueError(f"Auto-graded kind {kind!r} requires a valid result, got {result!r}")
+        final = result
+    else:
+        final = comprehension.PENDING  # open kind → parent grades later
+    return ComprehensionCheck.objects.create(
+        learner=learner, story=story, kind=kind, result=final,
+    )
+
+
+def grade_comprehension(check, result, *, reviewed_by):
+    """Parent-review an open (PENDING) comprehension check, setting its rating (D-53).
+    Returns the updated check; raises on an unknown result."""
+    if not comprehension.is_signal(result):
+        raise ValueError(f"Unknown comprehension result: {result!r}")
+    check.result = result
+    check.reviewed_by = reviewed_by
+    check.save(update_fields=["result", "reviewed_by", "updated_at"])
+    return check
+
+
+def recent_comprehension(learner, n=5):
+    """The learner's last ``n`` GRADED comprehension results, newest first — the signal
+    window the advancement rule (LGA-67) consumes. PENDING checks are excluded (not yet
+    a signal)."""
+    return list(
+        learner.comprehension_checks
+        .exclude(result=comprehension.PENDING)
+        .order_by("-created_at", "-id")  # -id tiebreaks same-instant checks (deterministic)
+        .values_list("result", flat=True)[:n]
+    )
 
 
 def get_ai_client() -> AIClient:

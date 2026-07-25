@@ -10,7 +10,7 @@ from django.conf import settings
 from django.db import models, transaction
 from django.utils import timezone
 
-from . import profiles
+from . import comprehension, profiles
 
 
 class Learner(models.Model):
@@ -343,6 +343,36 @@ class ReadingSession(models.Model):
 
     def __str__(self):
         return f"ReadingSession<learner={self.learner_id} words={self.words}>"
+
+
+class ComprehensionCheck(models.Model):
+    """A low-stakes after-reading comprehension check (F-01, LGA-52). Its ``result`` is
+    a signal on the comprehension scale (lingua.comprehension) that the advancement
+    rule (LGA-67) consumes. Recognition checks (picture-match) auto-grade at creation;
+    open checks (retell / short-answer) start PENDING for parent review — the child's
+    free text is never stored here and never sent to AI (D-53), only the parent's
+    resulting rating. FKs are lingua-internal (D-03); Story is SET_NULL so the signal
+    history survives a deleted story. ``reviewed_by`` is a plain host user id (no FK)."""
+
+    learner = models.ForeignKey(
+        Learner, on_delete=models.CASCADE, related_name="comprehension_checks",
+    )
+    story = models.ForeignKey(
+        Story, on_delete=models.SET_NULL, null=True, blank=True, related_name="+",
+    )
+    kind = models.CharField(max_length=16, choices=comprehension.KIND_CHOICES)
+    result = models.CharField(
+        max_length=12, choices=comprehension.RESULT_CHOICES, default=comprehension.PENDING)
+    reviewed_by = models.IntegerField(null=True, blank=True)  # host user id, no FK (D-03)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [models.Index(fields=["learner", "created_at"])]
+
+    def __str__(self):
+        return f"ComprehensionCheck<learner={self.learner_id} {self.kind}={self.result}>"
 
 
 class MilestoneAward(models.Model):

@@ -1,7 +1,7 @@
 from django.contrib import admin
 
 from .models import (
-    ComprehensionCheck, KnownWord, Learner, LearnerProfile, MilestoneAward,
+    AiUsage, ComprehensionCheck, KnownWord, Learner, LearnerProfile, MilestoneAward,
     PhonicsRule, ReadingSession, Story, StoryAudio, Theme,
 )
 
@@ -30,6 +30,13 @@ class ThemeAdmin(admin.ModelAdmin):
 class PhonicsRuleAdmin(admin.ModelAdmin):
     list_display = ("pattern", "title", "order", "active")
     list_filter = ("active",)
+
+
+@admin.register(AiUsage)
+class AiUsageAdmin(admin.ModelAdmin):
+    list_display = ("period", "input_tokens", "output_tokens", "calls", "updated_at")
+    readonly_fields = ("period", "input_tokens", "output_tokens", "calls",
+                       "created_at", "updated_at")
 
 
 @admin.register(Story)

@@ -70,6 +70,20 @@ def _env_int(name: str, default: int) -> int:
         return default
 
 
+def _env_float(name: str, default: float) -> float:
+    """
+    Parse float from environment variable.
+    Returns default if variable is not set or cannot be parsed.
+    """
+    val = os.getenv(name)
+    if val is None:
+        return default
+    try:
+        return float(val)
+    except ValueError:
+        return default
+
+
 # ---------------------------------------------------------------------------
 # Core Settings
 # ---------------------------------------------------------------------------
@@ -314,8 +328,13 @@ TUTOR_MODEL = os.getenv("TUTOR_MODEL", "claude-opus-4-8")
 LINGUA = {
     "DEFAULT_LANGUAGE": "es",
     "DEFAULT_VARIANT": "es-MX",
-    # Per-family AI+TTS hard-stop ceiling in USD/month (D-52).
+    # Monthly AI hard-stop ceiling in USD (D-52/57, LGA-29). Estimated from token
+    # usage × the per-million-token prices below (Opus-tier defaults; override via env
+    # if the model/price changes). Story generation is operator content-authoring, so
+    # this is a single monthly ceiling, not per-child.
     "MONTHLY_COST_CEILING_USD": _env_int("LINGUA_MONTHLY_COST_CEILING_USD", 25),
+    "AI_PRICE_INPUT_PER_MTOK": _env_float("LINGUA_AI_PRICE_INPUT_PER_MTOK", 15.0),
+    "AI_PRICE_OUTPUT_PER_MTOK": _env_float("LINGUA_AI_PRICE_OUTPUT_PER_MTOK", 75.0),
     # Audit-trail retention in days (~18 months); enforced by `purge_stale` (D-56).
     "AUDIT_RETENTION_DAYS": _env_int("LINGUA_AUDIT_RETENTION_DAYS", 548),
     # TTS provider order (SPIKE-01: Polly primary, edge-tts fallback — D-17/D-18).

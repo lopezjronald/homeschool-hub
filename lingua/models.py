@@ -160,6 +160,29 @@ class AuditEvent(models.Model):
         )
 
 
+class AiUsage(models.Model):
+    """Monthly AI token accounting for the cost ceiling (D-52/57, LGA-29).
+
+    One aggregate row per calendar month (``period`` = "YYYY-MM"). Story generation
+    is operator content-authoring (not per-child), so a single monthly total is the
+    right grain. ``services.record_ai_usage`` accumulates tokens here after each AI
+    call; ``services.ai_budget_exceeded`` reads it to hard-stop new generation once
+    the estimated spend reaches ``LINGUA["MONTHLY_COST_CEILING_USD"]``."""
+
+    period = models.CharField(max_length=7, unique=True, help_text='Calendar month, "YYYY-MM".')
+    input_tokens = models.PositiveBigIntegerField(default=0)
+    output_tokens = models.PositiveBigIntegerField(default=0)
+    calls = models.PositiveIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-period"]
+
+    def __str__(self):
+        return f"AiUsage<{self.period}: {self.input_tokens}in/{self.output_tokens}out>"
+
+
 class PhonicsRule(models.Model):
     """One Spanish-specific decoding rule for the seeded phonics mini-lesson (F-04,
     LGA-64) — ñ, ll, rr, j, g/gu, silent h, pure vowels, accents. Content-only (no

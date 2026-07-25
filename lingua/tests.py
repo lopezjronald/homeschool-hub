@@ -26,8 +26,8 @@ from . import assets, audio, cognates, leveling, profiles, services
 from . import storage as lingua_storage
 from .integrations import directory
 from .models import (
-    AuditEvent, KnownWord, Learner, LearnerProfile, ReadingSession, Story,
-    StoryAudio, Theme,
+    AuditEvent, KnownWord, Learner, LearnerProfile, MilestoneAward, ReadingSession,
+    Story, StoryAudio, Theme,
 )
 from .ports import AIClient, AIResult
 
@@ -1562,6 +1562,60 @@ class DailyPlanTests(TestCase):
         self.assertEqual(new_item["story"], same)    # same theme as the reread (continuity)
 
 
+class MilestoneTests(TestCase):
+    """LGA-68 / D-60-61: warm milestone celebrations — volume/known-words, no streaks."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.learner = Learner.create_for_host_student(801, profiles.KIDS_EARLY)
+
+    def _read(self, words):
+        s = Story.objects.create(title="s", body=" ".join(["x"] * words),
+                                 level="L1", status=Story.APPROVED)
+        services.record_reading(self.learner, s)
+
+    def test_awards_words_milestone_on_crossing(self):
+        self._read(120)
+        awarded = services.award_milestones(self.learner)
+        self.assertEqual([(a.kind, a.threshold) for a in awarded], [("words", 100)])
+
+    def test_below_threshold_no_award(self):
+        self._read(50)
+        self.assertEqual(services.award_milestones(self.learner), [])
+
+    def test_idempotent_no_reaward(self):
+        self._read(120)
+        services.award_milestones(self.learner)
+        self.assertEqual(services.award_milestones(self.learner), [])   # nothing new
+        self.assertEqual(self.learner.milestones.count(), 1)
+
+    def test_crossing_multiple_at_once_most_significant_first(self):
+        self._read(600)
+        awarded = services.award_milestones(self.learner)
+        self.assertEqual([a.threshold for a in awarded], [500, 100])    # sorted desc
+
+    def test_known_words_milestone(self):
+        # 10 DISTINCT words (digits are stripped by canonicalization, so "w0".."w9"
+        # would collapse to one — use real distinct words).
+        for w in ["uno", "dos", "tres", "cuatro", "cinco",
+                  "seis", "siete", "ocho", "nueve", "diez"]:
+            services.credit_known_word(self.learner, w)
+        self.assertEqual(self.learner.known_words.count(), 10)
+        awarded = services.award_milestones(self.learner)
+        self.assertIn(("known", 10), [(a.kind, a.threshold) for a in awarded])
+
+    def test_no_streak_or_accuracy_kind(self):
+        # celebrations are volume/known only — never streaks/accuracy (D-61)
+        self.assertEqual({k for k, _ in MilestoneAward.KIND_CHOICES}, {"words", "known"})
+
+    def test_unique_per_learner_kind_threshold(self):
+        from django.db import IntegrityError, transaction
+        MilestoneAward.objects.create(learner=self.learner, kind="words", threshold=100)
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                MilestoneAward.objects.create(learner=self.learner, kind="words", threshold=100)
+
+
 class KidPortalTests(TestCase):
     """E-08: tokenless kid portal — daily plan, reader, session logging, auto-provision."""
 
@@ -1619,6 +1673,15 @@ class KidPortalTests(TestCase):
     def test_finish_rejects_get(self):
         r = self.client.get(self._url("lingua_finish", story_id=self.story.pk))
         self.assertEqual(r.status_code, 405)             # require_POST
+
+    def test_finish_celebrates_crossed_milestone(self):
+        big = Story.objects.create(title="big", body=" ".join(["x"] * 120),
+                                   level="L1", status=Story.APPROVED)
+        r = self.client.post(self._url("lingua_finish", story_id=big.pk), {"seconds": "10"})
+        self.assertEqual(r.status_code, 302)
+        self.assertIn("celebrate=100", r["Location"])    # crossed the 100-word milestone
+        plan = self.client.get(r["Location"])
+        self.assertContains(plan, "100 palabras leídas")  # banner renders on the plan
 
     def test_finish_tolerates_bad_seconds(self):
         r = self.client.post(self._url("lingua_finish", story_id=self.story.pk), {"seconds": "junk"})

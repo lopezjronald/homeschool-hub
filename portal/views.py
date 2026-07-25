@@ -24,6 +24,7 @@ from activities.models import ExternalActivity
 from lingua import profiles as lingua_profiles
 from lingua import services as lingua_services
 from lingua import views as lingua_views
+from lingua.models import MilestoneAward as LinguaMilestone
 from lingua.models import Story as LinguaStory
 from curricula.models import Curriculum, CurriculumPlacement
 from curricula.subjects import emoji_for, is_spelling
@@ -71,10 +72,20 @@ def lingua_plan(request, token):
     the portal shell (extends base_portal.html); the reader itself is CSP-clean."""
     student = _resolve_student(token)
     learner = _lingua_learner(student)
+    celebrate = None
+    try:
+        threshold = int(request.GET.get("celebrate", ""))
+        kind = request.GET.get("kind", "")
+        if kind in (LinguaMilestone.WORDS, LinguaMilestone.KNOWN):
+            celebrate = {"threshold": threshold, "kind": kind}
+    except (TypeError, ValueError):
+        celebrate = None
     return render(request, "portal/lingua_plan.html", {
         "student": student, "token": token,
         "plan": lingua_services.build_daily_plan(learner),
         "totals": lingua_services.reading_totals(learner),
+        "band": learner.profile.track_profile,
+        "celebrate": celebrate,
     })
 
 
@@ -105,7 +116,13 @@ def lingua_finish(request, token, story_id):
     except (TypeError, ValueError):
         seconds = 0
     lingua_services.record_reading(learner, story, seconds=seconds)
-    return redirect("portal:lingua_plan", token=token)
+    # Celebrate any milestone this read just crossed (D-60/61) — pass the biggest new
+    # one to the plan as a query param (stateless; the portal is tokenless).
+    url = reverse("portal:lingua_plan", args=[token])
+    awarded = lingua_services.award_milestones(learner)
+    if awarded:
+        url += f"?celebrate={awarded[0].threshold}&kind={awarded[0].kind}"
+    return redirect(url)
 
 
 def _placed_curriculum_ids(student):

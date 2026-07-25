@@ -13,7 +13,10 @@ from django.db.models import Count, Max, Q, Sum
 from django.utils.module_loading import import_string
 
 from . import assets, audio, cognates, leveling, profiles, storage
-from .models import AuditEvent, KnownWord, Learner, ReadingSession, Story, StoryAudio, Theme
+from .models import (
+    AuditEvent, KnownWord, Learner, MilestoneAward, ReadingSession, Story,
+    StoryAudio, Theme,
+)
 from .ports import AIClient
 from .prompts import CRITIC_SYSTEM, STORY_SYSTEM
 
@@ -286,6 +289,32 @@ def _pick_new_story(ceiling, exclude, prefer_theme=None):
         if in_theme:
             return in_theme
     return qs.first()
+
+
+# Warm, comprehension/volume milestones (D-60/61) — NEVER streaks or accuracy.
+WORDS_MILESTONES = [100, 500, 1000, 2500, 5000, 10000, 25000, 50000]
+KNOWN_MILESTONES = [10, 25, 50, 100, 250, 500, 1000]
+
+
+def award_milestones(learner):
+    """Award any reading-volume / known-words milestones the learner has newly crossed
+    (D-60/61 — volume & comprehension, never streaks/accuracy). Idempotent: each
+    (kind, threshold) is granted once. Returns the newly-awarded MilestoneAwards,
+    most-significant first, for the portal to celebrate."""
+    totals = reading_totals(learner)
+    newly = []
+    for kind, total, thresholds in (
+        (MilestoneAward.WORDS, totals["words_read"], WORDS_MILESTONES),
+        (MilestoneAward.KNOWN, totals["known_words"], KNOWN_MILESTONES),
+    ):
+        for threshold in thresholds:
+            if total >= threshold:
+                award, created = MilestoneAward.objects.get_or_create(
+                    learner=learner, kind=kind, threshold=threshold)
+                if created:
+                    newly.append(award)
+    newly.sort(key=lambda a: a.threshold, reverse=True)
+    return newly
 
 
 def get_ai_client() -> AIClient:

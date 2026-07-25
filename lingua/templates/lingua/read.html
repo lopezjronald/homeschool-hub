@@ -52,6 +52,11 @@
       <span class="chip false-friend">amigo falso</span> ¡cuidado! no es lo que parece
     </p>
     {% endif %}
+
+    {# AI-content disclosure (D-54, Anthropic-mandated): shown wherever an AI-written story is read (parent preview + kid portal); public-domain texts skip it. Single-line comment ONLY — multi-line {# #} leaks literally (LGA-83). #}
+    {% if story.source == 'generated' %}
+      <p class="ai-note">✨ Este cuento lo escribió una computadora (IA) y lo revisó un adulto.</p>
+    {% endif %}
   </main>
 
   {% if has_audio %}

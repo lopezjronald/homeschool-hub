@@ -1295,6 +1295,22 @@ class ReaderViewTests(TestCase):
         self.assertIn("readalong", html)                 # player script (matches hashed name too)
         self.assertIn('data-i="0"', html)
 
+    _AI_DISCLOSURE = "una computadora (IA)"   # distinctive slice of the D-54 disclosure
+
+    def test_shows_ai_disclosure_for_generated_story(self):
+        # self.story has the default source == generated (AI-written).
+        self.assertEqual(self.story.source, Story.SOURCE_GENERATED)
+        html = self.client.get(self._url(self.story)).content.decode()
+        self.assertIn(self._AI_DISCLOSURE, html)         # D-54 disclosure is shown
+
+    def test_hides_ai_disclosure_for_public_domain_story(self):
+        pd = Story.objects.create(
+            title="Caperucita", body="Habia una nina.", level="L1",
+            status=Story.APPROVED, source=Story.SOURCE_PUBLIC_DOMAIN,
+        )
+        html = self.client.get(self._url(pd)).content.decode()
+        self.assertNotIn(self._AI_DISCLOSURE, html)      # not AI-written → no disclosure
+
     def test_degrades_when_public_url_raises(self):
         # A present StoryAudio whose public_url() blows up must still render text,
         # not 500 — the reading loop never hard-depends on the asset store (LGA-54).
@@ -2092,6 +2108,25 @@ class ProgressViewTests(TestCase):
         self.assertEqual(r.status_code, 404)
         a_learner.profile.refresh_from_db()
         self.assertEqual(a_learner.profile.content_ceiling, "L1")   # unchanged
+
+
+class PromptSafetyTests(TestCase):
+    """LGA-28 / D-54: the child-safety clause is a compliance hard-line — it must be
+    present in both AI prompts and must never be silently dropped. The critic is the
+    load-bearing safeguard (D-48/49), so it must judge safety, not only language."""
+
+    def test_story_prompt_forbids_unsafe_content(self):
+        from lingua.prompts import STORY_SYSTEM
+        self.assertIn("SAFE FOR A YOUNG CHILD", STORY_SYSTEM)
+        for banned in ("violence", "death", "frightening"):
+            self.assertIn(banned, STORY_SYSTEM)          # the generator is told to avoid these
+
+    def test_critic_fails_unsafe_content(self):
+        from lingua.prompts import CRITIC_SYSTEM
+        self.assertIn("CHILD SAFETY", CRITIC_SYSTEM)
+        self.assertIn("FAIL", CRITIC_SYSTEM)             # safety issues must fail, not just warn
+        for banned in ("violence", "horror", "adult topics"):
+            self.assertIn(banned, CRITIC_SYSTEM)
 
 
 class PhonicsTests(TestCase):

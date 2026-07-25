@@ -74,6 +74,8 @@ body {
 .false-friend::after { content: "\26A0"; font-size: 0.7em; vertical-align: super; color: var(--ff); margin-left: 0.05em; }
 .w.on.cognate, .w.on.false-friend { border-bottom-color: transparent; }  /* don't fight the highlight */
 
+.ai-note { margin-top: 2rem; font-size: 0.9rem; color: var(--muted); text-align: center; }
+
 .legend { margin-top: 2rem; font-size: 0.95rem; color: var(--muted); }
 .chip { padding: 0.05em 0.4em; border-radius: 0.3em; font-weight: 600; }
 .chip.cognate { border-bottom: 2px dotted var(--cognate); color: var(--cognate); }

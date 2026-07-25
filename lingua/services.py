@@ -530,6 +530,36 @@ def auto_grade_recognition(item, chosen, correct, *, now=None):
     return grade_review_item(item, is_match, now=now)
 
 
+FSRS_WARM_START_BOX = 4   # Leitner box at/above which a graduating card is warm-started (D-64)
+
+
+def graduate_to_fsrs(item, *, now=None):
+    """Graduate a Leitner card to FSRS (D-64, LGA-63): keep the SAME ReviewItem + target,
+    DISCARD the Leitner box, and start a FRESH FSRS Card. A well-known card (Leitner box
+    >= FSRS_WARM_START_BOX) gets exactly ONE synthetic Good review as a warm-start so it
+    isn't treated as brand-new; lower boxes start cold (due now for their first FSRS
+    review). We NEVER convert box -> stability/difficulty arithmetically — just a fresh
+    card plus at most one synthetic Good, so the warm-start is identical for every
+    high box (no box-proportional math). No-op if the card is already FSRS."""
+    if item.scheduler == ReviewItem.FSRS:
+        return item
+    now = now or timezone.now()
+    try:
+        box = int((item.scheduler_state or {}).get("box", 1))
+    except (TypeError, ValueError):
+        box = 1   # corrupt/non-numeric box -> start cold, never 500 a graduation
+    fsrs = schedulers.get_scheduler(ReviewItem.FSRS)
+    if box >= FSRS_WARM_START_BOX:
+        state, due = fsrs.review(fsrs.initial_state(), True, now=now)  # one synthetic Good
+    else:
+        state, due = fsrs.initial_state(), now                        # cold: due now
+    item.scheduler = ReviewItem.FSRS
+    item.scheduler_state = state
+    item.due = due
+    item.save(update_fields=["scheduler", "scheduler_state", "due", "updated_at"])
+    return item
+
+
 def due_review_items(learner, *, now=None):
     """The learner's due spaced-repetition cards, soonest-first — the single indexed
     "what's due" query that serves BOTH schedulers (D-30, LGA-58). A card is due when

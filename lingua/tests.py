@@ -2123,12 +2123,20 @@ class PhonicsTests(TestCase):
 
     def test_phonics_rules_active_and_ordered(self):
         self._seed()
-        rules = services.phonics_rules()
-        self.assertEqual([r.order for r in rules], sorted(r.order for r in rules))
-        first = rules[0]
-        first.active = False
-        first.save(update_fields=["active"])
-        self.assertNotIn(first, services.phonics_rules())   # inactive excluded
+        # Give the first-SEEDED rule (order 0) the LARGEST order: if ordering is wired
+        # it must now sort last, not stay at its insertion slot. (Asserting
+        # actual==sorted(actual) would be vacuous — the seed inserts rows already in
+        # ascending order, so it passes even with Meta.ordering removed.)
+        moved = PhonicsRule.objects.order_by("order").first()
+        moved.order = 999
+        moved.save(update_fields=["order"])
+        ordered = services.phonics_rules()
+        self.assertEqual(ordered[-1].pk, moved.pk)      # re-sorted to the end by `order`
+        self.assertNotEqual(ordered[0].pk, moved.pk)    # insertion order would keep it first
+        # inactive rules are excluded
+        moved.active = False
+        moved.save(update_fields=["active"])
+        self.assertNotIn(moved, services.phonics_rules())
 
     def test_phonics_page_renders_rules(self):
         self._seed()

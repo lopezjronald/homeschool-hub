@@ -103,6 +103,17 @@ def lingua_read(request, token, story_id):
     )
 
 
+def lingua_phonics(request, token):
+    """Spanish phonics mini-lesson (F-04, LGA-64): the handful of Spanish-specific
+    decoding rules + practice words. Linked from the plan for the youngest band; any
+    learner may open it. Provisions the learner on entry (idempotent)."""
+    student = _resolve_student(token)
+    _lingua_learner(student)
+    return render(request, "portal/lingua_phonics.html", {
+        "student": student, "token": token, "rules": lingua_services.phonics_rules(),
+    })
+
+
 @csrf_exempt
 @require_POST
 def lingua_finish(request, token, story_id):

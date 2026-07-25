@@ -2,7 +2,7 @@ from django.contrib import admin
 
 from .models import (
     ComprehensionCheck, KnownWord, Learner, LearnerProfile, MilestoneAward,
-    ReadingSession, Story, StoryAudio, Theme,
+    PhonicsRule, ReadingSession, Story, StoryAudio, Theme,
 )
 
 
@@ -24,6 +24,12 @@ class LearnerAdmin(admin.ModelAdmin):
 class ThemeAdmin(admin.ModelAdmin):
     list_display = ("name", "slug", "age_band", "active")
     list_filter = ("age_band", "active")
+
+
+@admin.register(PhonicsRule)
+class PhonicsRuleAdmin(admin.ModelAdmin):
+    list_display = ("pattern", "title", "order", "active")
+    list_filter = ("active",)
 
 
 @admin.register(Story)

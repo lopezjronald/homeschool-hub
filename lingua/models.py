@@ -160,6 +160,26 @@ class AuditEvent(models.Model):
         )
 
 
+class PhonicsRule(models.Model):
+    """One Spanish-specific decoding rule for the seeded phonics mini-lesson (F-04,
+    LGA-64) — ñ, ll, rr, j, g/gu, silent h, pure vowels, accents. Content-only (no
+    learner FK); seeded idempotently by ``seed_phonics``. Not a subsystem: synced-audio
+    reading is already implicit phonics for Spanish's shallow orthography."""
+
+    pattern = models.CharField(max_length=12, unique=True)
+    title = models.CharField(max_length=80)
+    tip = models.CharField(max_length=240)
+    example = models.CharField(max_length=120, help_text="Practice words for decoding.")
+    order = models.IntegerField(default=0)
+    active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ["order", "pattern"]
+
+    def __str__(self):
+        return f"PhonicsRule<{self.pattern}>"
+
+
 class Theme(models.Model):
     """A content theme for the age-banded rotation (D-51, N-01). The daily plan
     draws a learner's next-story choices from active themes matching their band."""

@@ -1,0 +1,31 @@
+{% extends "portal/base_portal.html" %}
+{% block title %}Sonidos · {{ student.first_name }}{% endblock %}
+
+{% block content %}
+<div class="container portal-narrow">
+
+  <div class="portal-hero mb-4">
+    <h1>🔤 Los sonidos del español</h1>
+    <p class="mb-0">Unos truquitos para leer en español. Lee las palabras en voz alta. 🌱</p>
+  </div>
+
+  {% if rules %}
+    <div class="portal-subjects">
+      {% for rule in rules %}
+      <div class="portal-subject-card" style="cursor: default;">
+        <div class="portal-subject-emoji">🔡</div>
+        <div class="portal-subject-body">
+          <div class="portal-subject-name">{{ rule.title }} <span class="text-muted">— {{ rule.pattern }}</span></div>
+          <div class="portal-next-line">{{ rule.tip }}</div>
+          <div class="portal-next-line"><span class="portal-next-label">Lee</span> {{ rule.example }}</div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  {% else %}
+    <div class="alert alert-info">Los sonidos llegan pronto. 🌱</div>
+  {% endif %}
+
+  <p class="mt-4"><a href="{% url 'portal:lingua_plan' token=token %}">&larr; Volver a leer</a></p>
+</div>
+{% endblock %}

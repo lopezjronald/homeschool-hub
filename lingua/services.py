@@ -15,8 +15,8 @@ from django.utils.module_loading import import_string
 
 from . import advancement, assets, audio, cognates, comprehension, leveling, profiles, storage
 from .models import (
-    AuditEvent, ComprehensionCheck, KnownWord, Learner, MilestoneAward, ReadingSession,
-    Story, StoryAudio, Theme,
+    AuditEvent, ComprehensionCheck, KnownWord, Learner, MilestoneAward, PhonicsRule,
+    ReadingSession, Story, StoryAudio, Theme,
 )
 from .ports import AIClient
 from .prompts import CRITIC_SYSTEM, STORY_SYSTEM
@@ -433,6 +433,11 @@ def mark_nudge_shown(learner):
     profile = learner.profile
     profile.last_nudge_reading_count = learner.reading_sessions.count()
     profile.save(update_fields=["last_nudge_reading_count", "updated_at"])
+
+
+def phonics_rules():
+    """The active Spanish phonics rules for the mini-lesson (F-04, LGA-64), ordered."""
+    return list(PhonicsRule.objects.filter(active=True))
 
 
 def get_ai_client() -> AIClient:

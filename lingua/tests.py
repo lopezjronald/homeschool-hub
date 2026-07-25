@@ -2731,13 +2731,29 @@ class GraduationToFSRSTests(TestCase):
 
     def test_graduation_flips_scheduler_and_keeps_target(self):
         item = self._leitner_card("gato", box=2)
-        pk, ref = item.pk, item.target_ref
+        pk = item.pk
         services.graduate_to_fsrs(item)
-        self.assertEqual(item.pk, pk)                       # SAME row (not recreated)
-        self.assertEqual(item.target_ref, ref)             # target preserved
-        self.assertEqual(item.scheduler, ReviewItem.FSRS)  # flipped
-        self.assertIn("stability", item.scheduler_state)   # a valid FSRS Card blob
-        self.assertNotIn("box", item.scheduler_state)      # Leitner box discarded
+        # Re-query the DB row (proves the SAME row was UPDATED, not deleted+recreated —
+        # a recreate mutant loses pk / leaves 2 rows and fails here, unlike reading the
+        # in-memory object which can't distinguish).
+        fresh = ReviewItem.objects.get(pk=pk)
+        self.assertEqual(fresh.target_ref, "gato")         # target preserved on the persisted row
+        self.assertEqual(fresh.scheduler, ReviewItem.FSRS) # flipped
+        self.assertIn("stability", fresh.scheduler_state)  # a valid FSRS Card blob
+        self.assertNotIn("box", fresh.scheduler_state)     # Leitner box discarded
+        self.assertEqual(ReviewItem.objects.filter(learner=self.learner).count(), 1)  # not recreated
+
+    def test_warm_start_is_exactly_one_good(self):
+        from datetime import timedelta
+
+        from django.utils import timezone
+        now = timezone.now()
+        high = self._leitner_card("alto", box=5)
+        services.graduate_to_fsrs(high, now=now)
+        # Exactly ONE synthetic Good leaves the card in the ~10-min learning step: NOT the
+        # multi-day interval that TWO Goods give, and NOT the ~1-min a single Again gives.
+        self.assertLess(high.due, now + timedelta(hours=1))       # not ~2 days (two Goods)
+        self.assertGreater(high.due, now + timedelta(minutes=5))  # not ~1 min (an Again)
 
     def test_high_box_warm_start_due_later_than_low_box_cold(self):
         from django.utils import timezone
@@ -2767,6 +2783,17 @@ class GraduationToFSRSTests(TestCase):
         services.graduate_to_fsrs(item)             # already FSRS -> no-op, no re-warm-start
         self.assertEqual(item.scheduler_state, state_after)
         self.assertEqual(item.due, due_after)
+
+    def test_graduation_survives_corrupt_box(self):
+        from django.utils import timezone
+        # A non-numeric/missing box must fall back to cold, never 500 the graduation.
+        for i, bad in enumerate(({"box": None}, {"box": "abc"}, {"box": [1]}, {})):
+            item = ReviewItem.objects.create(
+                learner=self.learner, target_kind=ReviewItem.VOCAB, target_ref=f"corrupt{i}",
+                scheduler=ReviewItem.LEITNER, scheduler_state=bad, due=timezone.now())
+            services.graduate_to_fsrs(item)         # must not raise
+            self.assertEqual(item.scheduler, ReviewItem.FSRS)
+            self.assertIn("stability", item.scheduler_state)
 
 
 class PurgeStaleTests(TestCase):

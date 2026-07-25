@@ -544,7 +544,10 @@ def graduate_to_fsrs(item, *, now=None):
     if item.scheduler == ReviewItem.FSRS:
         return item
     now = now or timezone.now()
-    box = int((item.scheduler_state or {}).get("box", 1))
+    try:
+        box = int((item.scheduler_state or {}).get("box", 1))
+    except (TypeError, ValueError):
+        box = 1   # corrupt/non-numeric box -> start cold, never 500 a graduation
     fsrs = schedulers.get_scheduler(ReviewItem.FSRS)
     if box >= FSRS_WARM_START_BOX:
         state, due = fsrs.review(fsrs.initial_state(), True, now=now)  # one synthetic Good

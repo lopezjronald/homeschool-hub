@@ -1,0 +1,69 @@
+{% extends "portal/base_portal.html" %}
+{% block title %}Español · {{ student.first_name }}{% endblock %}
+
+{% block content %}
+<div class="container portal-narrow">
+
+  <div class="portal-hero mb-4">
+    <h1>📖 Tu lectura de hoy</h1>
+    <p class="mb-0">¡Vamos a leer, {{ student.first_name }}! 🌱</p>
+  </div>
+
+  {# Warm, non-competitive hero metric (D-60/61) — words read, words known, minutes. #}
+  <div class="row text-center g-2 mb-4">
+    <div class="col">
+      <div class="card portal-card h-100"><div class="card-body py-3">
+        <div class="h3 mb-0">{{ totals.words_read }}</div>
+        <small class="text-muted">palabras leídas</small>
+      </div></div>
+    </div>
+    <div class="col">
+      <div class="card portal-card h-100"><div class="card-body py-3">
+        <div class="h3 mb-0">{{ totals.known_words }}</div>
+        <small class="text-muted">palabras que sabes</small>
+      </div></div>
+    </div>
+    <div class="col">
+      <div class="card portal-card h-100"><div class="card-body py-3">
+        <div class="h3 mb-0">{{ totals.minutes }}</div>
+        <small class="text-muted">minutos</small>
+      </div></div>
+    </div>
+  </div>
+
+  {% if plan.items %}
+    <div class="portal-subjects">
+      {% for item in plan.items %}
+      <a href="{% url 'portal:lingua_read' token=token story_id=item.story.id %}" class="portal-subject-card">
+        <div class="portal-subject-emoji">{% if item.kind == 'reread' %}🔁{% else %}✨{% endif %}</div>
+        <div class="portal-subject-body">
+          <div class="portal-subject-name">{{ item.story.title }}</div>
+          <div class="portal-next-line">
+            <span class="portal-next-label">{% if item.kind == 'reread' %}Otra vez{% else %}Nuevo{% endif %}</span>
+            ~{{ item.minutes }} min
+          </div>
+        </div>
+        <div class="portal-subject-go">Leer ➜</div>
+      </a>
+      {% endfor %}
+    </div>
+  {% else %}
+    <div class="alert alert-info">No hay historias todavía. ¡Vuelve pronto! 🌱</div>
+  {% endif %}
+
+  {% if plan.choices %}
+    <h2 class="portal-section-title mt-4">O elige otra 👇</h2>
+    <div class="portal-subjects">
+      {% for story in plan.choices %}
+      <a href="{% url 'portal:lingua_read' token=token story_id=story.id %}" class="portal-subject-card">
+        <div class="portal-subject-emoji">📗</div>
+        <div class="portal-subject-body"><div class="portal-subject-name">{{ story.title }}</div></div>
+        <div class="portal-subject-go">Leer ➜</div>
+      </a>
+      {% endfor %}
+    </div>
+  {% endif %}
+
+  <p class="mt-4"><a href="{% url 'portal:portal_home' token=token %}">&larr; Volver</a></p>
+</div>
+{% endblock %}

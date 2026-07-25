@@ -8,7 +8,7 @@ from settings, so lingua never imports the adapter (or tutor) directly.
 import json
 
 from django.conf import settings
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.db.models import Count, Max, Q, Sum
 from django.utils.module_loading import import_string
 
@@ -16,6 +16,24 @@ from . import assets, audio, cognates, leveling, profiles, storage
 from .models import AuditEvent, KnownWord, Learner, ReadingSession, Story, StoryAudio, Theme
 from .ports import AIClient
 from .prompts import CRITIC_SYSTEM, STORY_SYSTEM
+
+
+def get_or_create_learner(host_student_id, track_profile):
+    """Get, or first-time provision, the Learner for a host student (D-03: keyed by a
+    plain int, no FK). Idempotent — the kid portal calls this on entry, so a Student
+    becomes a Learner the first time they open Lingua. The host chooses the track
+    profile (it knows the child's age); lingua just seeds the profile defaults."""
+    learner = Learner.objects.filter(host_student_id=host_student_id).first()
+    if learner:
+        return learner
+    try:
+        return Learner.create_for_host_student(host_student_id, track_profile)
+    except IntegrityError:
+        # A concurrent first-entry (double-tap / prefetch / two tabs) won the race and
+        # inserted the row — host_student_id is unique, so recover its Learner instead
+        # of 500-ing. create_for_host_student is @transaction.atomic, so its failed
+        # insert rolled back cleanly.
+        return Learner.objects.get(host_student_id=host_student_id)
 
 
 def delete_learner_for_student(host_student_id):

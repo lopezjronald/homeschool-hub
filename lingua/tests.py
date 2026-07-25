@@ -1562,6 +1562,110 @@ class DailyPlanTests(TestCase):
         self.assertEqual(new_item["story"], same)    # same theme as the reread (continuity)
 
 
+class KidPortalTests(TestCase):
+    """E-08: tokenless kid portal — daily plan, reader, session logging, auto-provision."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from portal.tokens import make_portal_token
+        cls.parent = User.objects.create_user("kp_parent", password="pw")
+        cls.student = Student.objects.create(parent=cls.parent, first_name="Ana")
+        cls.token = make_portal_token(cls.student)
+        cls.story = Story.objects.create(
+            title="El sol", body="El sol brilla.", level="L1", status=Story.APPROVED)
+
+    def _url(self, name, **kw):
+        return reverse(f"portal:{name}", kwargs={"token": self.token, **kw})
+
+    def test_plan_auto_provisions_learner_and_renders(self):
+        self.assertFalse(Learner.objects.filter(host_student_id=self.student.pk).exists())
+        r = self.client.get(self._url("lingua_plan"))
+        self.assertEqual(r.status_code, 200)
+        self.assertTrue(Learner.objects.filter(host_student_id=self.student.pk).exists())
+        self.assertContains(r, "El sol")                 # the approved story is in the plan
+        self.assertContains(r, "palabras leídas")        # the hero metric renders
+
+    def test_plan_provision_is_idempotent(self):
+        self.client.get(self._url("lingua_plan"))
+        self.client.get(self._url("lingua_plan"))
+        self.assertEqual(Learner.objects.filter(host_student_id=self.student.pk).count(), 1)
+
+    def test_invalid_token_404(self):
+        r = self.client.get(reverse("portal:lingua_plan", kwargs={"token": "bogus.tampered"}))
+        self.assertEqual(r.status_code, 404)
+
+    def test_reader_serves_tokenless_with_csp(self):
+        r = self.client.get(self._url("lingua_read", story_id=self.story.pk))
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "El sol")
+        self.assertContains(r, 'id="lingua-finish"')     # finish form present
+        # render_reader sets the strict CSP even though served by a host portal view
+        self.assertIn("default-src", r.headers.get("Content-Security-Policy", ""))
+
+    def test_reader_non_approved_404(self):
+        draft = Story.objects.create(title="d", body="x", level="L1", status=Story.DRAFT)
+        r = self.client.get(self._url("lingua_read", story_id=draft.pk))
+        self.assertEqual(r.status_code, 404)             # D-49 servable gate
+
+    def test_finish_logs_reading_session(self):
+        r = self.client.post(self._url("lingua_finish", story_id=self.story.pk), {"seconds": "45"})
+        self.assertEqual(r.status_code, 302)             # PRG back to the plan
+        learner = Learner.objects.get(host_student_id=self.student.pk)
+        sess = learner.reading_sessions.get()
+        self.assertEqual(sess.story, self.story)
+        self.assertEqual(sess.seconds, 45)
+        self.assertEqual(sess.words, 3)                  # "El sol brilla." → 3 words
+
+    def test_finish_rejects_get(self):
+        r = self.client.get(self._url("lingua_finish", story_id=self.story.pk))
+        self.assertEqual(r.status_code, 405)             # require_POST
+
+    def test_finish_tolerates_bad_seconds(self):
+        r = self.client.post(self._url("lingua_finish", story_id=self.story.pk), {"seconds": "junk"})
+        self.assertEqual(r.status_code, 302)
+        self.assertEqual(Learner.objects.get(host_student_id=self.student.pk)
+                         .reading_sessions.get().seconds, 0)
+
+    def test_band_inferred_from_dob(self):
+        from datetime import date
+
+        from portal.views import _infer_band
+        y = date.today().year
+        young = Student.objects.create(parent=self.parent, first_name="Bo",
+                                       date_of_birth=date(y - 8, 1, 1))
+        old = Student.objects.create(parent=self.parent, first_name="Cy",
+                                     date_of_birth=date(y - 12, 1, 1))
+        self.assertEqual(_infer_band(young), profiles.KIDS_EARLY)
+        self.assertEqual(_infer_band(old), profiles.KIDS_OLDER)
+
+    def test_band_boundary_is_calendar_exact(self):
+        # A child whose 10th birthday is TOMORROW is still 9 → KIDS_EARLY. The old
+        # //365 math would drift to 10 (KIDS_OLDER) after ~2-3 leap days.
+        from datetime import date, timedelta
+
+        from portal.views import _infer_band
+        today = date.today()
+        try:
+            tenth_bday = today.replace(year=today.year - 10)
+        except ValueError:      # today is Feb 29
+            tenth_bday = today.replace(year=today.year - 10, day=28)
+        almost = Student.objects.create(
+            parent=self.parent, first_name="N", date_of_birth=tenth_bday + timedelta(days=1))
+        self.assertEqual(_infer_band(almost), profiles.KIDS_EARLY)
+
+    def test_get_or_create_learner_recovers_from_race(self):
+        # Simulate a concurrent first-entry: we saw no learner, tried to create, but a
+        # racing request already inserted it (IntegrityError) → recover, don't 500.
+        from django.db import IntegrityError
+        winner = Learner.create_for_host_student(self.student.pk, profiles.KIDS_EARLY)
+        with mock.patch.object(Learner.objects, "filter") as m_filter:
+            m_filter.return_value.first.return_value = None      # our read saw nothing
+            with mock.patch.object(Learner, "create_for_host_student",
+                                   side_effect=IntegrityError):  # the racing insert won
+                got = services.get_or_create_learner(self.student.pk, profiles.KIDS_EARLY)
+        self.assertEqual(got, winner)                            # recovered the existing row
+
+
 class PurgeStaleTests(TestCase):
     """D-56: retention is enforced, not indefinite."""
 

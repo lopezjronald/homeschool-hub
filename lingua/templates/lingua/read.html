@@ -9,7 +9,7 @@
 </head>
 <body>
   <main class="reader">
-    <p class="crumb"><a href="{% url 'lingua:approvals' %}">&larr; Lingua</a></p>
+    <p class="crumb">{% if back_url %}<a href="{{ back_url }}">&larr; Volver</a>{% else %}<a href="{% url 'lingua:approvals' %}">&larr; Lingua</a>{% endif %}</p>
     <h1 class="title">{{ story.title }}</h1>
 
     {% if has_audio %}
@@ -29,6 +29,15 @@
       <p class="note">Audio is being prepared — read along on your own for now.</p>
     {% endif %}
 
+    {% if finish_url %}
+      {# CSP-clean finish: a same-origin form POST (form-action 'self'); reader.js
+         fills in elapsed seconds. The endpoint is token-authed + csrf-exempt. #}
+      <form class="finish" id="lingua-finish" method="post" action="{{ finish_url }}">
+        <input type="hidden" name="seconds" id="lingua-seconds" value="0">
+        <button type="submit" class="finish-btn">¡Terminé! ✅</button>
+      </form>
+    {% endif %}
+
     {% if has_flags %}
     <p class="legend">
       <span class="chip cognate">cognado</span> parecido al inglés &nbsp;·&nbsp;
@@ -41,5 +50,6 @@
     {# external player, CSP-clean: no inline JS, no inline handlers (data-* + JSON block). #}
     <script src="{% static 'lingua/readalong.js' %}"></script>
   {% endif %}
+  {% if finish_url %}<script src="{% static 'lingua/reader.js' %}"></script>{% endif %}
 </body>
 </html>

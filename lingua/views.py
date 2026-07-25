@@ -8,13 +8,14 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.http import Http404
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 from django.utils.csp import CSP
 from django.views.decorators.http import require_http_methods
 
 from core.permissions import user_can_edit
 
 from . import cognates, storage
-from .csp import LINGUA_CSP, lingua_csp
+from .csp import LINGUA_CSP
 from .models import Story
 
 
@@ -54,19 +55,18 @@ def batch_approval(request):
     return render(request, "lingua/approvals.html", {"drafts": drafts})
 
 
-@login_required
-@lingua_csp
-def read_story(request, story_id):
-    """Read-along reader (LGA-47) — the CSP-clean kid page. Only APPROVED stories are
-    servable (D-49). With baked audio the page carries the ``<audio>`` + inline timing
-    JSON and the rAF player highlights each word; with no audio it degrades to plain
-    readable text (LGA-54) — the reading loop never hard-depends on audio/AI, so a
-    missing/broken asset shows text, never a 500.
+def render_reader(request, story, *, finish_url="", back_url=""):
+    """Render the CSP-clean read-along page for a story — shared by the parent-preview
+    view (below) and the tokenless kid portal (host). With baked audio the page carries
+    the ``<audio>`` + inline timing JSON and the rAF player highlights each word; with
+    no audio it degrades to plain text (LGA-54) — never a 500. Cognate/false-friend
+    flags (LGA-51) are computed against the exact tokens rendered.
 
-    The strict LINGUA_CSP allows media only from SELF; the read-along mp3 lives on the
-    public R2 host, so when the audio URL is cross-origin we widen ``media-src`` to
-    that host (the @lingua_csp decorator leaves a view-set policy untouched)."""
-    story = get_object_or_404(Story, pk=story_id, status=Story.APPROVED)
+    Sets the strict LINGUA_CSP on the response ITSELF (so a caller needn't apply
+    @lingua_csp), widening ``media-src`` to the public-R2 host when the audio URL is
+    cross-origin. ``finish_url`` (optional) is a POST target for logging a completed
+    read; ``back_url`` is the back/done link.
+    """
     voice = settings.LINGUA.get("TTS_VOICE", "Mia")
     engine = settings.LINGUA.get("TTS_ENGINE", "neural")
     audio = story.current_audio(voice, engine)
@@ -78,25 +78,31 @@ def read_story(request, story_id):
         except Exception:  # noqa: BLE001 — audio is enhancement; degrade to text (LGA-54)
             audio_url, timings = "", None
     has_audio = bool(audio_url and timings and timings.get("words"))
-    # Render tokens that align with the timing word indices when we have audio;
-    # otherwise a plain whitespace split, purely for display.
-    # `or []` guards a corrupt timings blob (words present but tokens missing) from
-    # crashing token_flags — degrade to text, never 500 (LGA-54).
+    # Tokens align with the timing word indices when we have audio; else a plain
+    # whitespace split. `or []` guards a corrupt timings blob (words but no tokens)
+    # from crashing token_flags — degrade to text, never 500 (LGA-54).
     tokens = (timings.get("tokens") or []) if has_audio else story.body.split()
-    # Per-token cognate / false-friend flags (LGA-51), computed against the SAME
-    # tokens we render so span indices line up with the player's word indices.
     flags = cognates.token_flags(tokens)
     token_ctx = [{"i": i, "text": tok, "cognate": fl["cognate"], "ff": fl["false_friend"]}
                  for i, (tok, fl) in enumerate(zip(tokens, flags))]
-    has_flags = any(t["cognate"] or t["ff"] for t in token_ctx)
     response = render(request, "lingua/read.html", {
         "story": story, "audio_url": audio_url, "timings": timings if has_audio else None,
-        "token_ctx": token_ctx, "has_audio": has_audio, "has_flags": has_flags,
+        "token_ctx": token_ctx, "has_audio": has_audio,
+        "has_flags": any(t["cognate"] or t["ff"] for t in token_ctx),
+        "finish_url": finish_url, "back_url": back_url,
     })
+    policy = {k: list(v) for k, v in LINGUA_CSP.items()}
     if has_audio:
         parts = urlsplit(audio_url)
         if parts.scheme and parts.netloc:  # cross-origin (prod R2) — widen media-src
-            policy = {k: list(v) for k, v in LINGUA_CSP.items()}
             policy["media-src"] = [CSP.SELF, f"{parts.scheme}://{parts.netloc}"]
-            response._csp_config = policy
+    response._csp_config = policy
     return response
+
+
+@login_required
+def read_story(request, story_id):
+    """Parent-preview reader (login-gated; only APPROVED stories are servable, D-49).
+    The kid-facing TOKENLESS reader lives in the host portal and reuses render_reader."""
+    story = get_object_or_404(Story, pk=story_id, status=Story.APPROVED)
+    return render_reader(request, story, back_url=reverse("lingua:approvals"))

@@ -27,7 +27,7 @@ from . import storage as lingua_storage
 from .integrations import directory
 from .models import (
     AuditEvent, ComprehensionCheck, KnownWord, Learner, LearnerProfile, MilestoneAward,
-    ReadingSession, Story, StoryAudio, Theme,
+    PhonicsRule, ReadingSession, Story, StoryAudio, Theme,
 )
 from .ports import AIClient, AIResult
 
@@ -2092,6 +2092,64 @@ class ProgressViewTests(TestCase):
         self.assertEqual(r.status_code, 404)
         a_learner.profile.refresh_from_db()
         self.assertEqual(a_learner.profile.content_ceiling, "L1")   # unchanged
+
+
+class PhonicsTests(TestCase):
+    """LGA-64 / F-04: seeded phonics mini-lesson + KIDS_EARLY gating."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from portal.tokens import make_portal_token
+        cls.parent = User.objects.create_user("ph_parent", email="ph@e.com", password="pw")
+        cls.early = Student.objects.create(parent=cls.parent, first_name="Early")
+        cls.older = Student.objects.create(parent=cls.parent, first_name="Older")
+        Learner.create_for_host_student(cls.early.pk, profiles.KIDS_EARLY)
+        Learner.create_for_host_student(cls.older.pk, profiles.KIDS_OLDER)
+        cls.early_token = make_portal_token(cls.early)
+        cls.older_token = make_portal_token(cls.older)
+
+    def _seed(self):
+        from io import StringIO
+
+        from django.core.management import call_command
+        call_command("seed_phonics", stdout=StringIO())
+
+    def test_seed_is_idempotent(self):
+        self._seed()
+        n = PhonicsRule.objects.count()
+        self.assertGreaterEqual(n, 8)          # the 8 Spanish rules
+        self._seed()
+        self.assertEqual(PhonicsRule.objects.count(), n)   # re-run adds none
+
+    def test_phonics_rules_active_and_ordered(self):
+        self._seed()
+        # Give the first-SEEDED rule (order 0) the LARGEST order: if ordering is wired
+        # it must now sort last, not stay at its insertion slot. (Asserting
+        # actual==sorted(actual) would be vacuous — the seed inserts rows already in
+        # ascending order, so it passes even with Meta.ordering removed.)
+        moved = PhonicsRule.objects.order_by("order").first()
+        moved.order = 999
+        moved.save(update_fields=["order"])
+        ordered = services.phonics_rules()
+        self.assertEqual(ordered[-1].pk, moved.pk)      # re-sorted to the end by `order`
+        self.assertNotEqual(ordered[0].pk, moved.pk)    # insertion order would keep it first
+        # inactive rules are excluded
+        moved.active = False
+        moved.save(update_fields=["active"])
+        self.assertNotIn(moved, services.phonics_rules())
+
+    def test_phonics_page_renders_rules(self):
+        self._seed()
+        url = reverse("portal:lingua_phonics", kwargs={"token": self.early_token})
+        html = self.client.get(url).content.decode()
+        self.assertIn("La ñ", html)            # a rule title
+        self.assertIn("niño", html)            # a practice word
+
+    def test_plan_shows_phonics_only_for_kids_early(self):
+        early = self.client.get(reverse("portal:lingua_plan", kwargs={"token": self.early_token})).content.decode()
+        older = self.client.get(reverse("portal:lingua_plan", kwargs={"token": self.older_token})).content.decode()
+        self.assertIn("Los sonidos", early)     # phonics card for the youngest band
+        self.assertNotIn("Los sonidos", older)  # not for older kids
 
 
 class PurgeStaleTests(TestCase):

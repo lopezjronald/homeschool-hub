@@ -1989,6 +1989,106 @@ class KidPortalTests(TestCase):
         self.assertEqual(got, winner)                            # recovered the existing row
 
 
+class ProgressViewTests(TestCase):
+    """LGA-53/67: parent progress + advancement page (editors only)."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from core.models import Family, FamilyMembership
+        cls.parent = User.objects.create_user("prog_parent", email="prog@e.com", password="pw")
+        cls.family = Family.objects.create(name="Prog Family")
+        FamilyMembership.objects.create(user=cls.parent, family=cls.family, role="parent")
+        cls.student = Student.objects.create(parent=cls.parent, family=cls.family, first_name="Nia")
+        cls.learner = Learner.create_for_host_student(
+            cls.student.pk, profiles.KIDS_EARLY, content_ceiling="L1")
+        cls.story = Story.objects.create(title="s", body="uno dos tres", level="L1", status=Story.APPROVED)
+
+    def setUp(self):
+        self.client.force_login(self.parent)
+        session = self.client.session
+        session["selected_family_id"] = self.family.id
+        session.save()
+
+    def _url(self):
+        return reverse("lingua:progress")
+
+    def _make_promotable(self):
+        from datetime import timedelta
+
+        from django.utils import timezone
+        c = services.record_comprehension(self.learner, self.story, comprehension.PICTURE_MATCH,
+                                          result=comprehension.PROFICIENT)
+        ComprehensionCheck.objects.filter(pk=c.pk).update(created_at=timezone.now() - timedelta(days=20))
+        for _ in range(3):
+            services.record_comprehension(self.learner, self.story, comprehension.PICTURE_MATCH,
+                                          result=comprehension.PROFICIENT)
+        services.record_comprehension(self.learner, self.story, comprehension.PICTURE_MATCH,
+                                      result=comprehension.BEGINNING)
+
+    def test_requires_login(self):
+        self.client.logout()
+        self.assertIn(self.client.get(self._url()).status_code, (301, 302))
+
+    def test_non_editor_gets_404(self):
+        from core.models import Family, FamilyMembership
+        viewer = User.objects.create_user("gp_only", email="gp@e.com", password="pw")
+        FamilyMembership.objects.create(
+            user=viewer, family=Family.objects.create(name="V"), role="grandparent")  # non-edit
+        self.client.force_login(viewer)
+        self.assertEqual(self.client.get(self._url()).status_code, 404)
+
+    def test_renders_family_learner_with_metric(self):
+        services.record_reading(self.learner, self.story)
+        r = self.client.get(self._url())
+        self.assertEqual(r.status_code, 200)
+        html = r.content.decode()
+        self.assertIn("Nia", html)
+        self.assertIn("palabras leídas", html)
+
+    def test_shows_and_confirms_promotion(self):
+        self._make_promotable()
+        self.assertIn("L1 → L2", self.client.get(self._url()).content.decode())
+        r = self.client.post(self._url(), {"host_student_id": self.student.pk,
+                                           "action": "advance", "to_level": "L2"})
+        self.assertEqual(r.status_code, 302)
+        self.learner.profile.refresh_from_db()
+        self.assertEqual(self.learner.profile.content_ceiling, "L2")
+        self.assertTrue(AuditEvent.objects.filter(
+            action="learner.advanced", target_id=self.learner.pk).exists())
+
+    def test_rejects_non_recommended_level(self):
+        self._make_promotable()   # recommends L2 only
+        self.client.post(self._url(), {"host_student_id": self.student.pk,
+                                       "action": "advance", "to_level": "L8"})
+        self.learner.profile.refresh_from_db()
+        self.assertEqual(self.learner.profile.content_ceiling, "L1")   # arbitrary jump refused
+
+    def test_cannot_act_on_learner_outside_family(self):
+        Learner.create_for_host_student(99999, profiles.KIDS_EARLY)    # not in this family
+        r = self.client.post(self._url(), {"host_student_id": 99999,
+                                           "action": "advance", "to_level": "L2"})
+        self.assertEqual(r.status_code, 404)
+
+    def test_view_only_member_of_selected_family_cannot_act(self):
+        # Parent-in-own-family but only a VIEW-only grandparent in family A: selecting A
+        # must not let them mutate A's learners (per-family edit gate, not global).
+        from core.models import Family, FamilyMembership
+        fam_a = Family.objects.create(name="A-other")
+        a_parent = User.objects.create_user("a_par", email="apar@e.com", password="pw")
+        FamilyMembership.objects.create(user=a_parent, family=fam_a, role="parent")
+        a_student = Student.objects.create(parent=a_parent, family=fam_a, first_name="Ari")
+        a_learner = Learner.create_for_host_student(a_student.pk, profiles.KIDS_EARLY, content_ceiling="L1")
+        FamilyMembership.objects.create(user=self.parent, family=fam_a, role="grandparent")  # view-only
+        session = self.client.session
+        session["selected_family_id"] = fam_a.id
+        session.save()
+        r = self.client.post(self._url(), {"host_student_id": a_student.pk,
+                                           "action": "advance", "to_level": "L2"})
+        self.assertEqual(r.status_code, 404)
+        a_learner.profile.refresh_from_db()
+        self.assertEqual(a_learner.profile.content_ceiling, "L1")   # unchanged
+
+
 class PurgeStaleTests(TestCase):
     """D-56: retention is enforced, not indefinite."""
 

@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}Spanish progress · Lingua{% endblock %}
+{% block content %}
+<div class="container py-4">
+  <h1 class="h3 mb-1">Spanish progress</h1>
+  <p class="text-muted">Reading volume, comprehension, and level recommendations for your learners.
+    Level changes are always yours to confirm — nothing moves automatically.</p>
+
+  {% if no_family %}
+    <div class="alert alert-info">Select a family to see its learners.</div>
+  {% elif not rows %}
+    <div class="alert alert-info">No Spanish learners yet — a child starts one the first
+      time they open <strong>Español</strong> from their portal.</div>
+  {% endif %}
+
+  {% for row in rows %}
+  <div class="card mb-3">
+    <div class="card-body">
+      <div class="d-flex justify-content-between align-items-start flex-wrap">
+        <div>
+          <h2 class="h5 mb-1">{{ row.name }}</h2>
+          <div class="text-muted small">{{ row.band }} · level {{ row.level }}</div>
+        </div>
+        <div class="text-end">
+          <div><strong>{{ row.totals.words_read }}</strong> <span class="text-muted small">palabras leídas</span></div>
+          <div><strong>{{ row.totals.known_words }}</strong> <span class="text-muted small">palabras que sabe</span>
+            · <strong>{{ row.totals.minutes }}</strong> <span class="text-muted small">min</span>
+            · <strong>{{ row.totals.stories }}</strong> <span class="text-muted small">historias</span></div>
+        </div>
+      </div>
+
+      {% if row.nudge %}
+        <div class="alert alert-warning d-flex justify-content-between align-items-center mt-3 mb-0">
+          <span>{{ row.name }} is consistently doing great — you might try content above the default track.</span>
+          <form method="post" class="ms-3">
+            {% csrf_token %}
+            <input type="hidden" name="host_student_id" value="{{ row.learner.host_student_id }}">
+            <button type="submit" name="action" value="dismiss_nudge" class="btn btn-sm btn-outline-secondary">Got it</button>
+          </form>
+        </div>
+      {% endif %}
+
+      {% if row.rec.action == 'promote' or row.rec.action == 'demote' %}
+        <form method="post" class="alert {% if row.rec.action == 'promote' %}alert-success{% else %}alert-secondary{% endif %} d-flex justify-content-between align-items-center mt-3 mb-0">
+          {% csrf_token %}
+          <input type="hidden" name="host_student_id" value="{{ row.learner.host_student_id }}">
+          <input type="hidden" name="to_level" value="{{ row.rec.to_level }}">
+          <span>
+            {% if row.rec.action == 'promote' %}Ready to move up:{% else %}Consider easing back:{% endif %}
+            <strong>{{ row.rec.from_level }} → {{ row.rec.to_level }}</strong>
+          </span>
+          <button type="submit" name="action" value="advance" class="btn btn-sm {% if row.rec.action == 'promote' %}btn-success{% else %}btn-secondary{% endif %}">
+            Confirm {{ row.rec.to_level }}
+          </button>
+        </form>
+      {% else %}
+        <p class="text-muted small mt-3 mb-0">Holding at {{ row.level }} — keep reading. 🌱</p>
+      {% endif %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}

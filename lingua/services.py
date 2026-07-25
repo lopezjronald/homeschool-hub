@@ -145,20 +145,46 @@ def record_reading(learner, story, *, seconds=0):
     )
 
 
+def _normalize_word(word):
+    """Canonical key for a Spanish word: the letter-run only (via cognates.WORD_RE) then
+    case/diacritic-folded and capped to the 64-char field, so "gato" / "gato." / "¡Gató!"
+    all collapse to one key. Returns "" for a blank/punctuation-only token. Shared by the
+    known-words counter and the SRS capture so both use identical dedup keys."""
+    m = cognates.WORD_RE.search(word or "")
+    return cognates.normalize(m.group())[:64] if m else ""
+
+
 def credit_known_word(learner, word):
     """Credit ``learner`` with knowing ``word`` (stored normalized). Idempotent per
     word — the known-words counter never double-counts (D-60/61). Returns
-    ``(KnownWord | None, created)``; a blank/punctuation-only word is a no-op.
-
-    Canonicalize on the word's letter-run only (via cognates.WORD_RE) BEFORE folding
-    case/diacritics, so "gato" / "gato." / "¡Gató!" all collapse to one entry — a bare
-    normalize() would leave punctuation attached and leak duplicates. Capped to the
-    field's 64 chars so an overlong token can't DataError on Postgres."""
-    m = cognates.WORD_RE.search(word or "")
-    norm = cognates.normalize(m.group())[:64] if m else ""
+    ``(KnownWord | None, created)``; a blank/punctuation-only word is a no-op."""
+    norm = _normalize_word(word)
     if not norm:
         return None, False
     return KnownWord.objects.get_or_create(learner=learner, word=norm)
+
+
+# How a review card is presented (F-03, LGA-61) — derived from the scheduler (band),
+# so no extra storage: picture-first for the youngest (Leitner), text/cloze+audio for
+# older (FSRS). The review-session UI reads this to render the right card shape.
+CARD_PICTURE, CARD_TEXT_CLOZE = "picture", "text_cloze"
+
+
+def card_format_for(scheduler):
+    """The card presentation format for a scheduler: picture vs text/cloze+audio."""
+    return CARD_PICTURE if scheduler == ReviewItem.LEITNER else CARD_TEXT_CLOZE
+
+
+def capture_word(learner, word, *, now=None):
+    """Capture a word encountered while reading into the learner's review deck (F-03,
+    LGA-61). Normalizes the word (so "Gato"/"gato." collapse — no duplicate cards),
+    then adds a ReviewItem via the learner's band scheduler (picture-first for
+    KIDS_EARLY, text/cloze for KIDS_OLDER). Idempotent and respects the Leitner deck
+    cap. Returns the ReviewItem, or None for a blank word or when the deck is full."""
+    normalized = _normalize_word(word)
+    if not normalized:
+        return None
+    return add_review_item(learner, normalized, target_kind=ReviewItem.VOCAB, now=now)
 
 
 def reading_totals(learner):

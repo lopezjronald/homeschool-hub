@@ -82,6 +82,12 @@ class LearnerProfile(models.Model):
     # so a declared break (vacation/illness) doesn't accrue a due-now backlog. On
     # return, the daily cap bounds intake so the backlog drains over several sessions.
     paused_until = models.DateTimeField(null=True, blank=True, default=None)
+    # Per-DAY review-intake counter (D-66/N-05, LGA-62): reviews completed on
+    # ``reviews_served_on`` (local date). daily_review_queue subtracts this from the cap
+    # so a re-query within a day can't drain the whole overdue backlog — it drains over
+    # DAYS. Reset when the local date rolls over.
+    reviews_served_on = models.DateField(null=True, blank=True, default=None)
+    reviews_served_count = models.PositiveIntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -463,9 +469,12 @@ class ReviewItem(models.Model):
     ``scheduler`` names which one owns this card and ``scheduler_state`` (JSON) is its
     SOURCE OF TRUTH. ``due`` is a mirrored, indexed column derived from that state so
     "what's due" is a single indexed query regardless of scheduler (never two tables).
-    ``paused_until`` supports the return-flood cap (LGA-62): a card paused past its due
-    date is skipped until then. The target is a generic (kind, ref) pair — no FK to a
-    vocab/question row — to keep the SRS scheduler-agnostic and extractable (D-03/D-30).
+    ``paused_until`` is a per-CARD pause primitive (a card paused past its due date is
+    skipped by ``due_review_items`` until then) — reserved for future per-card use; it is
+    NOT the LGA-62 return-flood mechanism, which is handled at the learner level by
+    ``LearnerProfile.paused_until`` + the per-day ``daily_review_cap``. The target is a
+    generic (kind, ref) pair — no FK to a vocab/question row — to keep the SRS
+    scheduler-agnostic and extractable (D-03/D-30).
 
     NOTE for LGA-60: the FSRS ``scheduler_state`` blob schema is owned by the FSRS
     scheduler; pin ``fsrs==6.x`` there to keep that JSON stable."""
@@ -485,7 +494,7 @@ class ReviewItem(models.Model):
     scheduler = models.CharField(max_length=8, choices=SCHEDULER_CHOICES, default=LEITNER)
     scheduler_state = models.JSONField(default=dict, blank=True)  # source of truth for the scheduler
     due = models.DateTimeField(db_index=True)                     # mirrored from state, for querying
-    paused_until = models.DateTimeField(null=True, blank=True)    # return-flood cap (LGA-62)
+    paused_until = models.DateTimeField(null=True, blank=True)    # per-card pause primitive (reserved)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

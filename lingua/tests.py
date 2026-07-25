@@ -2682,6 +2682,28 @@ class DailyReviewQueueTests(TestCase):
         self.assertEqual(len(queue), 5)       # bounded by the cap, not 100
         self.assertLess(len(queue), ReviewItem.objects.filter(learner=self.early).count())
 
+    def test_cap_is_per_day_not_per_fetch_and_resets_next_day(self):
+        from datetime import timedelta
+
+        from django.utils import timezone
+        # A big overdue backlog: grading a card advances its due, so WITHOUT a per-day
+        # counter a same-day re-query would keep pulling the next 5 and drain it all.
+        self._due_cards(self.early, 20, minutes_ago=14 * 24 * 60)
+        now = timezone.now()
+
+        def fresh():                     # a fresh learner load, like each new request
+            return Learner.objects.get(pk=self.early.pk)
+
+        q1 = services.daily_review_queue(fresh(), now=now)
+        self.assertEqual(len(q1), 5)
+        for it in q1:
+            services.grade_review_item(it, True, now=now)      # complete today's 5
+        # Same day, re-query: the per-day quota is spent even though 15 are still overdue.
+        self.assertEqual(services.daily_review_queue(fresh(), now=now), [])
+        # Next local day: the quota resets and the backlog keeps draining, 5/day.
+        q2 = services.daily_review_queue(fresh(), now=now + timedelta(days=1))
+        self.assertEqual(len(q2), 5)
+
     def test_pause_window_skips_then_resumes(self):
         from datetime import timedelta
 

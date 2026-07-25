@@ -570,6 +570,12 @@ class PIIGuardTests(TestCase):
         # Spelled-out numbers + a lone year must NOT trip the guard (near-zero false positives).
         self.assertEqual(safety.find_pii("El gato tiene tres anos. Nacio en 2020."), "")
 
+    def test_digit_run_threshold_and_dates(self):
+        from lingua import safety
+        self.assertEqual(safety.find_pii("codigo 123456"), "")             # 6 digits — below the 7 threshold
+        self.assertEqual(safety.find_pii("codigo 1234567"), "digit-run")   # 7 digits — trips
+        self.assertEqual(safety.find_pii("fecha 01/15/2015"), "digit-run") # slash DOB is caught, not skipped
+
     def test_assert_no_pii_raises_on_pii_passes_clean(self):
         from lingua import safety
         with self.assertRaises(safety.ChildPIISuspected):

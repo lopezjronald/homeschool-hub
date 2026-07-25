@@ -26,10 +26,14 @@ class ChildPIISuspected(Exception):
     """Raised when text bound for an external AI/TTS provider looks like PII (D-52)."""
 
 
-EMAIL_RE = re.compile(r"[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}", re.I)
-# 7+ digits in a row, allowing a single space / dot / hyphen between them, so it
-# catches phone numbers, SSNs, and long ids without firing on a lone year ("2020").
-DIGIT_RUN_RE = re.compile(r"(?:\d[ .\-]?){7,}")
+# Bounded quantifiers (RFC-ish local=64 / domain=255) keep matching LINEAR — an
+# unbounded `+…+@…` is O(n^2) on long non-matching text (a PII scanner must not be
+# a DoS lever on an AI-generated story body).
+EMAIL_RE = re.compile(r"[a-z0-9._%+-]{1,64}@[a-z0-9.-]{1,255}\.[a-z]{2,}", re.I)
+# 7+ digits in a row, allowing a single space / dot / comma / slash / hyphen between
+# them, so it catches phone numbers, SSNs, long ids, and slash- or dash-formatted
+# dates of birth ("01/15/2015") without firing on a lone year ("2020").
+DIGIT_RUN_RE = re.compile(r"(?:\d[ .,/-]?){7,}")
 
 
 def find_pii(text):
@@ -39,7 +43,7 @@ def find_pii(text):
     report WHAT tripped the guard without ever echoing the offending value.
     """
     t = text or ""
-    if EMAIL_RE.search(t):
+    if "@" in t and EMAIL_RE.search(t):   # cheap pre-check: skip the scan on the common no-@ case
         return "email"
     if DIGIT_RUN_RE.search(t):
         return "digit-run"

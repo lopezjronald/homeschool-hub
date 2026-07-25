@@ -1410,6 +1410,62 @@ class ReadingMetricTests(TestCase):
                 KnownWord.objects.create(learner=self.learner, word="perro")
 
 
+class RereadSchedulerTests(TestCase):
+    """LGA-66 / N-01: reread-first scheduler — per-story cap + least-recently rotation."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.learner = Learner.create_for_host_student(601, profiles.KIDS_EARLY)
+        cls.s1 = Story.objects.create(title="s1", body="uno dos", level="L1", status=Story.APPROVED)
+        cls.s2 = Story.objects.create(title="s2", body="tres cuatro", level="L1", status=Story.APPROVED)
+
+    def _read(self, story, days_ago=0):
+        sess = services.record_reading(self.learner, story)
+        if days_ago:
+            from datetime import timedelta
+
+            from django.utils import timezone
+            # auto_now_add blocks a create kwarg, so backdate via update()
+            ReadingSession.objects.filter(pk=sess.pk).update(
+                created_at=timezone.now() - timedelta(days=days_ago))
+        return sess
+
+    def test_none_when_no_reads(self):
+        self.assertIsNone(services.pick_reread(self.learner))
+
+    def test_returns_previously_read(self):
+        self._read(self.s1)
+        self.assertEqual(services.pick_reread(self.learner), self.s1)
+
+    def test_respects_cap(self):
+        for _ in range(3):
+            self._read(self.s1)                                   # 3 reads
+        self.assertIsNone(services.pick_reread(self.learner, cap=3))       # at cap
+        self.assertEqual(services.pick_reread(self.learner, cap=4), self.s1)  # room again
+
+    def test_rotation_picks_least_recently_read(self):
+        self._read(self.s1, days_ago=1)                          # read yesterday
+        self._read(self.s2, days_ago=5)                          # read 5 days ago (older)
+        self.assertEqual(services.pick_reread(self.learner), self.s2)  # least-recent first
+
+    def test_exclude(self):
+        self._read(self.s1, days_ago=0)
+        self._read(self.s2, days_ago=2)                          # older → picked first...
+        self.assertEqual(                                        # ...unless excluded
+            services.pick_reread(self.learner, exclude_story_ids=[self.s2.pk]), self.s1)
+
+    def test_only_approved_resurfaced(self):
+        self._read(self.s1)
+        self.s1.status = Story.DRAFT
+        self.s1.save(update_fields=["status"])
+        self.assertIsNone(services.pick_reread(self.learner))
+
+    def test_deleted_story_not_resurfaced(self):
+        self._read(self.s1)
+        self.s1.delete()                                         # SET_NULL → story is None
+        self.assertIsNone(services.pick_reread(self.learner))
+
+
 class PurgeStaleTests(TestCase):
     """D-56: retention is enforced, not indefinite."""
 

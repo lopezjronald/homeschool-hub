@@ -2037,6 +2037,11 @@ class ProgressViewTests(TestCase):
         self.client.force_login(viewer)
         self.assertEqual(self.client.get(self._url()).status_code, 404)
 
+    def test_navbar_links_to_spanish(self):
+        # discoverable: the site navbar (base.html) links to the Lingua progress page
+        html = self.client.get(reverse("students:student_list")).content.decode()
+        self.assertIn(reverse("lingua:progress"), html)
+
     def test_renders_family_learner_with_metric(self):
         services.record_reading(self.learner, self.story)
         r = self.client.get(self._url())

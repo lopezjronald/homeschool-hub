@@ -78,6 +78,10 @@ class LearnerProfile(models.Model):
     # session count when the nudge was last shown (None = never). Nudge again only
     # after ~5 more sessions, so it never nags.
     last_nudge_reading_count = models.IntegerField(null=True, blank=True, default=None)
+    # Absence pause (D-66/N-05, LGA-62): while now < paused_until, no reviews surface,
+    # so a declared break (vacation/illness) doesn't accrue a due-now backlog. On
+    # return, the daily cap bounds intake so the backlog drains over several sessions.
+    paused_until = models.DateTimeField(null=True, blank=True, default=None)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

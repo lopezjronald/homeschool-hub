@@ -542,6 +542,36 @@ def due_review_items(learner, *, now=None):
     )
 
 
+def daily_review_queue(learner, *, now=None):
+    """The bounded set of cards to review right now (D-66/N-05, LGA-62).
+
+    Two guards on top of ``due_review_items``: (1) during a declared absence
+    (``profile.paused_until`` in the future) NOTHING surfaces — the break doesn't turn
+    into a chore; (2) intake is capped by support_level, so returning from a two-week
+    absence with a huge overdue backlog serves only ``daily_review_cap`` soonest-due
+    cards and drains over several sessions instead of dumping the whole flood."""
+    now = now or timezone.now()
+    profile = learner.profile
+    if profile.paused_until and now < profile.paused_until:
+        return []
+    cap = profiles.daily_review_cap(profile.support_level)
+    return due_review_items(learner, now=now)[:cap]
+
+
+def pause_reviews(learner, until):
+    """Declare an absence: freeze the review queue until ``until`` (D-66/N-05)."""
+    profile = learner.profile
+    profile.paused_until = until
+    profile.save(update_fields=["paused_until", "updated_at"])
+
+
+def resume_reviews(learner):
+    """End an absence pause early — reviews resume (capped) immediately."""
+    profile = learner.profile
+    profile.paused_until = None
+    profile.save(update_fields=["paused_until", "updated_at"])
+
+
 def get_ai_client() -> AIClient:
     """Instantiate the host-bound AIClient adapter named in LINGUA["AI_CLIENT"].
 

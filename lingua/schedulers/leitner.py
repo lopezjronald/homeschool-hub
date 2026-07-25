@@ -28,7 +28,9 @@ class LeitnerScheduler:
 
         correct -> promote one box (capped at MAX_BOX); miss -> reset to box 1.
         The next due date is ``now`` + the destination box's interval."""
-        box = int((state or {}).get("box", 1))
+        # Clamp a corrupt/out-of-range stored box into [1, MAX_BOX] before advancing, so
+        # bad JSON (e.g. {"box": -3} or {"box": 99}) can never KeyError the interval lookup.
+        box = max(1, min(int((state or {}).get("box", 1)), MAX_BOX))
         box = min(box + 1, MAX_BOX) if correct else 1
         due = now + timedelta(days=INTERVALS_DAYS[box])
         return {"box": box}, due

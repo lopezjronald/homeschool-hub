@@ -2473,6 +2473,25 @@ class LeitnerSchedulerTests(TestCase):
         self.assertIsNone(services.add_review_item(self.learner, "w15"))       # 16th refused
         self.assertEqual(ReviewItem.objects.filter(learner=self.learner).count(), 15)
 
+    def test_re_add_existing_target_at_cap_returns_it(self):
+        # Idempotency must beat the cap: re-encountering a KNOWN word at the deck cap
+        # returns the existing card, not None (else LGA-61 auto-capture mis-reads it).
+        for i in range(15):
+            services.add_review_item(self.learner, f"w{i}")
+        again = services.add_review_item(self.learner, "w0")   # already tracked, deck full
+        self.assertIsNotNone(again)
+        self.assertEqual(again.target_ref, "w0")
+        self.assertEqual(ReviewItem.objects.filter(learner=self.learner).count(), 15)  # no new row
+
+    def test_review_survives_corrupt_box_state(self):
+        from django.utils import timezone
+
+        from lingua import schedulers
+        sched = schedulers.get_scheduler("leitner")
+        for bad in ({"box": -3}, {"box": 99}, {}, None):
+            state, _ = sched.review(bad, True, now=timezone.now())   # must not KeyError
+            self.assertIn(state["box"], range(1, 6))                 # clamped into range
+
     def test_recognition_auto_grade_path(self):
         item = services.add_review_item(self.learner, "gato")
         services.auto_grade_recognition(item, "gato", "gato")                  # unambiguous match

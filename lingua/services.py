@@ -453,12 +453,21 @@ def add_review_item(learner, target_ref, *, target_kind=ReviewItem.VOCAB,
     existing card unchanged. For Leitner, enforces the <=15 active-deck cap so a young
     child isn't overwhelmed (D-31): at the cap, returns None and adds nothing."""
     now = now or timezone.now()
+    # Idempotent FIRST: an already-tracked target returns its existing card regardless
+    # of the cap (LGA-61 auto-capture re-encounters known words at the cap constantly —
+    # it must get the card back, not None).
+    existing = ReviewItem.objects.filter(
+        learner=learner, target_kind=target_kind, target_ref=target_ref).first()
+    if existing:
+        return existing
+    # New card only: enforce the <=15 active Leitner deck cap so a young child is not
+    # overwhelmed (D-31).
     if (scheduler == ReviewItem.LEITNER
             and ReviewItem.objects.filter(learner=learner, scheduler=ReviewItem.LEITNER)
             .count() >= MAX_ACTIVE_LEITNER_ITEMS):
         return None
     sched = schedulers.get_scheduler(scheduler)
-    item, _ = ReviewItem.objects.get_or_create(
+    item, _ = ReviewItem.objects.get_or_create(  # get_or_create still guards a create race
         learner=learner, target_kind=target_kind, target_ref=target_ref,
         defaults={"scheduler": scheduler, "scheduler_state": sched.initial_state(), "due": now},
     )
@@ -478,8 +487,10 @@ def grade_review_item(item, correct, *, now=None):
 
 def auto_grade_recognition(item, chosen, correct, *, now=None):
     """Auto-grade an unambiguous recognition card (tap the matching picture) without a
-    parent (D-31): the tap is objectively right/wrong. A miss just resets the box."""
-    return grade_review_item(item, chosen == correct, now=now)
+    parent (D-31): the tap is objectively right/wrong. A miss just resets the box.
+    A missing tap (chosen is None) is a miss, never a None==None false 'correct'."""
+    is_match = chosen is not None and chosen == correct
+    return grade_review_item(item, is_match, now=now)
 
 
 def due_review_items(learner, *, now=None):

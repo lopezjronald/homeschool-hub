@@ -147,8 +147,10 @@ def lingua_listen_log(request, token):
     except (TypeError, ValueError):
         minutes = 0
     session = lingua_services.record_listening(learner, resource, minutes)
-    logged = session.minutes if session else 0
-    return redirect(f"{reverse('portal:lingua_listen', args=[token])}?logged={logged}")
+    base = reverse("portal:lingua_listen", args=[token])
+    # Only flash the "you logged N minutes" banner when a session was actually recorded —
+    # a 0-minute no-op redirects clean (else "?logged=0" shows a false success banner).
+    return redirect(f"{base}?logged={session.minutes}" if session else base)
 
 
 @csrf_exempt

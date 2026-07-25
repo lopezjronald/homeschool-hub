@@ -2840,11 +2840,21 @@ class ListeningTests(TestCase):
         from io import StringIO
 
         from django.core.management import call_command
+        from lingua.management.commands.seed_listening import RESOURCES
+        before = ListeningResource.objects.count()               # the 2 fixtures
         call_command("seed_listening", stdout=StringIO())
-        n = ListeningResource.objects.count()
-        self.assertGreaterEqual(n, 5)                    # the curated set
+        after_first = ListeningResource.objects.count()
+        # The seed created EXACTLY the full curated set (delta vs the pre-existing rows) —
+        # a seed loop that silently skipped some would create fewer and fail here.
+        self.assertEqual(after_first - before, len(RESOURCES))
         call_command("seed_listening", stdout=StringIO())
-        self.assertEqual(ListeningResource.objects.count(), n)   # re-run adds none
+        self.assertEqual(ListeningResource.objects.count(), after_first)   # re-run adds none
+
+    def test_zero_minute_log_shows_no_false_banner(self):
+        url = reverse("portal:lingua_listen_log", kwargs={"token": self.token})
+        resp = self.client.post(url, {"resource_id": self.r_early.id, "minutes": 0})
+        self.assertNotIn("logged=", resp["Location"])            # no ?logged -> no false success banner
+        self.assertEqual(ListeningSession.objects.filter(learner=self.early).count(), 0)  # nothing logged
 
     def test_portal_listen_page_shows_only_band_resources(self):
         html = self.client.get(

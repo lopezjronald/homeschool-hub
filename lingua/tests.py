@@ -2715,6 +2715,60 @@ class DailyReviewQueueTests(TestCase):
         self.assertEqual(len(services.daily_review_queue(self.early)), 3)  # resumed (under cap)
 
 
+class GraduationToFSRSTests(TestCase):
+    """LGA-63 / D-64: Leitner -> FSRS graduation (fresh Card + optional warm-start)."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.learner = Learner.create_for_host_student(6301, profiles.KIDS_EARLY)
+
+    def _leitner_card(self, ref, box):
+        from django.utils import timezone
+        return ReviewItem.objects.create(
+            learner=self.learner, target_kind=ReviewItem.VOCAB, target_ref=ref,
+            scheduler=ReviewItem.LEITNER, scheduler_state={"box": box}, due=timezone.now(),
+        )
+
+    def test_graduation_flips_scheduler_and_keeps_target(self):
+        item = self._leitner_card("gato", box=2)
+        pk, ref = item.pk, item.target_ref
+        services.graduate_to_fsrs(item)
+        self.assertEqual(item.pk, pk)                       # SAME row (not recreated)
+        self.assertEqual(item.target_ref, ref)             # target preserved
+        self.assertEqual(item.scheduler, ReviewItem.FSRS)  # flipped
+        self.assertIn("stability", item.scheduler_state)   # a valid FSRS Card blob
+        self.assertNotIn("box", item.scheduler_state)      # Leitner box discarded
+
+    def test_high_box_warm_start_due_later_than_low_box_cold(self):
+        from django.utils import timezone
+        now = timezone.now()
+        low = self._leitner_card("bajo", box=3)     # below threshold -> cold
+        high = self._leitner_card("alto", box=4)    # >= threshold -> warm-start
+        services.graduate_to_fsrs(low, now=now)
+        services.graduate_to_fsrs(high, now=now)
+        self.assertEqual(low.due, now)              # cold: due now for its first FSRS review
+        self.assertGreater(high.due, low.due)       # warm-started item scheduled later
+
+    def test_warm_start_is_not_box_proportional(self):
+        from django.utils import timezone
+        now = timezone.now()
+        b4 = self._leitner_card("cuatro", box=4)
+        b5 = self._leitner_card("cinco", box=5)
+        services.graduate_to_fsrs(b4, now=now)
+        services.graduate_to_fsrs(b5, now=now)
+        # Identical warm-start for every high box (one Good) — proves no box->S/D math.
+        self.assertEqual(b4.due, b5.due)
+        self.assertEqual(b4.scheduler_state["stability"], b5.scheduler_state["stability"])
+
+    def test_graduation_is_noop_if_already_fsrs(self):
+        item = self._leitner_card("casa", box=5)
+        services.graduate_to_fsrs(item)
+        state_after, due_after = dict(item.scheduler_state), item.due
+        services.graduate_to_fsrs(item)             # already FSRS -> no-op, no re-warm-start
+        self.assertEqual(item.scheduler_state, state_after)
+        self.assertEqual(item.due, due_after)
+
+
 class PurgeStaleTests(TestCase):
     """D-56: retention is enforced, not indefinite."""
 

@@ -2628,8 +2628,20 @@ class CaptureWordTests(TestCase):
         self.assertTrue(body["captured"])
         self.assertEqual(body["format"], services.CARD_PICTURE)      # KIDS_EARLY student
         self.client.post(url, {"word": "perro"})                     # same word again
-        self.assertEqual(
-            ReviewItem.objects.filter(learner=self.early, target_ref="perro").count(), 1)
+        # Assert the learner's TOTAL card count (strictly stronger than filtering by
+        # target_ref: catches a dedup break where the two taps normalize inconsistently).
+        self.assertEqual(ReviewItem.objects.filter(learner=self.early).count(), 1)
+
+    def test_deck_full_is_not_captured(self):
+        import json
+        # Fill the KIDS_EARLY deck to the 15-card cap with distinct letter-only words.
+        for i in range(services.MAX_ACTIVE_LEITNER_ITEMS):
+            self.assertIsNotNone(services.capture_word(self.early, chr(97 + i) * 4))
+        self.assertIsNone(services.capture_word(self.early, "nueva"))     # deck full -> None
+        # ...and the endpoint reports captured: False for a new word at the cap.
+        url = reverse("portal:lingua_capture_word", kwargs={"token": self.token})
+        body = json.loads(self.client.post(url, {"word": "otra"}).content)
+        self.assertFalse(body["captured"])
 
 
 class PurgeStaleTests(TestCase):

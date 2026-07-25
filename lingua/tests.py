@@ -2586,6 +2586,52 @@ class FSRSSchedulerTests(TestCase):
             t = t + timedelta(days=30)                       # well past due for the next review
 
 
+class CaptureWordTests(TestCase):
+    """LGA-61 / F-03: capture words from reading into the deck + the add-to-SRS endpoint."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from portal.tokens import make_portal_token
+        cls.parent = User.objects.create_user("cap_parent", email="cap@e.com", password="pw")
+        cls.student = Student.objects.create(parent=cls.parent, first_name="Cap")
+        cls.early = Learner.create_for_host_student(cls.student.pk, profiles.KIDS_EARLY)
+        cls.older = Learner.create_for_host_student(9061, profiles.KIDS_OLDER)
+        cls.token = make_portal_token(cls.student)
+
+    def test_card_format_follows_scheduler(self):
+        self.assertEqual(services.card_format_for(ReviewItem.LEITNER), services.CARD_PICTURE)
+        self.assertEqual(services.card_format_for(ReviewItem.FSRS), services.CARD_TEXT_CLOZE)
+
+    def test_capture_normalizes_and_dedupes(self):
+        a = services.capture_word(self.early, "¡Gató!")
+        b = services.capture_word(self.early, "gato.")      # same word, different surface form
+        self.assertEqual(a.pk, b.pk)                         # one card, not two
+        self.assertEqual(a.target_ref, "gato")              # normalized key
+        self.assertEqual(ReviewItem.objects.filter(learner=self.early).count(), 1)
+
+    def test_capture_uses_band_scheduler(self):
+        early_item = services.capture_word(self.early, "casa")
+        older_item = services.capture_word(self.older, "casa")
+        self.assertEqual(early_item.scheduler, ReviewItem.LEITNER)   # picture-first
+        self.assertEqual(older_item.scheduler, ReviewItem.FSRS)      # text/cloze
+
+    def test_capture_ignores_blank(self):
+        self.assertIsNone(services.capture_word(self.early, "  ...  "))
+        self.assertEqual(ReviewItem.objects.filter(learner=self.early).count(), 0)
+
+    def test_portal_endpoint_creates_one_reviewitem(self):
+        import json
+        url = reverse("portal:lingua_capture_word", kwargs={"token": self.token})
+        r1 = self.client.post(url, {"word": "Perro."})
+        self.assertEqual(r1.status_code, 200)
+        body = json.loads(r1.content)
+        self.assertTrue(body["captured"])
+        self.assertEqual(body["format"], services.CARD_PICTURE)      # KIDS_EARLY student
+        self.client.post(url, {"word": "perro"})                     # same word again
+        self.assertEqual(
+            ReviewItem.objects.filter(learner=self.early, target_ref="perro").count(), 1)
+
+
 class PurgeStaleTests(TestCase):
     """D-56: retention is enforced, not indefinite."""
 

@@ -116,6 +116,23 @@ def lingua_phonics(request, token):
 
 @csrf_exempt
 @require_POST
+def lingua_capture_word(request, token):
+    """Add a word the child tapped in the reader to their review deck (F-03, LGA-61).
+    Tokenless like the other portal writes (the signed token is the credential). The
+    scheduler + card format follow the learner's band; capture is idempotent per word,
+    so tapping the same word twice never duplicates a card. Returns JSON
+    {captured, format}."""
+    student = _resolve_student(token)
+    learner = _lingua_learner(student)
+    word = (request.POST.get("word") or "").strip()
+    item = lingua_services.capture_word(learner, word)
+    if item is None:
+        return JsonResponse({"captured": False})
+    return JsonResponse({"captured": True, "format": lingua_services.card_format_for(item.scheduler)})
+
+
+@csrf_exempt
+@require_POST
 def lingua_finish(request, token, story_id):
     """Log a completed read (ReadingSession) and return to the plan. Token-authed +
     csrf-exempt like the other tokenless portal writes — the unguessable signed token

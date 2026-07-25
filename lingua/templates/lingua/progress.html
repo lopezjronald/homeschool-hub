@@ -2,7 +2,10 @@
 {% block title %}Spanish progress · Lingua{% endblock %}
 {% block content %}
 <div class="container py-4">
-  <h1 class="h3 mb-1">Spanish progress</h1>
+  <div class="d-flex justify-content-between align-items-center flex-wrap mb-1">
+    <h1 class="h3 mb-0">Spanish progress</h1>
+    <a href="{% url 'lingua:approvals' %}" class="btn btn-sm btn-outline-primary">Review story drafts →</a>
+  </div>
   <p class="text-muted">Reading volume, comprehension, and level recommendations for your learners.
     Level changes are always yours to confirm — nothing moves automatically.</p>
 

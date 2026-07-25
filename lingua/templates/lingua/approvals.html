@@ -2,7 +2,10 @@
 {% block title %}Story approvals · Lingua{% endblock %}
 {% block content %}
 <div class="container py-4">
-  <h1 class="h3 mb-1">Spanish story drafts to review</h1>
+  <div class="d-flex justify-content-between align-items-center flex-wrap mb-1">
+    <h1 class="h3 mb-0">Spanish story drafts to review</h1>
+    <a href="{% url 'lingua:progress' %}" class="btn btn-sm btn-outline-primary">← Spanish progress</a>
+  </div>
   <p class="text-muted">You're approving pedagogical fit + safety. The critic has
     already pre-screened language quality; flagged items and rare words are shown below.</p>
 

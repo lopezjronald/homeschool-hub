@@ -2644,6 +2644,77 @@ class CaptureWordTests(TestCase):
         self.assertFalse(body["captured"])
 
 
+class DailyReviewQueueTests(TestCase):
+    """LGA-62 / D-66/N-05: daily review cap by support_level + absence pause & return-drain."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.early = Learner.create_for_host_student(6201, profiles.KIDS_EARLY)   # PARENT_MEDIATED -> cap 5
+        cls.older = Learner.create_for_host_student(6202, profiles.KIDS_OLDER)   # GUIDED -> cap 12
+
+    def _due_cards(self, learner, n, *, minutes_ago=30):
+        from datetime import timedelta
+
+        from django.utils import timezone
+        now = timezone.now()
+        for i in range(n):
+            ReviewItem.objects.create(
+                learner=learner, target_kind=ReviewItem.VOCAB, target_ref=f"w{i}",
+                scheduler=ReviewItem.LEITNER, scheduler_state={"box": 1},
+                due=now - timedelta(minutes=minutes_ago),
+            )
+
+    def test_daily_review_cap_mapping(self):
+        self.assertEqual(profiles.daily_review_cap(profiles.PARENT_MEDIATED), 5)
+        self.assertEqual(profiles.daily_review_cap(profiles.GUIDED), 12)
+        self.assertEqual(profiles.daily_review_cap(profiles.INDEPENDENT), 20)
+
+    def test_queue_capped_by_support_level(self):
+        self._due_cards(self.early, 9)        # 9 due, cap 5 (PARENT_MEDIATED)
+        self.assertEqual(len(services.daily_review_queue(self.early)), 5)
+        self._due_cards(self.older, 20)       # 20 due, cap 12 (GUIDED)
+        self.assertEqual(len(services.daily_review_queue(self.older)), 12)
+
+    def test_two_week_absence_produces_no_flood(self):
+        # 100 cards all overdue by ~2 weeks must NOT all surface at once on return.
+        self._due_cards(self.early, 100, minutes_ago=14 * 24 * 60)
+        queue = services.daily_review_queue(self.early)
+        self.assertEqual(len(queue), 5)       # bounded by the cap, not 100
+        self.assertLess(len(queue), ReviewItem.objects.filter(learner=self.early).count())
+
+    def test_cap_is_per_day_not_per_fetch_and_resets_next_day(self):
+        from datetime import timedelta
+
+        from django.utils import timezone
+        # A big overdue backlog: grading a card advances its due, so WITHOUT a per-day
+        # counter a same-day re-query would keep pulling the next 5 and drain it all.
+        self._due_cards(self.early, 20, minutes_ago=14 * 24 * 60)
+        now = timezone.now()
+
+        def fresh():                     # a fresh learner load, like each new request
+            return Learner.objects.get(pk=self.early.pk)
+
+        q1 = services.daily_review_queue(fresh(), now=now)
+        self.assertEqual(len(q1), 5)
+        for it in q1:
+            services.grade_review_item(it, True, now=now)      # complete today's 5
+        # Same day, re-query: the per-day quota is spent even though 15 are still overdue.
+        self.assertEqual(services.daily_review_queue(fresh(), now=now), [])
+        # Next local day: the quota resets and the backlog keeps draining, 5/day.
+        q2 = services.daily_review_queue(fresh(), now=now + timedelta(days=1))
+        self.assertEqual(len(q2), 5)
+
+    def test_pause_window_skips_then_resumes(self):
+        from datetime import timedelta
+
+        from django.utils import timezone
+        self._due_cards(self.early, 3)
+        services.pause_reviews(self.early, timezone.now() + timedelta(days=3))
+        self.assertEqual(services.daily_review_queue(self.early), [])   # paused -> nothing surfaces
+        services.resume_reviews(self.early)
+        self.assertEqual(len(services.daily_review_queue(self.early)), 3)  # resumed (under cap)
+
+
 class PurgeStaleTests(TestCase):
     """D-56: retention is enforced, not indefinite."""
 

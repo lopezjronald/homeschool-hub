@@ -48,6 +48,15 @@ SUPPORT_SESSION_MINUTES = {
     INDEPENDENT: 25,
 }
 
+# D-66/N-05 (LGA-62): max spaced-repetition cards surfaced per day, by support level.
+# Also the return-from-absence drain rate — a backlog is served this-many/day, never
+# dumped all at once. Scales with the session-length cap above.
+SUPPORT_DAILY_REVIEW_CAP = {
+    PARENT_MEDIATED: 5,
+    GUIDED: 12,
+    INDEPENDENT: 20,
+}
+
 # --- content ceiling (axis 2): the L1..L8 ladder (D-29) -------------------
 LADDER = [f"L{i}" for i in range(1, 9)]  # L1..L8
 LEVEL_CHOICES = [(lvl, lvl) for lvl in LADDER]
@@ -112,3 +121,8 @@ def defaults_for(track_profile):
 def session_minutes_for(support_level):
     """Session-length cap in minutes for a support level (D-66)."""
     return SUPPORT_SESSION_MINUTES[support_level]
+
+
+def daily_review_cap(support_level):
+    """Max review cards to surface per day for a support level (D-66/N-05)."""
+    return SUPPORT_DAILY_REVIEW_CAP[support_level]

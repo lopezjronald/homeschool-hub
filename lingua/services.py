@@ -518,6 +518,7 @@ def grade_review_item(item, correct, *, now=None):
     sched = schedulers.get_scheduler(item.scheduler)
     item.scheduler_state, item.due = sched.review(item.scheduler_state, correct, now=now)
     item.save(update_fields=["scheduler_state", "due", "updated_at"])
+    record_reviews_served(item.learner, now=now)   # count toward the per-day cap (LGA-62)
     return item
 
 
@@ -540,6 +541,60 @@ def due_review_items(learner, *, now=None):
         .filter(Q(paused_until__isnull=True) | Q(paused_until__lte=now))
         .order_by("due", "id")
     )
+
+
+def _reviews_served_today(profile, today):
+    """How many reviews the learner has already completed on ``today`` (0 if the stored
+    counter is for an earlier date — i.e. it has rolled over)."""
+    return profile.reviews_served_count if profile.reviews_served_on == today else 0
+
+
+def record_reviews_served(learner, n=1, *, now=None):
+    """Count ``n`` completed reviews toward today's per-day cap (D-66/N-05, LGA-62).
+    Resets the counter when the learner's LOCAL date rolls over."""
+    now = now or timezone.now()
+    today = timezone.localdate(now)
+    profile = learner.profile
+    if profile.reviews_served_on == today:
+        profile.reviews_served_count += n
+    else:
+        profile.reviews_served_on = today
+        profile.reviews_served_count = n
+    profile.save(update_fields=["reviews_served_on", "reviews_served_count", "updated_at"])
+
+
+def daily_review_queue(learner, *, now=None):
+    """The bounded set of cards to review right now (D-66/N-05, LGA-62).
+
+    Guards on top of ``due_review_items``: (1) during a declared absence
+    (``profile.paused_until`` in the future) NOTHING surfaces — the break doesn't turn
+    into a chore; (2) intake is a PER-DAY quota by support_level — the cap MINUS the
+    reviews already completed today (``grade_review_item`` records each). So re-querying
+    within a day can't keep pulling the next batch and drain a huge overdue backlog in
+    one sitting; it drains over DAYS, resetting each local date."""
+    now = now or timezone.now()
+    profile = learner.profile
+    if profile.paused_until and now < profile.paused_until:
+        return []
+    cap = profiles.daily_review_cap(profile.support_level)
+    remaining = cap - _reviews_served_today(profile, timezone.localdate(now))
+    if remaining <= 0:
+        return []
+    return due_review_items(learner, now=now)[:remaining]
+
+
+def pause_reviews(learner, until):
+    """Declare an absence: freeze the review queue until ``until`` (D-66/N-05)."""
+    profile = learner.profile
+    profile.paused_until = until
+    profile.save(update_fields=["paused_until", "updated_at"])
+
+
+def resume_reviews(learner):
+    """End an absence pause early — reviews resume (capped) immediately."""
+    profile = learner.profile
+    profile.paused_until = None
+    profile.save(update_fields=["paused_until", "updated_at"])
 
 
 def get_ai_client() -> AIClient:

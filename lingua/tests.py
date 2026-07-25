@@ -2536,12 +2536,38 @@ class FSRSSchedulerTests(TestCase):
         from django.utils import timezone
         now = timezone.now()
         item = services.add_review_item(self.older, "casa")
-        services.grade_review_item(item, True, now=now)      # writes Card.to_dict() to the JSONField
-        reloaded = ReviewItem.objects.get(pk=item.pk)        # re-read the JSON blob from the DB
-        # A second review off the reloaded state must parse the stored blob (from_dict) and advance.
-        services.grade_review_item(reloaded, True, now=reloaded.due)
-        self.assertEqual(reloaded.scheduler, ReviewItem.FSRS)
-        self.assertGreater(reloaded.due, item.due)
+        services.grade_review_item(item, True, now=now)       # 1st Good -> ~10-min learning step
+        t2 = item.due
+        reloaded = ReviewItem.objects.get(pk=item.pk)         # re-read the stored JSON blob
+        services.grade_review_item(reloaded, True, now=t2)     # 2nd Good off the STORED state
+        honored_interval = reloaded.due - t2
+        # Baseline: a FRESH card's FIRST Good at the same t2 — what we'd get if from_dict
+        # silently dropped the stored state (both reviews would be "first" reviews).
+        fresh = services.add_review_item(self.older, "otra")
+        services.grade_review_item(fresh, True, now=t2)
+        fresh_first_interval = fresh.due - t2
+        # Honored state graduates the card and schedules it FAR further out (days vs ~10 min);
+        # if the blob weren't re-parsed the two intervals would match. (>5x is a wide margin.)
+        self.assertGreater(honored_interval, fresh_first_interval * 5)
+
+    def test_review_survives_corrupt_state(self):
+        # A malformed/wrong-schema blob must recover to a fresh card, not 500 the review.
+        from django.utils import timezone
+        from lingua import schedulers
+        sched = schedulers.get_scheduler("fsrs")
+        for bad in ({"box": 1}, {"stability": 2.0}, {}, None):   # incl. a Leitner blob on an fsrs row
+            state, due = sched.review(bad, True, now=timezone.now())   # must not KeyError
+            self.assertIn("stability", state)                          # produced a valid fsrs Card blob
+
+    def test_review_accepts_non_utc_aware_now(self):
+        # py-fsrs requires exactly timezone.utc; the port must normalize any aware tz.
+        from zoneinfo import ZoneInfo
+
+        from django.utils import timezone
+        la_now = timezone.now().astimezone(ZoneInfo("America/Los_Angeles"))
+        item = services.add_review_item(self.older, "hora")
+        services.grade_review_item(item, True, now=la_now)    # would raise if not normalized
+        self.assertGreater(item.due, la_now)
 
     def test_review_is_deterministic(self):
         # FSRS only fuzzes MULTI-DAY review intervals (not the first ~10-min learning

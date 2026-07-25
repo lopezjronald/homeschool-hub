@@ -1,6 +1,7 @@
 """Seed the curated Spanish listening resources (F-02/N-02, LGA-55/56).
 
-Idempotent: get_or_create keyed on ``url``. Hand-picked comprehensible-input channels
+Idempotent: get_or_create keyed on ``(url, age_band)`` — a channel can serve two bands.
+Hand-picked comprehensible-input channels
 and playlists with strong visual support, split by age band. es-MX / neutral Latin
 American, kid-appropriate. Only links + metadata are stored — no copyrighted media.
 
@@ -30,6 +31,12 @@ RESOURCES = [
     ("Dreaming Spanish — Principiante", "Dreaming Spanish",
      "https://www.youtube.com/playlist?list=PLlpPf-YgbU7HWrrenMs3-nuhxgzyAiA-C",
      profiles.KIDS_OLDER, "L2", True, 10, 2),
+    # Also offered to the older band — Once Niñas y Niños spans ages 4-12, so it's
+    # authentic es-MX variety alongside Dreaming Spanish (same channel as KIDS_EARLY,
+    # which is why the seed keys on (url, age_band), not url alone).
+    ("Once Niñas y Niños (Canal Once, México)", "Canal Once",
+     "https://www.youtube.com/channel/UC0zvIM2UXP8tgBzAlW2ffCQ",
+     profiles.KIDS_OLDER, "L2", True, 12, 3),
 ]
 
 
@@ -40,9 +47,9 @@ class Command(BaseCommand):
         created = existing = 0
         for title, provider, url, band, level, visual, minutes, order in RESOURCES:
             _, was_created = ListeningResource.objects.get_or_create(
-                url=url,
+                url=url, age_band=band,   # a channel may serve two bands, so key on both
                 defaults={
-                    "title": title, "provider": provider, "age_band": band, "level": level,
+                    "title": title, "provider": provider, "level": level,
                     "visual_support": visual, "minutes": minutes, "order": order,
                 },
             )

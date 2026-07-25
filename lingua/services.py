@@ -12,7 +12,7 @@ from django.db import transaction
 from django.db.models import Count, Max, Q, Sum
 from django.utils.module_loading import import_string
 
-from . import assets, audio, cognates, leveling, storage
+from . import assets, audio, cognates, leveling, profiles, storage
 from .models import AuditEvent, KnownWord, Learner, ReadingSession, Story, StoryAudio, Theme
 from .ports import AIClient
 from .prompts import CRITIC_SYSTEM, STORY_SYSTEM
@@ -180,6 +180,94 @@ def pick_reread(learner, *, cap=3, exclude_story_ids=None):
         if story:  # skip any that fell out of APPROVED since it was read
             return story
     return None
+
+
+# Conservative beginner reading rate (words/min) used to estimate a story's session
+# time when no baked audio duration is available. Slow on purpose — over-estimating
+# time fills FEWER items into the cap, which is the safe direction (D-66).
+READING_WPM = 40
+
+
+def _story_minutes(story):
+    """Estimated minutes to read a story: the baked audio duration if any voice has
+    been synthesized, else word-count / READING_WPM. Always >= 1."""
+    sa = story.audios.first()
+    if sa and sa.duration_ms:
+        return max(1, round(sa.duration_ms / 60000))
+    return max(1, round(len((story.body or "").split()) / READING_WPM))
+
+
+def _servable_stories(ceiling, exclude):
+    """APPROVED stories at/near a content ceiling (levels L1..ceiling), hardest-first
+    (nearest the ceiling = i+1), excluding ``exclude`` pks."""
+    rank = profiles.level_rank(ceiling)
+    allowed = profiles.LADDER[:rank + 1] if rank >= 0 else [ceiling]
+    return (
+        Story.objects.filter(status=Story.APPROVED, level__in=allowed)
+        .exclude(pk__in=exclude)
+        .order_by("-level", "-created_at")  # nearest ceiling, then newest
+    )
+
+
+def build_daily_plan(learner):
+    """Assemble today's session for a learner (F-06, D-66, N-01).
+
+    Reading-first: a reread (the highest-leverage CI lever) then a new story at/near
+    the content ceiling, with narrow reading (prefer the reread's theme for
+    continuity). The per-support-level session cap is a HARD limit — content difficulty
+    never lengthens the session (D-66): the first reading item is always offered (never
+    an empty session), and further items are added only while they fit under the cap,
+    so harder/longer content yields FEWER items, never more time. Also returns a
+    bounded 'pick 1 of 3' next-story choice (autonomy, N-01).
+
+    Returns a plain dict (no persistence) the portal page renders. Listening / vocab /
+    activity slots arrive with E-06 / E-07.
+    """
+    profile = learner.profile
+    cap = profile.session_minutes
+    ceiling = profile.content_ceiling
+    read_ids = set(learner.reading_sessions.values_list("story_id", flat=True))
+    read_ids.discard(None)
+
+    reread = pick_reread(learner)
+    planned = {reread.pk} if reread else set()
+    new_story = _pick_new_story(
+        ceiling, exclude=read_ids | planned,
+        prefer_theme=reread.theme_id if reread else None,
+    )
+
+    # Always offer the first reading item; gate the rest by the hard cap (D-66).
+    items, used = [], 0
+    for kind, story in (("reread", reread), ("new", new_story)):
+        if story is None:
+            continue
+        minutes = _story_minutes(story)
+        if items and used + minutes > cap:
+            break
+        items.append({"kind": kind, "story": story, "minutes": minutes})
+        used += minutes
+
+    picked = {i["story"].pk for i in items}
+    choices = list(_servable_stories(ceiling, exclude=read_ids | picked)[:3])
+    return {
+        "learner_id": learner.pk,
+        "cap_minutes": cap,
+        "estimated_minutes": used,
+        "ceiling": ceiling,
+        "items": items,
+        "choices": choices,
+    }
+
+
+def _pick_new_story(ceiling, exclude, prefer_theme=None):
+    """A new (unread) APPROVED story at/near the ceiling; prefer ``prefer_theme`` for
+    narrow-reading continuity, else the nearest-ceiling story overall."""
+    qs = _servable_stories(ceiling, exclude)
+    if prefer_theme is not None:
+        in_theme = qs.filter(theme_id=prefer_theme).first()
+        if in_theme:
+            return in_theme
+    return qs.first()
 
 
 def get_ai_client() -> AIClient:

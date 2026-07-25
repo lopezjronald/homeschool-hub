@@ -1466,6 +1466,102 @@ class RereadSchedulerTests(TestCase):
         self.assertIsNone(services.pick_reread(self.learner))
 
 
+class DailyPlanTests(TestCase):
+    """LGA-65 / F-06 / D-66 / N-01: daily plan — hard cap, reread-first, ceiling, choice."""
+
+    def _learner(self, hsid, ceiling="L2", support=None):
+        overrides = {"content_ceiling": ceiling}
+        if support:
+            overrides["support_level"] = support
+        return Learner.create_for_host_student(hsid, profiles.KIDS_EARLY, **overrides)
+
+    def _story(self, title, level="L2", words=40, theme=None, status=Story.APPROVED):
+        return Story.objects.create(
+            title=title, body=" ".join(["x"] * words), level=level, status=status, theme=theme)
+
+    def test_session_cap_is_a_hard_limit(self):
+        # PARENT_MEDIATED cap = 10 min. Two 400-word stories = 10 min each @ 40 wpm.
+        learner = self._learner(701, ceiling="L2")
+        a = self._story("A", words=400)
+        self._story("B", words=400)
+        services.record_reading(learner, a)          # A becomes the reread
+        plan = services.build_daily_plan(learner)
+        self.assertEqual(plan["cap_minutes"], 10)
+        self.assertEqual(plan["estimated_minutes"], 10)   # NOT 20 — harder content ≠ more time
+        self.assertEqual(len(plan["items"]), 1)           # only the reread fits; new excluded
+        self.assertEqual(plan["items"][0]["kind"], "reread")
+
+    def test_short_stories_both_fit_under_cap(self):
+        learner = self._learner(702, ceiling="L2")
+        a = self._story("A", words=40)               # 1 min each
+        self._story("B", words=40)
+        services.record_reading(learner, a)
+        plan = services.build_daily_plan(learner)
+        self.assertEqual([i["kind"] for i in plan["items"]], ["reread", "new"])
+        self.assertEqual(plan["estimated_minutes"], 2)
+
+    def test_reread_first_when_due(self):
+        learner = self._learner(703, ceiling="L2")
+        old = self._story("old", words=40)
+        self._story("fresh", words=40)
+        services.record_reading(learner, old)
+        plan = services.build_daily_plan(learner)
+        self.assertEqual(plan["items"][0]["kind"], "reread")
+        self.assertEqual(plan["items"][0]["story"], old)
+
+    def test_new_story_respects_ceiling(self):
+        learner = self._learner(704, ceiling="L2")
+        too_hard = self._story("too-hard", level="L3", words=40)   # above ceiling
+        at = self._story("at-ceiling", level="L2", words=40)
+        plan = services.build_daily_plan(learner)
+        served = [i["story"] for i in plan["items"]] + plan["choices"]
+        self.assertIn(at, served)
+        self.assertNotIn(too_hard, served)          # above the ceiling is never served
+
+    def test_bounded_choice_at_most_three(self):
+        learner = self._learner(705, ceiling="L2")
+        for i in range(6):
+            self._story(f"s{i}", level="L1", words=40)
+        plan = services.build_daily_plan(learner)
+        self.assertLessEqual(len(plan["choices"]), 3)
+        self.assertTrue(all(s.status == Story.APPROVED for s in plan["choices"]))
+        picked = {i["story"].pk for i in plan["items"]}
+        self.assertFalse(picked & {s.pk for s in plan["choices"]})  # no overlap with items
+
+    def test_empty_plan_when_no_content(self):
+        plan = services.build_daily_plan(self._learner(706, ceiling="L2"))
+        self.assertEqual(plan["items"], [])
+        self.assertEqual(plan["choices"], [])
+
+    def test_oversized_first_story_is_still_offered(self):
+        # A lone story longer than the cap must still be offered — the cap governs how
+        # MANY items, never whether the child gets one (never an empty session, D-66).
+        learner = self._learner(708, ceiling="L2")
+        big = self._story("big", words=800)   # 20 min > 10-min cap, and no reread exists
+        plan = services.build_daily_plan(learner)
+        self.assertEqual(len(plan["items"]), 1)
+        self.assertEqual(plan["items"][0]["story"], big)
+        self.assertEqual(plan["estimated_minutes"], 20)   # the single item, even over cap
+
+    def test_story_minutes_prefers_audio_duration(self):
+        s = self._story("with-audio", words=4000)   # word-based = 100 min
+        StoryAudio.objects.create(
+            story=s, voice="Mia", engine="neural", provider="polly",
+            content_hash="h", audio_key="k", timings={}, duration_ms=120000)
+        self.assertEqual(services._story_minutes(s), 2)  # 120000ms → 2 min, not 100
+
+    def test_narrow_reading_prefers_reread_theme(self):
+        t = Theme.objects.create(slug="t", name="T", age_band=profiles.KIDS_EARLY)
+        learner = self._learner(707, ceiling="L2")
+        old = self._story("old", words=40, theme=t)
+        same = self._story("same-theme", words=40, theme=t)
+        self._story("other", words=40, theme=None)   # newer, no theme
+        services.record_reading(learner, old)
+        plan = services.build_daily_plan(learner)
+        new_item = next(i for i in plan["items"] if i["kind"] == "new")
+        self.assertEqual(new_item["story"], same)    # same theme as the reread (continuity)
+
+
 class PurgeStaleTests(TestCase):
     """D-56: retention is enforced, not indefinite."""
 

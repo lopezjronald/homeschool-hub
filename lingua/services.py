@@ -446,13 +446,23 @@ def phonics_rules():
 MAX_ACTIVE_LEITNER_ITEMS = 15   # deck-size cap for the young Leitner learner (D-31)
 
 
+def scheduler_for_learner(learner):
+    """Which SRS scheduler a learner uses (D-31/D-32): Leitner for the youngest band
+    (parent-graded, picture-first), FSRS (two-button) for everyone older."""
+    return (ReviewItem.LEITNER
+            if learner.profile.track_profile == profiles.KIDS_EARLY
+            else ReviewItem.FSRS)
+
+
 def add_review_item(learner, target_ref, *, target_kind=ReviewItem.VOCAB,
-                    scheduler=ReviewItem.LEITNER, now=None):
-    """Add a card to the learner's deck, seeded by the chosen scheduler and due now
-    (LGA-59). Idempotent per (learner, kind, ref) — a repeat target returns the
-    existing card unchanged. For Leitner, enforces the <=15 active-deck cap so a young
-    child isn't overwhelmed (D-31): at the cap, returns None and adds nothing."""
+                    scheduler=None, now=None):
+    """Add a card to the learner's deck, seeded by their scheduler and due now (LGA-59).
+    ``scheduler`` defaults to the learner's band scheduler (scheduler_for_learner).
+    Idempotent per (learner, kind, ref) — a repeat target returns the existing card
+    unchanged, even at the cap. For Leitner, enforces the <=15 active-deck cap so a
+    young child isn't overwhelmed (D-31): at the cap, returns None and adds nothing."""
     now = now or timezone.now()
+    scheduler = scheduler or scheduler_for_learner(learner)
     # Idempotent FIRST: an already-tracked target returns its existing card regardless
     # of the cap (LGA-61 auto-capture re-encounters known words at the cap constantly —
     # it must get the card back, not None).

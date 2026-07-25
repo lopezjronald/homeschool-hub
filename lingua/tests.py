@@ -2500,6 +2500,92 @@ class LeitnerSchedulerTests(TestCase):
         self.assertEqual(item.scheduler_state["box"], 1)                       # non-punitive reset
 
 
+class FSRSSchedulerTests(TestCase):
+    """LGA-60 / D-32: FSRS two-button scheduler for KIDS_OLDER, behind the same port."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.older = Learner.create_for_host_student(4060, profiles.KIDS_OLDER)
+        cls.early = Learner.create_for_host_student(4061, profiles.KIDS_EARLY)
+
+    def test_scheduler_for_learner_routes_by_band(self):
+        self.assertEqual(services.scheduler_for_learner(self.early), ReviewItem.LEITNER)
+        self.assertEqual(services.scheduler_for_learner(self.older), ReviewItem.FSRS)
+
+    def test_add_review_item_uses_fsrs_for_older(self):
+        item = services.add_review_item(self.older, "gato")
+        self.assertEqual(item.scheduler, ReviewItem.FSRS)
+        self.assertIn("stability", item.scheduler_state)   # an FSRS Card blob, not a Leitner box
+
+    def test_no_15_cap_for_fsrs(self):
+        for i in range(20):
+            self.assertIsNotNone(services.add_review_item(self.older, f"w{i}"))  # >15 allowed
+        self.assertEqual(ReviewItem.objects.filter(learner=self.older).count(), 20)
+
+    def test_good_pushes_due_further_than_again(self):
+        from django.utils import timezone
+        now = timezone.now()
+        g = services.add_review_item(self.older, "bueno")
+        services.grade_review_item(g, True, now=now)        # got-it
+        a = services.add_review_item(self.older, "malo")
+        services.grade_review_item(a, False, now=now)       # missed
+        self.assertGreater(g.due, a.due)                    # got-it scheduled further out than missed
+        self.assertGreater(g.due, now)
+
+    def test_state_round_trips_through_db_json(self):
+        from django.utils import timezone
+        now = timezone.now()
+        item = services.add_review_item(self.older, "casa")
+        services.grade_review_item(item, True, now=now)       # 1st Good -> ~10-min learning step
+        t2 = item.due
+        reloaded = ReviewItem.objects.get(pk=item.pk)         # re-read the stored JSON blob
+        services.grade_review_item(reloaded, True, now=t2)     # 2nd Good off the STORED state
+        honored_interval = reloaded.due - t2
+        # Baseline: a FRESH card's FIRST Good at the same t2 — what we'd get if from_dict
+        # silently dropped the stored state (both reviews would be "first" reviews).
+        fresh = services.add_review_item(self.older, "otra")
+        services.grade_review_item(fresh, True, now=t2)
+        fresh_first_interval = fresh.due - t2
+        # Honored state graduates the card and schedules it FAR further out (days vs ~10 min);
+        # if the blob weren't re-parsed the two intervals would match. (>5x is a wide margin.)
+        self.assertGreater(honored_interval, fresh_first_interval * 5)
+
+    def test_review_survives_corrupt_state(self):
+        # A malformed/wrong-schema blob must recover to a fresh card, not 500 the review.
+        from django.utils import timezone
+        from lingua import schedulers
+        sched = schedulers.get_scheduler("fsrs")
+        for bad in ({"box": 1}, {"stability": 2.0}, {}, None):   # incl. a Leitner blob on an fsrs row
+            state, due = sched.review(bad, True, now=timezone.now())   # must not KeyError
+            self.assertIn("stability", state)                          # produced a valid fsrs Card blob
+
+    def test_review_accepts_non_utc_aware_now(self):
+        # py-fsrs requires exactly timezone.utc; the port must normalize any aware tz.
+        from zoneinfo import ZoneInfo
+
+        from django.utils import timezone
+        la_now = timezone.now().astimezone(ZoneInfo("America/Los_Angeles"))
+        item = services.add_review_item(self.older, "hora")
+        services.grade_review_item(item, True, now=la_now)    # would raise if not normalized
+        self.assertGreater(item.due, la_now)
+
+    def test_review_is_deterministic(self):
+        # FSRS only fuzzes MULTI-DAY review intervals (not the first ~10-min learning
+        # step), so climb both cards several Good reviews into the fuzzable range and
+        # assert their dues stay identical at every step — proving fuzzing is OFF.
+        from datetime import timedelta
+
+        from django.utils import timezone
+        a = services.add_review_item(self.older, "uno")
+        b = services.add_review_item(self.older, "dos")
+        t = timezone.now()
+        for _ in range(4):
+            services.grade_review_item(a, True, now=t)
+            services.grade_review_item(b, True, now=t)
+            self.assertEqual(a.due, b.due)                   # identical input -> identical due
+            t = t + timedelta(days=30)                       # well past due for the next review
+
+
 class PurgeStaleTests(TestCase):
     """D-56: retention is enforced, not indefinite."""
 

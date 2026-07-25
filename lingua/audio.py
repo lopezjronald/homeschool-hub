@@ -23,6 +23,8 @@ import re
 
 from django.conf import settings
 
+from . import safety
+
 WORD_RE = re.compile(r"\S+", re.UNICODE)
 
 
@@ -84,6 +86,7 @@ def synthesize(text, *, voice=None, engine=None, client=None):
     Polly/parse failure. ``client`` is injectable for tests (ports-style seam)."""
     if not (text or "").strip():
         raise TTSError("Refusing to synthesize empty text.")
+    safety.assert_no_pii(text, where="tts")  # D-52 (LGA-31): never voice child PII
     voice = voice or settings.LINGUA.get("TTS_VOICE", "Mia")
     engine = engine or settings.LINGUA.get("TTS_ENGINE", "neural")
     ai = client or _polly_client()

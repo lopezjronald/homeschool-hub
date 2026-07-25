@@ -555,6 +555,63 @@ class GenerationTests(TestCase):
         )
 
 
+class PIIGuardTests(TestCase):
+    """LGA-31 / D-52: no child PII ever reaches an AI or TTS provider. The guard is
+    a hard choke-point — it must fire BEFORE the outbound call, not after."""
+
+    def test_find_pii_flags_email_and_digit_runs(self):
+        from lingua import safety
+        self.assertEqual(safety.find_pii("escribe a mama@correo.com hoy"), "email")
+        self.assertEqual(safety.find_pii("llama al 555-123-4567"), "digit-run")
+        self.assertEqual(safety.find_pii("mi numero es 5551234567"), "digit-run")
+
+    def test_find_pii_ignores_clean_spanish(self):
+        from lingua import safety
+        # Spelled-out numbers + a lone year must NOT trip the guard (near-zero false positives).
+        self.assertEqual(safety.find_pii("El gato tiene tres anos. Nacio en 2020."), "")
+
+    def test_digit_run_threshold_and_dates(self):
+        from lingua import safety
+        self.assertEqual(safety.find_pii("codigo 123456"), "")             # 6 digits — below the 7 threshold
+        self.assertEqual(safety.find_pii("codigo 1234567"), "digit-run")   # 7 digits — trips
+        self.assertEqual(safety.find_pii("fecha 01/15/2015"), "digit-run") # slash DOB is caught, not skipped
+
+    def test_assert_no_pii_raises_on_pii_passes_clean(self):
+        from lingua import safety
+        with self.assertRaises(safety.ChildPIISuspected):
+            safety.assert_no_pii("ping me: kid@example.com", where="tts")
+        safety.assert_no_pii("Hola, como estas?", where="tts")  # clean → returns, no raise
+
+    def test_generate_story_blocks_pii_before_calling_ai(self):
+        from lingua.safety import ChildPIISuspected
+        fake = _ScriptedAIClient('{"title":"x","body":"y"}', '{"passed":true,"flags":[]}')
+        with self.assertRaises(ChildPIISuspected):
+            services.generate_story(theme_hint="about kid@example.com", level="L1", ai_client=fake)
+        self.assertEqual(fake.calls, 0)   # provider never called — guard fired first
+
+    def test_critique_story_blocks_pii_before_calling_ai(self):
+        from lingua.safety import ChildPIISuspected
+        fake = _ScriptedAIClient('{"title":"x","body":"y"}', '{"passed":true,"flags":[]}')
+        with self.assertRaises(ChildPIISuspected):
+            services.critique_story(title="Mi cuento", body="Llama al 555-867-5309.",
+                                    level="L1", ai_client=fake)
+        self.assertEqual(fake.calls, 0)
+
+    def test_synthesize_blocks_pii_before_calling_polly(self):
+        from lingua import audio
+        from lingua.safety import ChildPIISuspected
+        touched = []
+
+        class FakePolly:
+            def synthesize_speech(self, **kw):
+                touched.append(kw)
+                raise AssertionError("Polly must never be reached with PII")
+
+        with self.assertRaises(ChildPIISuspected):
+            audio.synthesize("Escribe a nino@correo.com", client=FakePolly())
+        self.assertEqual(touched, [])     # never sent to the TTS provider
+
+
 class ApprovalUITests(TestCase):
     """D-50: parent batch-approves pending drafts; editors only."""
 

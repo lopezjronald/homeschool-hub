@@ -18,6 +18,11 @@ words and very short sentences; higher levels may use richer vocabulary.
 - Write numbers and abbreviations as WORDS (e.g. "tres", not "3") so read-along \
 audio aligns one word to one token.
 - Never include a real child's name or any personal information.
+- SAFE FOR A YOUNG CHILD (this is a hard rule): warm, gentle, everyday themes only \
+(family, animals, food, school, play, nature, kindness). NEVER include violence, \
+injury, death, weapons, crime, cruelty, horror, or anything frightening; no romance \
+or adult topics; nothing scary or unsafe. If a small problem appears, resolve it \
+kindly and end on a positive, reassuring note.
 
 Respond with ONLY a JSON object (no prose, no markdown fences):
 {"title": "<short Spanish title>", "body": "<the story text>"}"""
@@ -28,11 +33,14 @@ AI-generated children's story BEFORE a parent who does NOT speak Spanish approve
 it. You are the safety net against unnatural or wrong Spanish reaching the child.
 
 Judge:
+- CHILD SAFETY (most important): every theme must be gentle and age-appropriate. \
+FAIL the story if it contains ANY violence, injury, death, weapons, crime, cruelty, \
+horror/fear, romance, or adult topics, or anything frightening or unsafe for a young child.
 - naturalness and grammatical correctness (gender/agreement, tense, prepositions),
 - level fit: is the vocabulary appropriate for the stated level, or too rare/advanced?
 - false-cognate traps or words a beginner would misread.
 
-Be conservative: if anything is wrong or clearly mismatched to the level, fail it.
+Be conservative: if anything is unsafe, wrong, or clearly mismatched to the level, fail it.
 
 Respond with ONLY a JSON object (no prose, no markdown fences):
 {"passed": true or false, "flags": ["<short specific issue>", ...]}

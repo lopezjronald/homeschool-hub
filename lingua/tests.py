@@ -26,8 +26,8 @@ from . import advancement, assets, audio, cognates, comprehension, leveling, pro
 from . import storage as lingua_storage
 from .integrations import directory
 from .models import (
-    AuditEvent, ComprehensionCheck, KnownWord, Learner, LearnerProfile, MilestoneAward,
-    PhonicsRule, ReadingSession, Story, StoryAudio, Theme,
+    AiUsage, AuditEvent, ComprehensionCheck, KnownWord, Learner, LearnerProfile,
+    MilestoneAward, PhonicsRule, ReadingSession, Story, StoryAudio, Theme,
 )
 from .ports import AIClient, AIResult
 
@@ -553,6 +553,75 @@ class GenerationTests(TestCase):
         self.assertTrue(
             AuditEvent.objects.filter(action="ai.generate_completed", target_id=s.pk).exists()
         )
+
+
+class CostCeilingTests(TestCase):
+    """LGA-29 / D-52: monthly AI token accounting + hard-stop cost ceiling."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.theme = Theme.objects.create(slug="c", name="Cost", age_band=profiles.KIDS_EARLY)
+
+    def _lingua(self, **over):
+        from django.conf import settings
+        return {**settings.LINGUA, **over}
+
+    def test_record_ai_usage_accumulates_month(self):
+        services.record_ai_usage({"input_tokens": 100, "output_tokens": 40})
+        services.record_ai_usage({"input_tokens": 10, "output_tokens": 5})
+        row = AiUsage.objects.get(period=services._current_period())
+        self.assertEqual((row.input_tokens, row.output_tokens, row.calls), (110, 45, 2))
+
+    def test_record_ai_usage_tolerates_missing_counts(self):
+        services.record_ai_usage({})           # a provider reply with no usage block
+        row = AiUsage.objects.get(period=services._current_period())
+        self.assertEqual((row.input_tokens, row.output_tokens, row.calls), (0, 0, 1))
+
+    def test_estimated_cost_and_month_to_date(self):
+        with override_settings(LINGUA=self._lingua(
+                AI_PRICE_INPUT_PER_MTOK=10.0, AI_PRICE_OUTPUT_PER_MTOK=30.0)):
+            # Sub-million counts so a true-division regression (/ -> //) would zero this.
+            self.assertAlmostEqual(services.estimated_cost_usd(500_000, 250_000), 12.5)  # 5 + 7.5
+            services.record_ai_usage({"input_tokens": 2_000_000, "output_tokens": 1_000_000})
+            self.assertAlmostEqual(services.month_to_date_cost_usd(), 50.0)  # 2*10 + 1*30
+
+    def test_usage_recorded_even_when_critic_fails(self):
+        # generate returns valid JSON (billed); critic returns garbage so its parse
+        # raises AFTER the provider billed. Both calls' tokens must still be recorded —
+        # otherwise the ceiling under-reports real spend and the hard-stop is defeated.
+        fake = _ScriptedAIClient('{"title":"El gato","body":"Hay un gato."}', "NOT JSON")
+        with self.assertRaises(Exception):
+            services.create_story_draft(theme=self.theme, level="L1", ai_client=fake)
+        row = AiUsage.objects.get(period=services._current_period())
+        self.assertEqual(row.calls, 2)            # both billed calls recorded
+        self.assertEqual(row.input_tokens, 10)    # 5 (generate) + 5 (critic, pre-parse)
+
+    def test_budget_exceeded_toggles_at_ceiling(self):
+        with override_settings(LINGUA=self._lingua(
+                MONTHLY_COST_CEILING_USD=1, AI_PRICE_INPUT_PER_MTOK=10.0,
+                AI_PRICE_OUTPUT_PER_MTOK=0.0)):
+            self.assertFalse(services.ai_budget_exceeded())    # nothing recorded yet
+            services.record_ai_usage({"input_tokens": 100_000, "output_tokens": 0})  # exactly $1.00
+            self.assertTrue(services.ai_budget_exceeded())     # >= ceiling → hard-stop
+
+    def test_create_story_draft_blocked_when_over_budget(self):
+        fake = _ScriptedAIClient('{"title":"x","body":"y"}', '{"passed":true,"flags":[]}')
+        with override_settings(LINGUA=self._lingua(
+                MONTHLY_COST_CEILING_USD=1, AI_PRICE_INPUT_PER_MTOK=10.0,
+                AI_PRICE_OUTPUT_PER_MTOK=0.0)):
+            services.record_ai_usage({"input_tokens": 200_000, "output_tokens": 0})  # $2 > $1
+            with self.assertRaises(services.CostCeilingExceeded):
+                services.create_story_draft(theme=self.theme, level="L1", ai_client=fake)
+        self.assertEqual(fake.calls, 0)             # provider never called
+        self.assertFalse(Story.objects.exists())    # nothing persisted
+
+    def test_create_story_draft_records_usage(self):
+        fake = _ScriptedAIClient('{"title":"El gato","body":"Hay un gato."}',
+                                 '{"passed":true,"flags":[]}')
+        services.create_story_draft(theme=self.theme, level="L1", ai_client=fake)
+        row = AiUsage.objects.get(period=services._current_period())
+        # _ScriptedAIClient reports 5 in / 10 out per call; generate + critic = 2 calls.
+        self.assertEqual((row.input_tokens, row.output_tokens, row.calls), (10, 20, 2))
 
 
 class PIIGuardTests(TestCase):

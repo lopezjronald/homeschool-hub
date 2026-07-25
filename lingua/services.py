@@ -9,7 +9,7 @@ import json
 
 from django.conf import settings
 from django.db import IntegrityError, transaction
-from django.db.models import Count, Max, Q, Sum
+from django.db.models import Count, F, Max, Q, Sum
 from django.utils import timezone
 from django.utils.module_loading import import_string
 
@@ -17,8 +17,8 @@ from . import (
     advancement, assets, audio, cognates, comprehension, leveling, profiles, safety, storage,
 )
 from .models import (
-    AuditEvent, ComprehensionCheck, KnownWord, Learner, MilestoneAward, PhonicsRule,
-    ReadingSession, Story, StoryAudio, Theme,
+    AiUsage, AuditEvent, ComprehensionCheck, KnownWord, Learner, MilestoneAward,
+    PhonicsRule, ReadingSession, Story, StoryAudio, Theme,
 )
 from .ports import AIClient
 from .prompts import CRITIC_SYSTEM, STORY_SYSTEM
@@ -471,6 +471,47 @@ def _tokens(usage):
     return (usage.get("input_tokens") or 0) + (usage.get("output_tokens") or 0)
 
 
+class CostCeilingExceeded(Exception):
+    """The monthly AI cost ceiling is reached; new generation is paused (D-52, LGA-29)."""
+
+
+def _current_period():
+    return timezone.now().strftime("%Y-%m")
+
+
+def estimated_cost_usd(input_tokens, output_tokens):
+    """Estimate USD for a token count from the configured per-million-token prices."""
+    L = settings.LINGUA
+    return (input_tokens / 1_000_000) * L["AI_PRICE_INPUT_PER_MTOK"] + \
+           (output_tokens / 1_000_000) * L["AI_PRICE_OUTPUT_PER_MTOK"]
+
+
+def month_to_date_cost_usd():
+    """Estimated AI spend for the current calendar month (0.0 if nothing recorded)."""
+    row = AiUsage.objects.filter(period=_current_period()).first()
+    return estimated_cost_usd(row.input_tokens, row.output_tokens) if row else 0.0
+
+
+def ai_budget_exceeded():
+    """True once month-to-date spend reaches the ceiling — the hard-stop gate (D-52)."""
+    return month_to_date_cost_usd() >= settings.LINGUA["MONTHLY_COST_CEILING_USD"]
+
+
+def record_ai_usage(usage):
+    """Accumulate one AI call's tokens into the current month (LGA-29). Atomic F()
+    increment so concurrent authoring can't lose a call; tolerates missing counts."""
+    it = (usage or {}).get("input_tokens") or 0
+    ot = (usage or {}).get("output_tokens") or 0
+    period = _current_period()
+    AiUsage.objects.get_or_create(period=period)
+    AiUsage.objects.filter(period=period).update(
+        input_tokens=F("input_tokens") + it,
+        output_tokens=F("output_tokens") + ot,
+        calls=F("calls") + 1,
+        updated_at=timezone.now(),
+    )
+
+
 def generate_story(*, theme_hint, level, ai_client=None):
     """Generate one leveled Spanish story via the AIClient port (D-48).
     Returns {"title", "body", "usage"}. Raises on an unparseable reply."""
@@ -479,6 +520,7 @@ def generate_story(*, theme_hint, level, ai_client=None):
     # Fence the untrusted theme hint so it can't inject instructions (LGA-30, D-53).
     user = f"Level: {level}\n{safety.fence(theme_hint, 'theme')}\nWrite the story now."
     result = ai.generate(system=STORY_SYSTEM, user=user, max_tokens=800)
+    record_ai_usage(result.usage)  # bill the instant the provider responds — before any parse can fail (LGA-29)
     data = _parse_json(result.text)
     return {
         "title": str(data.get("title", "")).strip(),
@@ -499,6 +541,7 @@ def critique_story(*, title, body, level, ai_client=None):
         f"{safety.fence(body, 'story')}\n\nReview it now."
     )
     result = ai.generate(system=CRITIC_SYSTEM, user=user, max_tokens=400)
+    record_ai_usage(result.usage)  # bill the instant the provider responds — before any parse can fail (LGA-29)
     data = _parse_json(result.text)
     return {
         "passed": bool(data.get("passed", False)),
@@ -520,6 +563,13 @@ def create_story_draft(*, theme, level, ai_client=None):
     ``theme`` is a lingua.Theme instance.
     """
     ai = ai_client or get_ai_client()
+    # Hard-stop BEFORE spending: once the month's estimated spend hits the ceiling,
+    # no new generation runs until next month (D-52/57, LGA-29).
+    if ai_budget_exceeded():
+        raise CostCeilingExceeded(
+            f"Lingua monthly AI cost ceiling (${settings.LINGUA['MONTHLY_COST_CEILING_USD']}) "
+            "reached; story generation is paused until next month."
+        )
     try:
         story = generate_story(theme_hint=theme.name, level=level, ai_client=ai)
         review = critique_story(
@@ -533,6 +583,8 @@ def create_story_draft(*, theme, level, ai_client=None):
             metadata={"level": level, "error": type(exc).__name__},
         )
         raise
+    # Usage is recorded inside generate_story/critique_story the instant each provider
+    # call returns, so a later parse/persist failure never loses real spend (LGA-29).
     tokens = _tokens(story["usage"]) + _tokens(review["usage"])
     # Soft leveling signal (D-25/LGA-44): what level the text reads as + rare words.
     # A soft signal must never lose or block a paid-for story, so degrade on failure.

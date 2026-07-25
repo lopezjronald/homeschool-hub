@@ -27,7 +27,8 @@ from . import storage as lingua_storage
 from .integrations import directory
 from .models import (
     AiUsage, AuditEvent, ComprehensionCheck, KnownWord, Learner, LearnerProfile,
-    MilestoneAward, PhonicsRule, ReadingSession, ReviewItem, Story, StoryAudio, Theme,
+    ListeningResource, ListeningSession, MilestoneAward, PhonicsRule, ReadingSession,
+    ReviewItem, Story, StoryAudio, Theme,
 )
 from .ports import AIClient, AIResult
 
@@ -2794,6 +2795,79 @@ class GraduationToFSRSTests(TestCase):
             services.graduate_to_fsrs(item)         # must not raise
             self.assertEqual(item.scheduler, ReviewItem.FSRS)
             self.assertIn("stability", item.scheduler_state)
+
+
+class ListeningTests(TestCase):
+    """LGA-55/56/57 / F-02/N-02: curated listening + minutes into the hero metric."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from portal.tokens import make_portal_token
+        cls.parent = User.objects.create_user("li_parent", email="li@e.com", password="pw")
+        cls.student = Student.objects.create(parent=cls.parent, first_name="Lis")
+        cls.early = Learner.create_for_host_student(cls.student.pk, profiles.KIDS_EARLY)
+        cls.older = Learner.create_for_host_student(7702, profiles.KIDS_OLDER)
+        cls.token = make_portal_token(cls.student)
+        cls.r_early = ListeningResource.objects.create(
+            title="Rockalingua", url="https://youtube.com/x", age_band=profiles.KIDS_EARLY,
+            level="L1", minutes=5, order=1)
+        cls.r_older = ListeningResource.objects.create(
+            title="Dreaming Spanish", url="https://youtube.com/y", age_band=profiles.KIDS_OLDER,
+            level="L2", minutes=8, order=1)
+
+    def test_listening_resources_filtered_by_band_and_active(self):
+        early = services.listening_resources(profiles.KIDS_EARLY)
+        self.assertIn(self.r_early, early)
+        self.assertNotIn(self.r_older, early)          # other band excluded
+        self.r_early.active = False
+        self.r_early.save(update_fields=["active"])
+        self.assertNotIn(self.r_early, services.listening_resources(profiles.KIDS_EARLY))  # inactive excluded
+
+    def test_record_listening_clamps_and_skips_zero(self):
+        self.assertIsNone(services.record_listening(self.early, self.r_early, 0))   # 0-min no-op
+        s = services.record_listening(self.early, self.r_early, 5000)               # clamped
+        self.assertEqual(s.minutes, 600)
+        self.assertEqual(ListeningSession.objects.filter(learner=self.early).count(), 1)
+
+    def test_listening_minutes_added_to_hero_metric(self):
+        base = services.reading_totals(self.early)["minutes"]
+        services.record_listening(self.early, self.r_early, 12)
+        totals = services.reading_totals(self.early)
+        self.assertEqual(totals["listening_minutes"], 12)
+        self.assertEqual(totals["minutes"], base + 12)   # listening added to TOTAL input minutes
+
+    def test_seed_listening_is_idempotent(self):
+        from io import StringIO
+
+        from django.core.management import call_command
+        from lingua.management.commands.seed_listening import RESOURCES
+        before = ListeningResource.objects.count()               # the 2 fixtures
+        call_command("seed_listening", stdout=StringIO())
+        after_first = ListeningResource.objects.count()
+        # The seed created EXACTLY the full curated set (delta vs the pre-existing rows) —
+        # a seed loop that silently skipped some would create fewer and fail here.
+        self.assertEqual(after_first - before, len(RESOURCES))
+        call_command("seed_listening", stdout=StringIO())
+        self.assertEqual(ListeningResource.objects.count(), after_first)   # re-run adds none
+
+    def test_zero_minute_log_shows_no_false_banner(self):
+        url = reverse("portal:lingua_listen_log", kwargs={"token": self.token})
+        resp = self.client.post(url, {"resource_id": self.r_early.id, "minutes": 0})
+        self.assertNotIn("logged=", resp["Location"])            # no ?logged -> no false success banner
+        self.assertEqual(ListeningSession.objects.filter(learner=self.early).count(), 0)  # nothing logged
+
+    def test_portal_listen_page_shows_only_band_resources(self):
+        html = self.client.get(
+            reverse("portal:lingua_listen", kwargs={"token": self.token})).content.decode()
+        self.assertIn("Rockalingua", html)               # the KIDS_EARLY student's band
+        self.assertNotIn("Dreaming Spanish", html)       # the other band's resource is hidden
+
+    def test_portal_listen_log_records_minutes(self):
+        from django.db.models import Sum
+        url = reverse("portal:lingua_listen_log", kwargs={"token": self.token})
+        self.client.post(url, {"resource_id": self.r_early.id, "minutes": 15})
+        self.assertEqual(
+            ListeningSession.objects.filter(learner=self.early).aggregate(m=Sum("minutes"))["m"], 15)
 
 
 class PurgeStaleTests(TestCase):

@@ -114,6 +114,45 @@ def lingua_phonics(request, token):
     })
 
 
+def lingua_listen(request, token):
+    """Spanish listening track (F-02/N-02, LGA-55/57): curated comprehensible-input
+    videos for the learner's band, plus a minutes check-in. Listening minutes feed the
+    same 'minutes of input' hero metric as reading. Provisions the learner on entry."""
+    student = _resolve_student(token)
+    learner = _lingua_learner(student)
+    return render(request, "portal/lingua_listen.html", {
+        "student": student, "token": token,
+        "resources": lingua_services.listening_resources(learner.profile.track_profile),
+        "totals": lingua_services.reading_totals(learner),
+        "logged": request.GET.get("logged"),
+    })
+
+
+@csrf_exempt
+@require_POST
+def lingua_listen_log(request, token):
+    """Log a listening check-in (minutes of input, LGA-55/57). Tokenless like the other
+    portal writes. Minutes are clamped in the service; an unknown/blank resource still
+    logs the minutes (resource is optional). Redirects back to the listening page."""
+    student = _resolve_student(token)
+    learner = _lingua_learner(student)
+    resource = None
+    try:
+        resource = lingua_services.ListeningResource.objects.filter(
+            pk=int(request.POST.get("resource_id", "")), active=True).first()
+    except (TypeError, ValueError):
+        resource = None
+    try:
+        minutes = int(request.POST.get("minutes", 0))
+    except (TypeError, ValueError):
+        minutes = 0
+    session = lingua_services.record_listening(learner, resource, minutes)
+    base = reverse("portal:lingua_listen", args=[token])
+    # Only flash the "you logged N minutes" banner when a session was actually recorded —
+    # a 0-minute no-op redirects clean (else "?logged=0" shows a false success banner).
+    return redirect(f"{base}?logged={session.minutes}" if session else base)
+
+
 @csrf_exempt
 @require_POST
 def lingua_capture_word(request, token):

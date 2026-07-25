@@ -18,8 +18,9 @@ from . import (
     schedulers, storage,
 )
 from .models import (
-    AiUsage, AuditEvent, ComprehensionCheck, KnownWord, Learner, MilestoneAward,
-    PhonicsRule, ReadingSession, ReviewItem, Story, StoryAudio, Theme,
+    AiUsage, AuditEvent, ComprehensionCheck, KnownWord, Learner, ListeningResource,
+    ListeningSession, MilestoneAward, PhonicsRule, ReadingSession, ReviewItem, Story,
+    StoryAudio, Theme,
 )
 from .ports import AIClient
 from .prompts import CRITIC_SYSTEM, STORY_SYSTEM
@@ -199,9 +200,15 @@ def reading_totals(learner):
     agg = learner.reading_sessions.aggregate(
         words=Sum("words"), secs=Sum("seconds"), stories=Count("story", distinct=True),
     )
+    reading_minutes = round((agg["secs"] or 0) / 60)
+    listen_minutes = learner.listening_sessions.aggregate(m=Sum("minutes"))["m"] or 0
     return {
         "words_read": agg["words"] or 0,
-        "minutes": round((agg["secs"] or 0) / 60),
+        # "minutes" is total comprehensible-INPUT minutes (reading + listening, D-60/61,
+        # LGA-57); listening_minutes/reading_minutes give the breakdown.
+        "minutes": reading_minutes + listen_minutes,
+        "reading_minutes": reading_minutes,
+        "listening_minutes": listen_minutes,
         "stories": agg["stories"] or 0,
         "known_words": learner.known_words.count(),
     }
@@ -467,6 +474,21 @@ def mark_nudge_shown(learner):
 def phonics_rules():
     """The active Spanish phonics rules for the mini-lesson (F-04, LGA-64), ordered."""
     return list(PhonicsRule.objects.filter(active=True))
+
+
+def listening_resources(age_band):
+    """Active curated listening items for a band, ordered (F-02/N-02, LGA-55/56)."""
+    return list(ListeningResource.objects.filter(age_band=age_band, active=True))
+
+
+def record_listening(learner, resource, minutes):
+    """Log a listening check-in — minutes of comprehensible input toward the hero metric
+    (F-02/N-02, LGA-55/57). ``minutes`` is clamped to a sane 0..600 so a fat-fingered or
+    hostile value can't inflate the metric. A 0-minute log is a no-op (returns None)."""
+    mins = max(0, min(int(minutes or 0), 600))
+    if mins == 0:
+        return None
+    return ListeningSession.objects.create(learner=learner, resource=resource, minutes=mins)
 
 
 MAX_ACTIVE_LEITNER_ITEMS = 15   # deck-size cap for the young Leitner learner (D-31)

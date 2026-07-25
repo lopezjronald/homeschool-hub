@@ -15,11 +15,16 @@ from django.db.models import Q
 from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.db import transaction
+from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 
 from activities.models import ExternalActivity
+from lingua import profiles as lingua_profiles
+from lingua import services as lingua_services
+from lingua import views as lingua_views
+from lingua.models import Story as LinguaStory
 from curricula.models import Curriculum, CurriculumPlacement
 from curricula.subjects import emoji_for, is_spelling
 from tutor import ai, grading
@@ -34,6 +39,73 @@ def _resolve_student(token):
     if student is None:
         raise Http404
     return student
+
+
+# --- Lingua (Spanish) kid surface -----------------------------------------
+# Student→Learner resolution lives HERE, in the host, so lingua core never imports
+# a host model (D-03/D-04): the host knows the child's age and hands lingua a plain
+# host_student_id + a track profile.
+
+def _infer_band(student):
+    """Pick a Lingua track band from the child's age (KIDS_EARLY <10, else KIDS_OLDER);
+    default to KIDS_EARLY when the DOB is unknown. A parent settings UI can override
+    this later; v1 auto-provisions a sensible default on first entry."""
+    from datetime import date
+
+    dob = student.date_of_birth
+    if dob:
+        today = date.today()
+        # exact calendar age (no leap-day drift from //365 near the boundary)
+        age = today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
+        return lingua_profiles.KIDS_OLDER if age >= 10 else lingua_profiles.KIDS_EARLY
+    return lingua_profiles.KIDS_EARLY
+
+
+def _lingua_learner(student):
+    """The lingua Learner for this student, provisioned on first entry (idempotent)."""
+    return lingua_services.get_or_create_learner(student.pk, _infer_band(student))
+
+
+def lingua_plan(request, token):
+    """The kid's Spanish 'today' page: the daily plan + the warm hero metric. Lives in
+    the portal shell (extends base_portal.html); the reader itself is CSP-clean."""
+    student = _resolve_student(token)
+    learner = _lingua_learner(student)
+    return render(request, "portal/lingua_plan.html", {
+        "student": student, "token": token,
+        "plan": lingua_services.build_daily_plan(learner),
+        "totals": lingua_services.reading_totals(learner),
+    })
+
+
+def lingua_read(request, token, story_id):
+    """Tokenless read-along for a kid. Identity comes from the signed token (never
+    request.user); only APPROVED stories are servable (D-49). Delegates rendering to
+    lingua so the page stays CSP-clean and the module stays extractable."""
+    _resolve_student(token)  # 404s an invalid/tampered token before serving anything
+    story = get_object_or_404(LinguaStory, pk=story_id, status=LinguaStory.APPROVED)
+    return lingua_views.render_reader(
+        request, story,
+        finish_url=reverse("portal:lingua_finish", args=[token, story_id]),
+        back_url=reverse("portal:lingua_plan", args=[token]),
+    )
+
+
+@csrf_exempt
+@require_POST
+def lingua_finish(request, token, story_id):
+    """Log a completed read (ReadingSession) and return to the plan. Token-authed +
+    csrf-exempt like the other tokenless portal writes — the unguessable signed token
+    is the credential, not a cookie, so there's nothing for CSRF to ride on."""
+    student = _resolve_student(token)
+    learner = _lingua_learner(student)
+    story = get_object_or_404(LinguaStory, pk=story_id, status=LinguaStory.APPROVED)
+    try:
+        seconds = int(request.POST.get("seconds", 0))
+    except (TypeError, ValueError):
+        seconds = 0
+    lingua_services.record_reading(learner, story, seconds=seconds)
+    return redirect("portal:lingua_plan", token=token)
 
 
 def _placed_curriculum_ids(student):

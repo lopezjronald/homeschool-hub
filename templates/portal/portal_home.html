@@ -9,6 +9,19 @@
     <p class="mb-0">Pick a subject to keep going. You've got this. 🌱</p>
   </div>
 
+  {# Lingua (Spanish) is always available — tapping it provisions the learner + opens
+     today's read-along plan. #}
+  <div class="portal-subjects mb-3">
+    <a href="{% url 'portal:lingua_plan' token=token %}" class="portal-subject-card">
+      <div class="portal-subject-emoji">📖</div>
+      <div class="portal-subject-body">
+        <div class="portal-subject-name">Español</div>
+        <div class="portal-next-line"><span class="portal-next-label">Leer</span> today's Spanish story</div>
+      </div>
+      <div class="portal-subject-go">Start ➜</div>
+    </a>
+  </div>
+
   {% if subjects %}
     <div class="portal-subjects">
       {% for subject in subjects %}
@@ -81,9 +94,6 @@
     </div>
   {% endif %}
 
-  {% if not subjects and not activities %}
-    <div class="alert alert-info">Nothing here yet — check back soon! 🌱</div>
-  {% endif %}
 
 </div>
 {% endblock %}

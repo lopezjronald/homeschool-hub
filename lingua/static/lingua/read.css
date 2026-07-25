@@ -42,6 +42,19 @@ body {
 }
 .note { color: var(--muted); font-size: 1.05rem; font-style: italic; margin-top: 1.5rem; }
 
+.finish { margin: 2rem 0 0; }
+.finish-btn {
+  font: 600 1.2rem/1 system-ui, sans-serif;
+  padding: 0.7em 1.4em;
+  color: #fff;
+  background: #2e7d32;
+  border: none;
+  border-radius: 0.6em;
+  cursor: pointer;
+}
+.finish-btn:hover { background: #276a2b; }
+@media (prefers-color-scheme: dark) { .finish-btn { background: #3a9440; } }
+
 /* Cognate hint (subtle: "you can probably guess this") and false-friend warning
    ("looks familiar but isn't"). The highlighted read-along word (.w.on) still wins. */
 :root { --cognate: #2e7d32; --ff: #c1440e; }

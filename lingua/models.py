@@ -74,6 +74,10 @@ class LearnerProfile(models.Model):
     track_profile = models.CharField(max_length=16, choices=profiles.TRACK_CHOICES)
     support_level = models.CharField(max_length=16, choices=profiles.SUPPORT_CHOICES)
     content_ceiling = models.CharField(max_length=4, choices=profiles.LEVEL_CHOICES)
+    # Debounce anchor for the D-67 "testing above defaults" parent nudge: the reading-
+    # session count when the nudge was last shown (None = never). Nudge again only
+    # after ~5 more sessions, so it never nags.
+    last_nudge_reading_count = models.IntegerField(null=True, blank=True, default=None)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -108,7 +112,7 @@ class AuditEvent(models.Model):
     ACTIONS = {
         "ai.generate_requested", "ai.generate_completed", "ai.generate_failed",
         "content.approved", "content.rejected",
-        "learner.created", "learner.deleted",
+        "learner.created", "learner.deleted", "learner.advanced",
         "data.exported", "data.purged",
     }
 

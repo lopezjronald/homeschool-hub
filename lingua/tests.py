@@ -22,7 +22,7 @@ from students.models import Student
 
 from django.core.files.storage import InMemoryStorage, storages
 
-from . import assets, audio, cognates, comprehension, leveling, profiles, services
+from . import advancement, assets, audio, cognates, comprehension, leveling, profiles, services
 from . import storage as lingua_storage
 from .integrations import directory
 from .models import (
@@ -1601,6 +1601,120 @@ class DailyPlanTests(TestCase):
         plan = services.build_daily_plan(learner)
         new_item = next(i for i in plan["items"] if i["kind"] == "new")
         self.assertEqual(new_item["story"], same)    # same theme as the reread (continuity)
+
+
+class AdvancementTests(TestCase):
+    """LGA-67 / D-64 / D-67: transparent advancement rule + parent 'testing above' nudge."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.story = Story.objects.create(title="s", body="El gato.", level="L1", status=Story.APPROVED)
+
+    def _learner(self, hsid, ceiling="L1"):
+        return Learner.create_for_host_student(hsid, profiles.KIDS_EARLY, content_ceiling=ceiling)
+
+    def _check(self, learner, result, days_ago=0):
+        c = services.record_comprehension(learner, self.story, comprehension.PICTURE_MATCH, result=result)
+        if days_ago:
+            from datetime import timedelta
+
+            from django.utils import timezone
+            ComprehensionCheck.objects.filter(pk=c.pk).update(
+                created_at=timezone.now() - timedelta(days=days_ago))
+        return c
+
+    # --- pure evaluate: the threshold matrix (DB-free) ---
+    def test_evaluate_promote(self):
+        recent = [comprehension.PROFICIENT] * 4 + [comprehension.BEGINNING]
+        self.assertEqual(
+            advancement.evaluate(recent, n_graded=5, weeks_active=3, level_rank=0, top_rank=7),
+            advancement.PROMOTE)
+
+    def test_evaluate_holds_when_too_few_hits(self):
+        recent = [comprehension.PROFICIENT] * 3 + [comprehension.BEGINNING] * 2
+        self.assertEqual(
+            advancement.evaluate(recent, n_graded=5, weeks_active=3, level_rank=0, top_rank=7),
+            advancement.HOLD)
+
+    def test_evaluate_holds_before_two_weeks(self):
+        recent = [comprehension.STRONG] * 5
+        self.assertEqual(
+            advancement.evaluate(recent, n_graded=5, weeks_active=1, level_rank=0, top_rank=7),
+            advancement.HOLD)
+
+    def test_evaluate_no_promote_at_top(self):
+        recent = [comprehension.STRONG] * 5
+        self.assertEqual(
+            advancement.evaluate(recent, n_graded=5, weeks_active=4, level_rank=7, top_rank=7),
+            advancement.HOLD)
+
+    def test_evaluate_demote_on_three_beginning(self):
+        recent = [comprehension.BEGINNING] * 3 + [comprehension.DEVELOPING]
+        self.assertEqual(
+            advancement.evaluate(recent, n_graded=4, weeks_active=4, level_rank=3, top_rank=7),
+            advancement.DEMOTE)
+
+    def test_evaluate_no_demote_at_floor_or_short_streak(self):
+        self.assertEqual(  # at floor
+            advancement.evaluate([comprehension.BEGINNING] * 3, n_graded=3, weeks_active=4, level_rank=0, top_rank=7),
+            advancement.HOLD)
+        self.assertEqual(  # only 2 in a row
+            advancement.evaluate([comprehension.BEGINNING, comprehension.BEGINNING, comprehension.PROFICIENT],
+                                 n_graded=3, weeks_active=4, level_rank=3, top_rank=7),
+            advancement.HOLD)
+
+    def test_evaluate_deadband_holds(self):
+        recent = [comprehension.PROFICIENT, comprehension.PROFICIENT, comprehension.BEGINNING,
+                  comprehension.BEGINNING, comprehension.DEVELOPING]
+        self.assertEqual(
+            advancement.evaluate(recent, n_graded=5, weeks_active=4, level_rank=3, top_rank=7),
+            advancement.HOLD)
+
+    # --- service: gathers signals + proposes a level ---
+    def test_recommendation_promote_to_next_level(self):
+        l = self._learner(1001, ceiling="L1")
+        self._check(l, comprehension.PROFICIENT, days_ago=20)       # oldest → >2 weeks
+        for _ in range(3):
+            self._check(l, comprehension.PROFICIENT, days_ago=1)
+        self._check(l, comprehension.BEGINNING)                     # 5 total, 4 proficient
+        rec = services.advancement_recommendation(l)
+        self.assertEqual(rec["action"], "promote")
+        self.assertEqual((rec["from_level"], rec["to_level"]), ("L1", "L2"))
+
+    def test_recommendation_hold_when_new(self):
+        l = self._learner(1006, ceiling="L1")
+        for _ in range(5):
+            self._check(l, comprehension.PROFICIENT)                # all today → <2 weeks
+        self.assertEqual(services.advancement_recommendation(l)["action"], "hold")
+
+    def test_apply_advancement_sets_ceiling_and_audits(self):
+        l = self._learner(1002, ceiling="L1")
+        services.apply_advancement(l, "L2", host_user_id=7)
+        l.profile.refresh_from_db()
+        self.assertEqual(l.profile.content_ceiling, "L2")
+        self.assertTrue(AuditEvent.objects.filter(action="learner.advanced", target_id=l.pk).exists())
+
+    def test_apply_advancement_rejects_bad_level(self):
+        with self.assertRaises(ValueError):
+            services.apply_advancement(self._learner(1003), "L99", host_user_id=7)
+
+    def test_nudge_fires_on_consistent_strong_then_debounces(self):
+        l = self._learner(1004, ceiling="L1")
+        for _ in range(5):
+            self._check(l, comprehension.STRONG)
+        self.assertTrue(services.nudge_testing_above_defaults(l))    # consistently strong
+        services.mark_nudge_shown(l)
+        self.assertFalse(services.nudge_testing_above_defaults(l))   # just shown → debounced
+        for _ in range(5):
+            services.record_reading(l, self.story)                  # 5 more sessions
+        self.assertTrue(services.nudge_testing_above_defaults(l))    # debounce elapsed
+
+    def test_no_nudge_unless_all_strong(self):
+        l = self._learner(1005, ceiling="L1")
+        for _ in range(4):
+            self._check(l, comprehension.STRONG)
+        self._check(l, comprehension.PROFICIENT)                    # not all strong
+        self.assertFalse(services.nudge_testing_above_defaults(l))
 
 
 class ComprehensionTests(TestCase):

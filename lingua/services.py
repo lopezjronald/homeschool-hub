@@ -14,7 +14,8 @@ from django.utils import timezone
 from django.utils.module_loading import import_string
 
 from . import (
-    advancement, assets, audio, cognates, comprehension, leveling, profiles, safety, storage,
+    advancement, assets, audio, cognates, comprehension, leveling, profiles, safety,
+    schedulers, storage,
 )
 from .models import (
     AiUsage, AuditEvent, ComprehensionCheck, KnownWord, Learner, MilestoneAward,
@@ -440,6 +441,45 @@ def mark_nudge_shown(learner):
 def phonics_rules():
     """The active Spanish phonics rules for the mini-lesson (F-04, LGA-64), ordered."""
     return list(PhonicsRule.objects.filter(active=True))
+
+
+MAX_ACTIVE_LEITNER_ITEMS = 15   # deck-size cap for the young Leitner learner (D-31)
+
+
+def add_review_item(learner, target_ref, *, target_kind=ReviewItem.VOCAB,
+                    scheduler=ReviewItem.LEITNER, now=None):
+    """Add a card to the learner's deck, seeded by the chosen scheduler and due now
+    (LGA-59). Idempotent per (learner, kind, ref) — a repeat target returns the
+    existing card unchanged. For Leitner, enforces the <=15 active-deck cap so a young
+    child isn't overwhelmed (D-31): at the cap, returns None and adds nothing."""
+    now = now or timezone.now()
+    if (scheduler == ReviewItem.LEITNER
+            and ReviewItem.objects.filter(learner=learner, scheduler=ReviewItem.LEITNER)
+            .count() >= MAX_ACTIVE_LEITNER_ITEMS):
+        return None
+    sched = schedulers.get_scheduler(scheduler)
+    item, _ = ReviewItem.objects.get_or_create(
+        learner=learner, target_kind=target_kind, target_ref=target_ref,
+        defaults={"scheduler": scheduler, "scheduler_state": sched.initial_state(), "due": now},
+    )
+    return item
+
+
+def grade_review_item(item, correct, *, now=None):
+    """Apply a review grade to a card via its scheduler (LGA-59). ``correct`` comes from
+    a parent tap (got-it/missed) or an auto-graded recognition match — the scheduler
+    handles both identically. A miss is non-punitive (Leitner resets to box 1)."""
+    now = now or timezone.now()
+    sched = schedulers.get_scheduler(item.scheduler)
+    item.scheduler_state, item.due = sched.review(item.scheduler_state, correct, now=now)
+    item.save(update_fields=["scheduler_state", "due", "updated_at"])
+    return item
+
+
+def auto_grade_recognition(item, chosen, correct, *, now=None):
+    """Auto-grade an unambiguous recognition card (tap the matching picture) without a
+    parent (D-31): the tap is objectively right/wrong. A miss just resets the box."""
+    return grade_review_item(item, chosen == correct, now=now)
 
 
 def due_review_items(learner, *, now=None):

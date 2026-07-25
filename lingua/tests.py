@@ -2427,6 +2427,60 @@ class ReviewItemTests(TestCase):
                 self._item("gato", -20)   # same (learner, kind, ref) → constraint
 
 
+class LeitnerSchedulerTests(TestCase):
+    """LGA-59 / D-31: 5-box Leitner — parent-grader, <=15 deck cap, recognition
+    auto-grade, misses non-punitive."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.learner = Learner.create_for_host_student(4059, profiles.KIDS_EARLY)
+
+    def test_correct_promotes_box_and_pushes_due_out(self):
+        from datetime import timedelta
+
+        from django.utils import timezone
+        now = timezone.now()
+        item = services.add_review_item(self.learner, "gato")
+        self.assertEqual(item.scheduler_state["box"], 1)
+        services.grade_review_item(item, True, now=now)
+        self.assertEqual(item.scheduler_state["box"], 2)                       # promoted
+        self.assertAlmostEqual(item.due, now + timedelta(days=2), delta=timedelta(seconds=5))
+        services.grade_review_item(item, True, now=now)
+        self.assertEqual(item.scheduler_state["box"], 3)                       # again
+
+    def test_miss_resets_to_box_one_nonpunitive(self):
+        from datetime import timedelta
+
+        from django.utils import timezone
+        now = timezone.now()
+        item = services.add_review_item(self.learner, "perro")
+        for _ in range(3):
+            services.grade_review_item(item, True, now=now)                    # climb to box 4
+        self.assertEqual(item.scheduler_state["box"], 4)
+        services.grade_review_item(item, False, now=now)                       # miss
+        self.assertEqual(item.scheduler_state["box"], 1)                       # reset, not box 3 or negative
+        self.assertAlmostEqual(item.due, now + timedelta(days=1), delta=timedelta(seconds=5))
+
+    def test_box_caps_at_five(self):
+        item = services.add_review_item(self.learner, "casa")
+        for _ in range(10):
+            services.grade_review_item(item, True)
+        self.assertEqual(item.scheduler_state["box"], 5)                       # never 6+
+
+    def test_active_deck_capped_at_15(self):
+        for i in range(15):
+            self.assertIsNotNone(services.add_review_item(self.learner, f"w{i}"))
+        self.assertIsNone(services.add_review_item(self.learner, "w15"))       # 16th refused
+        self.assertEqual(ReviewItem.objects.filter(learner=self.learner).count(), 15)
+
+    def test_recognition_auto_grade_path(self):
+        item = services.add_review_item(self.learner, "gato")
+        services.auto_grade_recognition(item, "gato", "gato")                  # unambiguous match
+        self.assertEqual(item.scheduler_state["box"], 2)                       # advanced, no parent
+        services.auto_grade_recognition(item, "perro", "gato")                 # miss
+        self.assertEqual(item.scheduler_state["box"], 1)                       # non-punitive reset
+
+
 class PurgeStaleTests(TestCase):
     """D-56: retention is enforced, not indefinite."""
 

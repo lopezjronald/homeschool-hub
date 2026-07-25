@@ -462,6 +462,56 @@ class MilestoneAward(models.Model):
         return f"MilestoneAward<learner={self.learner_id} {self.kind}={self.threshold}>"
 
 
+class ListeningResource(models.Model):
+    """A curated external listening item — a YouTube video/playlist/channel of leveled
+    comprehensible Spanish input (F-02/N-02, LGA-55/56). Content-only (no learner FK),
+    seeded by ``seed_listening``. We reuse the curated-external-link + minutes-check-in
+    PATTERN (not a TTS listening library) but keep it lingua-OWNED rather than FK-ing the
+    host ``activities.ExternalActivity``, so the module stays extractable (D-03/D-04).
+    Nothing copyrighted is stored — only a link + metadata (embed/link out)."""
+
+    title = models.CharField(max_length=200)
+    provider = models.CharField(max_length=120, blank=True, help_text="e.g. 'Dreaming Spanish'.")
+    url = models.URLField(help_text="Curated YouTube video/playlist/channel URL.")
+    age_band = models.CharField(max_length=16, choices=profiles.TRACK_CHOICES)
+    level = models.CharField(max_length=4, choices=profiles.LEVEL_CHOICES)
+    visual_support = models.BooleanField(
+        default=True, help_text="Strong pictures/gestures/animation aid comprehension.")
+    minutes = models.PositiveIntegerField(default=5, help_text="Rough length, for the check-in default.")
+    transcript = models.TextField(blank=True, help_text="Optional transcript reveal (LGA-57).")
+    order = models.IntegerField(default=0)
+    active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ["age_band", "order", "id"]
+
+    def __str__(self):
+        return f"ListeningResource<{self.age_band}:{self.title}>"
+
+
+class ListeningSession(models.Model):
+    """One logged listening check-in by a learner (F-02/N-02, LGA-55/57) — the atom of
+    the listening half of the "minutes of comprehensible input" hero metric (D-60/61).
+    Mirrors ReadingSession: learner CASCADE (lingua-internal, D-03); resource SET_NULL so
+    the minutes already logged survive a curated item being removed."""
+
+    learner = models.ForeignKey(
+        Learner, on_delete=models.CASCADE, related_name="listening_sessions",
+    )
+    resource = models.ForeignKey(
+        "ListeningResource", on_delete=models.SET_NULL, null=True, blank=True, related_name="+",
+    )
+    minutes = models.PositiveIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [models.Index(fields=["learner", "created_at"])]
+
+    def __str__(self):
+        return f"ListeningSession<learner={self.learner_id} min={self.minutes}>"
+
+
 class ReviewItem(models.Model):
     """One spaced-repetition card behind the pluggable scheduler port (D-30, LGA-58).
 

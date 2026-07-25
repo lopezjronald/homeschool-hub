@@ -9,7 +9,7 @@ import json
 
 from django.conf import settings
 from django.db import transaction
-from django.db.models import Count, Q, Sum
+from django.db.models import Count, Max, Q, Sum
 from django.utils.module_loading import import_string
 
 from . import assets, audio, cognates, leveling, storage
@@ -151,6 +151,35 @@ def reading_totals(learner):
         "stories": agg["stories"] or 0,
         "known_words": learner.known_words.count(),
     }
+
+
+def pick_reread(learner, *, cap=3, exclude_story_ids=None):
+    """Pick a previously-read story to resurface — the reread-first slot of the Daily
+    Plan and the highest-leverage CI lever (N-01): rereading known stories cuts content
+    demand 2-3x while delivering comprehensible input.
+
+    Eligible = stories this learner has already read, still APPROVED (servable), under
+    the per-story ``cap`` of total reads, and not in ``exclude_story_ids``. Rotation:
+    resurface the one read LEAST RECENTLY, so the known set cycles instead of repeating
+    a favourite (guards boredom). Returns a Story or None (nothing eligible yet).
+    """
+    exclude = set(exclude_story_ids or [])
+    rows = (
+        learner.reading_sessions.filter(story__isnull=False)
+        .values("story")
+        .annotate(reads=Count("id"), last=Max("created_at"))
+        .filter(reads__lt=cap)
+        # least-recently-read first → rotation; story id tiebreaks ties for a fully
+        # deterministic pick (equal timestamps otherwise order arbitrarily per-DB).
+        .order_by("last", "story")
+    )
+    for row in rows:
+        if row["story"] in exclude:
+            continue
+        story = Story.objects.filter(pk=row["story"], status=Story.APPROVED).first()
+        if story:  # skip any that fell out of APPROVED since it was read
+            return story
+    return None
 
 
 def get_ai_client() -> AIClient:

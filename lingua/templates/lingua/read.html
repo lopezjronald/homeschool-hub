@@ -37,7 +37,12 @@
       {# CSP-clean finish: same-origin form POST (form-action 'self'); reader.js fills elapsed seconds; endpoint is token-authed + csrf-exempt. #}
       <form class="finish" id="lingua-finish" method="post" action="{{ finish_url }}">
         <input type="hidden" name="seconds" id="lingua-seconds" value="0">
-        <button type="submit" class="finish-btn">¡Terminé! ✅</button>
+        <p class="finish-q">¿Cómo te fue?</p>
+        <div class="finish-choices">
+          <button type="submit" name="felt" value="great" class="felt">😀<span>¡Bien!</span></button>
+          <button type="submit" name="felt" value="ok" class="felt">😐<span>Más o menos</span></button>
+          <button type="submit" name="felt" value="hard" class="felt">😕<span>Difícil</span></button>
+        </div>
       </form>
     {% endif %}
 

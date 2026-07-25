@@ -1913,6 +1913,27 @@ class KidPortalTests(TestCase):
         r = self.client.get(self._url("lingua_finish", story_id=self.story.pk))
         self.assertEqual(r.status_code, 405)             # require_POST
 
+    def test_reader_shows_self_check(self):
+        html = self.client.get(self._url("lingua_read", story_id=self.story.pk)).content.decode()
+        self.assertIn('name="felt"', html)               # the 3-emoji comprehension check
+        self.assertIn("¿Cómo te fue?", html)
+
+    def test_finish_records_self_check(self):
+        r = self.client.post(self._url("lingua_finish", story_id=self.story.pk),
+                             {"seconds": "20", "felt": "great"})
+        self.assertEqual(r.status_code, 302)
+        learner = Learner.objects.get(host_student_id=self.student.pk)
+        check = learner.comprehension_checks.get()
+        self.assertEqual(check.kind, comprehension.SELF_CHECK)
+        self.assertEqual(check.result, comprehension.PROFICIENT)   # "great" → proficient
+        self.assertEqual(learner.reading_sessions.count(), 1)      # read logged too
+
+    def test_finish_without_felt_skips_check(self):
+        self.client.post(self._url("lingua_finish", story_id=self.story.pk), {"seconds": "5"})
+        learner = Learner.objects.get(host_student_id=self.student.pk)
+        self.assertEqual(learner.comprehension_checks.count(), 0)  # no check, no crash
+        self.assertEqual(learner.reading_sessions.count(), 1)      # read still logged
+
     def test_finish_celebrates_crossed_milestone(self):
         big = Story.objects.create(title="big", body=" ".join(["x"] * 120),
                                    level="L1", status=Story.APPROVED)

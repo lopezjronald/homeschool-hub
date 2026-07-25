@@ -21,6 +21,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 
 from activities.models import ExternalActivity
+from lingua import comprehension as lingua_comprehension
 from lingua import profiles as lingua_profiles
 from lingua import services as lingua_services
 from lingua import views as lingua_views
@@ -116,6 +117,14 @@ def lingua_finish(request, token, story_id):
     except (TypeError, ValueError):
         seconds = 0
     lingua_services.record_reading(learner, story, seconds=seconds)
+    # Low-stakes comprehension self-check (LGA-52): the reader's 3-emoji tap. Optional —
+    # a missing/garbage value just skips the check (the read still counts).
+    felt = request.POST.get("felt")
+    if felt in lingua_comprehension.FELT_TO_RESULT:
+        lingua_services.record_comprehension(
+            learner, story, lingua_comprehension.SELF_CHECK,
+            result=lingua_comprehension.FELT_TO_RESULT[felt],
+        )
     # Celebrate any milestone this read just crossed (D-60/61) — pass the biggest new
     # one to the plan as a query param (stateless; the portal is tokenless).
     url = reverse("portal:lingua_plan", args=[token])

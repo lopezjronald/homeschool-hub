@@ -10,9 +10,10 @@ import json
 from django.conf import settings
 from django.db import IntegrityError, transaction
 from django.db.models import Count, Max, Q, Sum
+from django.utils import timezone
 from django.utils.module_loading import import_string
 
-from . import assets, audio, cognates, comprehension, leveling, profiles, storage
+from . import advancement, assets, audio, cognates, comprehension, leveling, profiles, storage
 from .models import (
     AuditEvent, ComprehensionCheck, KnownWord, Learner, MilestoneAward, ReadingSession,
     Story, StoryAudio, Theme,
@@ -372,6 +373,66 @@ def recent_comprehension(learner, n=5):
         .order_by("-created_at", "-id")  # -id tiebreaks same-instant checks (deterministic)
         .values_list("result", flat=True)[:n]
     )
+
+
+def advancement_recommendation(learner):
+    """A transparent, small-N-safe level recommendation for a learner (D-64, LGA-67) —
+    a RECOMMENDATION only, never auto-applied (a parent confirms via apply_advancement).
+    Returns {"action": promote|demote|hold, "from_level", "to_level"}."""
+    profile = learner.profile
+    graded = learner.comprehension_checks.exclude(result=comprehension.PENDING)
+    recent = recent_comprehension(learner, n=advancement.PROMOTE_WINDOW)
+    first = graded.order_by("created_at").values_list("created_at", flat=True).first()
+    weeks_active = (timezone.now() - first).days / 7 if first else 0
+    rank = profiles.level_rank(profile.content_ceiling)
+    top_rank = len(profiles.LADDER) - 1
+    action = advancement.evaluate(
+        recent, n_graded=graded.count(), weeks_active=weeks_active,
+        level_rank=rank, top_rank=top_rank,
+    )
+    to_level = profile.content_ceiling
+    if action == advancement.PROMOTE:
+        to_level = profiles.LADDER[rank + 1]
+    elif action == advancement.DEMOTE:
+        to_level = profiles.LADDER[rank - 1]
+    return {"action": action, "from_level": profile.content_ceiling, "to_level": to_level}
+
+
+@transaction.atomic
+def apply_advancement(learner, to_level, *, host_user_id):
+    """Apply a PARENT-CONFIRMED level change (never auto, D-64). Sets content_ceiling
+    and writes an audit event (D-57). Raises on an invalid ladder level."""
+    if to_level not in profiles.LADDER:
+        raise ValueError(f"Not a ladder level: {to_level!r}")
+    profile = learner.profile
+    old = profile.content_ceiling
+    profile.content_ceiling = to_level
+    profile.save(update_fields=["content_ceiling", "updated_at"])
+    AuditEvent.record(
+        "learner.advanced", actor_type=AuditEvent.PARENT, actor_id=host_user_id,
+        target_type="Learner", target_id=learner.pk, summary=f"{old} -> {to_level}",
+        metadata={"from": old, "to": to_level},
+    )
+    return profile
+
+
+def nudge_testing_above_defaults(learner):
+    """Parent-only, debounced nudge that a learner may be ready to test ABOVE their
+    default track (D-67): consistently STRONG over the last window, and not shown within
+    the last ~5 reading sessions. NEVER child-visible. Call mark_nudge_shown when the
+    parent view displays it."""
+    recent = recent_comprehension(learner, n=advancement.PROMOTE_WINDOW)
+    if len(recent) < advancement.PROMOTE_WINDOW or any(r != comprehension.STRONG for r in recent):
+        return False
+    last = learner.profile.last_nudge_reading_count
+    return last is None or (learner.reading_sessions.count() - last) >= advancement.NUDGE_DEBOUNCE_SESSIONS
+
+
+def mark_nudge_shown(learner):
+    """Anchor the D-67 nudge debounce at the current reading-session count."""
+    profile = learner.profile
+    profile.last_nudge_reading_count = learner.reading_sessions.count()
+    profile.save(update_fields=["last_nudge_reading_count", "updated_at"])
 
 
 def get_ai_client() -> AIClient:

@@ -2407,6 +2407,12 @@ class ReviewItemTests(TestCase):
         self._item("manana", 60)                       # due in the future
         self.assertEqual(services.due_review_items(self.learner), [])
 
+    def test_due_exactly_now_is_included(self):
+        # Pins the inclusive `lte` boundary: a card due at exactly `now` is due.
+        item = self._item("justo", 0)
+        due = services.due_review_items(self.learner, now=item.due)
+        self.assertEqual([r.target_ref for r in due], ["justo"])
+
     def test_paused_card_excluded_until_pause_elapses(self):
         self._item("pausado", -30, paused_delta_min=60)     # due, but paused into the future
         self.assertEqual(services.due_review_items(self.learner), [])

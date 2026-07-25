@@ -22,12 +22,12 @@ from students.models import Student
 
 from django.core.files.storage import InMemoryStorage, storages
 
-from . import assets, audio, cognates, leveling, profiles, services
+from . import assets, audio, cognates, comprehension, leveling, profiles, services
 from . import storage as lingua_storage
 from .integrations import directory
 from .models import (
-    AuditEvent, KnownWord, Learner, LearnerProfile, MilestoneAward, ReadingSession,
-    Story, StoryAudio, Theme,
+    AuditEvent, ComprehensionCheck, KnownWord, Learner, LearnerProfile, MilestoneAward,
+    ReadingSession, Story, StoryAudio, Theme,
 )
 from .ports import AIClient, AIResult
 
@@ -1601,6 +1601,83 @@ class DailyPlanTests(TestCase):
         plan = services.build_daily_plan(learner)
         new_item = next(i for i in plan["items"] if i["kind"] == "new")
         self.assertEqual(new_item["story"], same)    # same theme as the reread (continuity)
+
+
+class ComprehensionTests(TestCase):
+    """LGA-52 / F-01: after-reading comprehension checks → signals for advancement."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.learner = Learner.create_for_host_student(901, profiles.KIDS_EARLY)
+        cls.story = Story.objects.create(title="s", body="El gato.", level="L1", status=Story.APPROVED)
+
+    def test_check_kind_varies_by_band(self):
+        self.assertEqual(comprehension.check_kind_for(profiles.KIDS_EARLY), comprehension.PICTURE_MATCH)
+        self.assertEqual(comprehension.check_kind_for(profiles.KIDS_OLDER), comprehension.RETELL)
+        self.assertEqual(comprehension.check_kind_for(profiles.TEEN), comprehension.SHORT_ANSWER)
+        self.assertEqual(comprehension.check_kind_for(profiles.ADULT), comprehension.SHORT_ANSWER)
+
+    def test_scale_helpers(self):
+        self.assertTrue(comprehension.meets_bar(comprehension.PROFICIENT))
+        self.assertTrue(comprehension.meets_bar(comprehension.STRONG))
+        self.assertFalse(comprehension.meets_bar(comprehension.DEVELOPING))
+        self.assertFalse(comprehension.is_signal(comprehension.PENDING))
+        self.assertTrue(comprehension.is_signal(comprehension.BEGINNING))
+
+    def test_recognition_autogrades_open_is_pending(self):
+        auto = services.record_comprehension(
+            self.learner, self.story, comprehension.PICTURE_MATCH, result=comprehension.PROFICIENT)
+        self.assertEqual(auto.result, comprehension.PROFICIENT)     # recognition auto-graded
+        openc = services.record_comprehension(self.learner, self.story, comprehension.RETELL)
+        self.assertEqual(openc.result, comprehension.PENDING)       # open → awaits review
+
+    def test_record_rejects_unknown_result(self):
+        with self.assertRaises(ValueError):
+            services.record_comprehension(self.learner, self.story, comprehension.PICTURE_MATCH, result="genius")
+
+    def test_open_kind_ignores_result_and_awaits_review(self):
+        # an open kind can NEVER skip parent review, even if a result is passed (D-53/F-01)
+        c = services.record_comprehension(
+            self.learner, self.story, comprehension.RETELL, result=comprehension.STRONG)
+        self.assertEqual(c.result, comprehension.PENDING)
+        self.assertIsNone(c.reviewed_by)
+
+    def test_auto_graded_kind_requires_result(self):
+        with self.assertRaises(ValueError):  # recognition must produce a grade
+            services.record_comprehension(self.learner, self.story, comprehension.PICTURE_MATCH)
+
+    def test_unknown_kind_rejected(self):
+        with self.assertRaises(ValueError):
+            services.record_comprehension(self.learner, self.story, "essay", result=comprehension.STRONG)
+
+    def test_field_default_is_pending(self):
+        c = ComprehensionCheck.objects.create(learner=self.learner, kind=comprehension.RETELL)
+        self.assertEqual(c.result, comprehension.PENDING)   # model/DB default
+
+    def test_grade_open_check(self):
+        c = services.record_comprehension(self.learner, self.story, comprehension.RETELL)
+        services.grade_comprehension(c, comprehension.DEVELOPING, reviewed_by=7)
+        c.refresh_from_db()
+        self.assertEqual(c.result, comprehension.DEVELOPING)
+        self.assertEqual(c.reviewed_by, 7)
+
+    def test_recent_comprehension_is_the_advancement_window(self):
+        # newest-first, graded-only (PENDING excluded), capped at n
+        services.record_comprehension(self.learner, self.story, comprehension.PICTURE_MATCH, result=comprehension.BEGINNING)
+        services.record_comprehension(self.learner, self.story, comprehension.RETELL)  # PENDING, excluded
+        services.record_comprehension(self.learner, self.story, comprehension.PICTURE_MATCH, result=comprehension.PROFICIENT)
+        recent = services.recent_comprehension(self.learner, n=5)
+        self.assertEqual(recent, [comprehension.PROFICIENT, comprehension.BEGINNING])  # newest first, no PENDING
+
+    def test_cascade_and_set_null(self):
+        c = services.record_comprehension(self.learner, self.story, comprehension.PICTURE_MATCH, result=comprehension.STRONG)
+        cid = c.pk
+        self.story.delete()                                        # SET_NULL keeps the signal
+        c.refresh_from_db()
+        self.assertIsNone(c.story)
+        self.assertEqual(c.result, comprehension.STRONG)
+        self.learner.delete()                                      # CASCADE
+        self.assertFalse(ComprehensionCheck.objects.filter(pk=cid).exists())
 
 
 class MilestoneTests(TestCase):

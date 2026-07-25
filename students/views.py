@@ -9,7 +9,7 @@ from django.urls import reverse
 from django.views.decorators.http import require_POST
 
 from core.permissions import viewable_queryset, editable_queryset, scoped_queryset, user_can_edit
-from core.utils import get_active_family, get_selected_family
+from core.utils import get_active_family, get_selected_family, resolve_family_for_write
 
 from portal.tokens import make_portal_token
 
@@ -62,7 +62,7 @@ def student_create(request):
         if form.is_valid():
             student = form.save(commit=False)
             student.parent = request.user
-            student.family = get_active_family(request.user)
+            student.family = resolve_family_for_write(request)
             student.save()
             messages.success(request, f"{student.first_name} has been added.")
             return redirect("students:student_list")

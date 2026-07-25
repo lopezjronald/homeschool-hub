@@ -1,6 +1,7 @@
 """lingua views. Parent-facing pages extend the host base.html (so NOT @lingua_csp
 — that strict policy is reserved for the CSP-clean kid reader). Editors-only views
 raise Http404 for non-editors, matching the rest of the app (tutor/views.py)."""
+import re
 from urllib.parse import urlsplit
 
 from django.conf import settings
@@ -77,13 +78,23 @@ def render_reader(request, story, *, finish_url="", back_url=""):
             timings = audio.timings or None
         except Exception:  # noqa: BLE001 — audio is enhancement; degrade to text (LGA-54)
             audio_url, timings = "", None
-    has_audio = bool(audio_url and timings and timings.get("words"))
-    # Tokens align with the timing word indices when we have audio; else a plain
-    # whitespace split. `or []` guards a corrupt timings blob (words but no tokens)
-    # from crashing token_flags — degrade to text, never 500 (LGA-54).
-    tokens = (timings.get("tokens") or []) if has_audio else story.body.split()
+    # Require tokens too: a corrupt timings blob (words but no tokens) must degrade to
+    # text, not render an empty story under a player (LGA-54).
+    has_audio = bool(audio_url and timings and timings.get("words") and timings.get("tokens"))
+    if has_audio:
+        tokens = timings["tokens"]
+        token_para = [0] * len(tokens)  # audio stories render flat (currently short)
+    else:
+        # Preserve paragraph breaks so a multi-paragraph story isn't a run-on wall:
+        # tokenize per blank-line-delimited paragraph, carrying a paragraph index.
+        tokens, token_para = [], []
+        for pi, para in enumerate(re.split(r"\n\s*\n", (story.body or "").strip())):
+            for word in para.split():
+                tokens.append(word)
+                token_para.append(pi)
     flags = cognates.token_flags(tokens)
-    token_ctx = [{"i": i, "text": tok, "cognate": fl["cognate"], "ff": fl["false_friend"]}
+    token_ctx = [{"i": i, "text": tok, "p": token_para[i],
+                  "cognate": fl["cognate"], "ff": fl["false_friend"]}
                  for i, (tok, fl) in enumerate(zip(tokens, flags))]
     response = render(request, "lingua/read.html", {
         "story": story, "audio_url": audio_url, "timings": timings if has_audio else None,

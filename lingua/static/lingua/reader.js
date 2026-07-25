@@ -9,8 +9,13 @@
     if (!form) return;
     var secs = document.getElementById("lingua-seconds");
     var start = Date.now();
-    form.addEventListener("submit", function () {
+    var submitted = false;
+    form.addEventListener("submit", function (e) {
+      if (submitted) { e.preventDefault(); return; }   // guard double-tap → no double log
+      submitted = true;
       if (secs) secs.value = String(Math.max(0, Math.round((Date.now() - start) / 1000)));
+      var btn = form.querySelector("button[type=submit]");
+      if (btn) btn.disabled = true;
     });
   });
 })();

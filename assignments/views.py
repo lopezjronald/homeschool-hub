@@ -5,7 +5,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 
 from core.models import FamilyMembership
 from core.permissions import viewable_queryset, editable_queryset, scoped_queryset, user_can_edit
-from core.utils import get_active_family, get_selected_family
+from core.utils import get_active_family, get_selected_family, resolve_family_for_write
 from curricula.models import Curriculum
 from students.models import Student
 
@@ -86,7 +86,7 @@ def assignment_create(request):
 
             if is_parent_or_admin:
                 assignment.parent = request.user
-                assignment.family = get_active_family(request.user)
+                assignment.family = resolve_family_for_write(request)
                 assignment.source = Assignment.SOURCE_PARENT
             else:
                 # Teacher: set parent to family's first parent member

@@ -1318,6 +1318,31 @@ class ReaderViewTests(TestCase):
         self.assertIn("default-src", csp)
         self.assertNotIn("unsafe-inline", csp)           # strict kid-page policy (D-13)
 
+    def test_reader_disables_browser_translation(self):
+        # The whole point is to READ Spanish — Chrome must not auto-translate it.
+        html = self.client.get(self._url(self.story)).content.decode()
+        self.assertIn('translate="no"', html)
+        self.assertIn("notranslate", html)
+
+    def test_multiparagraph_story_renders_separate_paragraphs(self):
+        s = Story.objects.create(title="P", body="Primero uno.\n\nSegundo dos.",
+                                 level="L1", status=Story.APPROVED)
+        html = self.client.get(self._url(s)).content.decode()
+        self.assertEqual(html.count('<p class="story">'), 2)   # not a run-on wall
+
+    def test_audio_row_without_tokens_degrades_to_text(self):
+        # A StoryAudio with words but no tokens (hand-edited/corrupt) must degrade to
+        # readable text, not render an empty story under a player.
+        s = Story.objects.create(title="T", body="Hola mundo", level="L1", status=Story.APPROVED)
+        StoryAudio.objects.create(
+            story=s, voice="Mia", engine="neural", provider="polly",
+            content_hash=s.audio_hash("Mia", "neural"), audio_key="k",
+            timings={"words": [{"i": 0, "s_ms": 0, "e_ms": 100}]}, duration_ms=100)
+        html = self.client.get(self._url(s)).content.decode()
+        self.assertNotIn("<audio", html)        # no player
+        self.assertIn('data-i="0"', html)       # body text still shown
+        self.assertIn("Hola", html)
+
     def test_cognate_and_false_friend_treatments(self):
         s = Story.objects.create(title="Biblioteca", body="El animal está en la librería.",
                                  level="L1", status=Story.APPROVED)
@@ -1385,6 +1410,10 @@ class ReadingMetricTests(TestCase):
 
     def test_seconds_clamped_nonnegative(self):
         self.assertEqual(services.record_reading(self.learner, self.s1, seconds=-5).seconds, 0)
+
+    def test_seconds_clamped_to_one_day(self):
+        # a hostile/garbage huge value must not overflow int4 on Postgres → 500
+        self.assertEqual(services.record_reading(self.learner, self.s1, seconds=9_999_999_999).seconds, 86_400)
 
     def test_cascade_delete_learner(self):
         services.record_reading(self.learner, self.s1)
@@ -1533,6 +1562,18 @@ class DailyPlanTests(TestCase):
         self.assertEqual(plan["items"], [])
         self.assertEqual(plan["choices"], [])
 
+    def test_engaged_learner_not_dead_ended(self):
+        # Read the only story past the reread cap: the plan must still offer a reread
+        # (fallback), never an empty plan + false "no stories yet" message.
+        learner = self._learner(709, ceiling="L1")
+        s = self._story("only", level="L1", words=40)
+        for _ in range(5):                       # well past pick_reread's cap of 3
+            services.record_reading(learner, s)
+        plan = services.build_daily_plan(learner)
+        self.assertEqual(len(plan["items"]), 1)
+        self.assertEqual(plan["items"][0]["kind"], "reread")
+        self.assertEqual(plan["items"][0]["story"], s)
+
     def test_oversized_first_story_is_still_offered(self):
         # A lone story longer than the cap must still be offered — the cap governs how
         # MANY items, never whether the child gets one (never an empty session, D-66).
@@ -1660,6 +1701,13 @@ class KidPortalTests(TestCase):
         draft = Story.objects.create(title="d", body="x", level="L1", status=Story.DRAFT)
         r = self.client.get(self._url("lingua_read", story_id=draft.pk))
         self.assertEqual(r.status_code, 404)             # D-49 servable gate
+
+    def test_reader_has_no_raw_template_comment(self):
+        # A multi-line {# #} comment would render as literal text (the bug the user
+        # caught). The kid reader (finish_url set) must not leak any comment.
+        html = self.client.get(self._url("lingua_read", story_id=self.story.pk)).content.decode()
+        self.assertNotIn("CSP-clean finish", html)
+        self.assertNotIn("{#", html)
 
     def test_finish_logs_reading_session(self):
         r = self.client.post(self._url("lingua_finish", story_id=self.story.pk), {"seconds": "45"})

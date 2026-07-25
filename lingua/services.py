@@ -133,8 +133,11 @@ def record_reading(learner, story, *, seconds=0):
     story's word count + time spent (D-60/61). The atom behind the reading-volume
     hero metric; call it when a read completes (the kid reader, E-08)."""
     words = len((story.body or "").split())
+    # Clamp to one day: a hostile/garbage POST of a huge value would overflow
+    # ReadingSession.seconds (int4 on Postgres) and 500; no real read exceeds 86,400s.
     return ReadingSession.objects.create(
-        learner=learner, story=story, words=words, seconds=max(0, int(seconds or 0)),
+        learner=learner, story=story, words=words,
+        seconds=max(0, min(int(seconds or 0), 86_400)),
     )
 
 
@@ -267,6 +270,16 @@ def build_daily_plan(learner):
             break
         items.append({"kind": kind, "story": story, "minutes": minutes})
         used += minutes
+
+    if not items and read_ids:
+        # Every servable story is read AND at the reread cap: resurface the
+        # least-recently-read one ignoring the cap, so an engaged learner is never
+        # dead-ended with a false "no stories yet" message (N-01).
+        fallback = pick_reread(learner, cap=10 ** 9)
+        if fallback:
+            items.append({"kind": "reread", "story": fallback,
+                          "minutes": _story_minutes(fallback)})
+            used = items[0]["minutes"]
 
     picked = {i["story"].pk for i in items}
     choices = list(_servable_stories(ceiling, exclude=read_ids | picked)[:3])

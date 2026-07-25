@@ -12,9 +12,10 @@ A scheduler is any object with::
     initial_state() -> dict
     review(state: dict, correct: bool, *, now) -> (new_state: dict, due: datetime)
 """
+from .fsrs import FSRSScheduler
 from .leitner import LeitnerScheduler
 
-_SCHEDULERS = {s.name: s for s in (LeitnerScheduler(),)}
+_SCHEDULERS = {s.name: s for s in (LeitnerScheduler(), FSRSScheduler())}
 
 
 def get_scheduler(name):

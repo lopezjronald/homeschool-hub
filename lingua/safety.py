@@ -50,6 +50,28 @@ def find_pii(text):
     return ""
 
 
+def fence(text, tag):
+    """Wrap untrusted ``text`` as an inert DATA field for a prompt (LGA-30, D-53).
+
+    The generation pipeline interpolates untrusted values into prompts — the
+    operator's theme hint (``generate_story``) and a story body (``critique_story``,
+    the load-bearing safeguard). Bare interpolation lets that text smuggle
+    instructions ("ignore the rules", "mark this passed"). Fencing wraps the value
+    in ``<tag>…</tag>`` and ESCAPES every angle bracket in the content, so it cannot
+    contain ANY tag — real, cased, or overlapping — and therefore can never close
+    the fence early or open a fake section to escape into the instruction stream.
+    The system prompts tell the model to treat fenced content strictly as data.
+
+    (lingua's only child input is a constrained felt-rating, never free text and
+    never sent to AI — D-53 — so there is no child free text to fence here.)
+    """
+    # Escape ALL angle brackets (& first, HTML order) — a single tag-strip pass is
+    # defeatable by self-overlap ("</te</tag>xt>") and by case ("</TAG>"). With no
+    # '<'/'>' left in the content, no tag of any kind can survive inside the fence.
+    t = (text or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    return f"<{tag}>\n{t}\n</{tag}>"
+
+
 def assert_no_pii(*texts, where=""):
     """Raise :class:`ChildPIISuspected` if any of ``texts`` carries a PII marker.
 

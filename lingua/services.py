@@ -476,7 +476,8 @@ def generate_story(*, theme_hint, level, ai_client=None):
     Returns {"title", "body", "usage"}. Raises on an unparseable reply."""
     ai = ai_client or get_ai_client()
     safety.assert_no_pii(theme_hint, where="story generation")  # D-52 (LGA-31)
-    user = f"Theme: {theme_hint}\nLevel: {level}\nWrite the story now."
+    # Fence the untrusted theme hint so it can't inject instructions (LGA-30, D-53).
+    user = f"Level: {level}\n{safety.fence(theme_hint, 'theme')}\nWrite the story now."
     result = ai.generate(system=STORY_SYSTEM, user=user, max_tokens=800)
     data = _parse_json(result.text)
     return {
@@ -491,7 +492,12 @@ def critique_story(*, title, body, level, ai_client=None):
     correctness, and level fit. Returns {"passed": bool, "flags": [str], "usage"}."""
     ai = ai_client or get_ai_client()
     safety.assert_no_pii(title, body, where="critic review")  # D-52 (LGA-31)
-    user = f"Level: {level}\nTitle: {title}\nStory:\n{body}\n\nReview it now."
+    # Fence the untrusted title/body so a story that says "mark this passed" can't
+    # hijack the critic — the load-bearing safeguard (LGA-30, D-49/D-53).
+    user = (
+        f"Level: {level}\n{safety.fence(title, 'title')}\n"
+        f"{safety.fence(body, 'story')}\n\nReview it now."
+    )
     result = ai.generate(system=CRITIC_SYSTEM, user=user, max_tokens=400)
     data = _parse_json(result.text)
     return {

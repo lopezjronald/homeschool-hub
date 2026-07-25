@@ -13,7 +13,9 @@ from django.db.models import Count, Max, Q, Sum
 from django.utils import timezone
 from django.utils.module_loading import import_string
 
-from . import advancement, assets, audio, cognates, comprehension, leveling, profiles, storage
+from . import (
+    advancement, assets, audio, cognates, comprehension, leveling, profiles, safety, storage,
+)
 from .models import (
     AuditEvent, ComprehensionCheck, KnownWord, Learner, MilestoneAward, PhonicsRule,
     ReadingSession, Story, StoryAudio, Theme,
@@ -473,6 +475,7 @@ def generate_story(*, theme_hint, level, ai_client=None):
     """Generate one leveled Spanish story via the AIClient port (D-48).
     Returns {"title", "body", "usage"}. Raises on an unparseable reply."""
     ai = ai_client or get_ai_client()
+    safety.assert_no_pii(theme_hint, where="story generation")  # D-52 (LGA-31)
     user = f"Theme: {theme_hint}\nLevel: {level}\nWrite the story now."
     result = ai.generate(system=STORY_SYSTEM, user=user, max_tokens=800)
     data = _parse_json(result.text)
@@ -487,6 +490,7 @@ def critique_story(*, title, body, level, ai_client=None):
     """LLM-critic pre-filter (D-49): rate a generated story for naturalness,
     correctness, and level fit. Returns {"passed": bool, "flags": [str], "usage"}."""
     ai = ai_client or get_ai_client()
+    safety.assert_no_pii(title, body, where="critic review")  # D-52 (LGA-31)
     user = f"Level: {level}\nTitle: {title}\nStory:\n{body}\n\nReview it now."
     result = ai.generate(system=CRITIC_SYSTEM, user=user, max_tokens=400)
     data = _parse_json(result.text)

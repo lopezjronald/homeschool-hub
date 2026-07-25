@@ -57,14 +57,18 @@ def fence(text, tag):
     operator's theme hint (``generate_story``) and a story body (``critique_story``,
     the load-bearing safeguard). Bare interpolation lets that text smuggle
     instructions ("ignore the rules", "mark this passed"). Fencing wraps the value
-    in ``<tag>…</tag>`` and NEUTRALISES any fence tag inside it, so the content can
-    never close the fence early and escape into the instruction stream. The system
-    prompts tell the model to treat fenced content strictly as data, never commands.
+    in ``<tag>…</tag>`` and ESCAPES every angle bracket in the content, so it cannot
+    contain ANY tag — real, cased, or overlapping — and therefore can never close
+    the fence early or open a fake section to escape into the instruction stream.
+    The system prompts tell the model to treat fenced content strictly as data.
 
     (lingua's only child input is a constrained felt-rating, never free text and
     never sent to AI — D-53 — so there is no child free text to fence here.)
     """
-    t = (text or "").replace(f"</{tag}>", "").replace(f"<{tag}>", "")
+    # Escape ALL angle brackets (& first, HTML order) — a single tag-strip pass is
+    # defeatable by self-overlap ("</te</tag>xt>") and by case ("</TAG>"). With no
+    # '<'/'>' left in the content, no tag of any kind can survive inside the fence.
+    t = (text or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
     return f"<{tag}>\n{t}\n</{tag}>"
 
 

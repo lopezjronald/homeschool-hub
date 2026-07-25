@@ -10,7 +10,7 @@ from django.utils import timezone
 from django.views.decorators.http import require_POST
 
 from core.permissions import editable_queryset, scoped_queryset, user_can_edit
-from core.utils import get_active_family, get_selected_family
+from core.utils import get_active_family, get_selected_family, resolve_family_for_write
 from students.models import Student
 from worklog.models import WorkLogEntry
 
@@ -152,7 +152,7 @@ def activity_create(request):
         if form.is_valid():
             activity = form.save(commit=False)
             activity.parent = request.user
-            activity.family = get_active_family(request.user)
+            activity.family = resolve_family_for_write(request)
             activity.save()
             messages.success(request, "Activity added.")
             return redirect("activities:activity_list")

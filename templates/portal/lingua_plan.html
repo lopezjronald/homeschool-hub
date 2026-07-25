@@ -10,8 +10,7 @@
   </div>
 
   {% if celebrate %}
-    {# Warm milestone celebration (D-60/61): volume/known-words only, no streaks.
-       Louder for the youngest band, calmer for the older one. #}
+    {# Warm milestone celebration (D-60/61): volume/known-words only, no streaks; louder for the youngest band. #}
     <div class="alert {% if band == 'KIDS_EARLY' %}alert-warning{% else %}alert-success{% endif %} text-center" role="status">
       {% if band == 'KIDS_EARLY' %}🎉🌟{% else %}🎉{% endif %}
       {% if celebrate.kind == 'known' %}

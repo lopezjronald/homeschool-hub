@@ -710,3 +710,29 @@ class CurriculumBrowserTests(TestCase):
         Curriculum.objects.create(parent=other, family=fam2, name="Secret Course", subject="Math")
         resp = self.client.get(reverse("curricula:curriculum_list"))
         self.assertNotContains(resp, "Secret Course")
+
+
+class CurriculumDeleteProtectedTests(TestCase):
+    """Regression: deleting a curriculum with a linked (PROTECTED) assignment must
+    redirect gracefully, not raise ProtectedError → 500."""
+
+    @classmethod
+    def setUpTestData(cls):
+        import datetime
+
+        from assignments.models import Assignment
+        cls.parent = User.objects.create_user(username="cdp", email="cdp@e.com", password="pw")
+        cls.family = Family.objects.create(name="F")
+        FamilyMembership.objects.create(user=cls.parent, family=cls.family, role="parent")
+        cls.curriculum = Curriculum.objects.create(parent=cls.parent, family=cls.family, name="Math")
+        cls.child = Student.objects.create(parent=cls.parent, family=cls.family, first_name="Kid")
+        Assignment.objects.create(
+            parent=cls.parent, family=cls.family, child=cls.child, curriculum=cls.curriculum,
+            title="A1", due_date=datetime.date.today(), created_by=cls.parent,
+        )
+
+    def test_delete_with_assignment_is_graceful(self):
+        self.client.login(username="cdp", password="pw")
+        r = self.client.post(reverse("curricula:curriculum_delete", kwargs={"pk": self.curriculum.pk}))
+        self.assertEqual(r.status_code, 302)                                  # not a 500
+        self.assertTrue(Curriculum.objects.filter(pk=self.curriculum.pk).exists())  # still there

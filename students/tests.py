@@ -536,3 +536,30 @@ class ActivityFormRenderTests(TestCase):
         self.assertIn("form-select", html)                            # child/cadence dropdowns
         self.assertIn("form-switch", html)                            # active toggle
         self.assertNotIn("btn-primary", html)                         # AURORA amber, not stock blue
+
+
+class MultiFamilyWriteRoutingTests(TestCase):
+    """Regression: a create while viewing a NON-primary family must file into the
+    SELECTED family, not the user's primary — otherwise records silently vanish from
+    the list and are exposed to the wrong household."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from core.models import Family, FamilyMembership
+        cls.parent = User.objects.create_user(username="mfw", email="mfw@e.com", password="pw")
+        cls.family_a = Family.objects.create(name="A")   # lower id → primary/active
+        cls.family_b = Family.objects.create(name="B")
+        FamilyMembership.objects.create(user=cls.parent, family=cls.family_a, role="parent")
+        FamilyMembership.objects.create(user=cls.parent, family=cls.family_b, role="parent")
+
+    def test_student_filed_into_selected_family(self):
+        self.client.login(username="mfw", password="pw")
+        session = self.client.session
+        session["selected_family_id"] = self.family_b.id   # viewing family B
+        session.save()
+        self.client.post(
+            reverse("students:student_create"),
+            data={"first_name": "Bee", "last_name": "", "grade_level": "K"},
+        )
+        student = Student.objects.get(first_name="Bee")
+        self.assertEqual(student.family, self.family_b)     # NOT family_a (the primary)

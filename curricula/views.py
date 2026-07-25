@@ -1,14 +1,14 @@
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.db import connection
-from django.db.models import Q
+from django.db.models import ProtectedError, Q
 from django.db.models.functions import Greatest
 from django.http import Http404
 from django.shortcuts import render, redirect, get_object_or_404
 from django.views.decorators.http import require_POST
 
 from core.permissions import viewable_queryset, editable_queryset, scoped_queryset, user_can_edit
-from core.utils import get_active_family, get_selected_family
+from core.utils import get_active_family, get_selected_family, resolve_family_for_write
 from students.models import Student
 
 from .blueprints import BLUEPRINTS
@@ -89,7 +89,7 @@ def curriculum_create(request):
         if form.is_valid():
             curriculum = form.save(commit=False)
             curriculum.parent = request.user
-            curriculum.family = get_active_family(request.user)
+            curriculum.family = resolve_family_for_write(request)
             curriculum.save()
             messages.success(request, f'Curriculum "{curriculum.name}" has been created.')
             return redirect("curricula:curriculum_detail", pk=curriculum.pk)
@@ -184,7 +184,22 @@ def curriculum_delete(request, pk):
 
     if request.method == "POST":
         name = curriculum.name
-        curriculum.delete()
+        try:
+            curriculum.delete()
+        except ProtectedError as err:
+            # Assignment.curriculum is on_delete=PROTECT, so a curriculum with linked
+            # assignments can't be deleted — name what's blocking instead of 500-ing.
+            kinds = sorted({
+                str(obj._meta.verbose_name_plural).lower()
+                for obj in err.protected_objects
+            })
+            what = ", ".join(kinds) if kinds else "related records"
+            messages.error(
+                request,
+                f'"{name}" can\'t be deleted yet because it still has {what}. '
+                f"Remove those first, then try again.",
+            )
+            return redirect("curricula:curriculum_detail", pk=curriculum.pk)
         messages.success(request, f'Curriculum "{name}" has been deleted.')
         return redirect("curricula:curriculum_list")
 

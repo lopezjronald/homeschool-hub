@@ -14,8 +14,9 @@
 
           {% if assignment_count > 0 %}
             <div class="alert alert-warning" role="alert">
-              <strong>Warning:</strong> This curriculum has {{ assignment_count }} assignment{{ assignment_count|pluralize }}.
-              Deleting it will also delete all associated assignments.
+              <strong>Heads up:</strong> This curriculum has {{ assignment_count }} assignment{{ assignment_count|pluralize }}.
+              You'll need to remove {{ assignment_count|pluralize:"it,them" }} first — assignments are kept safe and
+              block deletion, so this won't delete them.
             </div>
           {% endif %}
 

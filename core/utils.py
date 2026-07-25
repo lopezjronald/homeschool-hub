@@ -106,6 +106,21 @@ def get_selected_family(request):
     return None
 
 
+def resolve_family_for_write(request):
+    """The family a newly-created record should be filed into: the one the user has
+    SELECTED in the navbar switcher (when they may edit it), else their primary/active
+    family. Without this, a user in 2+ families who creates a record while viewing
+    family B has it silently misfiled into family A (their primary) — where it vanishes
+    from the family-B list and is exposed to family A's members. Single-family and
+    legacy-null users are unaffected (selected == active, or both resolve to None)."""
+    from core.permissions import can_edit_family  # local import avoids an import cycle
+
+    family = get_selected_family(request)
+    if can_edit_family(request.user, family):
+        return family
+    return get_active_family(request.user)
+
+
 def _family_name_for_user(user):
     """Derive a human-readable family name from a user record."""
     if user.last_name:

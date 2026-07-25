@@ -21,7 +21,7 @@ from core.permissions import (
     user_can_edit,
     viewable_queryset,
 )
-from core.utils import get_active_family, get_selected_family
+from core.utils import get_active_family, get_selected_family, resolve_family_for_write
 
 from .forms import WorkLogEntryForm, WorkLogReportForm
 from .models import WorkLogEntry
@@ -387,7 +387,7 @@ def worklog_create(request):
             entry = form.save(commit=False)
             entry.parent = request.user
             entry.created_by = request.user
-            entry.family = get_active_family(request.user)
+            entry.family = resolve_family_for_write(request)
             entry.save()
             messages.success(request, "Work log entry saved.")
             return redirect("worklog:worklog_detail", pk=entry.pk)

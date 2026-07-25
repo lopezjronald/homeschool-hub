@@ -34,9 +34,18 @@ class PhonicsRuleAdmin(admin.ModelAdmin):
 
 @admin.register(AiUsage)
 class AiUsageAdmin(admin.ModelAdmin):
+    """Read-only ledger — it's the cost governor, so no editing/adding/deleting from
+    admin (deleting a row would silently reset the month's ceiling)."""
+
     list_display = ("period", "input_tokens", "output_tokens", "calls", "updated_at")
     readonly_fields = ("period", "input_tokens", "output_tokens", "calls",
                        "created_at", "updated_at")
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
 
 
 @admin.register(Story)

@@ -580,9 +580,21 @@ class CostCeilingTests(TestCase):
     def test_estimated_cost_and_month_to_date(self):
         with override_settings(LINGUA=self._lingua(
                 AI_PRICE_INPUT_PER_MTOK=10.0, AI_PRICE_OUTPUT_PER_MTOK=30.0)):
-            self.assertAlmostEqual(services.estimated_cost_usd(1_000_000, 1_000_000), 40.0)
+            # Sub-million counts so a true-division regression (/ -> //) would zero this.
+            self.assertAlmostEqual(services.estimated_cost_usd(500_000, 250_000), 12.5)  # 5 + 7.5
             services.record_ai_usage({"input_tokens": 2_000_000, "output_tokens": 1_000_000})
             self.assertAlmostEqual(services.month_to_date_cost_usd(), 50.0)  # 2*10 + 1*30
+
+    def test_usage_recorded_even_when_critic_fails(self):
+        # generate returns valid JSON (billed); critic returns garbage so its parse
+        # raises AFTER the provider billed. Both calls' tokens must still be recorded —
+        # otherwise the ceiling under-reports real spend and the hard-stop is defeated.
+        fake = _ScriptedAIClient('{"title":"El gato","body":"Hay un gato."}', "NOT JSON")
+        with self.assertRaises(Exception):
+            services.create_story_draft(theme=self.theme, level="L1", ai_client=fake)
+        row = AiUsage.objects.get(period=services._current_period())
+        self.assertEqual(row.calls, 2)            # both billed calls recorded
+        self.assertEqual(row.input_tokens, 10)    # 5 (generate) + 5 (critic, pre-parse)
 
     def test_budget_exceeded_toggles_at_ceiling(self):
         with override_settings(LINGUA=self._lingua(

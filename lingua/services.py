@@ -520,6 +520,7 @@ def generate_story(*, theme_hint, level, ai_client=None):
     # Fence the untrusted theme hint so it can't inject instructions (LGA-30, D-53).
     user = f"Level: {level}\n{safety.fence(theme_hint, 'theme')}\nWrite the story now."
     result = ai.generate(system=STORY_SYSTEM, user=user, max_tokens=800)
+    record_ai_usage(result.usage)  # bill the instant the provider responds — before any parse can fail (LGA-29)
     data = _parse_json(result.text)
     return {
         "title": str(data.get("title", "")).strip(),
@@ -540,6 +541,7 @@ def critique_story(*, title, body, level, ai_client=None):
         f"{safety.fence(body, 'story')}\n\nReview it now."
     )
     result = ai.generate(system=CRITIC_SYSTEM, user=user, max_tokens=400)
+    record_ai_usage(result.usage)  # bill the instant the provider responds — before any parse can fail (LGA-29)
     data = _parse_json(result.text)
     return {
         "passed": bool(data.get("passed", False)),
@@ -581,10 +583,8 @@ def create_story_draft(*, theme, level, ai_client=None):
             metadata={"level": level, "error": type(exc).__name__},
         )
         raise
-    # Record the tokens actually spent (cost was incurred whether or not persist below
-    # succeeds), so the ceiling reflects real usage (LGA-29).
-    record_ai_usage(story["usage"])
-    record_ai_usage(review["usage"])
+    # Usage is recorded inside generate_story/critique_story the instant each provider
+    # call returns, so a later parse/persist failure never loses real spend (LGA-29).
     tokens = _tokens(story["usage"]) + _tokens(review["usage"])
     # Soft leveling signal (D-25/LGA-44): what level the text reads as + rare words.
     # A soft signal must never lose or block a paid-for story, so degrade on failure.

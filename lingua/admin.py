@@ -3,7 +3,7 @@ from django.contrib import admin
 from .models import (
     AiUsage, ComprehensionCheck, KnownWord, Learner, LearnerProfile, ListeningResource,
     ListeningSession, MilestoneAward, PhonicsRule, ReadingSession, ReviewItem, Story,
-    StoryAudio, Theme,
+    StoryAudio, StoryImage, Theme,
 )
 
 
@@ -38,8 +38,8 @@ class AiUsageAdmin(admin.ModelAdmin):
     """Read-only ledger — it's the cost governor, so no editing/adding/deleting from
     admin (deleting a row would silently reset the month's ceiling)."""
 
-    list_display = ("period", "input_tokens", "output_tokens", "calls", "updated_at")
-    readonly_fields = ("period", "input_tokens", "output_tokens", "calls",
+    list_display = ("period", "input_tokens", "output_tokens", "calls", "images", "updated_at")
+    readonly_fields = ("period", "input_tokens", "output_tokens", "calls", "images",
                        "created_at", "updated_at")
 
     def has_add_permission(self, request):
@@ -62,6 +62,18 @@ class StoryAudioAdmin(admin.ModelAdmin):
     list_filter = ("provider", "voice", "engine")
     search_fields = ("story__title", "content_hash")
     readonly_fields = ("content_hash", "audio_key", "created_at", "updated_at")
+
+    @admin.display(boolean=True, description="Current")
+    def is_current(self, obj):
+        return obj.is_current
+
+
+@admin.register(StoryImage)
+class StoryImageAdmin(admin.ModelAdmin):
+    list_display = ("story", "beat_index", "model", "width", "height", "is_current", "updated_at")
+    list_filter = ("model",)
+    search_fields = ("story__title", "content_hash", "alt_text")
+    readonly_fields = ("content_hash", "image_key", "prompt", "created_at", "updated_at")
 
     @admin.display(boolean=True, description="Current")
     def is_current(self, obj):

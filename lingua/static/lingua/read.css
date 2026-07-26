@@ -30,6 +30,21 @@ body {
 .speed, .voice { display: inline-flex; align-items: center; gap: 0.4rem; font-size: 0.95rem; color: var(--muted); }
 .speed select, .voice select { font: inherit; padding: 0.15em 0.4em; border-radius: 0.4em; cursor: pointer; }
 .story { margin: 1rem 0; }
+
+/* Illustrated storybook layout (LGA-71): one picture above its own 1–2 sentences.
+   Small gap image→its caption, large gap between beats, so proximity groups each
+   image with the correct text. Image + caption share one centered column width. */
+.beat { margin: 0 0 2.75rem; }
+.beat:last-child { margin-bottom: 1rem; }
+.beat-img {
+  display: block; width: 100%; max-width: 40rem; height: auto;
+  margin: 0 auto 0.55rem;                 /* tight to its own caption */
+  border-radius: 0.9rem;
+  box-shadow: 0 2px 14px rgba(0, 0, 0, 0.14);
+  background: #fff;
+}
+.beat-text { display: block; max-width: 40rem; margin: 0 auto; }
+@media (prefers-color-scheme: dark) { .beat-img { box-shadow: 0 2px 16px rgba(0, 0, 0, 0.5); } }
 .w {
   padding: 0.02em 0.06em;
   border-radius: 0.25em;

@@ -1593,6 +1593,74 @@ class ReaderViewTests(TestCase):
         self.assertNotIn('id="lingua-voice"', html) # only Mía current for THIS story → no picker
         self.assertIn(mia.audio_key, html)          # this story's own voice still served
 
+    def _add_image(self, story, beat):
+        digest = story.image_hash(beat)
+        return StoryImage.objects.create(
+            story=story, beat_index=beat["index"], content_hash=digest,
+            image_key=assets.image_key(digest), model=settings.MANGA_IMAGE_MODEL,
+            alt_text=beat["text"][:300], width=1024, height=768,
+        )
+
+    def _illustrate(self, story):
+        imgs = []
+        for beat in illustrate.beats(story.body):
+            imgs.append(self._add_image(story, beat))
+        return imgs
+
+    @override_settings(STORAGES=_INMEM_STORAGES)
+    def test_reader_interleaves_images_when_baked(self):
+        s = Story.objects.create(title="Dos", body="Un gato duerme. Un perro salta.",
+                                 level="L1", status=Story.APPROVED)
+        imgs = self._illustrate(s)
+        html = self.client.get(self._url(s)).content.decode()
+        self.assertIn('id="lingua-story" class="illustrated"', html)  # storybook layout on
+        self.assertIn('class="beat-img"', html)                       # an <img> per beat
+        for im in imgs:
+            self.assertIn(im.image_key, html)                         # each beat image served
+        # word spans preserved + in order (read-along still works): data-i 0..N-1 present
+        self.assertIn('data-i="0"', html)
+        self.assertEqual(html.count('<figure class="beat">'), len(imgs))
+
+    def test_reader_without_images_stays_plain(self):
+        # No baked images → the storybook layout must NOT engage (no regression).
+        html = self.client.get(self._url(self.story)).content.decode()
+        self.assertNotIn("illustrated", html)
+        self.assertNotIn("beat-img", html)
+        self.assertIn('<p class="story">', html)                      # original paragraph render
+
+    @override_settings(STORAGES=_INMEM_STORAGES)
+    def test_illustrated_story_discloses_ai_images(self):
+        s = Story.objects.create(title="Dib", body="Un gato duerme. Un perro salta.",
+                                 level="L1", status=Story.APPROVED, source=Story.SOURCE_GENERATED)
+        self._illustrate(s)
+        html = self.client.get(self._url(s)).content.decode()
+        self.assertIn("y sus dibujos", html)                          # D-54 covers the images too
+
+    @override_settings(STORAGES=_INMEM_STORAGES)
+    def test_csp_img_src_widened_to_image_host(self):
+        s = Story.objects.create(title="C", body="Un gato duerme. Un perro salta.",
+                                 level="L1", status=Story.APPROVED)
+        self._illustrate(s)                                            # InMem base_url https://cdn.test/
+        csp = self.client.get(self._url(s)).headers.get("Content-Security-Policy", "")
+        self.assertIn("img-src", csp)
+        self.assertIn("cdn.test", csp)                                # widened to the R2 image host
+
+    @override_settings(STORAGES=_INMEM_STORAGES)
+    def test_illustrated_with_audio_preserves_word_spans(self):
+        # Images + audio together: every audio token still renders exactly one ordered
+        # .w span (so spans[i] read-along indexing holds), just grouped under images.
+        s = Story.objects.create(title="A", body="Hay un gato feliz.", level="L1",
+                                 status=Story.APPROVED)
+        self._add_audio(s, "Mia")
+        self._illustrate(s)
+        html = self.client.get(self._url(s)).content.decode()
+        self.assertIn("illustrated", html)
+        self.assertIn("<audio", html)                                 # player still present
+        self.assertEqual(html.count('class="beat-img"'), 1)           # 1 beat, 1 image
+        # 4 tokens in "Hay un gato feliz." → 4 ordered spans, data-i 0..3
+        for i in range(4):
+            self.assertIn(f'data-i="{i}"', html)
+
     _AI_DISCLOSURE = "una computadora (IA)"   # distinctive slice of the D-54 disclosure
 
     def test_shows_ai_disclosure_for_generated_story(self):

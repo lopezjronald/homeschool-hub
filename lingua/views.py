@@ -16,7 +16,7 @@ from django.views.decorators.http import require_http_methods
 from core.permissions import can_edit_family, user_can_edit
 from core.utils import get_selected_family
 
-from . import cognates, services, storage
+from . import cognates, illustrate, services, storage
 from .csp import LINGUA_CSP
 from .integrations import directory
 from .models import Learner, Story
@@ -115,6 +115,45 @@ def render_reader(request, story, *, finish_url="", back_url=""):
     token_ctx = [{"i": i, "text": tok, "p": token_para[i],
                   "cognate": fl["cognate"], "ff": fl["false_friend"]}
                  for i, (tok, fl) in enumerate(zip(tokens, flags))]
+
+    # Illustrated-storybook layout (LGA-71): if this story has baked pictures, group the
+    # rendered tokens into beats (1–2 sentences each) and show each beat's image above
+    # its text. Token ORDER is preserved, so the read-along word spans (spans[i]) still
+    # line up. If nothing is baked yet, render exactly as before (no regression). A
+    # token-count mismatch (unexpected tokenizer drift) disables interleaving rather
+    # than risk a misaligned split.
+    beats_ctx, illustrated, image_hosts = None, False, set()
+    beat_list = illustrate.beats(
+        story.body, max_beats=settings.LINGUA.get("ILLUSTRATION_MAX_BEATS", 8))
+    beat_images = []
+    for b in beat_list:
+        si = story.current_image(b)
+        url = ""
+        if si:
+            try:
+                url = storage.public_url(si.image_key)
+            except Exception:  # noqa: BLE001 — images are enhancement; degrade to text
+                url = ""
+        beat_images.append((b, si, url))
+    if any(url for _, _, url in beat_images):
+        counts = [len((story.body or "")[b["start"]:b["end"]].split())
+                  for b, _, _ in beat_images]
+        if sum(counts) == len(token_ctx):
+            beats_ctx, pos = [], 0
+            for (b, si, url), n in zip(beat_images, counts):
+                group = token_ctx[pos:pos + n]
+                pos += n
+                beats_ctx.append({
+                    "index": b["index"], "image_url": url,
+                    "alt": (si.alt_text if si and si.alt_text else b["text"])[:300],
+                    "tokens": group,
+                })
+                if url:
+                    parts = urlsplit(url)
+                    if parts.scheme and parts.netloc:
+                        image_hosts.add(f"{parts.scheme}://{parts.netloc}")
+            illustrated = True
+
     response = render(request, "lingua/read.html", {
         "story": story, "audio_url": audio_url, "timings": timings if has_audio else None,
         "token_ctx": token_ctx, "has_audio": has_audio,
@@ -123,12 +162,15 @@ def render_reader(request, story, *, finish_url="", back_url=""):
         # Only offer the picker when there's a real choice (>1 baked voice, LGA-70).
         "voices": baked_voices if has_audio and len(baked_voices) > 1 else [],
         "current_voice": current_voice,
+        "beats_ctx": beats_ctx, "illustrated": illustrated,
     })
     policy = {k: list(v) for k, v in LINGUA_CSP.items()}
     if has_audio:
         parts = urlsplit(audio_url)
         if parts.scheme and parts.netloc:  # cross-origin (prod R2) — widen media-src
             policy["media-src"] = [CSP.SELF, f"{parts.scheme}://{parts.netloc}"]
+    if image_hosts:  # widen img-src to the public-R2 host(s) serving the illustrations
+        policy["img-src"] = [CSP.SELF, "data:", *sorted(image_hosts)]
     response._csp_config = policy
     return response
 

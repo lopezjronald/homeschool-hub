@@ -320,11 +320,13 @@ class Story(models.Model):
         from . import assets, illustrate
         model = model or settings.LINGUA.get("IMAGE_MODEL", "")
         aspect = aspect or settings.LINGUA.get("ILLUSTRATION_ASPECT", illustrate.DEFAULT_ASPECT)
-        character_block = (self.art_contract or {}).get("character_block", "")
+        contract = self.art_contract or {}
         scene = illustrate.scene_from_beat(beat["text"])
         return assets.image_content_hash(
             model=model, style=illustrate.HOUSE_STYLE,
-            character_block=character_block, aspect=aspect, scene=scene,
+            character_block=contract.get("character_block", ""),
+            setting=contract.get("setting", ""), tone=contract.get("tone", ""),
+            aspect=aspect, scene=scene,
         )
 
     def current_image(self, beat, *, model=None, aspect=None):

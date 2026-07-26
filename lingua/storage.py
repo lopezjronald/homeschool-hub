@@ -49,15 +49,22 @@ def readalong_storage():
     return storage
 
 
-def save_bytes(key, data):
+def save_bytes(key, data, *, replace=False):
     """Save raw bytes at content-addressed ``key`` and return the stable public URL.
 
-    Idempotent: the key is a content hash, so if it already exists the bytes are by
-    definition identical — skip the redundant upload and just return the URL. The
-    immutable cache header is applied by the backend's object_parameters (settings).
-    Shared by read-along audio and storybook illustrations (both content-addressed,
-    both public + immutably cached)."""
+    Idempotent dedup: normally the key is a content hash, so if it already exists the
+    bytes are by definition identical — skip the redundant upload. The immutable cache
+    header is applied by the backend's object_parameters (settings).
+
+    ``replace=True`` overwrites an existing object (delete-then-save). This is needed
+    for the IMAGE path: image generation is non-deterministic (nano-banana has no
+    seed), so the content hash covers the PROMPT inputs, not the bytes — a ``--force``
+    re-bake produces different bytes under the SAME key and must actually replace the
+    stored object, not silently keep the old image. Audio (Polly) is deterministic, so
+    it never needs replace."""
     storage = readalong_storage()
+    if replace and storage.exists(key):
+        storage.delete(key)
     if not storage.exists(key):
         storage.save(key, ContentFile(data))
     return storage.url(key)
@@ -68,9 +75,11 @@ def save_audio(key, data):
     return save_bytes(key, data)
 
 
-def save_image(key, data):
-    """Save illustration bytes at content-addressed ``key`` and return its public URL."""
-    return save_bytes(key, data)
+def save_image(key, data, *, replace=False):
+    """Save illustration bytes at content-addressed ``key`` and return its public URL.
+    Pass ``replace=True`` on a force re-bake so new bytes actually overwrite the old
+    image (the hash is over the prompt, not the non-deterministic output bytes)."""
+    return save_bytes(key, data, replace=replace)
 
 
 def public_url(key):

@@ -37,15 +37,16 @@ def asset_keys(digest):
     }
 
 
-def image_content_hash(*, model, style, character_block, aspect, scene):
+def image_content_hash(*, model, style, character_block, setting, tone, aspect, scene):
     """sha256 hex over everything that determines an illustration's bytes: the image
-    model, the fixed house style, the per-story character block, the aspect ratio, and
-    the exact beat scene text (LGA-71). Editing any of these — the style string, the
-    story text, the contract — busts the cache so a stale image is never served; the
-    old R2 object is simply orphaned. NUL separators keep field boundaries
-    unambiguous (mirrors :func:`content_hash`)."""
+    model, the fixed house style, the per-story character block / setting / tone (all
+    fed into the prompt), the aspect ratio, and the exact beat scene text (LGA-71).
+    Editing any of these — the style string, the story text, ANY field of the art
+    contract — busts the cache so a stale image is never served; the old R2 object is
+    simply orphaned. NUL separators keep field boundaries unambiguous (mirrors
+    :func:`content_hash`)."""
     h = hashlib.sha256()
-    for part in (model, style, character_block, aspect, scene):
+    for part in (model, style, character_block, setting, tone, aspect, scene):
         h.update((part or "").encode("utf-8"))
         h.update(b"\x00")
     return h.hexdigest()

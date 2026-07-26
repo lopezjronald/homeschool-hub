@@ -3148,9 +3148,12 @@ def _tiny_png(w=200, h=200, color=(217, 106, 59)):
 
 
 class _FakeImageClient(ImageClient):
-    """Records every call so tests can assert prompts + anchor references."""
+    """Records every call so tests can assert prompts + anchor references. Returns a
+    fixed png by default, or cycles through ``pngs`` (distinct bytes per call) so a
+    test can tell WHICH prior image a beat anchored to."""
 
-    def __init__(self, png=None):
+    def __init__(self, png=None, pngs=None):
+        self.pngs = pngs
         self.png = png if png is not None else _tiny_png()
         self.calls = []
 
@@ -3173,6 +3176,8 @@ class _FakeImageClient(ImageClient):
             "refs_exist": [_os.path.exists(p) for p in refs],
             "ref_bytes": ref_bytes,
         })
+        if self.pngs:
+            return self.pngs[(len(self.calls) - 1) % len(self.pngs)]
         return self.png
 
 
@@ -3228,22 +3233,25 @@ class IllustrateModuleTests(TestCase):
 class ImageAssetTests(TestCase):
     """LGA-71: content-addressed image keys/hashes."""
 
+    _H = dict(model="m", style="s", character_block="c", setting="jardin", tone="alegre",
+              aspect="4:3", scene="un gato")
+
     def test_hash_changes_with_scene_and_is_stable(self):
-        a = assets.image_content_hash(model="m", style="s", character_block="c",
-                                      aspect="4:3", scene="un gato")
-        same = assets.image_content_hash(model="m", style="s", character_block="c",
-                                         aspect="4:3", scene="un gato")
-        diff = assets.image_content_hash(model="m", style="s", character_block="c",
-                                         aspect="4:3", scene="un perro")
+        a = assets.image_content_hash(**self._H)
+        same = assets.image_content_hash(**self._H)
+        diff = assets.image_content_hash(**{**self._H, "scene": "un perro"})
         self.assertEqual(a, same)                          # deterministic
         self.assertNotEqual(a, diff)                       # scene is part of identity
 
-    def test_hash_changes_with_character_block(self):
-        base = assets.image_content_hash(model="m", style="s", character_block="c1",
-                                         aspect="4:3", scene="x")
-        moved = assets.image_content_hash(model="m", style="s", character_block="c2",
-                                          aspect="4:3", scene="x")
-        self.assertNotEqual(base, moved)                   # contract change busts cache
+    def test_hash_changes_with_every_prompt_input(self):
+        # EACH field that build_art_prompt feeds into the image must bust the hash —
+        # otherwise a contract change (setting/tone) would keep serving a stale image.
+        base = assets.image_content_hash(**self._H)
+        for field, newval in [("character_block", "c2"), ("setting", "playa"),
+                              ("tone", "triste"), ("model", "m2"), ("aspect", "1:1"),
+                              ("style", "s2")]:
+            other = assets.image_content_hash(**{**self._H, field: newval})
+            self.assertNotEqual(base, other, msg=f"{field} not in the image hash")
 
     def test_image_key_format(self):
         self.assertEqual(assets.image_key("abc"), "lingua/illustrations/abc.webp")
@@ -3369,6 +3377,43 @@ class BakeStoryImageTests(TestCase):
         self.assertEqual(                                     # ...and the spend was counted
             AiUsage.objects.get(period=services._current_period()).images, 1)
         self.assertFalse(StoryImage.objects.filter(story=self.story).exists())  # no row on failure
+
+    def test_every_later_beat_anchors_to_the_first_image(self):
+        # 3-beat story + distinct bytes per generation → prove beat 2 anchors to the
+        # FIRST image (img0), NOT the previous one (img1). This is the guard the
+        # committed `if True:` mutant defeated (it re-anchored to the previous beat).
+        s = Story.objects.create(
+            title="Tres", body="Un gato duerme. El sol brilla. Un perro corre. "
+            "La rana salta. El pajaro canta. Todos rien.",
+            level="L1", status=Story.APPROVED, art_contract={"character_block": "un gato gris"})
+        pngs = [_tiny_png(color=c) for c in ((10, 20, 30), (200, 50, 50), (50, 200, 50))]
+        client = _FakeImageClient(pngs=pngs)
+        summary = services.bake_story_images(s, image_client=client)
+        self.assertEqual(summary["beats"], 3)
+        beat0 = StoryImage.objects.get(story=s, beat_index=0)
+        with lingua_storage.readalong_storage().open(beat0.image_key) as fh:
+            img0_bytes = fh.read()
+        # beats 1 AND 2 must both reference the FIRST image's bytes
+        self.assertEqual(client.calls[1]["ref_bytes"][0], img0_bytes)
+        self.assertEqual(client.calls[2]["ref_bytes"][0], img0_bytes)  # NOT img1 (mutant)
+
+    def test_force_rebake_overwrites_stored_bytes(self):
+        # Non-deterministic model: a force re-bake with the SAME prompt/hash produces
+        # different bytes and must actually replace the stored image (Finding: save_bytes
+        # skip-if-exists would silently keep the old image on the image path).
+        beat = self._beat0()
+        first, second = _tiny_png(color=(9, 9, 9)), _tiny_png(color=(240, 10, 10))
+        obj1, _ = services.bake_story_image(self.story, beat, image_client=_FakeImageClient(first))
+        st = lingua_storage.readalong_storage()
+        with st.open(obj1.image_key) as fh:
+            stored_before = fh.read()
+        obj2, action = services.bake_story_image(
+            self.story, beat, image_client=_FakeImageClient(second), force=True)
+        self.assertEqual(action, "baked")
+        self.assertEqual(obj2.image_key, obj1.image_key)   # same hash/key (prompt unchanged)
+        with st.open(obj2.image_key) as fh:
+            stored_after = fh.read()
+        self.assertNotEqual(stored_after, stored_before)   # bytes actually replaced
 
     def test_batch_stops_when_budget_exceeded(self):
         # bake_story_images must propagate BudgetExceeded (the command catches it to

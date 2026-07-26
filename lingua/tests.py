@@ -1537,6 +1537,27 @@ class ReaderViewTests(TestCase):
         self.assertIn("<audio", html)
         self.assertIn(mia.audio_key, html)                     # fell back to the baked voice
 
+    @override_settings(STORAGES=_INMEM_STORAGES)
+    def test_stale_voice_is_not_offered_or_served(self):
+        # A baked-but-STALE voice (story text changed since it was baked, so its
+        # content_hash no longer matches) must be treated as having no audio: never
+        # listed in the picker, never served. Mutation guard for the current_audio()
+        # staleness filter — replacing it with a plain .filter(voice=..).first() would
+        # list the dead voice and emit a 404-ing URL, and this test would then fail.
+        mia = self._add_audio(self.story, "Mia")               # current
+        stale = StoryAudio.objects.create(
+            story=self.story, voice="Andres", engine="neural", provider="polly",
+            content_hash="stale-hash-does-not-match-the-body",  # simulates a post-edit stale row
+            audio_key="lingua/readalong/stale-andres.mp3",
+            timings=mia.timings, duration_ms=600,
+        )
+        self.assertIsNone(self.story.current_audio("Andres", "neural"))  # guard: it IS stale
+        html = self.client.get(self._url(self.story) + "?voice=Andres").content.decode()
+        self.assertNotIn('id="lingua-voice"', html)            # only Mía is current → no picker
+        self.assertNotIn('value="Andres"', html)               # stale voice not offered
+        self.assertNotIn(stale.audio_key, html)                # stale asset never served
+        self.assertIn(mia.audio_key, html)                     # fell back to the current voice
+
     _AI_DISCLOSURE = "una computadora (IA)"   # distinctive slice of the D-54 disclosure
 
     def test_shows_ai_disclosure_for_generated_story(self):

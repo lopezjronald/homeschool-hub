@@ -13,6 +13,7 @@ import pathlib
 import re
 from unittest import mock
 
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.db import models as dj_models
 from django.test import RequestFactory, TestCase, override_settings
@@ -1446,10 +1447,10 @@ class ReaderViewTests(TestCase):
     def _url(self, story):
         return reverse("lingua:read", args=[story.pk])
 
-    def _add_audio(self, story):
-        digest = story.audio_hash("Mia", "neural")
+    def _add_audio(self, story, voice="Mia", engine="neural"):
+        digest = story.audio_hash(voice, engine)
         return StoryAudio.objects.create(
-            story=story, voice="Mia", engine="neural", provider="polly",
+            story=story, voice=voice, engine=engine, provider="polly",
             content_hash=digest, audio_key=assets.asset_keys(digest)["audio"],
             timings={
                 "tokens": ["Hay", "un", "gato", "feliz."],
@@ -1486,6 +1487,111 @@ class ReaderViewTests(TestCase):
         self.assertIn('data-i="0"', html)
         self.assertIn('id="lingua-speed"', html)         # speed control present
         self.assertIn('value="0.75" selected', html)     # defaults to 0.75x for young readers
+
+    @override_settings(STORAGES=_INMEM_STORAGES)
+    def test_no_voice_picker_with_single_baked_voice(self):
+        # Only one baked voice → nothing to choose → no picker (LGA-70).
+        self._add_audio(self.story, "Mia")
+        html = self.client.get(self._url(self.story)).content.decode()
+        self.assertIn("<audio", html)                     # audio still present
+        self.assertNotIn('id="lingua-voice"', html)       # but no voice <select>
+
+    @override_settings(STORAGES=_INMEM_STORAGES)
+    def test_voice_picker_lists_baked_voices_only(self):
+        # Two baked voices → picker appears with BOTH; the default (first configured,
+        # Mía) is preselected. A configured-but-unbaked voice (Lupe) is NOT listed.
+        self._add_audio(self.story, "Mia")
+        self._add_audio(self.story, "Andres")
+        html = self.client.get(self._url(self.story)).content.decode()
+        self.assertIn('id="lingua-voice"', html)
+        self.assertIn('<option value="Mia" selected>', html)   # default preselected
+        self.assertIn('<option value="Andres">', html)         # second voice offered
+        self.assertNotIn('value="Lupe"', html)                 # configured but unbaked → hidden
+
+    @override_settings(STORAGES=_INMEM_STORAGES)
+    def test_requested_voice_serves_that_voices_audio(self):
+        # ?voice=Andres must serve the ANDRÉS mp3, not Mía's — discriminating: the two
+        # voices have different content hashes → different R2 keys.
+        mia = self._add_audio(self.story, "Mia")
+        andres = self._add_audio(self.story, "Andres")
+        self.assertNotEqual(mia.audio_key, andres.audio_key)   # guard: keys really differ
+        html = self.client.get(self._url(self.story) + "?voice=Andres").content.decode()
+        self.assertIn(andres.audio_key, html)                  # Andrés asset is served
+        self.assertNotIn(mia.audio_key, html)                  # Mía asset is NOT served
+        self.assertIn('<option value="Andres" selected>', html)
+
+    @override_settings(STORAGES=_INMEM_STORAGES)
+    def test_invalid_voice_falls_back_to_default(self):
+        mia = self._add_audio(self.story, "Mia")
+        self._add_audio(self.story, "Andres")
+        html = self.client.get(self._url(self.story) + "?voice=Bogus").content.decode()
+        self.assertIn(mia.audio_key, html)                     # default (Mía) served
+        self.assertIn('<option value="Mia" selected>', html)
+
+    @override_settings(STORAGES=_INMEM_STORAGES)
+    def test_unbaked_requested_voice_falls_back_to_baked(self):
+        # Andrés is configured but only Mía is baked → ?voice=Andres still gets audio.
+        mia = self._add_audio(self.story, "Mia")
+        r = self.client.get(self._url(self.story) + "?voice=Andres")
+        self.assertEqual(r.status_code, 200)
+        html = r.content.decode()
+        self.assertIn("<audio", html)
+        self.assertIn(mia.audio_key, html)                     # fell back to the baked voice
+
+    @override_settings(STORAGES=_INMEM_STORAGES)
+    def test_stale_voice_is_not_offered_or_served(self):
+        # A baked-but-STALE voice (story text changed since it was baked, so its
+        # content_hash no longer matches) must be treated as having no audio: never
+        # listed in the picker, never served. Mutation guard for the current_audio()
+        # staleness filter — replacing it with a plain .filter(voice=..).first() would
+        # list the dead voice and emit a 404-ing URL, and this test would then fail.
+        mia = self._add_audio(self.story, "Mia")               # current
+        stale = StoryAudio.objects.create(
+            story=self.story, voice="Andres", engine="neural", provider="polly",
+            content_hash="stale-hash-does-not-match-the-body",  # simulates a post-edit stale row
+            audio_key="lingua/readalong/stale-andres.mp3",
+            timings=mia.timings, duration_ms=600,
+        )
+        self.assertIsNone(self.story.current_audio("Andres", "neural"))  # guard: it IS stale
+        html = self.client.get(self._url(self.story) + "?voice=Andres").content.decode()
+        self.assertNotIn('id="lingua-voice"', html)            # only Mía is current → no picker
+        self.assertNotIn('value="Andres"', html)               # stale voice not offered
+        self.assertNotIn(stale.audio_key, html)                # stale asset never served
+        self.assertIn(mia.audio_key, html)                     # fell back to the current voice
+
+    @override_settings(
+        STORAGES=_INMEM_STORAGES,
+        LINGUA={**settings.LINGUA, "TTS_VOICES": [
+            {"id": "Mia", "label": "Mía", "engine": "neural"},
+            {"id": "Lupe", "label": "Lupe", "engine": "standard"},  # a NON-neural voice
+        ]},
+    )
+    def test_per_voice_engine_is_honored(self):
+        # Each voice carries its OWN engine (views.py passes v['engine'] to
+        # current_audio). A voice configured 'standard' must resolve against its
+        # standard-engine bake, not the neural default. Mutation guard: replacing
+        # v.get('engine') with default_engine would look up Lupe under 'neural', find
+        # nothing (Lupe was baked 'standard' → different content_hash), drop it from
+        # the picker, and this test would fail.
+        self._add_audio(self.story, "Mia", "neural")
+        lupe = self._add_audio(self.story, "Lupe", "standard")
+        html = self.client.get(self._url(self.story) + "?voice=Lupe").content.decode()
+        self.assertIn('value="Lupe"', html)                     # standard voice offered
+        self.assertIn('<option value="Lupe" selected>', html)   # and selected
+        self.assertIn(lupe.audio_key, html)                     # its standard-engine asset served
+
+    @override_settings(STORAGES=_INMEM_STORAGES)
+    def test_baked_voices_are_scoped_to_this_story(self):
+        # A voice baked for a DIFFERENT story must not leak into this story's picker —
+        # baked_voices is computed via story.current_audio (per-story), not globally.
+        other = Story.objects.create(title="Otro", body="Otra historia aquí.",
+                                     level="L1", status=Story.APPROVED)
+        mia = self._add_audio(self.story, "Mia")
+        self._add_audio(other, "Andres")            # Andrés baked only for the OTHER story
+        html = self.client.get(self._url(self.story)).content.decode()
+        self.assertNotIn('value="Andres"', html)    # not offered here
+        self.assertNotIn('id="lingua-voice"', html) # only Mía current for THIS story → no picker
+        self.assertIn(mia.audio_key, html)          # this story's own voice still served
 
     _AI_DISCLOSURE = "una computadora (IA)"   # distinctive slice of the D-54 disclosure
 

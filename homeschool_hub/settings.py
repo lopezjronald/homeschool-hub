@@ -344,6 +344,17 @@ LINGUA = {
     "TTS_VOICE": os.getenv("LINGUA_TTS_VOICE", "Mia"),
     "TTS_ENGINE": os.getenv("LINGUA_TTS_ENGINE", "neural"),
     "TTS_REGION": os.getenv("LINGUA_TTS_REGION") or None,
+    # Reader voice picker (LGA-70): the ordered set of narration voices offered on the
+    # read-along page. All Amazon Polly *neural* voices — each emits word-boundary
+    # marks, so the word-by-word highlighting works identically for every one (edge-tts
+    # only emits sentence marks and would break sync, so it is NOT used here). ``id`` is
+    # the Polly VoiceId; ``label`` is the (Spanish) name the child sees. The FIRST entry
+    # is the default and MUST match TTS_VOICE. Bake a voice with ``tts_build --voice <id>``.
+    "TTS_VOICES": [
+        {"id": "Mia", "label": "Mía", "engine": "neural"},      # es-MX, female
+        {"id": "Andres", "label": "Andrés", "engine": "neural"},  # es-MX, male
+        {"id": "Lupe", "label": "Lupe", "engine": "neural"},     # es-US, female
+    ],
     # Host-provided AIClient adapter (D-04). The ONLY lingua-side reference to the
     # host adapter; swapping this swaps the provider with zero lingua changes.
     "AI_CLIENT": os.getenv(

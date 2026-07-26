@@ -51,6 +51,19 @@
     var cursor = -1, raf = 0, lastSpan = null;
     var TAIL_SLACK_MS = 150;  // keep a word lit briefly past its end for a smooth feel
 
+    // Default to a gentle 0.75x for young readers; the speed <select> (if present) drives
+    // it. The rAF highlighter reads audio.currentTime (the audio's own timeline in ms),
+    // so word-sync holds at ANY rate. Re-apply on loadedmetadata/play — some browsers
+    // reset playbackRate when the source loads.
+    var speedEl = document.getElementById("lingua-speed");
+    function applySpeed() {
+      var r = speedEl ? parseFloat(speedEl.value) : 0.75;
+      audio.playbackRate = (r > 0) ? r : 0.75;
+    }
+    applySpeed();
+    audio.addEventListener("loadedmetadata", applySpeed);
+    if (speedEl) speedEl.addEventListener("change", applySpeed);
+
     function clear() { if (lastSpan) { lastSpan.classList.remove("on"); lastSpan = null; } }
 
     function paint(ms) {
@@ -67,7 +80,7 @@
 
     function tick() { paint(audio.currentTime * 1000); raf = requestAnimationFrame(tick); }
 
-    audio.addEventListener("play", function () { cancelAnimationFrame(raf); tick(); });
+    audio.addEventListener("play", function () { applySpeed(); cancelAnimationFrame(raf); tick(); });
     audio.addEventListener("pause", function () { cancelAnimationFrame(raf); });
     audio.addEventListener("ended", function () { cancelAnimationFrame(raf); clear(); });
 

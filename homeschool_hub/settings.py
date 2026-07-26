@@ -351,6 +351,12 @@ LINGUA = {
     "ILLUSTRATION_ASPECT": os.getenv("LINGUA_ILLUSTRATION_ASPECT", "4:3"),
     "ILLUSTRATION_MAX_BEATS": _env_int("LINGUA_ILLUSTRATION_MAX_BEATS", 8),
     "IMAGE_PRICE_PER_IMAGE_USD": _env_float("LINGUA_IMAGE_PRICE_PER_IMAGE_USD", 0.04),
+    # Image model id used in the content hash (so a model change re-bakes). LINGUA-
+    # namespaced for extractability; defaults to the SAME value the host adapter's
+    # Replicate seam uses (MANGA_IMAGE_MODEL), so the hashed model == the model
+    # actually invoked. Keep them in sync if you override either.
+    "IMAGE_MODEL": os.getenv("LINGUA_IMAGE_MODEL")
+    or os.getenv("MANGA_IMAGE_MODEL", "google/nano-banana-2"),
     # Reader voice picker (LGA-70): the ordered set of narration voices offered on the
     # read-along page. All Amazon Polly *neural* voices — each emits word-boundary
     # marks, so the word-by-word highlighting works identically for every one (edge-tts

@@ -238,7 +238,7 @@ def bake_story_image(story, beat, *, image_client=None, reference_bytes=None, fo
         raise BudgetExceeded("Monthly AI cost ceiling reached — illustration skipped.")
     img = image_client or get_image_client()
     aspect = settings.LINGUA.get("ILLUSTRATION_ASPECT", illustrate.DEFAULT_ASPECT)
-    model = getattr(settings, "MANGA_IMAGE_MODEL", "")
+    model = settings.LINGUA.get("IMAGE_MODEL", "")
     contract = story.art_contract or {}
     prompt = illustrate.build_art_prompt(
         beat["text"], character_block=contract.get("character_block", ""),

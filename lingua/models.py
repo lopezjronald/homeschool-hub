@@ -318,7 +318,7 @@ class Story(models.Model):
         so a baked image can be checked for staleness."""
         from django.conf import settings
         from . import assets, illustrate
-        model = model or getattr(settings, "MANGA_IMAGE_MODEL", "")
+        model = model or settings.LINGUA.get("IMAGE_MODEL", "")
         aspect = aspect or settings.LINGUA.get("ILLUSTRATION_ASPECT", illustrate.DEFAULT_ASPECT)
         character_block = (self.art_contract or {}).get("character_block", "")
         scene = illustrate.scene_from_beat(beat["text"])
@@ -446,9 +446,12 @@ class StoryImage(models.Model):
     @property
     def is_current(self):
         """True if this image was baked from the story's CURRENT beats + contract."""
+        from django.conf import settings
         from . import illustrate
+        max_beats = settings.LINGUA.get("ILLUSTRATION_MAX_BEATS", 8)
         beat = next(
-            (b for b in illustrate.beats(self.story.body) if b["index"] == self.beat_index),
+            (b for b in illustrate.beats(self.story.body, max_beats=max_beats)
+             if b["index"] == self.beat_index),
             None,
         )
         if beat is None:

@@ -80,12 +80,13 @@
     {% endif %}
 
     {# AI-content disclosure (D-54, Anthropic-mandated): shown wherever an AI-written story is read — parent preview + kid portal; public-domain texts skip it. Keep this comment on one physical line with no comment markers inside, or it leaks to the page (LGA-83). #}
-    {% if story.source == 'generated' %}
-      {% if illustrated %}
+    {% if story.source == 'generated' and illustrated %}
       <p class="ai-note">✨ Este cuento y sus dibujos los hizo una computadora (IA) y los revisó un adulto.</p>
-      {% else %}
+    {% elif story.source == 'generated' %}
       <p class="ai-note">✨ Este cuento lo escribió una computadora (IA) y lo revisó un adulto.</p>
-      {% endif %}
+    {% elif illustrated %}
+      {# Public-domain TEXT but AI-GENERATED images still require the disclosure (D-54). #}
+      <p class="ai-note">✨ Los dibujos de este cuento los hizo una computadora (IA) y los revisó un adulto.</p>
     {% endif %}
   </main>
 

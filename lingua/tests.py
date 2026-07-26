@@ -1597,7 +1597,7 @@ class ReaderViewTests(TestCase):
         digest = story.image_hash(beat)
         return StoryImage.objects.create(
             story=story, beat_index=beat["index"], content_hash=digest,
-            image_key=assets.image_key(digest), model=settings.MANGA_IMAGE_MODEL,
+            image_key=assets.image_key(digest), model=settings.LINGUA["IMAGE_MODEL"],
             alt_text=beat["text"][:300], width=1024, height=768,
         )
 
@@ -1656,7 +1656,7 @@ class ReaderViewTests(TestCase):
         digest = s.image_hash(partial)
         StoryImage.objects.create(story=s, beat_index=0, content_hash=digest,
                                   image_key=assets.image_key(digest),
-                                  model=settings.MANGA_IMAGE_MODEL, width=1024, height=768)
+                                  model=settings.LINGUA["IMAGE_MODEL"], width=1024, height=768)
         with mock.patch("lingua.views.illustrate.beats", return_value=[partial]):
             html = self.client.get(self._url(s)).content.decode()
         self.assertNotIn("illustrated", html)      # count mismatch → NOT illustrated

@@ -14,6 +14,7 @@ cache, which means it must be part of the hash. Identity is the only safe transf
 import hashlib
 
 ASSET_PREFIX = "lingua/readalong"
+IMAGE_PREFIX = "lingua/illustrations"
 
 
 def content_hash(text, *, provider, voice, engine):
@@ -34,3 +35,22 @@ def asset_keys(digest):
         "audio": f"{ASSET_PREFIX}/{digest}.mp3",
         "timings": f"{ASSET_PREFIX}/{digest}.json",
     }
+
+
+def image_content_hash(*, model, style, character_block, aspect, scene):
+    """sha256 hex over everything that determines an illustration's bytes: the image
+    model, the fixed house style, the per-story character block, the aspect ratio, and
+    the exact beat scene text (LGA-71). Editing any of these — the style string, the
+    story text, the contract — busts the cache so a stale image is never served; the
+    old R2 object is simply orphaned. NUL separators keep field boundaries
+    unambiguous (mirrors :func:`content_hash`)."""
+    h = hashlib.sha256()
+    for part in (model, style, character_block, aspect, scene):
+        h.update((part or "").encode("utf-8"))
+        h.update(b"\x00")
+    return h.hexdigest()
+
+
+def image_key(digest, ext="webp"):
+    """R2 object key for an illustration of a given content hash."""
+    return f"{IMAGE_PREFIX}/{digest}.{ext}"

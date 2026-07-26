@@ -41,11 +41,18 @@
       {{ timings|json_script:"lingua-timings" }}
     {% endif %}
 
-    <div id="lingua-story">
-      {% regroup token_ctx by p as paragraphs %}
-      {% for para in paragraphs %}<p class="story">{% for t in para.list %}<span class="w{% if t.cognate %} cognate{% endif %}{% if t.ff %} false-friend{% endif %}" data-i="{{ t.i }}"{% if t.ff %} title="Parece «{{ t.ff.0 }}» en inglés, pero significa «{{ t.ff.1 }}»"{% endif %}>{{ t.text }}</span>
-      {% endfor %}</p>
-      {% endfor %}
+    {# Illustrated-storybook layout (LGA-71): one picture above its 1–2 sentences; word spans keep document order + data-i so the read-along highlighter is unaffected; falls back to plain paragraphs with no baked images. Keep this comment to one physical line with no comment markers inside, or it leaks to the page (LGA-83). #}
+    <div id="lingua-story"{% if illustrated %} class="illustrated"{% endif %}>
+      {% if illustrated %}
+        {% for beat in beats_ctx %}<figure class="beat">{% if beat.image_url %}<img class="beat-img" src="{{ beat.image_url }}" alt="{{ beat.alt }}" loading="lazy">{% endif %}<figcaption class="beat-text">{% for t in beat.tokens %}<span class="w{% if t.cognate %} cognate{% endif %}{% if t.ff %} false-friend{% endif %}" data-i="{{ t.i }}"{% if t.ff %} title="Parece «{{ t.ff.0 }}» en inglés, pero significa «{{ t.ff.1 }}»"{% endif %}>{{ t.text }}</span>
+        {% endfor %}</figcaption></figure>
+        {% endfor %}
+      {% else %}
+        {% regroup token_ctx by p as paragraphs %}
+        {% for para in paragraphs %}<p class="story">{% for t in para.list %}<span class="w{% if t.cognate %} cognate{% endif %}{% if t.ff %} false-friend{% endif %}" data-i="{{ t.i }}"{% if t.ff %} title="Parece «{{ t.ff.0 }}» en inglés, pero significa «{{ t.ff.1 }}»"{% endif %}>{{ t.text }}</span>
+        {% endfor %}</p>
+        {% endfor %}
+      {% endif %}
     </div>
 
     {% if not has_audio %}
@@ -73,8 +80,13 @@
     {% endif %}
 
     {# AI-content disclosure (D-54, Anthropic-mandated): shown wherever an AI-written story is read — parent preview + kid portal; public-domain texts skip it. Keep this comment on one physical line with no comment markers inside, or it leaks to the page (LGA-83). #}
-    {% if story.source == 'generated' %}
+    {% if story.source == 'generated' and illustrated %}
+      <p class="ai-note">✨ Este cuento y sus dibujos los hizo una computadora (IA) y los revisó un adulto.</p>
+    {% elif story.source == 'generated' %}
       <p class="ai-note">✨ Este cuento lo escribió una computadora (IA) y lo revisó un adulto.</p>
+    {% elif illustrated %}
+      {# Public-domain TEXT but AI-GENERATED images still require the disclosure (D-54). #}
+      <p class="ai-note">✨ Los dibujos de este cuento los hizo una computadora (IA) y los revisó un adulto.</p>
     {% endif %}
   </main>
 

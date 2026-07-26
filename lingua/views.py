@@ -125,9 +125,16 @@ def render_reader(request, story, *, finish_url="", back_url=""):
     beats_ctx, illustrated, image_hosts = None, False, set()
     beat_list = illustrate.beats(
         story.body, max_beats=settings.LINGUA.get("ILLUSTRATION_MAX_BEATS", 8))
+    # One query for all this story's images, then match each beat to its CURRENT
+    # (non-stale) image in Python — same semantics as current_image() but without an
+    # N-queries-per-render fan-out.
+    by_beat = {}
+    for si in story.images.all():
+        by_beat.setdefault(si.beat_index, []).append(si)
     beat_images = []
     for b in beat_list:
-        si = story.current_image(b)
+        want = story.image_hash(b)
+        si = next((x for x in by_beat.get(b["index"], []) if x.content_hash == want), None)
         url = ""
         if si:
             try:

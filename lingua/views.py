@@ -70,9 +70,26 @@ def render_reader(request, story, *, finish_url="", back_url=""):
     cross-origin. ``finish_url`` (optional) is a POST target for logging a completed
     read; ``back_url`` is the back/done link.
     """
-    voice = settings.LINGUA.get("TTS_VOICE", "Mia")
-    engine = settings.LINGUA.get("TTS_ENGINE", "neural")
-    audio = story.current_audio(voice, engine)
+    # Voice picker (LGA-70): offer only voices that have CURRENT (non-stale) baked
+    # audio for THIS story, so the picker never lists a dead option. Honor ?voice= when
+    # it names a baked voice; otherwise fall back to the first baked voice — the reader
+    # still gets audio (graceful degradation, LGA-54). All voices are Polly-neural and
+    # keep word-by-word highlighting, so switching voice only swaps the mp3 + timings.
+    default_engine = settings.LINGUA.get("TTS_ENGINE", "neural")
+    voice_cfgs = settings.LINGUA.get("TTS_VOICES") or [
+        {"id": settings.LINGUA.get("TTS_VOICE", "Mia"),
+         "label": settings.LINGUA.get("TTS_VOICE", "Mia"), "engine": default_engine},
+    ]
+    baked_voices, audio_by_id = [], {}
+    for v in voice_cfgs:
+        a = story.current_audio(v["id"], v.get("engine") or default_engine)
+        if a:
+            baked_voices.append(v)
+            audio_by_id[v["id"]] = a
+    requested = request.GET.get("voice")
+    current_voice = requested if requested in audio_by_id else (
+        baked_voices[0]["id"] if baked_voices else "")
+    audio = audio_by_id.get(current_voice)
     audio_url, timings = "", None
     if audio:
         try:
@@ -103,6 +120,9 @@ def render_reader(request, story, *, finish_url="", back_url=""):
         "token_ctx": token_ctx, "has_audio": has_audio,
         "has_flags": any(t["cognate"] or t["ff"] for t in token_ctx),
         "finish_url": finish_url, "back_url": back_url,
+        # Only offer the picker when there's a real choice (>1 baked voice, LGA-70).
+        "voices": baked_voices if has_audio and len(baked_voices) > 1 else [],
+        "current_voice": current_voice,
     })
     policy = {k: list(v) for k, v in LINGUA_CSP.items()}
     if has_audio:

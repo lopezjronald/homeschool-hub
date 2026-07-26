@@ -64,6 +64,20 @@
     audio.addEventListener("loadedmetadata", applySpeed);
     if (speedEl) speedEl.addEventListener("change", applySpeed);
 
+    // Voice picker (LGA-70): each voice is a separately-baked mp3 + timing set, so
+    // switching reloads the page with ?voice=<id> (the server picks that voice's asset
+    // and re-embeds its timings). Preserves the rest of the URL; CSP-clean (no inline
+    // handler). Guard against re-navigating to the already-current voice.
+    var voiceEl = document.getElementById("lingua-voice");
+    if (voiceEl) {
+      voiceEl.addEventListener("change", function () {
+        var url = new URL(window.location.href);
+        if (url.searchParams.get("voice") === voiceEl.value) return;
+        url.searchParams.set("voice", voiceEl.value);
+        window.location.assign(url.toString());
+      });
+    }
+
     function clear() { if (lastSpan) { lastSpan.classList.remove("on"); lastSpan = null; } }
 
     function paint(ms) {

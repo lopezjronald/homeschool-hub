@@ -1446,10 +1446,10 @@ class ReaderViewTests(TestCase):
     def _url(self, story):
         return reverse("lingua:read", args=[story.pk])
 
-    def _add_audio(self, story):
-        digest = story.audio_hash("Mia", "neural")
+    def _add_audio(self, story, voice="Mia"):
+        digest = story.audio_hash(voice, "neural")
         return StoryAudio.objects.create(
-            story=story, voice="Mia", engine="neural", provider="polly",
+            story=story, voice=voice, engine="neural", provider="polly",
             content_hash=digest, audio_key=assets.asset_keys(digest)["audio"],
             timings={
                 "tokens": ["Hay", "un", "gato", "feliz."],
@@ -1486,6 +1486,56 @@ class ReaderViewTests(TestCase):
         self.assertIn('data-i="0"', html)
         self.assertIn('id="lingua-speed"', html)         # speed control present
         self.assertIn('value="0.75" selected', html)     # defaults to 0.75x for young readers
+
+    @override_settings(STORAGES=_INMEM_STORAGES)
+    def test_no_voice_picker_with_single_baked_voice(self):
+        # Only one baked voice → nothing to choose → no picker (LGA-70).
+        self._add_audio(self.story, "Mia")
+        html = self.client.get(self._url(self.story)).content.decode()
+        self.assertIn("<audio", html)                     # audio still present
+        self.assertNotIn('id="lingua-voice"', html)       # but no voice <select>
+
+    @override_settings(STORAGES=_INMEM_STORAGES)
+    def test_voice_picker_lists_baked_voices_only(self):
+        # Two baked voices → picker appears with BOTH; the default (first configured,
+        # Mía) is preselected. A configured-but-unbaked voice (Lupe) is NOT listed.
+        self._add_audio(self.story, "Mia")
+        self._add_audio(self.story, "Andres")
+        html = self.client.get(self._url(self.story)).content.decode()
+        self.assertIn('id="lingua-voice"', html)
+        self.assertIn('<option value="Mia" selected>', html)   # default preselected
+        self.assertIn('<option value="Andres">', html)         # second voice offered
+        self.assertNotIn('value="Lupe"', html)                 # configured but unbaked → hidden
+
+    @override_settings(STORAGES=_INMEM_STORAGES)
+    def test_requested_voice_serves_that_voices_audio(self):
+        # ?voice=Andres must serve the ANDRÉS mp3, not Mía's — discriminating: the two
+        # voices have different content hashes → different R2 keys.
+        mia = self._add_audio(self.story, "Mia")
+        andres = self._add_audio(self.story, "Andres")
+        self.assertNotEqual(mia.audio_key, andres.audio_key)   # guard: keys really differ
+        html = self.client.get(self._url(self.story) + "?voice=Andres").content.decode()
+        self.assertIn(andres.audio_key, html)                  # Andrés asset is served
+        self.assertNotIn(mia.audio_key, html)                  # Mía asset is NOT served
+        self.assertIn('<option value="Andres" selected>', html)
+
+    @override_settings(STORAGES=_INMEM_STORAGES)
+    def test_invalid_voice_falls_back_to_default(self):
+        mia = self._add_audio(self.story, "Mia")
+        self._add_audio(self.story, "Andres")
+        html = self.client.get(self._url(self.story) + "?voice=Bogus").content.decode()
+        self.assertIn(mia.audio_key, html)                     # default (Mía) served
+        self.assertIn('<option value="Mia" selected>', html)
+
+    @override_settings(STORAGES=_INMEM_STORAGES)
+    def test_unbaked_requested_voice_falls_back_to_baked(self):
+        # Andrés is configured but only Mía is baked → ?voice=Andres still gets audio.
+        mia = self._add_audio(self.story, "Mia")
+        r = self.client.get(self._url(self.story) + "?voice=Andres")
+        self.assertEqual(r.status_code, 200)
+        html = r.content.decode()
+        self.assertIn("<audio", html)
+        self.assertIn(mia.audio_key, html)                     # fell back to the baked voice
 
     _AI_DISCLOSURE = "una computadora (IA)"   # distinctive slice of the D-54 disclosure
 

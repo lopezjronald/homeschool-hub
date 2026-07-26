@@ -381,6 +381,18 @@ class CharterReportRedesignTest(TestCase):
         self.assertEqual(a.ai_level, "")
         self.assertEqual(a.status, MasteryAssessment.FINALIZED)
 
+    def test_stamp_updates_existing_never_duplicates(self):
+        # Re-stamping an entry updates its single assessment rather than inserting a
+        # second — the create/update guard behind report_stamp's idempotency (the view
+        # now also locks the entry so a concurrent double-submit can't race a duplicate).
+        self.client.login(username="cparent", password="pw")
+        url = reverse("worklog:report_stamp", kwargs={"entry_pk": self.photo.pk})
+        self.client.post(url, {"final_level": "developing"})    # creates
+        self.assertEqual(self.photo.assessments.count(), 1)
+        self.client.post(url, {"final_level": "mastered"})      # updates, not duplicates
+        self.assertEqual(self.photo.assessments.count(), 1)
+        self.assertEqual(self.photo.assessments.first().final_level, "mastered")
+
     def test_teacher_cannot_stamp(self):
         self.client.login(username="cteacher", password="pw")
         resp = self.client.post(

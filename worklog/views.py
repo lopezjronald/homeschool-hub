@@ -8,6 +8,7 @@ from urllib.parse import urlencode
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.db import transaction
 from django.db.models import Prefetch
 from django.http import Http404, HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -296,29 +297,34 @@ def report_stamp(request, entry_pk):
     form = FinalizeForm(request.POST)
     if form.is_valid():
         chosen = form.cleaned_data["final_level"]
-        assessments = list(entry.assessments.all())
-        a = assessments[0] if assessments else None
         now = timezone.now()
-        if a:
-            if a.ai_level and chosen != a.ai_level:
-                a.parent_override_level = chosen
-            a.final_level = chosen
-            a.status = MasteryAssessment.FINALIZED
-            a.finalized_at = now
-            a.save()
-        else:
-            sheets = list(entry.response_sheets.all())
-            sheet = sheets[0] if sheets else None
-            MasteryAssessment.objects.create(
-                work_entry=entry,
-                graded_by=request.user,
-                rubric=(sheet.question_set.rubric if sheet else "Parent stamp"),
-                answers=(sheet.as_worklog_text() if sheet else (entry.description or "(work on file)")),
-                ai_level="",
-                final_level=chosen,
-                status=MasteryAssessment.FINALIZED,
-                finalized_at=now,
-            )
+        # Lock the entry and re-read its assessments so a double-submit (or a race with
+        # the async grader, which locks the same row) updates the existing row instead
+        # of inserting a duplicate MasteryAssessment — mirrors grading._manual_grade_now.
+        with transaction.atomic():
+            WorkLogEntry.objects.select_for_update().get(pk=entry.pk)
+            assessments = list(entry.assessments.all())
+            a = assessments[0] if assessments else None
+            if a:
+                if a.ai_level and chosen != a.ai_level:
+                    a.parent_override_level = chosen
+                a.final_level = chosen
+                a.status = MasteryAssessment.FINALIZED
+                a.finalized_at = now
+                a.save()
+            else:
+                sheets = list(entry.response_sheets.all())
+                sheet = sheets[0] if sheets else None
+                MasteryAssessment.objects.create(
+                    work_entry=entry,
+                    graded_by=request.user,
+                    rubric=(sheet.question_set.rubric if sheet else "Parent stamp"),
+                    answers=(sheet.as_worklog_text() if sheet else (entry.description or "(work on file)")),
+                    ai_level="",
+                    final_level=chosen,
+                    status=MasteryAssessment.FINALIZED,
+                    finalized_at=now,
+                )
         messages.success(request, "Grade saved.")
     else:
         messages.error(request, "Please choose a mastery level.")

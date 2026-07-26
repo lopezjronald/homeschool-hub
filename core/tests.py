@@ -322,6 +322,33 @@ class PermissionHelperTests(TestCase):
         from core.permissions import user_can_edit
         self.assertFalse(user_can_edit(self.outsider))
 
+    # ── can_edit_family_or_global (per-object edit gate, closes cross-family leak) ──
+
+    def test_or_global_editor_of_that_family(self):
+        from core.permissions import can_edit_family_or_global
+        self.assertTrue(can_edit_family_or_global(self.parent_user, self.family))
+
+    def test_or_global_editor_ELSEWHERE_cannot_edit_this_family(self):
+        # The leak fix: a user who is an editor in ANOTHER family but only a viewer of
+        # THIS family must NOT get edit rights here. The old global user_can_edit
+        # returned True for such a user (they can edit somewhere) — this is the case
+        # that regressed portal-URL exposure. Mutation guard vs reverting to user_can_edit.
+        cross = CustomUser.objects.create_user(
+            username="cross", email="cross@test.com", password="testpass123")
+        FamilyMembership.objects.create(user=cross, family=self.other_family, role="parent")
+        FamilyMembership.objects.create(user=cross, family=self.family, role="teacher")
+        from core.permissions import user_can_edit, can_edit_family_or_global
+        self.assertTrue(user_can_edit(cross))                                # editor somewhere
+        self.assertFalse(can_edit_family_or_global(cross, self.family))      # but NOT here
+
+    def test_or_global_falls_back_to_global_right_for_family_less_content(self):
+        from core.permissions import can_edit_family_or_global
+        # Global/shared content (family=None): editors keep editing; legacy standalone
+        # users (no memberships) keep their edit right — no regression.
+        self.assertTrue(can_edit_family_or_global(self.parent_user, None))
+        self.assertTrue(can_edit_family_or_global(self.legacy_user, None))
+        self.assertFalse(can_edit_family_or_global(self.outsider, None))     # editor nowhere
+
     # ── viewable_queryset ──────────────────────────────────────────────────
 
     def test_viewable_parent_sees_family_records(self):
@@ -1531,3 +1558,57 @@ class FamilyRenameTests(TestCase):
         resp = self.client.get(self.url)
         self.assertEqual(resp.status_code, 302)
         self.assertIn("login", resp.url)
+
+
+class InviteFamilySelectionTests(TestCase):
+    """A multi-family parent's member-management acts on the SELECTED family, not
+    their primary/active family (the cross-family write bug)."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = CustomUser.objects.create_user(
+            username="multiparent", email="mp@e.com", password="testpass123")
+        cls.fam_a = Family.objects.create(name="Alpha")   # lower id -> the "active" family
+        cls.fam_b = Family.objects.create(name="Beta")
+        FamilyMembership.objects.create(user=cls.user, family=cls.fam_a, role="parent")
+        FamilyMembership.objects.create(user=cls.user, family=cls.fam_b, role="parent")
+
+    def setUp(self):
+        self.client.force_login(self.user)
+
+    def test_invite_created_against_selected_family(self):
+        # Viewing family B (?family_id=B), the invitation must be filed under B — not
+        # A (the primary/active family that get_active_family would have returned).
+        resp = self.client.post(
+            reverse("core:invite_teacher") + f"?family_id={self.fam_b.pk}",
+            {"email": "grandma@e.com", "role": "teacher"},
+        )
+        self.assertEqual(resp.status_code, 302)
+        inv = Invitation.objects.get(email="grandma@e.com")
+        self.assertEqual(inv.family, self.fam_b)          # selected, not active (fam_a)
+
+    def test_rename_hits_selected_family(self):
+        resp = self.client.post(
+            reverse("core:family_settings") + f"?family_id={self.fam_b.pk}",
+            {"name": "Beta Renamed"},
+        )
+        self.assertEqual(resp.status_code, 302)
+        self.fam_a.refresh_from_db(); self.fam_b.refresh_from_db()
+        self.assertEqual(self.fam_b.name, "Beta Renamed")  # selected renamed
+        self.assertEqual(self.fam_a.name, "Alpha")         # active untouched
+
+    def test_viewer_of_selected_family_cannot_invite(self):
+        # A user who is only a VIEWER of the selected family gets a 404, not a silent
+        # fallback to inviting into a family they can edit.
+        viewer = CustomUser.objects.create_user(
+            username="vieweronly", email="vo@e.com", password="testpass123")
+        editable = Family.objects.create(name="Editable")
+        FamilyMembership.objects.create(user=viewer, family=editable, role="parent")
+        FamilyMembership.objects.create(user=viewer, family=self.fam_a, role="teacher")
+        self.client.force_login(viewer)
+        resp = self.client.post(
+            reverse("core:invite_teacher") + f"?family_id={self.fam_a.pk}",
+            {"email": "x@e.com", "role": "teacher"},
+        )
+        self.assertEqual(resp.status_code, 404)
+        self.assertFalse(Invitation.objects.filter(email="x@e.com").exists())

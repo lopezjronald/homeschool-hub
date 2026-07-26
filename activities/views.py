@@ -9,7 +9,9 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 
-from core.permissions import editable_queryset, scoped_queryset, user_can_edit
+from core.permissions import (
+    editable_queryset, scoped_queryset, user_can_edit, can_edit_family_or_global,
+)
 from core.utils import get_active_family, get_selected_family, resolve_family_for_write
 from students.models import Student
 from worklog.models import WorkLogEntry
@@ -138,7 +140,8 @@ def activity_list(request):
     activities = scoped_queryset(ExternalActivity.objects.all(), request.user, family).select_related("student")
     return render(request, "activities/activity_list.html", {
         "activities": activities,
-        "can_edit": user_can_edit(request.user),
+        # Gate edit controls on the SELECTED family (global content → global right).
+        "can_edit": can_edit_family_or_global(request.user, family),
     })
 
 

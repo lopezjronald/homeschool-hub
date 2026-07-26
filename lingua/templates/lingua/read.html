@@ -19,8 +19,7 @@
         <audio id="lingua-audio" src="{{ audio_url }}" controls preload="metadata"></audio>
         <div class="controls">
           {% if voices %}
-          {# Voice picker (LGA-70) — all Polly-neural, all keep word highlighting. readalong.js
-             reloads the page with ?voice=<id> on change (CSP-clean, no inline handler). #}
+          {# Voice picker (LGA-70) — all Polly-neural, all keep word highlighting; readalong.js reloads with a voice query param on change (CSP-clean, no inline handler). Keep this comment to one physical line, or it leaks to the page (LGA-83). #}
           <label class="voice" for="lingua-voice">Voz
             <select id="lingua-voice">
               {% for v in voices %}<option value="{{ v.id }}"{% if v.id == current_voice %} selected{% endif %}>{{ v.label }}</option>{% endfor %}

@@ -1638,6 +1638,26 @@ class ReaderViewTests(TestCase):
         self.assertIn('data-i="6"', figs[1])                         # beat 0 had 6 tokens
         self.assertNotIn('data-i="0"', figs[1])                      # no index reuse
 
+    @override_settings(STORAGES=_INMEM_STORAGES)
+    def test_no_raw_template_comment_with_all_blocks_active(self):
+        # Render a story with EVERY conditional block live — multi-voice audio (voice
+        # picker), baked images (illustrated), AI disclosure — so comments INSIDE
+        # {% if %} blocks are exercised too. A multi-line/nested {# #} in any of them
+        # leaks (LGA-83); the plain-story guard test misses those blocks entirely.
+        # Body MUST match _add_audio's fixed timings ("Hay un gato feliz.") so the
+        # audio token count lines up with the beats and the illustrated block engages.
+        s = Story.objects.create(title="Full", body="Hay un gato feliz.",
+                                 level="L1", status=Story.APPROVED, source=Story.SOURCE_GENERATED)
+        self._add_audio(s, "Mia")
+        self._add_audio(s, "Andres")            # 2 voices → the voice-picker block renders
+        for beat in illustrate.beats(s.body):
+            self._add_image(s, beat)            # → the illustrated block renders
+        html = self.client.get(self._url(s)).content.decode()
+        self.assertIn('id="lingua-voice"', html)  # guard: voice picker IS present
+        self.assertIn("illustrated", html)        # guard: illustrated layout IS present
+        self.assertNotIn("{#", html)              # no leaked comment opener
+        self.assertNotIn("#}", html)              # no leaked comment closer (early-closed tail)
+
     def test_reader_without_images_stays_plain(self):
         # No baked images → the storybook layout must NOT engage (no regression).
         html = self.client.get(self._url(self.story)).content.decode()

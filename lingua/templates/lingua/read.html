@@ -17,8 +17,16 @@
     {% if has_audio %}
       <div class="player">
         <audio id="lingua-audio" src="{{ audio_url }}" controls preload="metadata"></audio>
+        {# Speed control — defaults to 0.75x for young readers; readalong.js wires it (CSP-clean, no inline handler). #}
+        <label class="speed" for="lingua-speed">Velocidad
+          <select id="lingua-speed">
+            <option value="0.5">🐢 0.5&times;</option>
+            <option value="0.75" selected>0.75&times;</option>
+            <option value="1">1&times;</option>
+          </select>
+        </label>
       </div>
-      {# json_script safely embeds the timing JSON (escapes < > &); the player reads it. #}
+      {# json_script safely embeds the timing JSON, escaping the angle brackets; the player reads it. #}
       {{ timings|json_script:"lingua-timings" }}
     {% endif %}
 

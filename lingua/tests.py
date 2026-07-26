@@ -1484,6 +1484,8 @@ class ReaderViewTests(TestCase):
         self.assertIn('id="lingua-timings"', html)       # json_script data block (not static-hashed)
         self.assertIn("readalong", html)                 # player script (matches hashed name too)
         self.assertIn('data-i="0"', html)
+        self.assertIn('id="lingua-speed"', html)         # speed control present
+        self.assertIn('value="0.75" selected', html)     # defaults to 0.75x for young readers
 
     _AI_DISCLOSURE = "una computadora (IA)"   # distinctive slice of the D-54 disclosure
 

@@ -258,11 +258,15 @@ def bake_story_image(story, beat, *, image_client=None, reference_bytes=None, fo
                 os.unlink(tmp_path)
             except OSError:
                 pass
+    # Bill at the provider seam — the instant generation costs real money — BEFORE any
+    # downstream step (PIL decode, R2 upload, row write) can fail and lose the count.
+    # Mirrors record_ai_usage in the text path (LGA-29): a billed call must always be
+    # counted, or the $25/mo hard-stop under-enforces.
+    record_image_usage(1)
     data, w, h = _process_illustration(raw, aspect)
     digest = story.image_hash(beat, model=model, aspect=aspect)
     key = assets.image_key(digest)
     storage.save_image(key, data)
-    record_image_usage(1)  # bill on successful generation (before the row write can fail)
     obj, _ = StoryImage.objects.update_or_create(
         story=story, beat_index=beat["index"], model=model,
         defaults={"content_hash": digest, "image_key": key, "prompt": prompt,
@@ -286,7 +290,7 @@ def bake_story_images(story, *, ai_client=None, image_client=None, force=False):
         )
         baked += action == "baked"
         skipped += action == "skipped"
-        if beat["index"] == 0:  # first image anchors the rest
+        if True:  # MUTANT: guard removed — anchor every iteration
             try:
                 anchor = _read_image_bytes(obj.image_key)
             except Exception:  # noqa: BLE001 — anchor is best-effort; degrade to no-anchor

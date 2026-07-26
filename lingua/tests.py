@@ -1607,19 +1607,36 @@ class ReaderViewTests(TestCase):
             imgs.append(self._add_image(story, beat))
         return imgs
 
+    # 6 sentences → 3 beats at per_beat=2. Distinctive nouns per beat let the test
+    # prove tokens land in the CORRECT figure (not all dumped in beat 0).
+    _MULTIBEAT = ("Un gato duerme. El sol brilla. Un perro corre. "
+                  "La rana salta. El pajaro canta. Todos rien.")
+
     @override_settings(STORAGES=_INMEM_STORAGES)
     def test_reader_interleaves_images_when_baked(self):
-        s = Story.objects.create(title="Dos", body="Un gato duerme. Un perro salta.",
+        s = Story.objects.create(title="Muchos", body=self._MULTIBEAT,
                                  level="L1", status=Story.APPROVED)
         imgs = self._illustrate(s)
+        self.assertEqual(len(imgs), 3)                                # genuinely multi-beat
         html = self.client.get(self._url(s)).content.decode()
         self.assertIn('id="lingua-story" class="illustrated"', html)  # storybook layout on
-        self.assertIn('class="beat-img"', html)                       # an <img> per beat
         for im in imgs:
             self.assertIn(im.image_key, html)                         # each beat image served
-        # word spans preserved + in order (read-along still works): data-i 0..N-1 present
-        self.assertIn('data-i="0"', html)
-        self.assertEqual(html.count('<figure class="beat">'), len(imgs))
+        # Tokens must be partitioned into the correct beats, IN ORDER — not all dumped
+        # in beat 0 and not overlapping. Split on the figure boundary and check words.
+        figs = html.split('<figure class="beat">')[1:]
+        self.assertEqual(len(figs), 3)                                # one figure per beat
+        self.assertIn(">gato<", figs[0]);    self.assertIn(">brilla.<", figs[0])
+        self.assertIn(">perro<", figs[1]);   self.assertIn(">salta.<", figs[1])
+        self.assertIn(">pajaro<", figs[2]);  self.assertIn(">rien.<", figs[2])
+        # each distinctive word appears in EXACTLY one figure (no duplication/overlap)
+        for word in (">gato<", ">perro<", ">pajaro<"):
+            self.assertEqual(sum(word in f for f in figs), 1)
+        self.assertNotIn(">perro<", figs[0])                         # beat-2 word not in beat-1
+        # data-i is contiguous + non-repeating across figures (read-along alignment)
+        self.assertIn('data-i="0"', figs[0])                         # first token, first beat
+        self.assertIn('data-i="6"', figs[1])                         # beat 0 had 6 tokens
+        self.assertNotIn('data-i="0"', figs[1])                      # no index reuse
 
     def test_reader_without_images_stays_plain(self):
         # No baked images → the storybook layout must NOT engage (no regression).
@@ -1627,6 +1644,24 @@ class ReaderViewTests(TestCase):
         self.assertNotIn("illustrated", html)
         self.assertNotIn("beat-img", html)
         self.assertIn('<p class="story">', html)                      # original paragraph render
+
+    @override_settings(STORAGES=_INMEM_STORAGES)
+    def test_token_beat_mismatch_falls_back_to_plain(self):
+        # Defensive fallback: if per-beat word counts don't sum to the token count
+        # (unexpected tokenizer drift), render plain text — never a misaligned split.
+        s = Story.objects.create(title="Mm", body="Un gato duerme feliz en casa.",
+                                 level="L1", status=Story.APPROVED)
+        # Patched beats cover only "Un" (1 word) while the body has 6 tokens → mismatch.
+        partial = {"index": 0, "text": "Un", "start": 0, "end": 2}
+        digest = s.image_hash(partial)
+        StoryImage.objects.create(story=s, beat_index=0, content_hash=digest,
+                                  image_key=assets.image_key(digest),
+                                  model=settings.MANGA_IMAGE_MODEL, width=1024, height=768)
+        with mock.patch("lingua.views.illustrate.beats", return_value=[partial]):
+            html = self.client.get(self._url(s)).content.decode()
+        self.assertNotIn("illustrated", html)      # count mismatch → NOT illustrated
+        self.assertNotIn("beat-img", html)
+        self.assertIn('<p class="story">', html)   # fell back to the plain paragraph render
 
     @override_settings(STORAGES=_INMEM_STORAGES)
     def test_illustrated_story_discloses_ai_images(self):
@@ -3105,10 +3140,18 @@ class _FakeImageClient(ImageClient):
     def generate(self, prompt, *, reference_paths=None, extra_input=None):
         import os as _os
         refs = list(reference_paths or [])
+        ref_bytes = []
+        for p in refs:
+            try:
+                with open(p, "rb") as fh:
+                    ref_bytes.append(fh.read())
+            except OSError:
+                ref_bytes.append(None)
         self.calls.append({
             "prompt": prompt,
             "n_refs": len(refs),
             "refs_exist": [_os.path.exists(p) for p in refs],
+            "ref_bytes": ref_bytes,
         })
         return self.png
 
@@ -3209,6 +3252,23 @@ class StoryImageModelTests(TestCase):
         self.story.save(update_fields=["art_contract"])
         self.assertIsNone(self.story.current_image(beat))     # stale -> None
 
+    def test_is_current_property_fresh_stale_and_missing_beat(self):
+        beat = self._beat0()
+        si = StoryImage.objects.create(
+            story=self.story, beat_index=beat["index"], model="",
+            content_hash=self.story.image_hash(beat), image_key="k")
+        self.assertTrue(si.is_current)                        # baked from current body
+        # A row for a beat index that no longer exists must report NOT current (the
+        # `beat is None` branch) rather than crash.
+        orphan = StoryImage.objects.create(
+            story=self.story, beat_index=99, model="", content_hash="x", image_key="k2")
+        self.assertFalse(orphan.is_current)
+        # Editing the body makes beat 0's text (and hash) change → stale.
+        self.story.body = "Un elefante enorme baila en la lluvia."
+        self.story.save(update_fields=["body"])
+        si.refresh_from_db()
+        self.assertFalse(si.is_current)
+
 
 @override_settings(STORAGES=_INMEM_STORAGES)
 class BakeStoryImageTests(TestCase):
@@ -3234,9 +3294,16 @@ class BakeStoryImageTests(TestCase):
         self.assertEqual(AiUsage.objects.get(period=services._current_period()).images, 1)
         self.assertTrue(lingua_storage.readalong_storage().exists(obj.image_key))
 
-    def test_output_is_cropped_to_the_fixed_aspect(self):
-        obj, _ = services.bake_story_image(self.story, self._beat0(), image_client=_FakeImageClient())
-        self.assertAlmostEqual(obj.width / obj.height, 4 / 3, places=1)
+    def test_output_is_cropped_to_the_fixed_aspect_from_any_source(self):
+        # Exercise BOTH crop branches: too-tall (100x400) and too-wide (400x100), plus
+        # square — each must come out 4:3. Fresh stories so content hashes don't collide.
+        for w, h in ((100, 400), (400, 100), (200, 200)):
+            s = Story.objects.create(title=f"S{w}x{h}", body="Un gato mira.", level="L1",
+                                     status=Story.APPROVED, art_contract={"character_block": "x"})
+            beat = illustrate.beats(s.body)[0]
+            obj, _ = services.bake_story_image(s, beat, image_client=_FakeImageClient(_tiny_png(w, h)))
+            self.assertAlmostEqual(obj.width / obj.height, 4 / 3, places=1,
+                                   msg=f"source {w}x{h} not cropped to 4:3")
 
     def test_idempotent_then_force(self):
         beat = self._beat0()
@@ -3264,6 +3331,36 @@ class BakeStoryImageTests(TestCase):
         self.assertEqual(client.calls[0]["n_refs"], 0)        # first image: no anchor
         self.assertEqual(client.calls[1]["n_refs"], 1)        # later image: anchored
         self.assertEqual(client.calls[1]["refs_exist"], [True])  # the anchor file really existed
+        # The anchor passed to beat 1 must be EXACTLY the first beat's stored image
+        # bytes (character consistency depends on this), not some other/empty file.
+        beat0 = StoryImage.objects.get(story=self.story, beat_index=0)
+        with lingua_storage.readalong_storage().open(beat0.image_key) as fh:
+            beat0_bytes = fh.read()
+        self.assertEqual(client.calls[1]["ref_bytes"][0], beat0_bytes)
+
+    def test_usage_recorded_even_when_processing_fails(self):
+        # A billed generation must be counted even if PIL decode / upload fails after
+        # the provider returns (LGA-29: record at the provider seam). The fake returns
+        # undecodable bytes, so _process_illustration raises AFTER img.generate billed.
+        client = _FakeImageClient(png=b"not-a-real-image")
+        with self.assertRaises(Exception):
+            services.bake_story_image(self.story, self._beat0(), image_client=client)
+        self.assertEqual(len(client.calls), 1)                # provider was called (billed)
+        self.assertEqual(                                     # ...and the spend was counted
+            AiUsage.objects.get(period=services._current_period()).images, 1)
+        self.assertFalse(StoryImage.objects.filter(story=self.story).exists())  # no row on failure
+
+    def test_batch_stops_when_budget_exceeded(self):
+        # bake_story_images must propagate BudgetExceeded (the command catches it to
+        # stop the run) and not silently bake past the ceiling.
+        over = int(settings.LINGUA["MONTHLY_COST_CEILING_USD"] /
+                   settings.LINGUA["IMAGE_PRICE_PER_IMAGE_USD"]) + 1
+        AiUsage.objects.create(period=services._current_period(), images=over)
+        client = _FakeImageClient()
+        with self.assertRaises(services.BudgetExceeded):
+            services.bake_story_images(self.story, image_client=client)
+        self.assertEqual(len(client.calls), 0)                # stopped before any generation
+        self.assertFalse(StoryImage.objects.filter(story=self.story).exists())
 
 
 class EnsureArtContractTests(TestCase):

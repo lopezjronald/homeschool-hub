@@ -2100,11 +2100,13 @@ class KidPortalTests(TestCase):
         self.assertEqual(r.status_code, 404)             # D-49 servable gate
 
     def test_reader_has_no_raw_template_comment(self):
-        # A multi-line {# #} comment would render as literal text (the bug the user
-        # caught). The kid reader (finish_url set) must not leak any comment.
+        # A Django comment that spans lines OR embeds a comment marker in its text closes
+        # early and renders its tail as literal text (both bugs the user caught). The
+        # reader must leak NEITHER an opening {# NOR a closing #} to the page.
         html = self.client.get(self._url("lingua_read", story_id=self.story.pk)).content.decode()
         self.assertNotIn("CSP-clean finish", html)
         self.assertNotIn("{#", html)
+        self.assertNotIn("#}", html)     # an early-closed comment leaks its tail + a stray #}
 
     def test_finish_logs_reading_session(self):
         r = self.client.post(self._url("lingua_finish", story_id=self.story.pk), {"seconds": "45"})

@@ -49,16 +49,28 @@ def readalong_storage():
     return storage
 
 
-def save_audio(key, data):
-    """Save mp3 bytes at content-addressed ``key`` and return the stable public URL.
+def save_bytes(key, data):
+    """Save raw bytes at content-addressed ``key`` and return the stable public URL.
 
     Idempotent: the key is a content hash, so if it already exists the bytes are by
     definition identical — skip the redundant upload and just return the URL. The
-    immutable cache header is applied by the backend's object_parameters (settings)."""
+    immutable cache header is applied by the backend's object_parameters (settings).
+    Shared by read-along audio and storybook illustrations (both content-addressed,
+    both public + immutably cached)."""
     storage = readalong_storage()
     if not storage.exists(key):
         storage.save(key, ContentFile(data))
     return storage.url(key)
+
+
+def save_audio(key, data):
+    """Save mp3 bytes at content-addressed ``key`` and return the stable public URL."""
+    return save_bytes(key, data)
+
+
+def save_image(key, data):
+    """Save illustration bytes at content-addressed ``key`` and return its public URL."""
+    return save_bytes(key, data)
 
 
 def public_url(key):

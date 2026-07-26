@@ -30,3 +30,20 @@ class AIClient(ABC):
     @abstractmethod
     def generate(self, *, system, user, max_tokens=1024, timeout=None, meta=None):
         """Generate text from a system + user prompt. Returns an AIResult."""
+
+
+class ImageClient(ABC):
+    """Image-generation seam (LGA-71). A host adapter wraps its own provider
+    (Replicate/nano-banana via the host's tutor.imagegen) behind this; lingua
+    services depend only on the ABC and are tested against an injected fake. Keeping
+    it a port is what lets lingua own the illustration pipeline without importing the
+    host (D-04)."""
+
+    @abstractmethod
+    def is_configured(self) -> bool:
+        """True if the underlying image provider is usable (e.g. an API token is set)."""
+
+    @abstractmethod
+    def generate(self, prompt, *, reference_paths=None, extra_input=None):
+        """Generate one image from ``prompt`` (+ optional reference image paths for
+        character consistency). Returns raw image bytes."""

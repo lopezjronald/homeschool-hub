@@ -183,6 +183,9 @@ class AiUsage(models.Model):
     input_tokens = models.PositiveBigIntegerField(default=0)
     output_tokens = models.PositiveBigIntegerField(default=0)
     calls = models.PositiveIntegerField(default=0)
+    # Illustration generations this month (LGA-71). Priced per-image (not per-token),
+    # folded into the same monthly ceiling so image spend can't blow the cap either.
+    images = models.PositiveIntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -270,6 +273,11 @@ class Story(models.Model):
     suggested_level = models.CharField(max_length=4, blank=True)
     flagged_words = models.JSONField(default=list, blank=True)
     out_of_band_pct = models.FloatField(default=0.0)
+    # Per-story illustration "art contract" (LGA-71): a small locked visual bible —
+    # {character_block, setting, tone} — extracted once by the image pipeline and
+    # appended to every beat's prompt so the character/look stays consistent across
+    # a story's images. Empty until img_build fills it. No child PII (D-52).
+    art_contract = models.JSONField(default=dict, blank=True)
     # Approval (D-49/50). approved_by is a plain host user id — NO FK (D-03).
     approved_by = models.IntegerField(null=True, blank=True)
     approved_at = models.DateTimeField(null=True, blank=True)
@@ -302,6 +310,28 @@ class Story(models.Model):
         return self.audios.filter(
             voice=voice, engine=engine, provider=provider, content_hash=want,
         ).first()
+
+    def image_hash(self, beat, *, model=None, aspect=None):
+        """Content-addressed hash for ONE illustration beat of this story (LGA-71) —
+        over the image model, the fixed house style, this story's character block, the
+        aspect ratio, and the beat's scene text. Changes whenever any of those change,
+        so a baked image can be checked for staleness."""
+        from django.conf import settings
+        from . import assets, illustrate
+        model = model or getattr(settings, "MANGA_IMAGE_MODEL", "")
+        aspect = aspect or settings.LINGUA.get("ILLUSTRATION_ASPECT", illustrate.DEFAULT_ASPECT)
+        character_block = (self.art_contract or {}).get("character_block", "")
+        scene = illustrate.scene_from_beat(beat["text"])
+        return assets.image_content_hash(
+            model=model, style=illustrate.HOUSE_STYLE,
+            character_block=character_block, aspect=aspect, scene=scene,
+        )
+
+    def current_image(self, beat, *, model=None, aspect=None):
+        """The fresh StoryImage for a beat, or None if missing or stale (the story
+        text or art contract changed since it was baked)."""
+        want = self.image_hash(beat, model=model, aspect=aspect)
+        return self.images.filter(beat_index=beat["index"], content_hash=want).first()
 
     @transaction.atomic
     def approve(self, host_user_id):
@@ -375,6 +405,55 @@ class StoryAudio(models.Model):
         return self.content_hash == self.story.audio_hash(
             self.voice, self.engine, provider=self.provider,
         )
+
+
+class StoryImage(models.Model):
+    """One illustrated-storybook picture for a Story beat (LGA-71, D-16/N-04).
+
+    One image per 1–2 sentences (a "beat"). Content-addressed exactly like StoryAudio:
+    ``content_hash`` = assets.image_content_hash(model, house style, character block,
+    aspect, beat scene). Editing the story text, the art contract, or the house style
+    changes the hash → a stale row is detectable (``is_current``) and re-baked by
+    ``img_build``; the old R2 object is orphaned. One row per (story, beat_index,
+    model), updated in place on regenerate. The image bytes live on the public R2
+    read-along path (LGA-36); ``prompt`` is kept for the AI-content disclosure and
+    reproducibility. FK to Story is a lingua-internal CASCADE — no host FK (D-03)."""
+
+    story = models.ForeignKey(Story, on_delete=models.CASCADE, related_name="images")
+    beat_index = models.IntegerField(help_text="0-based index of the 1–2 sentence beat.")
+    content_hash = models.CharField(max_length=64, db_index=True)
+    image_key = models.CharField(max_length=200, help_text="R2 object key for the image.")
+    model = models.CharField(max_length=64, blank=True, help_text="Image model id (disclosure).")
+    prompt = models.TextField(blank=True, help_text="Exact prompt sent (disclosure/repro).")
+    alt_text = models.CharField(max_length=300, blank=True, help_text="The sentences it depicts.")
+    width = models.IntegerField(default=0)
+    height = models.IntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["story_id", "beat_index"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["story", "beat_index", "model"],
+                name="uniq_story_beat_model",
+            ),
+        ]
+
+    def __str__(self):
+        return f"StoryImage<story={self.story_id} beat={self.beat_index}>"
+
+    @property
+    def is_current(self):
+        """True if this image was baked from the story's CURRENT beats + contract."""
+        from . import illustrate
+        beat = next(
+            (b for b in illustrate.beats(self.story.body) if b["index"] == self.beat_index),
+            None,
+        )
+        if beat is None:
+            return False
+        return self.content_hash == self.story.image_hash(beat, model=self.model or None)
 
 
 class ReadingSession(models.Model):

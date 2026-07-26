@@ -23,15 +23,15 @@ from students.models import Student
 
 from django.core.files.storage import InMemoryStorage, storages
 
-from . import advancement, assets, audio, cognates, comprehension, leveling, profiles, services
+from . import advancement, assets, audio, cognates, comprehension, illustrate, leveling, profiles, services
 from . import storage as lingua_storage
 from .integrations import directory
 from .models import (
     AiUsage, AuditEvent, ComprehensionCheck, KnownWord, Learner, LearnerProfile,
     ListeningResource, ListeningSession, MilestoneAward, PhonicsRule, ReadingSession,
-    ReviewItem, Story, StoryAudio, Theme,
+    ReviewItem, Story, StoryAudio, StoryImage, Theme,
 )
-from .ports import AIClient, AIResult
+from .ports import AIClient, AIResult, ImageClient
 
 User = get_user_model()
 
@@ -3013,3 +3013,240 @@ class PurgeStaleTests(TestCase):
         self._backdate(old, 1000)
         call_command("purge_stale", "--dry-run", stdout=StringIO())
         self.assertTrue(AuditEvent.objects.filter(pk=old.pk).exists())
+
+
+def _tiny_png(w=200, h=200, color=(217, 106, 59)):
+    """A small in-memory PNG (default NON-4:3 square) for a fake image client."""
+    from io import BytesIO
+    from PIL import Image
+    buf = BytesIO()
+    Image.new("RGB", (w, h), color).save(buf, format="PNG")
+    return buf.getvalue()
+
+
+class _FakeImageClient(ImageClient):
+    """Records every call so tests can assert prompts + anchor references."""
+
+    def __init__(self, png=None):
+        self.png = png if png is not None else _tiny_png()
+        self.calls = []
+
+    def is_configured(self):
+        return True
+
+    def generate(self, prompt, *, reference_paths=None, extra_input=None):
+        import os as _os
+        refs = list(reference_paths or [])
+        self.calls.append({
+            "prompt": prompt,
+            "n_refs": len(refs),
+            "refs_exist": [_os.path.exists(p) for p in refs],
+        })
+        return self.png
+
+
+class IllustrateModuleTests(TestCase):
+    """LGA-71: the pure art module (beats + prompt), Django-free logic."""
+
+    def test_beats_group_up_to_two_sentences(self):
+        b = illustrate.beats("Uno aqui. Dos alla. Tres mas. Cuatro fin.")
+        self.assertEqual(len(b), 2)                       # 4 sentences -> 2 beats of 2
+        self.assertIn("Uno", b[0]["text"])
+        self.assertIn("Dos", b[0]["text"])
+        self.assertIn("Tres", b[1]["text"])
+
+    def test_beats_do_not_span_paragraphs(self):
+        b = illustrate.beats("A uno. B dos.\n\nC tres.")
+        self.assertEqual(len(b), 2)
+        self.assertNotIn("C tres", b[0]["text"])          # paragraph break forced a new beat
+        self.assertEqual(b[1]["text"], "C tres.")
+
+    def test_beats_offsets_index_into_the_body(self):
+        body = "Primero uno. Segundo dos."
+        b = illustrate.beats(body)
+        span = body[b[0]["start"]:b[0]["end"]]
+        self.assertIn("Primero", span)
+        self.assertTrue(b[0]["start"] < b[0]["end"] <= len(body))
+
+    def test_beats_cap_absorbs_the_tail_never_drops_text(self):
+        body = " ".join(f"Frase {n} aqui." for n in "abcdefghij")  # 10 sentences
+        b = illustrate.beats(body, per_beat=1, max_beats=3)
+        self.assertEqual(len(b), 3)                        # capped at 3
+        joined = " ".join(x["text"] for x in b)
+        for token in ("Frase a", "Frase j"):
+            self.assertIn(token, joined)                   # nothing dropped
+
+    def test_build_prompt_carries_style_palette_scene_and_safety(self):
+        p = illustrate.build_art_prompt(
+            "El perro corre.", character_block="Ana, nina de pelo negro, vestido coral.",
+            tone="alegre", aspect="4:3",
+        )
+        self.assertIn("Warm modern storybook", p)          # house style
+        self.assertIn("#F6A61B", p)                        # locked palette hex
+        self.assertIn("El perro corre.", p)                # the scene
+        self.assertIn("Ana, nina", p)                      # character block
+        self.assertIn("Aspect ratio 4:3", p)
+        self.assertIn("no text, letters, words", p)        # SAFETY_CLAUSE (no-text-in-image)
+
+    def test_build_prompt_refuses_pii_in_a_beat(self):
+        from lingua.safety import ChildPIISuspected
+        with self.assertRaises(ChildPIISuspected):
+            illustrate.build_art_prompt("Llama al 555 123 4567 ahora.")
+
+
+class ImageAssetTests(TestCase):
+    """LGA-71: content-addressed image keys/hashes."""
+
+    def test_hash_changes_with_scene_and_is_stable(self):
+        a = assets.image_content_hash(model="m", style="s", character_block="c",
+                                      aspect="4:3", scene="un gato")
+        same = assets.image_content_hash(model="m", style="s", character_block="c",
+                                         aspect="4:3", scene="un gato")
+        diff = assets.image_content_hash(model="m", style="s", character_block="c",
+                                         aspect="4:3", scene="un perro")
+        self.assertEqual(a, same)                          # deterministic
+        self.assertNotEqual(a, diff)                       # scene is part of identity
+
+    def test_hash_changes_with_character_block(self):
+        base = assets.image_content_hash(model="m", style="s", character_block="c1",
+                                         aspect="4:3", scene="x")
+        moved = assets.image_content_hash(model="m", style="s", character_block="c2",
+                                          aspect="4:3", scene="x")
+        self.assertNotEqual(base, moved)                   # contract change busts cache
+
+    def test_image_key_format(self):
+        self.assertEqual(assets.image_key("abc"), "lingua/illustrations/abc.webp")
+
+
+class StoryImageModelTests(TestCase):
+    """LGA-71: Story.image_hash / current_image staleness."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.story = Story.objects.create(title="T", body="Un gato duerme. Un perro salta.",
+                                         level="L1", status=Story.APPROVED)
+
+    def _beat0(self):
+        return illustrate.beats(self.story.body)[0]
+
+    def test_current_image_missing_then_fresh_then_stale(self):
+        beat = self._beat0()
+        self.assertIsNone(self.story.current_image(beat))   # nothing baked
+        digest = self.story.image_hash(beat)
+        si = StoryImage.objects.create(story=self.story, beat_index=beat["index"],
+                                       content_hash=digest, image_key=assets.image_key(digest),
+                                       model="")
+        self.assertEqual(self.story.current_image(beat), si)  # fresh
+        self.story.art_contract = {"character_block": "different look"}
+        self.story.save(update_fields=["art_contract"])
+        self.assertIsNone(self.story.current_image(beat))     # stale -> None
+
+
+@override_settings(STORAGES=_INMEM_STORAGES)
+class BakeStoryImageTests(TestCase):
+    """LGA-71: services.bake_story_image / bake_story_images / budget."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.story = Story.objects.create(
+            title="Cuento", body="Un gato duerme. Un perro salta. El sol brilla. Fin feliz.",
+            level="L1", status=Story.APPROVED, art_contract={"character_block": "un gato gris"},
+        )
+
+    def _beat0(self):
+        return illustrate.beats(self.story.body)[0]
+
+    def test_bakes_uploads_and_records_usage(self):
+        client = _FakeImageClient()
+        obj, action = services.bake_story_image(self.story, self._beat0(), image_client=client)
+        self.assertEqual(action, "baked")
+        self.assertEqual(len(client.calls), 1)                # the model was actually called
+        self.assertTrue(obj.image_key.startswith("lingua/illustrations/"))
+        self.assertIn("no text", obj.prompt)                  # safety clause persisted for disclosure
+        self.assertEqual(AiUsage.objects.get(period=services._current_period()).images, 1)
+        self.assertTrue(lingua_storage.readalong_storage().exists(obj.image_key))
+
+    def test_output_is_cropped_to_the_fixed_aspect(self):
+        obj, _ = services.bake_story_image(self.story, self._beat0(), image_client=_FakeImageClient())
+        self.assertAlmostEqual(obj.width / obj.height, 4 / 3, places=1)
+
+    def test_idempotent_then_force(self):
+        beat = self._beat0()
+        services.bake_story_image(self.story, beat, image_client=_FakeImageClient())
+        obj2, action2 = services.bake_story_image(self.story, beat, image_client=_FakeImageClient())
+        self.assertEqual(action2, "skipped")                  # current -> not regenerated
+        obj3, action3 = services.bake_story_image(self.story, beat, image_client=_FakeImageClient(), force=True)
+        self.assertEqual(action3, "baked")                    # force re-bakes
+
+    def test_budget_ceiling_blocks_generation(self):
+        over = int(settings.LINGUA["MONTHLY_COST_CEILING_USD"] /
+                   settings.LINGUA["IMAGE_PRICE_PER_IMAGE_USD"]) + 1
+        AiUsage.objects.create(period=services._current_period(), images=over)
+        client = _FakeImageClient()
+        with self.assertRaises(services.BudgetExceeded):
+            services.bake_story_image(self.story, self._beat0(), image_client=client)
+        self.assertEqual(len(client.calls), 0)                # never hit the provider
+        self.assertFalse(StoryImage.objects.filter(story=self.story).exists())
+
+    def test_bake_all_beats_anchors_later_beats_to_the_first(self):
+        client = _FakeImageClient()
+        summary = services.bake_story_images(self.story, image_client=client)
+        self.assertEqual(summary["baked"], summary["beats"])
+        self.assertGreaterEqual(summary["beats"], 2)
+        self.assertEqual(client.calls[0]["n_refs"], 0)        # first image: no anchor
+        self.assertEqual(client.calls[1]["n_refs"], 1)        # later image: anchored
+        self.assertEqual(client.calls[1]["refs_exist"], [True])  # the anchor file really existed
+
+
+class EnsureArtContractTests(TestCase):
+    """LGA-71: one-time per-story art contract via the AI seam."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.story = Story.objects.create(title="T", body="Un gato juega.", level="L1",
+                                         status=Story.APPROVED)
+
+    class _FakeAI(AIClient):
+        def is_configured(self):
+            return True
+
+        def generate(self, *, system, user, max_tokens=1024, timeout=None, meta=None):
+            return AIResult(
+                text='{"character_block": "un gato gris de bufanda coral", '
+                     '"setting": "un jardin", "tone": "alegre y curioso"}',
+                usage={"input_tokens": 10, "output_tokens": 20}, model="fake")
+
+    def test_fills_contract_and_records_usage(self):
+        c = services.ensure_art_contract(self.story, ai_client=self._FakeAI())
+        self.assertEqual(c["character_block"], "un gato gris de bufanda coral")
+        self.assertEqual(c["setting"], "un jardin")
+        self.story.refresh_from_db()
+        self.assertEqual(self.story.art_contract["tone"], "alegre y curioso")
+        self.assertEqual(AiUsage.objects.get(period=services._current_period()).input_tokens, 10)
+
+    def test_noop_when_contract_present(self):
+        self.story.art_contract = {"character_block": "ya existe"}
+        self.story.save(update_fields=["art_contract"])
+
+        class _Boom(AIClient):
+            def is_configured(self):
+                return True
+
+            def generate(self, **kw):
+                raise AssertionError("should not be called")
+
+        c = services.ensure_art_contract(self.story, ai_client=_Boom())
+        self.assertEqual(c["character_block"], "ya existe")
+
+
+class ImageUsageBudgetTests(TestCase):
+    """LGA-71: per-image spend folds into the shared monthly ceiling."""
+
+    def test_image_cost_counts_toward_month_to_date(self):
+        period = services._current_period()
+        AiUsage.objects.create(period=period, images=0)
+        base = services.month_to_date_cost_usd()
+        services.record_image_usage(3)
+        after = services.month_to_date_cost_usd()
+        self.assertAlmostEqual(after - base,
+                               3 * settings.LINGUA["IMAGE_PRICE_PER_IMAGE_USD"], places=6)

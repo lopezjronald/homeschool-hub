@@ -90,6 +90,20 @@ def lingua_plan(request, token):
     })
 
 
+def lingua_library(request, token):
+    """The kid's 'Biblioteca': a leveled reading list of every Spanish story, grouped
+    by level with a friendly descriptor, showing how many times they've read each and
+    which ones they've 'got down' (⭐). Tokenless; identity comes from the signed token.
+    Lives in the portal shell; the reader it links to stays CSP-clean."""
+    student = _resolve_student(token)
+    learner = _lingua_learner(student)
+    return render(request, "portal/lingua_library.html", {
+        "student": student, "token": token,
+        "levels": lingua_services.reading_list(learner),
+        "totals": lingua_services.reading_totals(learner),
+    })
+
+
 def lingua_read(request, token, story_id):
     """Tokenless read-along for a kid. Identity comes from the signed token (never
     request.user); only APPROVED stories are servable (D-49). Delegates rendering to

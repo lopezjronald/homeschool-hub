@@ -3480,3 +3480,78 @@ class ImageUsageBudgetTests(TestCase):
         after = services.month_to_date_cost_usd()
         self.assertAlmostEqual(after - base,
                                3 * settings.LINGUA["IMAGE_PRICE_PER_IMAGE_USD"], places=6)
+
+
+class ReadingListTests(TestCase):
+    """LGA-72: leveled reading list ("Biblioteca") + got-it-down status."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from students.models import Student as _Student
+        from portal.tokens import make_portal_token
+        cls.parent = User.objects.create_user("rl_parent", password="pw")
+        cls.student = _Student.objects.create(parent=cls.parent, first_name="Lucia")
+        cls.token = make_portal_token(cls.student)
+        cls.learner = Learner.create_for_host_student(cls.student.pk, profiles.KIDS_EARLY)  # ceiling L1
+        cls.a = Story.objects.create(title="Aaa", body="uno dos", level="L1", status=Story.APPROVED)
+        cls.b = Story.objects.create(title="Bbb", body="tres cuatro", level="L1", status=Story.APPROVED)
+        cls.c = Story.objects.create(title="Ccc", body="cinco seis", level="L2", status=Story.APPROVED)
+        cls.draft = Story.objects.create(title="Ddd", body="siete", level="L1", status=Story.DRAFT)
+
+    def _check(self, story, result):
+        return ComprehensionCheck.objects.create(
+            learner=self.learner, story=story, kind=comprehension.SELF_CHECK, result=result)
+
+    def test_got_it_down_requires_reads_AND_proficient(self):
+        self.assertFalse(services.story_got_it_down(1, comprehension.PROFICIENT))  # too few reads
+        self.assertFalse(services.story_got_it_down(2, comprehension.DEVELOPING))  # not proficient
+        self.assertFalse(services.story_got_it_down(2, ""))                        # no check
+        self.assertTrue(services.story_got_it_down(2, comprehension.PROFICIENT))   # both met
+        self.assertTrue(services.story_got_it_down(3, comprehension.STRONG))
+
+    def test_reading_list_groups_levels_counts_and_mastery(self):
+        services.record_reading(self.learner, self.a)
+        services.record_reading(self.learner, self.a)     # Aaa read 2x
+        self._check(self.a, comprehension.PROFICIENT)      # ...and 😀 → got it down
+        services.record_reading(self.learner, self.b)     # Bbb read 1x
+        levels = services.reading_list(self.learner)
+        self.assertEqual([lv["level"] for lv in levels], ["L1", "L2"])   # ordered, only non-empty
+        l1 = levels[0]
+        self.assertEqual(l1["descriptor"], profiles.LEVEL_DESCRIPTORS["L1"])
+        self.assertTrue(l1["is_current"])                  # learner ceiling is L1
+        self.assertFalse(levels[1]["is_current"])
+        items = {it["story"].title: it for it in l1["stories"]}
+        self.assertNotIn("Ddd", items)                     # draft excluded
+        self.assertEqual(items["Aaa"]["reads"], 2)
+        self.assertTrue(items["Aaa"]["got_it_down"])
+        self.assertEqual(items["Bbb"]["reads"], 1)
+        self.assertFalse(items["Bbb"]["got_it_down"])      # read once, no proficient check
+        self.assertEqual(l1["done"], 1)                    # only Aaa mastered
+        self.assertEqual(l1["total"], 2)
+
+    def test_reading_list_uses_best_self_check(self):
+        services.record_reading(self.learner, self.a)
+        services.record_reading(self.learner, self.a)
+        self._check(self.a, comprehension.BEGINNING)       # 😕 first
+        self._check(self.a, comprehension.PROFICIENT)      # 😀 later → best wins
+        aaa = next(it for it in services.reading_list(self.learner)[0]["stories"]
+                   if it["story"].title == "Aaa")
+        self.assertTrue(aaa["got_it_down"])
+
+    def test_library_page_renders_titles_counts_and_star(self):
+        services.record_reading(self.learner, self.a)
+        services.record_reading(self.learner, self.a)
+        self._check(self.a, comprehension.PROFICIENT)
+        url = reverse("portal:lingua_library", kwargs={"token": self.token})
+        html = " ".join(self.client.get(url).content.decode().split())  # normalize whitespace
+        self.assertIn("Aaa", html)
+        self.assertIn("Bbb", html)
+        self.assertIn("Leída 2 veces", html)               # read-count surfaced (Aaa)
+        self.assertIn("¡La dominas!", html)                # got-it-down label (only for mastered)
+        self.assertIn("¡pruébala!", html)                  # unread story prompt (Bbb)
+        self.assertIn("Nivel 1", html)                     # leveled grouping
+        self.assertNotIn("Ddd", html)                      # draft not shown
+
+    def test_library_invalid_token_404(self):
+        r = self.client.get(reverse("portal:lingua_library", kwargs={"token": "bogus.tampered"}))
+        self.assertEqual(r.status_code, 404)

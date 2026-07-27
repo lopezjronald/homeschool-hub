@@ -240,6 +240,7 @@ def progress(request):
             "totals": services.reading_totals(learner),
             "rec": services.advancement_recommendation(learner),
             "nudge": services.nudge_testing_above_defaults(learner),
+            "reading_list": services.reading_list(learner),
         })
     return render(request, "lingua/progress.html", {"rows": rows, "no_family": family is None})
 

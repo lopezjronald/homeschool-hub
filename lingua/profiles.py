@@ -61,6 +61,21 @@ SUPPORT_DAILY_REVIEW_CAP = {
 LADDER = [f"L{i}" for i in range(1, 9)]  # L1..L8
 LEVEL_CHOICES = [(lvl, lvl) for lvl in LADDER]
 
+# Short kid-friendly Spanish descriptor per ladder level, for the leveled reading list
+# ("Biblioteca", LGA-72). Modeled on the developmental stages in a leveled-books list
+# (emergent → early → fluent): what stories at this level look like, so a parent/child
+# can see the progression. Purely descriptive — never shown as the child's "grade".
+LEVEL_DESCRIPTORS = {
+    "L1": "Muy sencillo: pocas palabras, oraciones cortas y dibujos que cuentan el cuento.",
+    "L2": "Sencillo: frases cortas que se repiten, palabras conocidas y muchos dibujos.",
+    "L3": "Cuentos cortos con algunas palabras nuevas; los dibujos todavía ayudan mucho.",
+    "L4": "Historias con principio, medio y final, y frases un poco más largas.",
+    "L5": "Cuentos más largos, con diálogos y más vocabulario nuevo.",
+    "L6": "Historias de varios párrafos con palabras menos comunes.",
+    "L7": "Cuentos más ricos: descripciones y oraciones largas.",
+    "L8": "Historias avanzadas para lectores seguros.",
+}
+
 
 def level_rank(level):
     """0-based rank of a ladder level ('L1'->0). -1 if unknown."""

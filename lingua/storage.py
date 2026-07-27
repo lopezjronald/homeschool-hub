@@ -8,13 +8,19 @@ to the same stable URL forever — safe to cache immutably.
 """
 import json
 
+from django.conf import settings
 from django.core.exceptions import ImproperlyConfigured
 from django.core.files.base import ContentFile
-from django.core.files.storage import InvalidStorageError, default_storage, storages
+from django.core.files.storage import InvalidStorageError, storages
 
 READALONG_ALIAS = "lingua_readalong"
-# Child read-aloud recordings (LGA-73) live in the PRIVATE default media store
-# (signed, expiring URLs) — deliberately NOT the public read-along path.
+# Child read-aloud recordings (LGA-73) live in their OWN private storage alias — a
+# bucket with NO public r2.dev/custom domain (signed, expiring URLs only). This is
+# deliberately NOT the default media store: in prod the default + public read-along
+# buckets share one R2 bucket that r2.dev exposes by key, so anything there is
+# world-readable. The feature stays OFF unless this alias is configured (see
+# recordings_enabled), so a child's voice can never land in the exposed bucket.
+RECORDINGS_ALIAS = "lingua_recordings"
 RECORDING_PREFIX = "lingua/recordings"
 # Single source of truth: settings imports this for the R2 object_parameters, so the
 # on-upload Cache-Control header can never drift from what this module documents.
@@ -110,22 +116,37 @@ def read_timings(key):
 
 
 # --- Private child recordings (LGA-73) --------------------------------------
-# The DEFAULT store is the app's private media backend (signed, ~1h URLs on R2 in
-# prod). Recordings of a child's voice MUST stay there, never the public read-along
-# path — so a recording URL is only usable by the logged-in parent for a short window.
+# All recording I/O goes through the dedicated lingua_recordings alias — a store with
+# NO public domain (signed URLs). recordings_enabled() gates the whole feature: no
+# alias configured (the prod default until a private bucket is set) → feature OFF, so
+# a child's voice is never written to the r2.dev-exposed shared bucket.
+
+def recordings_enabled():
+    """True only when a dedicated private recordings store is configured. In prod this
+    requires R2_PRIVATE_RECORDINGS_BUCKET (a bucket with public access DISABLED); in
+    dev/tests it's a filesystem/in-memory alias. When False the recorder is never
+    offered and the upload endpoint refuses — so no recording can be exposed."""
+    return RECORDINGS_ALIAS in settings.STORAGES
+
+
+def _recordings_storage():
+    return storages[RECORDINGS_ALIAS]
+
 
 def save_recording(key, data):
-    """Save a private recording to the default (private) media store. Returns the
-    ACTUAL stored key (the backend may de-duplicate a name collision)."""
-    return default_storage.save(key, ContentFile(data))
+    """Save a private recording to the recordings store. Returns the ACTUAL stored key
+    (the backend may de-duplicate a name collision). Raises if the store is unconfigured
+    (callers must check recordings_enabled first)."""
+    return _recordings_storage().save(key, ContentFile(data))
 
 
 def recording_url(key):
     """The (signed, expiring) URL for a stored private recording."""
-    return default_storage.url(key)
+    return _recordings_storage().url(key)
 
 
 def delete_recording(key):
     """Delete a stored private recording (parent action). Idempotent."""
-    if key and default_storage.exists(key):
-        default_storage.delete(key)
+    st = _recordings_storage()
+    if key and st.exists(key):
+        st.delete(key)

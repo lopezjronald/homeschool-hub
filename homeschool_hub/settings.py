@@ -525,6 +525,27 @@ if USE_R2:
             "object_parameters": {"CacheControl": IMMUTABLE_CACHE_CONTROL},
         },
     }
+    # PRIVATE child read-aloud recordings (LGA-73). CRITICAL: this MUST be a bucket
+    # with NO public r2.dev / custom domain — the default+public buckets share
+    # R2_BUCKET_NAME, and r2.dev exposes that whole bucket by key, so a recording
+    # placed there would be world-readable unsigned despite the signed URL. So the
+    # recordings store is a SEPARATE bucket (R2_PRIVATE_RECORDINGS_BUCKET) and the
+    # feature stays OFF until that bucket is configured (storage.recordings_enabled()).
+    _rec_bucket = os.getenv("R2_PRIVATE_RECORDINGS_BUCKET")
+    if _rec_bucket:
+        STORAGES["lingua_recordings"] = {
+            "BACKEND": "storages.backends.s3boto3.S3Boto3Storage",
+            "OPTIONS": {
+                "access_key": os.getenv("R2_ACCESS_KEY_ID"),
+                "secret_key": os.getenv("R2_SECRET_ACCESS_KEY"),
+                "bucket_name": _rec_bucket,   # a bucket with r2.dev / public access DISABLED
+                "endpoint_url": os.getenv("R2_ENDPOINT_URL"),
+                "region_name": os.getenv("R2_REGION", "auto"),
+                "default_acl": None,
+                "querystring_auth": True,     # signed, expiring URLs only
+                "file_overwrite": False,
+            },
+        }
 else:
     # Local filesystem storage for development
     STORAGES["default"] = {
@@ -534,6 +555,11 @@ else:
     # key prefix keeps them separated); the public/immutable behavior is an R2-only
     # concern. Defined so storages["lingua_readalong"] always resolves.
     STORAGES["lingua_readalong"] = {
+        "BACKEND": "django.core.files.storage.FileSystemStorage",
+    }
+    # Private recordings: local filesystem in dev (no public exposure), so the feature
+    # is available for local testing without a private R2 bucket.
+    STORAGES["lingua_recordings"] = {
         "BACKEND": "django.core.files.storage.FileSystemStorage",
     }
     MEDIA_ROOT = BASE_DIR / "media"

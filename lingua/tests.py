@@ -1277,7 +1277,12 @@ _INMEM_STORAGES = {
         "BACKEND": "django.core.files.storage.InMemoryStorage",
         "OPTIONS": {"base_url": "https://cdn.test/"},
     },
+    # Private recordings store (LGA-73) — separate, no public base_url.
+    "lingua_recordings": {"BACKEND": "django.core.files.storage.InMemoryStorage"},
 }
+# Same as _INMEM_STORAGES but WITHOUT the private recordings alias — recordings
+# feature must gate OFF (recordings_enabled() False) so nothing is exposed.
+_INMEM_STORAGES_NO_REC = {k: v for k, v in _INMEM_STORAGES.items() if k != "lingua_recordings"}
 
 
 class ReadalongStorageTests(TestCase):
@@ -3572,8 +3577,8 @@ class StoryRecordingTests(TestCase):
         cls.story = Story.objects.create(title="El gato", body="Un gato feliz.",
                                          level="L1", status=Story.APPROVED)
 
-    def test_save_stores_privately_not_on_public_path(self):
-        from django.core.files.storage import default_storage
+    def test_save_uses_private_store_not_the_public_path(self):
+        from django.core.files.storage import storages
         rec = services.save_story_recording(
             self.learner, self.story, b"RIFFfakeaudio", content_type="audio/webm", seconds=12)
         self.assertEqual(rec.learner, self.learner)
@@ -3581,25 +3586,48 @@ class StoryRecordingTests(TestCase):
         self.assertTrue(rec.audio_key.startswith("lingua/recordings/"))
         self.assertTrue(rec.audio_key.endswith(".webm"))
         self.assertEqual(rec.seconds, 12)
-        self.assertTrue(default_storage.exists(rec.audio_key))                     # in PRIVATE store
-        self.assertFalse(lingua_storage.readalong_storage().exists(rec.audio_key)) # NOT the public path
+        # In the DEDICATED private recordings store...
+        self.assertTrue(storages["lingua_recordings"].exists(rec.audio_key))
+        # ...and NOT the public read-along store (the r2.dev-exposed one).
+        self.assertFalse(lingua_storage.readalong_storage().exists(rec.audio_key))
 
-    def test_save_rejects_empty_and_oversized(self):
+    def test_save_rejects_empty_oversized_and_non_audio(self):
         with self.assertRaises(ValueError):
-            services.save_story_recording(self.learner, self.story, b"")
+            services.save_story_recording(self.learner, self.story, b"", content_type="audio/webm")
         with self.assertRaises(ValueError):
             services.save_story_recording(self.learner, self.story,
-                                          b"x" * (services.RECORDING_MAX_BYTES + 1))
+                                          b"x" * (services.RECORDING_MAX_BYTES + 1),
+                                          content_type="audio/webm")
+        with self.assertRaises(ValueError):   # non-audio content type refused
+            services.save_story_recording(self.learner, self.story, b"hi", content_type="text/plain")
+
+    @override_settings(STORAGES=_INMEM_STORAGES_NO_REC)
+    def test_feature_off_without_private_store(self):
+        # No private recordings alias → the whole feature must be inert: service raises,
+        # the reader offers no recorder, and the endpoint 404s. So no child voice can be
+        # written to the (publicly-exposed) shared bucket.
+        self.assertFalse(lingua_storage.recordings_enabled())
+        with self.assertRaises(ValueError):
+            services.save_story_recording(self.learner, self.story, b"aud", content_type="audio/webm")
+        reader = self.client.get(reverse("portal:lingua_read",
+                                         kwargs={"token": self.token, "story_id": self.story.pk}))
+        self.assertNotIn('id="lingua-recorder"', reader.content.decode())
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        r = self.client.post(
+            reverse("portal:lingua_record", kwargs={"token": self.token, "story_id": self.story.pk}),
+            {"audio": SimpleUploadedFile("l.webm", b"aud", content_type="audio/webm")})
+        self.assertEqual(r.status_code, 404)
+        self.assertFalse(StoryRecording.objects.exists())
 
     def test_delete_is_scoped_to_the_learner(self):
-        from django.core.files.storage import default_storage
+        from django.core.files.storage import storages
         rec = services.save_story_recording(self.learner, self.story, b"aud", content_type="audio/webm")
         other = Learner.create_for_host_student(99991, profiles.KIDS_EARLY)
         self.assertFalse(services.delete_story_recording(other, rec.pk))   # not other's → refused
         self.assertTrue(StoryRecording.objects.filter(pk=rec.pk).exists())
         self.assertTrue(services.delete_story_recording(self.learner, rec.pk))
         self.assertFalse(StoryRecording.objects.filter(pk=rec.pk).exists())
-        self.assertFalse(default_storage.exists(rec.audio_key))            # storage object gone too
+        self.assertFalse(storages["lingua_recordings"].exists(rec.audio_key))  # storage object gone too
 
     def test_record_endpoint_saves_recording(self):
         from django.core.files.uploadedfile import SimpleUploadedFile
@@ -3615,6 +3643,25 @@ class StoryRecordingTests(TestCase):
     def test_record_endpoint_requires_audio(self):
         url = reverse("portal:lingua_record", kwargs={"token": self.token, "story_id": self.story.pk})
         r = self.client.post(url, {"seconds": "3"})
+        self.assertEqual(r.status_code, 400)
+        self.assertFalse(self.learner.recordings.exists())
+
+    def test_record_endpoint_rejects_oversized_before_reading(self):
+        # DoS guard: an upload whose size exceeds the cap is refused up front (checked
+        # on upload.size before the body is read into memory).
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        url = reverse("portal:lingua_record", kwargs={"token": self.token, "story_id": self.story.pk})
+        with mock.patch("lingua.services.RECORDING_MAX_BYTES", 8):
+            big = SimpleUploadedFile("l.webm", b"x" * 64, content_type="audio/webm")
+            r = self.client.post(url, {"audio": big})
+        self.assertEqual(r.status_code, 400)
+        self.assertFalse(self.learner.recordings.exists())
+
+    def test_record_endpoint_rejects_non_audio(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        url = reverse("portal:lingua_record", kwargs={"token": self.token, "story_id": self.story.pk})
+        r = self.client.post(url, {"audio": SimpleUploadedFile(
+            "x.txt", b"not audio", content_type="text/plain")})
         self.assertEqual(r.status_code, 400)
         self.assertFalse(self.learner.recordings.exists())
 

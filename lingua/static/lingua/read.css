@@ -62,6 +62,9 @@ body {
 
 /* Optional read-aloud recorder (LGA-73) — private, parent-only. */
 .recorder { margin: 2rem 0 0; display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
+/* The container ships with [hidden]; recorder.js removes it only when supported.
+   display:flex above would otherwise override [hidden]'s display:none — so keep this. */
+.recorder[hidden] { display: none; }
 .rec-btn {
   font: 600 1.05rem/1 system-ui, sans-serif;
   padding: 0.7rem 1.1rem;

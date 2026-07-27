@@ -378,15 +378,21 @@ _RECORDING_EXT = {"audio/webm": "webm", "audio/ogg": "ogg",
 
 
 def save_story_recording(learner, story, data, *, content_type="", seconds=0):
-    """Save a child's read-aloud recording to PRIVATE storage and create a
-    StoryRecording (LGA-73). Never sent to any AI/TTS. Raises ValueError on an empty or
-    oversized upload. Returns the StoryRecording."""
+    """Save a child's read-aloud recording to the PRIVATE recordings store and create a
+    StoryRecording (LGA-73). Never sent to any AI/TTS. Raises ValueError if recordings
+    aren't configured, the content type isn't an accepted audio type, or the upload is
+    empty/oversized. Returns the StoryRecording."""
     import uuid
+    if not storage.recordings_enabled():
+        raise ValueError("recordings not configured")
+    ct = (content_type or "").split(";")[0].strip().lower()
+    if ct not in _RECORDING_EXT:              # only real audio types, no arbitrary bytes
+        raise ValueError("unsupported content type")
     if not data:
         raise ValueError("empty recording")
     if len(data) > RECORDING_MAX_BYTES:
         raise ValueError("recording too large")
-    ext = _RECORDING_EXT.get((content_type or "").split(";")[0].strip().lower(), "webm")
+    ext = _RECORDING_EXT[ct]
     key = f"{storage.RECORDING_PREFIX}/{uuid.uuid4().hex}.{ext}"
     stored_key = storage.save_recording(key, data)
     return StoryRecording.objects.create(

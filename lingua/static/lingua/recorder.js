@@ -76,6 +76,9 @@
           var blob = new Blob(chunks, { type: recorder.mimeType || "audio/webm" });
           upload(blob);
         });
+        recorder.addEventListener("error", function () {
+          reset("El micrófono tuvo un problema. Inténtalo otra vez.");
+        });
         startedAt = Date.now();
         recorder.start();
         btn.textContent = "⏹ Detener";

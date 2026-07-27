@@ -54,6 +54,23 @@ def can_edit_family(user, family):
     ).exists()
 
 
+def can_edit_family_or_global(user, family):
+    """Edit rights for an object belonging to ``family``.
+
+    - Object HAS a family → require edit rights in THAT family (so a member who is only
+      a viewer of that family can't edit it, even if they're an editor elsewhere).
+    - Object has NO family (family is None → shared/global content, or a legacy
+      standalone user's own records) → fall back to the global edit right
+      (``user_can_edit``), which itself grants edit to legacy no-membership users.
+
+    This is the right gate for per-object display controls (edit/delete, the child
+    portal URL): it closes the cross-family leak without breaking editing of global
+    content or legacy accounts."""
+    if family is None:
+        return user_can_edit(user)
+    return can_edit_family(user, family)
+
+
 def viewable_queryset(qs, user, family_field="family", parent_field="parent"):
     """Filter a queryset to records the user may *view*.
 

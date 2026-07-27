@@ -4,7 +4,7 @@ from django.contrib.auth.decorators import login_required
 from django.shortcuts import render
 from django.utils.dateparse import parse_date
 
-from core.permissions import scoped_queryset, user_can_edit
+from core.permissions import scoped_queryset, user_can_edit, can_edit_family_or_global
 from core.utils import get_selected_family
 from curricula.models import CurriculumPlacement
 from curricula.subjects import emoji_for
@@ -118,6 +118,6 @@ def dashboard_view(request):
         "start_date": start_date,
         "end_date": end_date,
         "has_filters": has_filters,
-        "can_edit": user_can_edit(request.user),
+        "can_edit": can_edit_family_or_global(request.user, family),
         "today": date.today(),
     })

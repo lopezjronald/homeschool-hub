@@ -381,6 +381,34 @@ class CharterReportRedesignTest(TestCase):
         self.assertEqual(a.ai_level, "")
         self.assertEqual(a.status, MasteryAssessment.FINALIZED)
 
+    def test_stamp_updates_existing_never_duplicates(self):
+        # Re-stamping an entry updates its single assessment rather than inserting a
+        # second — the create/update guard behind report_stamp's idempotency (the view
+        # now also locks the entry so a concurrent double-submit can't race a duplicate).
+        self.client.login(username="cparent", password="pw")
+        url = reverse("worklog:report_stamp", kwargs={"entry_pk": self.photo.pk})
+        self.client.post(url, {"final_level": "developing"})    # creates
+        self.assertEqual(self.photo.assessments.count(), 1)
+        self.client.post(url, {"final_level": "mastered"})      # updates, not duplicates
+        self.assertEqual(self.photo.assessments.count(), 1)
+        self.assertEqual(self.photo.assessments.first().final_level, "mastered")
+
+    def test_charter_report_hides_edit_from_cross_family_viewer(self):
+        # An editor of ANOTHER family who is only a viewer of THIS family must not see
+        # the inline stamp controls on the selected family's report (display can_edit
+        # gated per selected family, not the global user_can_edit).
+        cross = User.objects.create_user(username="crossgrader", email="cg@e.com", password="pw")
+        other = Family.objects.create(name="Other CG Fam")
+        FamilyMembership.objects.create(user=cross, family=other, role="parent")   # editor elsewhere
+        FamilyMembership.objects.create(user=cross, family=self.fam, role="teacher")  # viewer here
+        self.client.force_login(cross)
+        resp = self._report(family_id=self.fam.pk)
+        self.assertEqual(resp.status_code, 200)
+        self.assertFalse(resp.context["can_edit"])          # no stamp controls for a viewer
+        # sanity: the actual editing parent still gets can_edit on the same report
+        self.client.force_login(self.parent)
+        self.assertTrue(self._report(family_id=self.fam.pk).context["can_edit"])
+
     def test_teacher_cannot_stamp(self):
         self.client.login(username="cteacher", password="pw")
         resp = self.client.post(

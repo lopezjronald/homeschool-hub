@@ -1,6 +1,8 @@
 from django.contrib.auth.forms import AuthenticationForm, UsernameField
 from django import forms
 from django.contrib.auth import get_user_model
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError
 
 from .models import UserProfile
 
@@ -33,10 +35,22 @@ class RegisterForm(forms.ModelForm):
         fields = ("email", "username")
 
     def clean(self):
-        """Ensure password fields match."""
+        """Ensure password fields match AND satisfy AUTH_PASSWORD_VALIDATORS.
+
+        Without the validate_password call the configured validators (min length,
+        common/numeric password, user-attribute similarity) were bypassed on the main
+        signup path — the invite signup form already enforces them."""
         cleaned = super().clean()
-        if cleaned.get("password1") != cleaned.get("password2"):
+        p1, p2 = cleaned.get("password1"), cleaned.get("password2")
+        if p1 != p2:
             self.add_error("password2", "Passwords do not match.")
+        elif p1:
+            # Validate against a partially-built user so UserAttributeSimilarity works.
+            user = User(email=cleaned.get("email") or "", username=cleaned.get("username") or "")
+            try:
+                validate_password(p1, user=user)
+            except ValidationError as exc:
+                self.add_error("password1", exc)
         return cleaned
 
     def save(self, commit: bool = True):

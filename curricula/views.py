@@ -7,7 +7,10 @@ from django.http import Http404
 from django.shortcuts import render, redirect, get_object_or_404
 from django.views.decorators.http import require_POST
 
-from core.permissions import viewable_queryset, editable_queryset, scoped_queryset, user_can_edit
+from core.permissions import (
+    viewable_queryset, editable_queryset, scoped_queryset, user_can_edit,
+    can_edit_family_or_global,
+)
 from core.utils import get_active_family, get_selected_family, resolve_family_for_write
 from students.models import Student
 
@@ -67,7 +70,10 @@ def curriculum_list(request):
 
     return render(request, "curricula/curriculum_list.html", {
         "curricula": curricula,
-        "can_edit": user_can_edit(request.user),
+        # Gate the Add/edit controls on the SELECTED family (global content falls back
+        # to the global edit right), not on "can edit somewhere" — closes the leak
+        # where a viewer of the selected family saw edit controls.
+        "can_edit": can_edit_family_or_global(request.user, family),
         "subjects": subjects,
         "grade_choices": grade_choices,
         "active_subject": subject,
@@ -113,7 +119,8 @@ def _curriculum_students(user, curriculum):
 def curriculum_detail(request, pk):
     """Curriculum detail: structure (chapters/lessons), documents, and progress."""
     curriculum = get_object_or_404(viewable_queryset(Curriculum.objects.all(), request.user), pk=pk)
-    can_edit = user_can_edit(request.user)
+    # Gate edit controls on THIS curriculum's family (global content → global right).
+    can_edit = can_edit_family_or_global(request.user, curriculum.family)
 
     chapters = curriculum.chapters.prefetch_related("lessons", "lessons__materials")
     documents = curriculum.documents.all()

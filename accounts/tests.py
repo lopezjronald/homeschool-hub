@@ -66,6 +66,21 @@ class RegistrationTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertFormError(response.context["form"], "password2", "Passwords do not match.")
 
+    def test_register_rejects_weak_password(self):
+        """AUTH_PASSWORD_VALIDATORS are enforced on the main signup path (not just the
+        invite path). A too-short / too-common password must be rejected — no account."""
+        from accounts.models import CustomUser
+        data = {
+            "username": "weakling",
+            "email": "weakling@example.com",
+            "password1": "123",       # fails min-length + numeric-password validators
+            "password2": "123",
+        }
+        response = self.client.post(reverse("accounts:register"), data)
+        self.assertEqual(response.status_code, 200)              # re-rendered with errors
+        self.assertTrue(response.context["form"].has_error("password1"))
+        self.assertFalse(CustomUser.objects.filter(username="weakling").exists())  # not created
+
     def test_register_duplicate_email(self):
         """Form error when email already exists."""
         data = {

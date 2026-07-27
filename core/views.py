@@ -12,7 +12,7 @@ from django.views.decorators.http import require_POST
 from core.forms import FamilyForm, InviteSignupForm, TeacherInviteForm
 from core.models import FamilyMembership, Invitation
 from core.permissions import can_edit_family
-from core.utils import get_active_family
+from core.utils import get_active_family, get_selected_family
 
 # Friendly label for an invitation role (co-parent stores as "parent").
 _ROLE_LABELS = {
@@ -65,8 +65,12 @@ def how_it_works(request):
 
 @login_required
 def family_settings(request):
-    """Rename the household (editors only). Members are managed on the invite page."""
-    family = get_active_family(request.user)
+    """Rename the household (editors only). Members are managed on the invite page.
+
+    Operates on the family SELECTED in the navbar switcher (not the user's primary
+    family), so a parent of 2+ families renames the household they're actually looking
+    at — gated by edit permission on that family."""
+    family = get_selected_family(request)
     if family is None or not can_edit_family(request.user, family):
         raise Http404
 
@@ -83,12 +87,16 @@ def family_settings(request):
 
 @login_required
 def invite_teacher(request):
-    """Parent-only view to invite someone (co-parent, guardian, grandparent, teacher)."""
-    family = get_active_family(request.user)
+    """Invite someone (co-parent, guardian, grandparent, teacher) to the SELECTED
+    family — the one shown in the navbar switcher — gated by edit permission, so a
+    multi-family parent never invites into the wrong household."""
+    family = get_selected_family(request)
     if family is None:
         if FamilyMembership.objects.filter(user=request.user).exists():
             raise Http404
         return render(request, "core/invite_teacher.html", {"no_family": True})
+    if not can_edit_family(request.user, family):
+        raise Http404  # a view-only member of the selected family can't invite
 
     if request.method == "POST":
         form = TeacherInviteForm(request.POST, family=family)
@@ -133,10 +141,10 @@ def _primary_parent_membership(family):
 @login_required
 @require_POST
 def remove_member(request, membership_id):
-    """Parent-only: remove a member from the active family (never the primary parent)."""
-    family = get_active_family(request.user)
-    if family is None:
-        raise Http404  # only a parent-role user has an active family here
+    """Parent-only: remove a member from the SELECTED family (never the primary parent)."""
+    family = get_selected_family(request)
+    if family is None or not can_edit_family(request.user, family):
+        raise Http404  # must be an editor of the selected family
 
     membership = get_object_or_404(FamilyMembership, pk=membership_id, family=family)
     primary = _primary_parent_membership(family)
@@ -155,9 +163,9 @@ def remove_member(request, membership_id):
 
 @login_required
 def resend_invite(request, invite_id):
-    """Resend a pending invitation email (parent-only, POST-only)."""
-    family = get_active_family(request.user)
-    if family is None:
+    """Resend a pending invitation email (editors of the SELECTED family, POST-only)."""
+    family = get_selected_family(request)
+    if family is None or not can_edit_family(request.user, family):
         raise Http404
 
     invite = get_object_or_404(Invitation, pk=invite_id, family=family)

@@ -8,7 +8,10 @@ from django.contrib import messages
 from django.urls import reverse
 from django.views.decorators.http import require_POST
 
-from core.permissions import viewable_queryset, editable_queryset, scoped_queryset, user_can_edit
+from core.permissions import (
+    viewable_queryset, editable_queryset, scoped_queryset, user_can_edit,
+    can_edit_family_or_global,
+)
 from core.utils import get_active_family, get_selected_family, resolve_family_for_write
 
 from portal.tokens import make_portal_token
@@ -28,7 +31,9 @@ def student_list(request):
     """Display list of children the user can view (via family membership)."""
     family = get_selected_family(request)
     students = scoped_queryset(Student.objects.all(), request.user, family)
-    can_edit = user_can_edit(request.user)
+    # Gate edit controls on THIS family — an editor in another family who is only a
+    # viewer of the selected family must not see edit/portal controls here.
+    can_edit = can_edit_family_or_global(request.user, family)
     return render(request, "students/student_list.html", {
         "students": students,
         "can_edit": can_edit,
@@ -76,7 +81,9 @@ def student_create(request):
 def student_detail(request, pk):
     """View a child's profile plus the curricula they're currently doing."""
     student = get_object_or_404(viewable_queryset(Student.objects.all(), request.user), pk=pk)
-    can_edit = user_can_edit(request.user)
+    # Gate on the CHILD's family: a view-only member of that family must not get the
+    # edit controls or the login-free portal bearer URL (built below when can_edit).
+    can_edit = can_edit_family_or_global(request.user, student.family)
 
     placements = (
         student.placements
@@ -215,7 +222,7 @@ def student_work_set(request, pk, set_pk):
         "sheet": sheet,
         "rows": rows,
         "assessment": assessment,
-        "can_edit": user_can_edit(request.user),
+        "can_edit": can_edit_family_or_global(request.user, student.family),
     })
 
 

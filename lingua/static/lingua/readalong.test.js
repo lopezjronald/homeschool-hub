@@ -3,7 +3,9 @@
  */
 "use strict";
 var assert = require("assert");
-var activeIndex = require("./readalong.js").activeIndex;
+var _mod = require("./readalong.js");
+var activeIndex = _mod.activeIndex;
+var sentenceParities = _mod.sentenceParities;
 
 var W = [
   { i: 0, s_ms: 0, e_ms: 300 },
@@ -30,4 +32,21 @@ assert.strictEqual(activeIndex([], 100, -1), -1, "empty -> -1");
 // a stale/out-of-range cursor still resolves via binary search
 assert.strictEqual(activeIndex(W, 350, 99), 1, "out-of-range cursor -> binary search");
 
-console.log("readalong.js: all " + 10 + " player-logic assertions passed");
+// --- sentenceParities (shared-reading turns, LGA-74) ---
+// "Hola. Soy Ana. Corro." -> sentence 0: [Hola.], sentence 1: [Soy, Ana.], sentence 2: [Corro.]
+assert.deepStrictEqual(
+  sentenceParities(["Hola.", "Soy", "Ana.", "Corro."]),
+  ["s0", "s1", "s1", "s0"],
+  "parity flips after each sentence-ending word"
+);
+// no sentence enders -> all one parity
+assert.deepStrictEqual(sentenceParities(["uno", "dos", "tres"]), ["s0", "s0", "s0"],
+  "no enders -> all s0");
+// trailing closing quote after the period still ends the sentence
+assert.deepStrictEqual(sentenceParities(['dijo."', "Luego"]), ["s0", "s1"],
+  "punctuation + closing quote ends the sentence");
+// ¿? question marks split too
+assert.deepStrictEqual(sentenceParities(["¿Qué?", "Nada."]), ["s0", "s1"], "question ends a sentence");
+assert.deepStrictEqual(sentenceParities([]), [], "empty -> empty");
+
+console.log("readalong.js: all " + 15 + " player-logic assertions passed");

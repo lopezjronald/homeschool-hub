@@ -34,8 +34,20 @@
     return act;
   }
 
+  // Pure: parity class ("s0"/"s1") per word for shared-reading turns (LGA-74). A word
+  // whose text ends a sentence (.!?… + optional closing quote/paren) closes the current
+  // sentence, so the NEXT word flips parity. Exported for node tests.
+  function sentenceParities(texts) {
+    var out = [], sen = 0, END = /[.!?…][")»'”]*$/;
+    for (var k = 0; k < texts.length; k++) {
+      out.push(sen % 2 ? "s1" : "s0");
+      if (END.test((texts[k] || "").trim())) sen++;
+    }
+    return out;
+  }
+
   if (typeof module !== "undefined" && module.exports) {
-    module.exports = { activeIndex: activeIndex };
+    module.exports = { activeIndex: activeIndex, sentenceParities: sentenceParities };
     return;  // node test context — don't touch the DOM
   }
 
@@ -50,6 +62,42 @@
     var spans = storyEl.querySelectorAll(".w");
     var cursor = -1, raf = 0, lastSpan = null;
     var TAIL_SLACK_MS = 150;  // keep a word lit briefly past its end for a smooth feel
+
+    // Shared-reading (LGA-74): tag each word with its sentence's parity (s0/s1) so a
+    // "por turnos" toggle can color alternating sentences two colors for turn-taking.
+    // No effect until .shared is on. Parity is computed by the exported pure fn.
+    var _texts = [];
+    for (var t = 0; t < spans.length; t++) _texts.push(spans[t].textContent || "");
+    var _par = sentenceParities(_texts);
+    for (var p = 0; p < spans.length; p++) spans[p].classList.add(_par[p]);
+    var sharedBtn = document.getElementById("lingua-shared");
+    if (sharedBtn) {
+      sharedBtn.addEventListener("click", function () {
+        var on = storyEl.classList.toggle("shared");
+        sharedBtn.setAttribute("aria-pressed", on ? "true" : "false");
+      });
+    }
+
+    // Tap-a-word hint (LGA-74): a tapped cognate/false-friend word shows its meaning
+    // (mobile has no hover for the title attr), auto-hiding. Positioned in page coords.
+    var hintEl = document.getElementById("lingua-hint");
+    var hintTimer = 0;
+    function showHint(span) {
+      if (!hintEl) return;
+      var msg = "";
+      if (span.classList.contains("false-friend")) {
+        msg = span.getAttribute("title") || "¡Amigo falso! No significa lo que parece.";
+      } else if (span.classList.contains("cognate")) {
+        msg = "Se parece al inglés — ¡puedes adivinarlo! 👍";
+      }
+      if (!msg) { hintEl.hidden = true; return; }
+      // Content only — position is fixed in CSS (a bottom toast). Avoid writing
+      // element.style so the strict reader CSP (style-src 'self') can't block it.
+      hintEl.textContent = msg;
+      hintEl.hidden = false;
+      clearTimeout(hintTimer);
+      hintTimer = setTimeout(function () { hintEl.hidden = true; }, 4500);
+    }
 
     // Default to a gentle 0.75x for young readers; the speed <select> (if present) drives
     // it. The rAF highlighter reads audio.currentTime (the audio's own timeline in ms),
@@ -101,6 +149,7 @@
     // Tap a word -> seek to the first timing entry for that token and play.
     for (var i = 0; i < spans.length; i++) {
       spans[i].addEventListener("click", function () {
+        showHint(this);                       // cognate/false-friend meaning on tap (LGA-74)
         var ti = parseInt(this.dataset.i, 10);
         for (var j = 0; j < words.length; j++) {
           if (words[j].i === ti) {

@@ -34,10 +34,14 @@
               <option value="1">1&times;</option>
             </select>
           </label>
+          {# Shared-reading toggle (LGA-74): colors alternating sentences so a grown-up and child can take turns. readalong.js computes sentence parity + toggles the mode (CSP-clean). #}
+          <button type="button" id="lingua-shared" class="shared-toggle" aria-pressed="false">👥 Por turnos</button>
         </div>
       </div>
       {# json_script safely embeds the timing JSON, escaping the angle brackets; the player reads it. #}
       {{ timings|json_script:"lingua-timings" }}
+      {# Tap-a-word hint bubble (LGA-74): readalong.js fills + positions it when a cognate/false-friend word is tapped (mobile can't hover the title). #}
+      <div id="lingua-hint" class="hint" role="status" hidden></div>
     {% endif %}
 
     {# Illustrated-storybook layout (LGA-71): one picture above its 1–2 sentences; word spans keep document order + data-i so the read-along highlighter is unaffected; falls back to plain paragraphs with no baked images. Keep this comment to one physical line with no comment markers inside, or it leaks to the page (LGA-83). #}

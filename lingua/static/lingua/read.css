@@ -29,6 +29,30 @@ body {
 .controls { display: flex; flex-wrap: wrap; gap: 0.4rem 1.25rem; margin-top: 0.5rem; }
 .speed, .voice { display: inline-flex; align-items: center; gap: 0.4rem; font-size: 0.95rem; color: var(--muted); }
 .speed select, .voice select { font: inherit; padding: 0.15em 0.4em; border-radius: 0.4em; cursor: pointer; }
+
+/* Shared-reading toggle + two-color turns (LGA-74). */
+.shared-toggle {
+  font: inherit; font-size: 0.95rem; padding: 0.2em 0.7em;
+  border: 1px solid var(--muted); border-radius: 0.5em;
+  background: var(--bg); color: var(--muted); cursor: pointer;
+}
+.shared-toggle[aria-pressed="true"] { border-color: var(--link); color: var(--link); font-weight: 600; }
+:root { --turn-a: #1f6f8b; --turn-b: #b5561d; }
+@media (prefers-color-scheme: dark) { :root { --turn-a: #7cc4e6; --turn-b: #ffb27a; } }
+#lingua-story.shared .s0 { color: var(--turn-a); }
+#lingua-story.shared .s1 { color: var(--turn-b); }
+#lingua-story.shared .w.on { color: var(--accent-ink); }   /* highlight stays legible over turns */
+
+/* Tap-a-word hint toast (LGA-74). Fixed position in CSS (no JS style writes → stays
+   CSP-safe under the strict reader policy); readalong.js only sets text + toggles it. */
+.hint {
+  position: fixed; left: 50%; transform: translateX(-50%); bottom: 1rem;
+  z-index: 20; max-width: min(92vw, 28rem); text-align: center;
+  background: var(--ink); color: var(--bg);
+  padding: 0.55em 0.9em; border-radius: 0.6em;
+  font-size: 1rem; line-height: 1.35;
+  box-shadow: 0 3px 16px rgba(0, 0, 0, 0.35);
+}
 .story { margin: 1rem 0; }
 
 /* Illustrated storybook layout (LGA-71): one picture above its own 1–2 sentences.

@@ -1492,6 +1492,15 @@ class ReaderViewTests(TestCase):
         self.assertIn('data-i="0"', html)
         self.assertIn('id="lingua-speed"', html)         # speed control present
         self.assertIn('value="0.75" selected', html)     # defaults to 0.75x for young readers
+        self.assertIn('id="lingua-shared"', html)         # shared-reading toggle (LGA-74)
+        self.assertIn('id="lingua-hint"', html)           # tap-a-word hint bubble (LGA-74)
+
+    def test_no_shared_reading_or_hint_without_audio(self):
+        # Both read-along extras live inside the audio player block — a text-only story
+        # (no baked audio) must not render them.
+        html = self.client.get(self._url(self.story)).content.decode()
+        self.assertNotIn('id="lingua-shared"', html)
+        self.assertNotIn('id="lingua-hint"', html)
 
     @override_settings(STORAGES=_INMEM_STORAGES)
     def test_no_voice_picker_with_single_baked_voice(self):

@@ -1,0 +1,52 @@
+{% extends "portal/base_portal.html" %}
+{% block title %}Biblioteca · {{ student.first_name }}{% endblock %}
+
+{% block content %}
+<div class="container portal-narrow">
+
+  <div class="portal-hero mb-4">
+    <h1>📚 Tu biblioteca</h1>
+    <p class="mb-0">Todas las historias, por nivel. ¡Léelas una y otra vez! 🌱</p>
+  </div>
+
+  {% if levels %}
+    {% for lvl in levels %}
+      <section class="mb-4">
+        <div class="d-flex align-items-center justify-content-between flex-wrap mb-1">
+          <h2 class="portal-section-title mb-0">
+            Nivel {{ lvl.level|slice:"1:" }}{% if lvl.is_current %} <span class="badge bg-success align-middle">Estás aquí</span>{% endif %}
+          </h2>
+          <small class="text-muted">{{ lvl.done }} de {{ lvl.total }} dominadas ⭐</small>
+        </div>
+        <p class="text-muted small mb-2">{{ lvl.descriptor }}</p>
+
+        <div class="portal-subjects">
+          {% for item in lvl.stories %}
+          <a href="{% url 'portal:lingua_read' token=token story_id=item.story.id %}"
+             class="portal-subject-card{% if item.got_it_down %} border-success{% endif %}">
+            <div class="portal-subject-emoji">{% if item.got_it_down %}⭐{% else %}📖{% endif %}</div>
+            <div class="portal-subject-body">
+              <div class="portal-subject-name">{{ item.story.title }}</div>
+              <div class="portal-next-line">
+                {% if item.reads %}
+                  <span class="portal-next-label">Leída {{ item.reads }}
+                    {% if item.reads == 1 %}vez{% else %}veces{% endif %}</span>
+                  {% if item.got_it_down %} · ¡La dominas!{% endif %}
+                {% else %}
+                  <span class="portal-next-label">Nueva</span> ¡pruébala!
+                {% endif %}
+              </div>
+            </div>
+            <div class="portal-subject-go">Leer ➜</div>
+          </a>
+          {% endfor %}
+        </div>
+      </section>
+    {% endfor %}
+  {% else %}
+    <div class="alert alert-info">No hay historias todavía. ¡Vuelve pronto! 🌱</div>
+  {% endif %}
+
+  <p class="mt-4"><a href="{% url 'portal:lingua_plan' token=token %}">&larr; Volver</a></p>
+</div>
+{% endblock %}

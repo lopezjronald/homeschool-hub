@@ -313,6 +313,63 @@ def record_reading(learner, story, *, seconds=0):
     )
 
 
+# A story is "got it down" (¡lo domina!) — NO grading — when the child has read it at
+# least this many times AND their best after-reading self-check on it was proficient+
+# (the 😀 "¡Bien!" felt). Read count + this flag are what the parent tracks (LGA-72).
+GOT_IT_DOWN_MIN_READS = 2
+
+
+def story_got_it_down(reads, best_result):
+    """True when a story is mastered enough to mark 'got it down': read >= the minimum
+    and a proficient+ self-check. Pure so it's trivially testable."""
+    return reads >= GOT_IT_DOWN_MIN_READS and comprehension.meets_bar(best_result or "")
+
+
+def reading_list(learner):
+    """Leveled reading list for a learner (LGA-72), modeled on a leveled-books list:
+    every APPROVED story grouped by ladder level (L1..L8, only levels that have
+    stories), each row carrying the learner's read count and a 'got it down' flag. Used
+    by the kid's Biblioteca page and the parent progress page. Read-only; no grading."""
+    reads_by_story = {
+        r["story"]: r["n"]
+        for r in learner.reading_sessions.filter(story__isnull=False)
+        .values("story").annotate(n=Count("id"))
+    }
+    best_by_story = {}
+    for sid, result in learner.comprehension_checks.filter(
+        story__isnull=False
+    ).values_list("story", "result"):
+        if comprehension.rank(result) > comprehension.rank(
+            best_by_story.get(sid, comprehension.PENDING)
+        ):
+            best_by_story[sid] = result
+
+    by_level = {}
+    for story in Story.objects.filter(status=Story.APPROVED).order_by("level", "title"):
+        reads = reads_by_story.get(story.pk, 0)
+        by_level.setdefault(story.level, []).append({
+            "story": story,
+            "reads": reads,
+            "got_it_down": story_got_it_down(reads, best_by_story.get(story.pk)),
+        })
+
+    ceiling = getattr(getattr(learner, "profile", None), "content_ceiling", None)
+    levels = []
+    for lvl in profiles.LADDER:
+        items = by_level.get(lvl)
+        if not items:
+            continue
+        levels.append({
+            "level": lvl,
+            "descriptor": profiles.LEVEL_DESCRIPTORS.get(lvl, ""),
+            "stories": items,
+            "is_current": lvl == ceiling,
+            "done": sum(1 for it in items if it["got_it_down"]),
+            "total": len(items),
+        })
+    return levels
+
+
 def _normalize_word(word):
     """Canonical key for a Spanish word: the letter-run only (via cognates.WORD_RE) then
     case/diacritic-folded and capped to the 64-char field, so "gato" / "gato." / "¡Gató!"

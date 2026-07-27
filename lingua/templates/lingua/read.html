@@ -58,6 +58,14 @@
       <p class="note">Audio is being prepared — read along on your own for now.</p>
     {% endif %}
 
+    {% if record_url %}
+      {# Optional private read-aloud recorder (LGA-73). recorder.js reveals it only when the browser supports MediaRecorder+getUserMedia; it uploads to a token-authed same-origin endpoint (connect-src 'self'). The child's voice is private, parent-only, and never sent to any AI. Keep this comment on one physical line with no comment markers inside (LGA-83). #}
+      <div class="recorder" id="lingua-recorder" data-record-url="{{ record_url }}" hidden>
+        <button type="button" id="lingua-rec-btn" class="rec-btn">🎤 Grábate leyendo</button>
+        <span class="rec-status" id="lingua-rec-status" role="status"></span>
+      </div>
+    {% endif %}
+
     {% if finish_url %}
       {# CSP-clean finish: same-origin form POST (form-action 'self'); reader.js fills elapsed seconds; endpoint is token-authed + csrf-exempt. #}
       <form class="finish" id="lingua-finish" method="post" action="{{ finish_url }}">
@@ -94,5 +102,6 @@
     <script src="{% static 'lingua/readalong.js' %}"></script>
   {% endif %}
   {% if finish_url %}<script src="{% static 'lingua/reader.js' %}"></script>{% endif %}
+  {% if record_url %}<script src="{% static 'lingua/recorder.js' %}"></script>{% endif %}
 </body>
 </html>

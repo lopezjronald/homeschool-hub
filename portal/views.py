@@ -24,6 +24,7 @@ from activities.models import ExternalActivity
 from lingua import comprehension as lingua_comprehension
 from lingua import profiles as lingua_profiles
 from lingua import services as lingua_services
+from lingua import storage as lingua_storage
 from lingua import views as lingua_views
 from lingua.models import MilestoneAward as LinguaMilestone
 from lingua.models import Story as LinguaStory
@@ -110,10 +111,15 @@ def lingua_read(request, token, story_id):
     lingua so the page stays CSP-clean and the module stays extractable."""
     _resolve_student(token)  # 404s an invalid/tampered token before serving anything
     story = get_object_or_404(LinguaStory, pk=story_id, status=LinguaStory.APPROVED)
+    # Only offer the recorder when a truly-private recordings store is configured, so a
+    # child's voice can never be written to a publicly-exposed bucket (LGA-73).
+    record_url = (reverse("portal:lingua_record", args=[token, story_id])
+                  if lingua_storage.recordings_enabled() else "")
     return lingua_views.render_reader(
         request, story,
         finish_url=reverse("portal:lingua_finish", args=[token, story_id]),
         back_url=reverse("portal:lingua_plan", args=[token]),
+        record_url=record_url,
     )
 
 
@@ -182,6 +188,39 @@ def lingua_capture_word(request, token):
     if item is None:
         return JsonResponse({"captured": False})
     return JsonResponse({"captured": True, "format": lingua_services.card_format_for(item.scheduler)})
+
+
+@csrf_exempt
+@require_POST
+def lingua_record(request, token, story_id):
+    """Save a PRIVATE recording of the child reading this story aloud (LGA-73).
+    Token-authed + csrf-exempt like the other tokenless portal writes. The audio goes
+    to the private media store and is NEVER sent to any AI/TTS — only the logged-in
+    parent can play it back (signed URL) or delete it. Returns JSON {saved}."""
+    if not lingua_storage.recordings_enabled():
+        return JsonResponse({"saved": False, "error": "recording disabled"}, status=404)
+    student = _resolve_student(token)
+    learner = _lingua_learner(student)
+    story = get_object_or_404(LinguaStory, pk=story_id, status=LinguaStory.APPROVED)
+    upload = request.FILES.get("audio")
+    if upload is None:
+        return JsonResponse({"saved": False, "error": "no audio"}, status=400)
+    # Reject oversized BEFORE reading the body into memory (DoS guard) — the multipart
+    # part's declared size; the service re-checks the actual bytes.
+    if getattr(upload, "size", 0) and upload.size > lingua_services.RECORDING_MAX_BYTES:
+        return JsonResponse({"saved": False, "error": "too large"}, status=400)
+    try:
+        seconds = int(request.POST.get("seconds", 0))
+    except (TypeError, ValueError):
+        seconds = 0
+    try:
+        lingua_services.save_story_recording(
+            learner, story, upload.read(),
+            content_type=getattr(upload, "content_type", "") or "", seconds=seconds,
+        )
+    except ValueError:
+        return JsonResponse({"saved": False, "error": "invalid recording"}, status=400)
+    return JsonResponse({"saved": True})
 
 
 @csrf_exempt

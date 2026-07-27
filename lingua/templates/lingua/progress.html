@@ -53,6 +53,30 @@
         </details>
       {% endif %}
 
+      {% if row.recordings %}
+        <details class="mt-3" open>
+          <summary class="small text-muted">🎤 Recordings of {{ row.name }} reading ({{ row.recordings|length }})</summary>
+          <div class="mt-2">
+            {% for r in row.recordings %}
+            <div class="d-flex align-items-center justify-content-between border-bottom py-2 gap-2 flex-wrap">
+              <div class="small">
+                <strong>{% if r.rec.story %}{{ r.rec.story.title }}{% else %}(story removed){% endif %}</strong>
+                <span class="text-muted">· {{ r.rec.created_at|date:"M j, Y" }}</span>
+              </div>
+              <audio controls preload="none" src="{{ r.url }}" class="flex-grow-1" style="max-width:22rem;min-width:12rem"></audio>
+              <form method="post" onsubmit="return confirm('Delete this recording?');" class="mb-0">
+                {% csrf_token %}
+                <input type="hidden" name="host_student_id" value="{{ row.learner.host_student_id }}">
+                <input type="hidden" name="recording_id" value="{{ r.rec.id }}">
+                <button type="submit" name="action" value="delete_recording" class="btn btn-sm btn-outline-danger">Delete</button>
+              </form>
+            </div>
+            {% endfor %}
+          </div>
+          <p class="text-muted small mt-1 mb-0">Private to your family — never shared or sent to any AI. Playback links expire; reload if one stops working.</p>
+        </details>
+      {% endif %}
+
       {% if row.nudge %}
         <div class="alert alert-warning d-flex justify-content-between align-items-center mt-3 mb-0">
           <span>{{ row.name }} is consistently doing great — you might try content above the default track.</span>

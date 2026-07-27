@@ -17,6 +17,7 @@ from django.utils import timezone
 from django.views.decorators.http import require_POST
 
 from core.permissions import (
+    can_edit_family_or_global,
     editable_queryset,
     scoped_queryset,
     user_can_edit,
@@ -37,7 +38,7 @@ def worklog_list(request):
     ).select_related("child", "curriculum")
     return render(request, "worklog/worklog_list.html", {
         "entries": entries,
-        "can_edit": user_can_edit(request.user),
+        "can_edit": can_edit_family_or_global(request.user, family),
     })
 
 
@@ -189,7 +190,7 @@ def charter_report(request):
         "levels": mastery.CHOICES,
         "family": family,
         "today": today,
-        "can_edit": user_can_edit(request.user),
+        "can_edit": can_edit_family_or_global(request.user, family),
         "csv_qs": _preserved_get_qs(request, extra={"format": "csv"}),
     })
 
@@ -414,7 +415,7 @@ def worklog_detail(request, pk):
     )
     return render(request, "worklog/worklog_detail.html", {
         "entry": entry,
-        "can_edit": user_can_edit(request.user),
+        "can_edit": can_edit_family_or_global(request.user, entry.family),
     })
 
 

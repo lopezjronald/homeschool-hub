@@ -4,7 +4,10 @@ from django.http import Http404
 from django.shortcuts import get_object_or_404, redirect, render
 
 from core.models import FamilyMembership
-from core.permissions import viewable_queryset, editable_queryset, scoped_queryset, user_can_edit
+from core.permissions import (
+    viewable_queryset, editable_queryset, scoped_queryset, user_can_edit,
+    can_edit_family_or_global,
+)
 from core.utils import get_active_family, get_selected_family, resolve_family_for_write
 from curricula.models import Curriculum
 from students.models import Student
@@ -35,7 +38,7 @@ def assignment_list(request):
     assignments = scoped_queryset(
         Assignment.objects.all(), request.user, family,
     ).select_related("child", "curriculum")
-    is_parent_or_admin = user_can_edit(request.user)
+    is_parent_or_admin = can_edit_family_or_global(request.user, family)
     can_create = is_parent_or_admin or family is not None
     return render(
         request,
@@ -123,7 +126,7 @@ def assignment_detail(request, pk):
         ).select_related("created_by"),
         pk=pk,
     )
-    is_parent_or_admin = user_can_edit(request.user)
+    is_parent_or_admin = can_edit_family_or_global(request.user, assignment.family)
     is_own_teacher_assignment = (
         assignment.source == Assignment.SOURCE_TEACHER
         and assignment.created_by == request.user

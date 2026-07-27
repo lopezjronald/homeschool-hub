@@ -8,7 +8,9 @@ from django.views.decorators.http import require_POST
 
 from itertools import groupby
 
-from core.permissions import editable_queryset, user_can_edit, viewable_queryset
+from core.permissions import (
+    editable_queryset, user_can_edit, viewable_queryset, can_edit_family_or_global,
+)
 from curricula.models import Curriculum
 from worklog.models import WorkLogEntry
 
@@ -176,7 +178,9 @@ def assess_detail(request, pk):
         ).select_related("work_entry", "work_entry__child"),
         pk=pk,
     )
-    can_edit = user_can_edit(request.user)
+    can_edit = can_edit_family_or_global(
+        request.user, getattr(assessment.work_entry, "family", None),
+    )
     finalize_form = FinalizeForm(
         initial={"final_level": assessment.effective_level or mastery.PROFICIENT},
     ) if can_edit and assessment.status == MasteryAssessment.DRAFT else None
@@ -258,9 +262,10 @@ def material_detail(request, pk):
         _materials_for(request.user).select_related("lesson", "lesson__chapter", "child"),
         pk=pk,
     )
+    _cur = getattr(getattr(getattr(material, "lesson", None), "chapter", None), "curriculum", None)
     return render(request, "tutor/material_detail.html", {
         "material": material,
-        "can_edit": user_can_edit(request.user),
+        "can_edit": can_edit_family_or_global(request.user, getattr(_cur, "family", None)),
     })
 
 

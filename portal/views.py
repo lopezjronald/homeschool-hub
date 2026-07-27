@@ -114,6 +114,7 @@ def lingua_read(request, token, story_id):
         request, story,
         finish_url=reverse("portal:lingua_finish", args=[token, story_id]),
         back_url=reverse("portal:lingua_plan", args=[token]),
+        record_url=reverse("portal:lingua_record", args=[token, story_id]),
     )
 
 
@@ -182,6 +183,33 @@ def lingua_capture_word(request, token):
     if item is None:
         return JsonResponse({"captured": False})
     return JsonResponse({"captured": True, "format": lingua_services.card_format_for(item.scheduler)})
+
+
+@csrf_exempt
+@require_POST
+def lingua_record(request, token, story_id):
+    """Save a PRIVATE recording of the child reading this story aloud (LGA-73).
+    Token-authed + csrf-exempt like the other tokenless portal writes. The audio goes
+    to the private media store and is NEVER sent to any AI/TTS — only the logged-in
+    parent can play it back (signed URL) or delete it. Returns JSON {saved}."""
+    student = _resolve_student(token)
+    learner = _lingua_learner(student)
+    story = get_object_or_404(LinguaStory, pk=story_id, status=LinguaStory.APPROVED)
+    upload = request.FILES.get("audio")
+    if upload is None:
+        return JsonResponse({"saved": False, "error": "no audio"}, status=400)
+    try:
+        seconds = int(request.POST.get("seconds", 0))
+    except (TypeError, ValueError):
+        seconds = 0
+    try:
+        lingua_services.save_story_recording(
+            learner, story, upload.read(),
+            content_type=getattr(upload, "content_type", "") or "", seconds=seconds,
+        )
+    except ValueError:
+        return JsonResponse({"saved": False, "error": "invalid recording"}, status=400)
+    return JsonResponse({"saved": True})
 
 
 @csrf_exempt

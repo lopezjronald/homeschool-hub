@@ -60,6 +60,21 @@ body {
 }
 .note { color: var(--muted); font-size: 1.05rem; font-style: italic; margin-top: 1.5rem; }
 
+/* Optional read-aloud recorder (LGA-73) — private, parent-only. */
+.recorder { margin: 2rem 0 0; display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
+.rec-btn {
+  font: 600 1.05rem/1 system-ui, sans-serif;
+  padding: 0.7rem 1.1rem;
+  border: 2px solid var(--link);
+  border-radius: 0.7em;
+  background: var(--bg);
+  color: var(--link);
+  cursor: pointer;
+}
+.rec-btn:hover { background: rgba(42, 111, 151, 0.1); }
+.rec-btn:disabled { opacity: 0.6; cursor: default; }
+.rec-status { font-size: 0.95rem; color: var(--muted); }
+
 .finish { margin: 2.5rem 0 0; border-top: 1px solid rgba(0,0,0,.1); padding-top: 1.5rem; }
 @media (prefers-color-scheme: dark) { .finish { border-top-color: rgba(255,255,255,.12); } }
 .finish-q { font-weight: 600; margin: 0 0 0.75rem; }

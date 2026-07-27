@@ -58,7 +58,7 @@ def batch_approval(request):
     return render(request, "lingua/approvals.html", {"drafts": drafts})
 
 
-def render_reader(request, story, *, finish_url="", back_url=""):
+def render_reader(request, story, *, finish_url="", back_url="", record_url=""):
     """Render the CSP-clean read-along page for a story — shared by the parent-preview
     view (below) and the tokenless kid portal (host). With baked audio the page carries
     the ``<audio>`` + inline timing JSON and the rAF player highlights each word; with
@@ -165,7 +165,7 @@ def render_reader(request, story, *, finish_url="", back_url=""):
         "story": story, "audio_url": audio_url, "timings": timings if has_audio else None,
         "token_ctx": token_ctx, "has_audio": has_audio,
         "has_flags": any(t["cognate"] or t["ff"] for t in token_ctx),
-        "finish_url": finish_url, "back_url": back_url,
+        "finish_url": finish_url, "back_url": back_url, "record_url": record_url,
         # Only offer the picker when there's a real choice (>1 baked voice, LGA-70).
         "voices": baked_voices if has_audio and len(baked_voices) > 1 else [],
         "current_voice": current_voice,
@@ -227,6 +227,9 @@ def progress(request):
                 messages.info(request, "No level change applied.")
         elif action == "dismiss_nudge":
             services.mark_nudge_shown(learner)
+        elif action == "delete_recording":
+            if services.delete_story_recording(learner, _int_or_none(request.POST.get("recording_id"))):
+                messages.success(request, "Recording deleted.")
         return redirect("lingua:progress")
 
     rows = []
@@ -241,6 +244,10 @@ def progress(request):
             "rec": services.advancement_recommendation(learner),
             "nudge": services.nudge_testing_above_defaults(learner),
             "reading_list": services.reading_list(learner),
+            "recordings": [
+                {"rec": r, "url": storage.recording_url(r.audio_key)}
+                for r in services.recordings_for(learner)
+            ],
         })
     return render(request, "lingua/progress.html", {"rows": rows, "no_family": family is None})
 

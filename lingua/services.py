@@ -22,7 +22,7 @@ from . import (
 from .models import (
     AiUsage, AuditEvent, ComprehensionCheck, KnownWord, Learner, ListeningResource,
     ListeningSession, MilestoneAward, PhonicsRule, ReadingSession, ReviewItem, Story,
-    StoryAudio, StoryImage, Theme,
+    StoryAudio, StoryImage, StoryRecording, Theme,
 )
 from .ports import AIClient, ImageClient
 from .prompts import CRITIC_SYSTEM, STORY_SYSTEM
@@ -368,6 +368,49 @@ def reading_list(learner):
             "total": len(items),
         })
     return levels
+
+
+# --- Private child read-aloud recordings (LGA-73) ---------------------------
+
+RECORDING_MAX_BYTES = 12 * 1024 * 1024  # ~12MB — a few minutes of opus; rejects abuse
+_RECORDING_EXT = {"audio/webm": "webm", "audio/ogg": "ogg",
+                  "audio/mp4": "m4a", "audio/mpeg": "mp3"}
+
+
+def save_story_recording(learner, story, data, *, content_type="", seconds=0):
+    """Save a child's read-aloud recording to PRIVATE storage and create a
+    StoryRecording (LGA-73). Never sent to any AI/TTS. Raises ValueError on an empty or
+    oversized upload. Returns the StoryRecording."""
+    import uuid
+    if not data:
+        raise ValueError("empty recording")
+    if len(data) > RECORDING_MAX_BYTES:
+        raise ValueError("recording too large")
+    ext = _RECORDING_EXT.get((content_type or "").split(";")[0].strip().lower(), "webm")
+    key = f"{storage.RECORDING_PREFIX}/{uuid.uuid4().hex}.{ext}"
+    stored_key = storage.save_recording(key, data)
+    return StoryRecording.objects.create(
+        learner=learner, story=story, audio_key=stored_key,
+        content_type=(content_type or "")[:64],
+        seconds=max(0, min(int(seconds or 0), 86_400)),
+    )
+
+
+def recordings_for(learner):
+    """This learner's recordings, newest first, with the story preloaded (parent view)."""
+    return list(learner.recordings.select_related("story").all())
+
+
+def delete_story_recording(learner, recording_id):
+    """Delete one of the learner's recordings (storage object + row). Scoped to the
+    learner so a parent can only delete their own child's recordings. Returns True if
+    something was deleted."""
+    rec = learner.recordings.filter(pk=recording_id).first()
+    if rec is None:
+        return False
+    storage.delete_recording(rec.audio_key)
+    rec.delete()
+    return True
 
 
 def _normalize_word(word):

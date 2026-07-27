@@ -10,9 +10,12 @@ import json
 
 from django.core.exceptions import ImproperlyConfigured
 from django.core.files.base import ContentFile
-from django.core.files.storage import InvalidStorageError, storages
+from django.core.files.storage import InvalidStorageError, default_storage, storages
 
 READALONG_ALIAS = "lingua_readalong"
+# Child read-aloud recordings (LGA-73) live in the PRIVATE default media store
+# (signed, expiring URLs) — deliberately NOT the public read-along path.
+RECORDING_PREFIX = "lingua/recordings"
 # Single source of truth: settings imports this for the R2 object_parameters, so the
 # on-upload Cache-Control header can never drift from what this module documents.
 IMMUTABLE_CACHE_CONTROL = "public, max-age=31536000, immutable"
@@ -104,3 +107,25 @@ def read_timings(key):
     storage = readalong_storage()
     with storage.open(key) as fh:
         return json.loads(fh.read().decode("utf-8"))
+
+
+# --- Private child recordings (LGA-73) --------------------------------------
+# The DEFAULT store is the app's private media backend (signed, ~1h URLs on R2 in
+# prod). Recordings of a child's voice MUST stay there, never the public read-along
+# path — so a recording URL is only usable by the logged-in parent for a short window.
+
+def save_recording(key, data):
+    """Save a private recording to the default (private) media store. Returns the
+    ACTUAL stored key (the backend may de-duplicate a name collision)."""
+    return default_storage.save(key, ContentFile(data))
+
+
+def recording_url(key):
+    """The (signed, expiring) URL for a stored private recording."""
+    return default_storage.url(key)
+
+
+def delete_recording(key):
+    """Delete a stored private recording (parent action). Idempotent."""
+    if key and default_storage.exists(key):
+        default_storage.delete(key)

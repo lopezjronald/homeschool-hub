@@ -29,7 +29,7 @@ from .integrations import directory
 from .models import (
     AiUsage, AuditEvent, ComprehensionCheck, KnownWord, Learner, LearnerProfile,
     ListeningResource, ListeningSession, MilestoneAward, PhonicsRule, ReadingSession,
-    ReviewItem, Story, StoryAudio, StoryImage, Theme,
+    ReviewItem, Story, StoryAudio, StoryImage, StoryRecording, Theme,
 )
 from .ports import AIClient, AIResult, ImageClient
 
@@ -3555,3 +3555,79 @@ class ReadingListTests(TestCase):
     def test_library_invalid_token_404(self):
         r = self.client.get(reverse("portal:lingua_library", kwargs={"token": "bogus.tampered"}))
         self.assertEqual(r.status_code, 404)
+
+
+@override_settings(STORAGES=_INMEM_STORAGES)
+class StoryRecordingTests(TestCase):
+    """LGA-73: private, parent-only child read-aloud recordings."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from students.models import Student as _Student
+        from portal.tokens import make_portal_token
+        cls.parent = User.objects.create_user("rec_parent", password="pw")
+        cls.student = _Student.objects.create(parent=cls.parent, first_name="Mateo")
+        cls.token = make_portal_token(cls.student)
+        cls.learner = Learner.create_for_host_student(cls.student.pk, profiles.KIDS_EARLY)
+        cls.story = Story.objects.create(title="El gato", body="Un gato feliz.",
+                                         level="L1", status=Story.APPROVED)
+
+    def test_save_stores_privately_not_on_public_path(self):
+        from django.core.files.storage import default_storage
+        rec = services.save_story_recording(
+            self.learner, self.story, b"RIFFfakeaudio", content_type="audio/webm", seconds=12)
+        self.assertEqual(rec.learner, self.learner)
+        self.assertEqual(rec.story, self.story)
+        self.assertTrue(rec.audio_key.startswith("lingua/recordings/"))
+        self.assertTrue(rec.audio_key.endswith(".webm"))
+        self.assertEqual(rec.seconds, 12)
+        self.assertTrue(default_storage.exists(rec.audio_key))                     # in PRIVATE store
+        self.assertFalse(lingua_storage.readalong_storage().exists(rec.audio_key)) # NOT the public path
+
+    def test_save_rejects_empty_and_oversized(self):
+        with self.assertRaises(ValueError):
+            services.save_story_recording(self.learner, self.story, b"")
+        with self.assertRaises(ValueError):
+            services.save_story_recording(self.learner, self.story,
+                                          b"x" * (services.RECORDING_MAX_BYTES + 1))
+
+    def test_delete_is_scoped_to_the_learner(self):
+        from django.core.files.storage import default_storage
+        rec = services.save_story_recording(self.learner, self.story, b"aud", content_type="audio/webm")
+        other = Learner.create_for_host_student(99991, profiles.KIDS_EARLY)
+        self.assertFalse(services.delete_story_recording(other, rec.pk))   # not other's → refused
+        self.assertTrue(StoryRecording.objects.filter(pk=rec.pk).exists())
+        self.assertTrue(services.delete_story_recording(self.learner, rec.pk))
+        self.assertFalse(StoryRecording.objects.filter(pk=rec.pk).exists())
+        self.assertFalse(default_storage.exists(rec.audio_key))            # storage object gone too
+
+    def test_record_endpoint_saves_recording(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        f = SimpleUploadedFile("l.webm", b"RIFFfakeaudiodata", content_type="audio/webm")
+        url = reverse("portal:lingua_record", kwargs={"token": self.token, "story_id": self.story.pk})
+        r = self.client.post(url, {"audio": f, "seconds": "8"})
+        self.assertEqual(r.status_code, 200)
+        self.assertTrue(r.json()["saved"])
+        rec = self.learner.recordings.get()
+        self.assertEqual(rec.story, self.story)
+        self.assertEqual(rec.seconds, 8)
+
+    def test_record_endpoint_requires_audio(self):
+        url = reverse("portal:lingua_record", kwargs={"token": self.token, "story_id": self.story.pk})
+        r = self.client.post(url, {"seconds": "3"})
+        self.assertEqual(r.status_code, 400)
+        self.assertFalse(self.learner.recordings.exists())
+
+    def test_kid_reader_offers_the_recorder(self):
+        url = reverse("portal:lingua_read", kwargs={"token": self.token, "story_id": self.story.pk})
+        html = self.client.get(url).content.decode()
+        self.assertIn('id="lingua-recorder"', html)
+        self.assertIn("recorder.js", html)
+        self.assertIn("Grábate leyendo", html)
+
+    def test_parent_preview_reader_has_no_recorder(self):
+        # The parent-preview reader (login-gated) passes no record_url, so no recorder.
+        self.client.force_login(self.parent)
+        html = self.client.get(reverse("lingua:read", args=[self.story.pk])).content.decode()
+        self.assertNotIn('id="lingua-recorder"', html)
+        self.assertNotIn("recorder.js", html)

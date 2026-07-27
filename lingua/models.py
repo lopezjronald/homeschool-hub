@@ -461,6 +461,36 @@ class StoryImage(models.Model):
         return self.content_hash == self.story.image_hash(beat, model=self.model or None)
 
 
+class StoryRecording(models.Model):
+    """A PRIVATE audio recording of a learner reading a story aloud (LGA-73).
+
+    Parent-only, opt-in, deletable. Stored in the PRIVATE default media store (signed,
+    expiring URLs), NEVER on the public read-along path, and NEVER sent to any AI/TTS.
+    This is a deliberate, parent-requested exception to the D-55 "no stored recordings"
+    default: that stance guards against building voiceprints/surveillance for external
+    users; for a private family it's the parent's own record of their child reading,
+    their data and their choice. FK to Learner is a lingua-internal CASCADE (D-03);
+    Story is SET_NULL so a recording survives its story being deleted."""
+
+    learner = models.ForeignKey(
+        Learner, on_delete=models.CASCADE, related_name="recordings",
+    )
+    story = models.ForeignKey(
+        Story, on_delete=models.SET_NULL, null=True, blank=True, related_name="+",
+    )
+    audio_key = models.CharField(max_length=200, help_text="PRIVATE media key (signed URL).")
+    content_type = models.CharField(max_length=64, blank=True)
+    seconds = models.IntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [models.Index(fields=["learner", "created_at"])]
+
+    def __str__(self):
+        return f"StoryRecording<learner={self.learner_id} story={self.story_id}>"
+
+
 class ReadingSession(models.Model):
     """One reading of a story by a learner — the atom behind the reading-volume hero
     metric (D-60/61): cumulative words read + minutes of comprehensible input. FK to

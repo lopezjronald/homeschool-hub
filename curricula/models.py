@@ -268,42 +268,56 @@ class CurriculumPlacement(models.Model):
             .values_list("id", flat=True)
         )
 
-    def progress(self):
-        """Return {done, total, pct}.
-
-        Progress follows the work the child actually turns in: a non-opener lesson
-        counts as done once the child has submitted a student sheet for it. The
-        ``current_lesson`` pointer is kept only as a floor, so a child a parent
-        placed mid-curriculum still gets credit for the lessons skipped past even
-        before they submit anything new. (The pointer alone never advances on its
-        own, which is why progress must be derived from submitted work.)
-        """
+    def _resolved_lesson_ids(self):
+        """(ordered_ids, resolved_set): non-opener lesson ids counted as done/passed —
+        the UNION of (a) explicit LessonProgress completed OR skipped marks, (b) lessons
+        with submitted student work, and (c) everything before the placement floor.
+        Skipped lessons are 'resolved' so the bar advances past them (HH-141)."""
         ids = self._progress_lesson_ids()
-        total = len(ids)
-        if not total:
-            return {"done": 0, "total": 0, "pct": 0}
-
-        # Floor: everything before the placement pointer is treated as complete.
-        floor = ids.index(self.current_lesson_id) if self.current_lesson_id in ids else 0
-
-        # Completed by work: non-opener lessons in this curriculum the child has
-        # turned in a student sheet for. Imported here to avoid a circular import
-        # (tutor models reference curricula at module load time).
+        id_set = set(ids)
+        # (a) explicit parent marks
+        resolved = set(
+            LessonProgress.objects.filter(
+                child_id=self.child_id, lesson_id__in=ids,
+                status__in=(LessonProgress.COMPLETED, LessonProgress.SKIPPED),
+            ).values_list("lesson_id", flat=True)
+        )
+        # (b) submitted student work (imported here to avoid a circular import)
         from tutor.models import QuestionSet, ResponseSheet
-
-        completed_lesson_ids = set(
+        resolved |= set(
             ResponseSheet.objects.filter(
-                child_id=self.child_id,
-                status=ResponseSheet.SUBMITTED,
+                child_id=self.child_id, status=ResponseSheet.SUBMITTED,
                 question_set__mode=QuestionSet.MODE_STUDENT,
                 question_set__lesson_id__in=ids,
             ).values_list("question_set__lesson_id", flat=True)
         )
-        completed = sum(1 for lid in ids if lid in completed_lesson_ids)
+        # (c) floor: everything before the placement pointer
+        if self.current_lesson_id in id_set:
+            resolved |= set(ids[: ids.index(self.current_lesson_id)])
+        return ids, resolved & id_set
 
-        done = min(max(floor, completed), total)
-        pct = round(done / total * 100)
-        return {"done": done, "total": total, "pct": pct}
+    def current_actionable_lesson(self):
+        """The first non-opener lesson that is NOT resolved (completed / skipped /
+        submitted / below the floor) — the real 'what's next', passing over skips."""
+        ids, resolved = self._resolved_lesson_ids()
+        nxt = next((lid for lid in ids if lid not in resolved), None)
+        return Lesson.objects.filter(pk=nxt).select_related("chapter").first() if nxt else None
+
+    def progress(self):
+        """Return {done, total, pct, skipped}. 'done' counts resolved lessons (so a
+        skip advances the bar); the explicit complete/skip marks (HH-141) union with
+        submitted work + the placement floor, so literature/writing progress is
+        unchanged when no marks exist while math gains a real manual signal."""
+        ids, resolved = self._resolved_lesson_ids()
+        total = len(ids)
+        if not total:
+            return {"done": 0, "total": 0, "pct": 0, "skipped": 0}
+        skipped = LessonProgress.objects.filter(
+            child_id=self.child_id, lesson_id__in=ids, status=LessonProgress.SKIPPED,
+        ).count()
+        done = len(resolved)
+        return {"done": done, "total": total, "pct": round(done / total * 100),
+                "skipped": skipped}
 
     def next_lesson(self):
         """The lesson after the current one, or None."""
@@ -319,6 +333,53 @@ class CurriculumPlacement(models.Model):
             return None
         idx = ids.index(self.current_lesson_id)
         return lessons[idx + 1] if idx + 1 < len(lessons) else None
+
+
+class LessonProgress(models.Model):
+    """Per-child status for a single lesson: the parent's manual complete/skip mark
+    (HH-141). Absence of a row == not started. Rows are created only when a parent
+    marks a lesson completed or skipped (or explicitly in-progress); skipped lessons
+    are passed over when computing the child's current/next actionable lesson, which
+    is exactly what lets a parent skip 'practice' lessons based on performance."""
+
+    IN_PROGRESS = "in_progress"
+    COMPLETED = "completed"
+    SKIPPED = "skipped"
+    STATUS_CHOICES = [
+        (IN_PROGRESS, "In progress"),
+        (COMPLETED, "Completed"),
+        (SKIPPED, "Skipped"),
+    ]
+
+    child = models.ForeignKey(
+        "students.Student", on_delete=models.CASCADE, related_name="lesson_progress",
+    )
+    lesson = models.ForeignKey(
+        Lesson, on_delete=models.CASCADE, related_name="progress",
+    )
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=COMPLETED)
+    note = models.CharField(
+        max_length=300, blank=True,
+        help_text="Optional reason, e.g. why a practice lesson was skipped.",
+    )
+    marked_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="+",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["lesson__chapter__number", "lesson__order"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["child", "lesson"],
+                name="unique_lesson_progress_per_child_lesson",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.child} · {self.lesson.code} = {self.status}"
 
 
 class CurriculumResource(models.Model):

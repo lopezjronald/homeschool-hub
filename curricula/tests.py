@@ -10,6 +10,7 @@ from students.models import Student
 
 from .models import (
     Chapter, Curriculum, CurriculumDocument, CurriculumPlacement, CurriculumResource, Lesson,
+    LessonProgress,
 )
 from .services import apply_blueprint, get_blueprint
 
@@ -736,3 +737,202 @@ class CurriculumDeleteProtectedTests(TestCase):
         r = self.client.post(reverse("curricula:curriculum_delete", kwargs={"pk": self.curriculum.pk}))
         self.assertEqual(r.status_code, 302)                                  # not a 500
         self.assertTrue(Curriculum.objects.filter(pk=self.curriculum.pk).exists())  # still there
+
+
+class LessonProgressTests(TestCase):
+    """HH-141: per-child lesson complete/skip tracking (Violet's math)."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.parent = User.objects.create_user(username="lp", email="lp@e.com", password="pw")
+        cls.teacher = User.objects.create_user(username="lt", email="lt@e.com", password="pw")
+        cls.family = Family.objects.create(name="LP Fam")
+        FamilyMembership.objects.create(user=cls.parent, family=cls.family, role="parent")
+        FamilyMembership.objects.create(user=cls.teacher, family=cls.family, role="teacher")
+        cls.child = Student.objects.create(
+            parent=cls.parent, first_name="Violet", grade_level="G03", family=cls.family)
+        cls.curriculum = Curriculum.objects.create(
+            parent=cls.parent, name="Dimensions Math 3A", subject="Math", family=cls.family)
+        apply_blueprint(cls.curriculum, get_blueprint("dimensions_math_3a"))
+        cls.lessons = list(
+            Lesson.objects.filter(chapter__curriculum=cls.curriculum)
+            .exclude(lesson_type=Lesson.TYPE_OPENER).order_by("chapter__number", "order"))
+
+    def _placement(self):
+        p, _ = CurriculumPlacement.objects.get_or_create(
+            child=self.child, curriculum=self.curriculum)
+        return p
+
+    def _mark(self, lesson, status):
+        return LessonProgress.objects.update_or_create(
+            child=self.child, lesson=lesson, defaults={"status": status})[0]
+
+    def test_completing_a_lesson_advances_current_and_progress(self):
+        p = self._placement()
+        first = self.lessons[0]
+        self.assertEqual(p.current_actionable_lesson(), first)   # nothing done → first
+        self.assertEqual(p.progress()["done"], 0)
+        self._mark(first, LessonProgress.COMPLETED)
+        self.assertEqual(p.current_actionable_lesson(), self.lessons[1])  # moved on
+        self.assertEqual(p.progress()["done"], 1)
+
+    def test_skipped_lesson_is_passed_over_and_counted(self):
+        p = self._placement()
+        self._mark(self.lessons[0], LessonProgress.SKIPPED)
+        # a skip resolves the lesson: it's not "next", and the bar advances past it
+        self.assertEqual(p.current_actionable_lesson(), self.lessons[1])
+        prog = p.progress()
+        self.assertEqual(prog["done"], 1)
+        self.assertEqual(prog["skipped"], 1)
+
+    def test_reset_restores_not_started(self):
+        p = self._placement()
+        self._mark(self.lessons[0], LessonProgress.COMPLETED)
+        LessonProgress.objects.filter(child=self.child, lesson=self.lessons[0]).delete()
+        self.assertEqual(p.current_actionable_lesson(), self.lessons[0])   # back to first
+        self.assertEqual(p.progress()["done"], 0)
+
+    def test_submitted_work_still_counts_when_no_marks(self):
+        # Regression guard: the legacy inferred signal must survive the union rewrite.
+        from tutor.models import QuestionSet, ResponseSheet
+        qs = QuestionSet.objects.create(
+            lesson=self.lessons[0], title="Set", family=self.family,
+            status=QuestionSet.APPROVED, mode=QuestionSet.MODE_STUDENT)
+        ResponseSheet.objects.create(question_set=qs, child=self.child,
+                                     status=ResponseSheet.SUBMITTED)
+        self.assertEqual(self._placement().progress()["done"], 1)
+
+    def test_editor_can_mark_and_teacher_cannot(self):
+        url = reverse("students:lesson_mark",
+                      kwargs={"pk": self.child.pk, "curriculum_id": self.curriculum.pk})
+        c = Client()
+        c.login(username="lt", password="pw")
+        self.assertEqual(c.post(url, {"lesson": self.lessons[0].pk, "action": "completed"}).status_code, 404)
+        self.assertFalse(LessonProgress.objects.exists())          # view-only blocked
+        c.login(username="lp", password="pw")
+        r = c.post(url, {"lesson": self.lessons[0].pk, "action": "completed"})
+        self.assertEqual(r.status_code, 302)
+        self.assertEqual(LessonProgress.objects.get().status, LessonProgress.COMPLETED)
+        # "Where the child is now" is DERIVED, not a rewritten pointer: marking lesson 1
+        # complete makes lesson 2 the next actionable one, while the parent's own
+        # placement pointer is left alone (rewriting it broke Undo — see
+        # LessonProgressReviewFixTests).
+        self.assertEqual(self._placement().current_actionable_lesson(), self.lessons[1])
+
+    def test_skip_all_remaining_practice(self):
+        c = Client()
+        c.login(username="lp", password="pw")
+        url = reverse("students:lessons_skip_practice",
+                      kwargs={"pk": self.child.pk, "curriculum_id": self.curriculum.pk})
+        r = c.post(url)
+        self.assertEqual(r.status_code, 302)
+        practice = [l for l in self.lessons if l.lesson_type == Lesson.TYPE_PRACTICE]
+        self.assertGreater(len(practice), 0)                       # blueprint has practice lessons
+        skipped = set(LessonProgress.objects.filter(
+            status=LessonProgress.SKIPPED).values_list("lesson_id", flat=True))
+        self.assertEqual(skipped, {l.pk for l in practice})        # exactly the practice ones
+        # and the next actionable lesson is NOT a practice lesson
+        nxt = self._placement().current_actionable_lesson()
+        self.assertNotEqual(nxt.lesson_type, Lesson.TYPE_PRACTICE)
+
+    def test_lessons_page_renders_with_controls(self):
+        c = Client()
+        c.login(username="lp", password="pw")
+        url = reverse("students:student_lessons",
+                      kwargs={"pk": self.child.pk, "curriculum_id": self.curriculum.pk})
+        html = c.get(url).content.decode()
+        self.assertIn("Dimensions Math 3A — lessons", html)         # the checklist page
+        self.assertIn('value="completed"', html)                    # Complete button
+        self.assertIn('value="skipped"', html)                      # Skip button
+        self.assertIn("Skip remaining practice", html)              # bulk practice skip
+        self.assertIn('class="badge bg-light text-dark ms-1">Practice', html)  # practice badge
+
+
+class LessonProgressReviewFixTests(TestCase):
+    """HH-141 review fixes: Undo actually undoes, the parent's placement pointer is
+    never auto-rewritten, cross-family writes are refused, hostile input 404s."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.parent = User.objects.create_user(username="rf", email="rf@e.com", password="pw")
+        cls.family = Family.objects.create(name="RF Fam")
+        FamilyMembership.objects.create(user=cls.parent, family=cls.family, role="parent")
+        cls.child = Student.objects.create(
+            parent=cls.parent, first_name="Violet", grade_level="G03", family=cls.family)
+        cls.curriculum = Curriculum.objects.create(
+            parent=cls.parent, name="Dimensions Math 3A", subject="Math", family=cls.family)
+        apply_blueprint(cls.curriculum, get_blueprint("dimensions_math_3a"))
+        cls.lessons = list(
+            Lesson.objects.filter(chapter__curriculum=cls.curriculum)
+            .exclude(lesson_type=Lesson.TYPE_OPENER).order_by("chapter__number", "order"))
+        cls.opener = Lesson.objects.filter(
+            chapter__curriculum=cls.curriculum, lesson_type=Lesson.TYPE_OPENER).first()
+
+    def _c(self):
+        c = Client(); c.login(username="rf", password="pw"); return c
+
+    def _mark_url(self):
+        return reverse("students:lesson_mark",
+                       kwargs={"pk": self.child.pk, "curriculum_id": self.curriculum.pk})
+
+    def test_undo_actually_undoes_a_completed_lesson(self):
+        # Regression: auto-advancing the placement pointer made the floor re-resolve
+        # the un-done lesson, so Undo was a permanent no-op.
+        c, first = self._c(), self.lessons[0]
+        c.post(self._mark_url(), {"lesson": first.pk, "action": "completed"})
+        p = CurriculumPlacement.objects.get(child=self.child, curriculum=self.curriculum)
+        self.assertEqual(p.progress()["done"], 1)
+        c.post(self._mark_url(), {"lesson": first.pk, "action": "reset"})
+        p.refresh_from_db()
+        self.assertEqual(p.progress()["done"], 0)                  # truly undone
+        self.assertEqual(p.current_actionable_lesson(), first)      # back to lesson 1
+
+    def test_marking_never_rewrites_the_parents_placement(self):
+        # An opener placement (or any parent-set pointer) must survive a mark.
+        p = CurriculumPlacement.objects.create(
+            child=self.child, curriculum=self.curriculum, current_lesson=self.opener)
+        self._c().post(self._mark_url(), {"lesson": self.lessons[0].pk, "action": "completed"})
+        p.refresh_from_db()
+        self.assertEqual(p.current_lesson, self.opener)             # untouched
+
+    def test_finishing_every_lesson_reads_as_finished_not_not_started(self):
+        c = self._c()
+        for lesson in self.lessons:
+            c.post(self._mark_url(), {"lesson": lesson.pk, "action": "completed"})
+        p = CurriculumPlacement.objects.get(child=self.child, curriculum=self.curriculum)
+        self.assertIsNone(p.current_actionable_lesson())            # nothing left
+        self.assertEqual(p.progress()["pct"], 100)
+        html = c.get(reverse("students:student_lessons", kwargs={
+            "pk": self.child.pk, "curriculum_id": self.curriculum.pk})).content.decode()
+        self.assertIn("Finished", html)
+        self.assertNotIn("Not started yet", html)
+
+    def test_unknown_action_and_bad_lesson_pk_are_refused(self):
+        c = self._c()
+        self.assertEqual(c.post(self._mark_url(),
+                                {"lesson": self.lessons[0].pk, "action": "bogus"}).status_code, 404)
+        self.assertEqual(c.post(self._mark_url(),
+                                {"lesson": "abc", "action": "completed"}).status_code, 404)
+        self.assertFalse(LessonProgress.objects.exists())           # nothing written
+
+    def test_cannot_bind_a_child_to_another_familys_curriculum(self):
+        other_family = Family.objects.create(name="Other Fam")
+        FamilyMembership.objects.create(user=self.parent, family=other_family, role="parent")
+        other_cur = Curriculum.objects.create(
+            parent=self.parent, name="Other Math", subject="Math", family=other_family)
+        ch = Chapter.objects.create(curriculum=other_cur, number=1, title="C1")
+        other_lesson = Lesson.objects.create(chapter=ch, order=1, number=1, title="L1")
+        r = self._c().post(
+            reverse("students:lesson_mark",
+                    kwargs={"pk": self.child.pk, "curriculum_id": other_cur.pk}),
+            {"lesson": other_lesson.pk, "action": "completed"})
+        self.assertEqual(r.status_code, 404)                        # cross-family refused
+        self.assertFalse(LessonProgress.objects.exists())
+
+    def test_progress_does_not_issue_a_redundant_skipped_query(self):
+        LessonProgress.objects.create(child=self.child, lesson=self.lessons[0],
+                                      status=LessonProgress.SKIPPED)
+        p = CurriculumPlacement.objects.create(child=self.child, curriculum=self.curriculum)
+        with self.assertNumQueries(3):        # lesson ids + marks + submitted work
+            prog = p.progress()
+        self.assertEqual(prog["skipped"], 1)

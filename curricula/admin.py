@@ -6,7 +6,15 @@ from .models import (
     CurriculumDocument,
     CurriculumPlacement,
     Lesson,
+    LessonProgress,
 )
+
+
+@admin.register(LessonProgress)
+class LessonProgressAdmin(admin.ModelAdmin):
+    list_display = ("child", "lesson", "status", "marked_by", "updated_at")
+    list_filter = ("status",)
+    raw_id_fields = ("child", "lesson", "marked_by")
 
 
 @admin.register(Curriculum)

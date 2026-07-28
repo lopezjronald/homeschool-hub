@@ -20,9 +20,9 @@ from . import (
     profiles, safety, schedulers, storage,
 )
 from .models import (
-    AiUsage, AuditEvent, ComprehensionCheck, KnownWord, Learner, ListeningResource,
-    ListeningSession, MilestoneAward, PhonicsRule, ReadingSession, ReviewItem, Story,
-    StoryAudio, StoryImage, StoryRecording, Theme,
+    AiUsage, AuditEvent, BookLogEntry, ComprehensionCheck, KnownWord, Learner,
+    LibraryBook, ListeningResource, ListeningSession, MilestoneAward, PhonicsRule,
+    ReadingSession, ReviewItem, Story, StoryAudio, StoryImage, StoryRecording, Theme,
 )
 from .ports import AIClient, ImageClient
 from .prompts import CRITIC_SYSTEM, STORY_SYSTEM
@@ -137,6 +137,70 @@ def bake_story_audio(story, *, voice=None, engine=None, provider="polly",
                   "timings": timings, "duration_ms": duration_ms},
     )
     return obj, action
+
+
+# --- Curated library of real Spanish books + physical-book reading log (LGA-75) ---
+
+def library_by_grade(*, region="", query=""):
+    """The parent-only library catalog grouped by grade in ladder order (Pre-K..8th).
+    ``region`` filters by country (substring, case-insensitive); ``query`` searches
+    title + author. Returns a list of {grade, label, books, count}."""
+    qs = LibraryBook.objects.all()
+    if region:
+        qs = qs.filter(country__icontains=region)
+    if query:
+        qs = qs.filter(Q(title__icontains=query) | Q(author__icontains=query))
+    label = dict(LibraryBook.GRADE_CHOICES)
+    by_grade = {}
+    for b in qs:
+        by_grade.setdefault(b.grade, []).append(b)
+    groups = []
+    for g in LibraryBook.GRADE_ORDER:
+        books = sorted(by_grade.get(g, []), key=lambda b: b.title.lower())
+        if books:
+            groups.append({"grade": g, "label": label.get(g, g),
+                           "books": books, "count": len(books)})
+    return groups
+
+
+def library_countries():
+    """Distinct non-blank countries present in the catalog (for the region filter)."""
+    return sorted({c for c in LibraryBook.objects.exclude(country="")
+                   .values_list("country", flat=True)})
+
+
+def log_book(learner, *, book=None, title="", author="", read_on=None,
+             enjoyed="", note="", logged_by=BookLogEntry.KID):
+    """Log a physical book a child finished (LGA-75). Either ``book`` (a catalog
+    LibraryBook, whose title/author are snapshotted) or a free-text title. Returns the
+    BookLogEntry, or None if there's nothing to log (no book and no title)."""
+    from django.utils import timezone
+    t = (book.title if book else title or "").strip()
+    if not t:
+        return None
+    return BookLogEntry.objects.create(
+        learner=learner, book=book,
+        title=(book.title if book else t)[:200],
+        author=((book.author if book else author) or "")[:200],
+        read_on=read_on or timezone.localdate(),
+        enjoyed=enjoyed if enjoyed in dict(BookLogEntry.ENJOYED_CHOICES) else "",
+        note=(note or "")[:500],
+        logged_by=logged_by if logged_by in dict(BookLogEntry.BY_CHOICES) else BookLogEntry.KID,
+    )
+
+
+def book_logs(learner):
+    """A learner's physical-book reading log (newest first), for both portals."""
+    return list(learner.book_logs.select_related("book").all())
+
+
+def delete_book_log(learner, entry_id):
+    """Delete one of the learner's own book-log entries. Returns True if removed."""
+    entry = learner.book_logs.filter(pk=entry_id).first()
+    if entry is None:
+        return False
+    entry.delete()
+    return True
 
 
 # --- Illustrated storybook pictures (LGA-71) ---------------------------------

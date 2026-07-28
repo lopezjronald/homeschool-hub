@@ -27,9 +27,10 @@ from . import advancement, assets, audio, cognates, comprehension, illustrate, l
 from . import storage as lingua_storage
 from .integrations import directory
 from .models import (
-    AiUsage, AuditEvent, ComprehensionCheck, KnownWord, Learner, LearnerProfile,
-    ListeningResource, ListeningSession, MilestoneAward, PhonicsRule, ReadingSession,
-    ReviewItem, Story, StoryAudio, StoryImage, StoryRecording, Theme,
+    AiUsage, AuditEvent, BookLogEntry, ComprehensionCheck, KnownWord, Learner,
+    LearnerProfile, LibraryBook, ListeningResource, ListeningSession, MilestoneAward,
+    PhonicsRule, ReadingSession, ReviewItem, Story, StoryAudio, StoryImage,
+    StoryRecording, Theme,
 )
 from .ports import AIClient, AIResult, ImageClient
 
@@ -3687,3 +3688,66 @@ class StoryRecordingTests(TestCase):
         html = self.client.get(reverse("lingua:read", args=[self.story.pk])).content.decode()
         self.assertNotIn('id="lingua-recorder"', html)
         self.assertNotIn("recorder.js", html)
+
+
+class LibraryAndBookLogServiceTests(TestCase):
+    """LGA-75: curated library catalog + physical-book reading log services."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.learner = Learner.create_for_host_student(7701, profiles.KIDS_EARLY)
+        cls.b_pk = LibraryBook.objects.create(title="La cebra Camila", author="Marisa Núñez",
+                                              country="España", grade="PK", note="rima")
+        cls.b_k = LibraryBook.objects.create(title="Choco encuentra una mamá", author="Keiko Kasza",
+                                             country="México", grade="K", note="adopción")
+        cls.b_1 = LibraryBook.objects.create(title="El pollo Pepe", author="Nick Denchfield",
+                                             country="España", grade="1", note="pop-up")
+
+    def test_library_grouped_in_ladder_order(self):
+        groups = services.library_by_grade()
+        self.assertEqual([g["grade"] for g in groups], ["PK", "K", "1"])   # PK before K before 1
+        self.assertEqual(groups[0]["count"], 1)
+        self.assertEqual(groups[0]["books"][0].title, "La cebra Camila")
+
+    def test_library_region_and_search_filters(self):
+        es = services.library_by_grade(region="España")
+        titles = [b.title for g in es for b in g["books"]]
+        self.assertIn("La cebra Camila", titles)
+        self.assertNotIn("Choco encuentra una mamá", titles)   # México filtered out
+        found = services.library_by_grade(query="pollo")
+        self.assertEqual([b.title for g in found for b in g["books"]], ["El pollo Pepe"])
+
+    def test_log_book_from_catalog_snapshots_title_author(self):
+        from datetime import date
+        e = services.log_book(self.learner, book=self.b_k, read_on=date(2026, 7, 20),
+                              enjoyed="loved", note="le gustó", logged_by="kid")
+        self.assertEqual(e.book, self.b_k)
+        self.assertEqual(e.title, "Choco encuentra una mamá")   # snapshotted
+        self.assertEqual(e.author, "Keiko Kasza")
+        self.assertEqual(e.enjoyed, "loved")
+        self.assertEqual(e.display_title, "Choco encuentra una mamá")
+
+    def test_log_book_freetext_and_empty(self):
+        e = services.log_book(self.learner, title="Un libro de la biblioteca", author="Autor X")
+        self.assertIsNone(e.book)
+        self.assertEqual(e.display_title, "Un libro de la biblioteca")
+        self.assertIsNone(services.log_book(self.learner))        # nothing to log
+        self.assertIsNone(services.log_book(self.learner, title="   "))
+
+    def test_log_snapshot_survives_catalog_delete(self):
+        e = services.log_book(self.learner, book=self.b_1)
+        self.b_1.delete()
+        e.refresh_from_db()
+        self.assertIsNone(e.book)                                 # SET_NULL
+        self.assertEqual(e.display_title, "El pollo Pepe")        # snapshot preserved
+
+    def test_book_logs_newest_first_and_scoped_delete(self):
+        from datetime import date
+        old = services.log_book(self.learner, title="Viejo", read_on=date(2026, 1, 1))
+        new = services.log_book(self.learner, title="Nuevo", read_on=date(2026, 7, 1))
+        logs = services.book_logs(self.learner)
+        self.assertEqual([l.pk for l in logs], [new.pk, old.pk])  # newest first
+        other = Learner.create_for_host_student(7702, profiles.KIDS_EARLY)
+        self.assertFalse(services.delete_book_log(other, new.pk)) # not other's
+        self.assertTrue(services.delete_book_log(self.learner, new.pk))
+        self.assertEqual([l.pk for l in services.book_logs(self.learner)], [old.pk])

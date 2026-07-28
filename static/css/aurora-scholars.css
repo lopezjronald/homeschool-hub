@@ -423,3 +423,19 @@ a:focus-visible > .hub-tile {
   color:var(--ss-green);
   margin-bottom:.5rem;
 }
+
+/* --- Spanish Library List (LGA-75): book rows + print-per-grade --- */
+.lingua-book-title { color: var(--ss-forest, #0F3D2E); font-size: 1.05rem; }
+.lingua-book-note { color: var(--ss-muted, #7a8781); font-size: .92rem; line-height: 1.45; }
+.book-check {
+  flex: 0 0 auto; width: 1.15rem; height: 1.15rem; margin-top: .15rem;
+  border: 1.5px solid var(--ss-line, #d7ddd9); border-radius: 4px;
+}
+@media print {
+  .no-print, .navbar, footer { display: none !important; }
+  body { background: #fff !important; }
+  .lingua-book-row { break-inside: avoid; border-color: #ddd; }
+  .book-check { border-color: #333; }
+  a[href]:after { content: none !important; }
+  @page { margin: 1.5cm; }
+}

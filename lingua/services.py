@@ -20,9 +20,9 @@ from . import (
     profiles, safety, schedulers, storage,
 )
 from .models import (
-    AiUsage, AuditEvent, ComprehensionCheck, KnownWord, Learner, ListeningResource,
-    ListeningSession, MilestoneAward, PhonicsRule, ReadingSession, ReviewItem, Story,
-    StoryAudio, StoryImage, StoryRecording, Theme,
+    AiUsage, AuditEvent, BookLogEntry, ComprehensionCheck, KnownWord, Learner,
+    LibraryBook, ListeningResource, ListeningSession, MilestoneAward, PhonicsRule,
+    ReadingSession, ReviewItem, Story, StoryAudio, StoryImage, StoryRecording, Theme,
 )
 from .ports import AIClient, ImageClient
 from .prompts import CRITIC_SYSTEM, STORY_SYSTEM
@@ -137,6 +137,130 @@ def bake_story_audio(story, *, voice=None, engine=None, provider="polly",
                   "timings": timings, "duration_ms": duration_ms},
     )
     return obj, action
+
+
+# --- Curated library of real Spanish books + physical-book reading log (LGA-75) ---
+
+def library_by_grade(*, region="", query=""):
+    """NATIVE-track catalog grouped by grade in ladder order (Pre-K..8th). CI/adult/
+    free books are ungraded by design and are browsed by track instead, so they are
+    deliberately excluded here — this function answers "what's at each grade?".
+    ``region`` filters by country (substring, case-insensitive); ``query`` searches
+    title + author. Returns a list of {grade, label, books, count}."""
+    qs = LibraryBook.objects.filter(track=LibraryBook.NATIVE)
+    if region:
+        qs = qs.filter(country__icontains=region)
+    if query:
+        qs = qs.filter(Q(title__icontains=query) | Q(author__icontains=query))
+    label = dict(LibraryBook.GRADE_CHOICES)
+    by_grade = {}
+    for b in qs:
+        by_grade.setdefault(b.grade, []).append(b)
+    groups = []
+    for g in LibraryBook.GRADE_ORDER:
+        books = sorted(by_grade.get(g, []), key=lambda b: b.title.lower())
+        if books:
+            groups.append({"grade": g, "label": label.get(g, g),
+                           "books": books, "count": len(books)})
+    return groups
+
+
+def library_countries():
+    """Distinct non-blank countries present in the catalog (for the region filter)."""
+    return sorted({c for c in LibraryBook.objects.exclude(country="")
+                   .values_list("country", flat=True)})
+
+
+def get_worklog_sink():
+    """The host WorkLogSink adapter named in LINGUA["WORKLOG_SINK"], or None when
+    unbound/misconfigured (mirroring is an enhancement, never a hard dependency)."""
+    dotted = settings.LINGUA.get("WORKLOG_SINK")
+    if not dotted:
+        return None
+    try:
+        return import_string(dotted)()
+    except Exception:  # noqa: BLE001 — a bad/absent adapter must not break book logging
+        return None
+
+
+def log_book(learner, *, book=None, title="", author="", read_on=None,
+             enjoyed="", note="", logged_by=BookLogEntry.KID, worklog_sink=None):
+    """Log a physical book a child finished (LGA-75). Either ``book`` (a catalog
+    LibraryBook, whose title/author are snapshotted) or a free-text title. Returns the
+    BookLogEntry, or None if there's nothing to log (no book and no title).
+
+    The finished book is ALSO mirrored into the host work log through the WorkLogSink
+    port (LGA-76), so it appears in the Work Log and the charter report. Mirroring is
+    best-effort: if the sink is unbound or raises, the book log still succeeds."""
+    from django.utils import timezone
+    t = (book.title if book else title or "").strip()
+    if not t:
+        return None
+    entry = BookLogEntry.objects.create(
+        learner=learner, book=book,
+        title=(book.title if book else t)[:200],
+        author=((book.author if book else author) or "")[:200],
+        read_on=read_on or timezone.localdate(),
+        enjoyed=enjoyed if enjoyed in dict(BookLogEntry.ENJOYED_CHOICES) else "",
+        note=(note or "")[:500],
+        logged_by=logged_by if logged_by in dict(BookLogEntry.BY_CHOICES) else BookLogEntry.KID,
+    )
+    sink = worklog_sink if worklog_sink is not None else get_worklog_sink()
+    if sink is not None:
+        try:
+            rec = sink.record_book(
+                host_student_id=learner.host_student_id, title=entry.title,
+                author=entry.author, read_on=entry.read_on, note=entry.note,
+            )
+        except Exception:  # noqa: BLE001 — never fail the child's log on a host hiccup
+            rec = None
+        if rec:
+            entry.host_worklog_id = rec
+            entry.save(update_fields=["host_worklog_id"])
+    return entry
+
+
+def book_logs(learner):
+    """A learner's physical-book reading log (newest first), for both portals."""
+    return list(learner.book_logs.select_related("book").all())
+
+
+_BAND_GRADES = {
+    profiles.KIDS_EARLY: ["PK", "K", "1", "2"],
+    profiles.KIDS_OLDER: ["3", "4", "5", "6"],
+}
+
+
+def suggested_books(learner, *, limit=12):
+    """A short list of NATIVE-track catalog books at the learner's band, for the kid
+    portal's quick 'which book did you read?' picker (the child can still type any
+    other title). Ordered by the ladder (Pre-K, K, 1, 2…) — NOT by the grade column,
+    which sorts lexicographically ("1" < "2" < "K" < "PK") and would put the hardest
+    books first."""
+    band = getattr(getattr(learner, "profile", None), "track_profile", "")
+    grades = _BAND_GRADES.get(band) or LibraryBook.GRADE_ORDER
+    books = LibraryBook.objects.filter(track=LibraryBook.NATIVE, grade__in=grades)
+    rank = {g: i for i, g in enumerate(LibraryBook.GRADE_ORDER)}
+    return sorted(books, key=lambda b: (rank.get(b.grade, 99), b.title.lower()))[:limit]
+
+
+def delete_book_log(learner, entry_id, *, worklog_sink=None):
+    """Delete one of the learner's own book-log entries, and the host work-log record
+    it was mirrored into (LGA-76) so the charter report doesn't keep an orphan.
+    Returns True if removed."""
+    entry = learner.book_logs.filter(pk=entry_id).first()
+    if entry is None:
+        return False
+    host_id = entry.host_worklog_id
+    entry.delete()
+    if host_id:
+        sink = worklog_sink if worklog_sink is not None else get_worklog_sink()
+        if sink is not None:
+            try:
+                sink.remove(host_id)
+            except Exception:  # noqa: BLE001 — best-effort cleanup
+                pass
+    return True
 
 
 # --- Illustrated storybook pictures (LGA-71) ---------------------------------

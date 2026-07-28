@@ -7,6 +7,7 @@ theirs. Parents generate the link from the child's profile page.
 
 import json
 from collections import defaultdict
+from datetime import date
 from itertools import groupby
 
 from django.contrib.auth import authenticate, login
@@ -26,6 +27,7 @@ from lingua import profiles as lingua_profiles
 from lingua import services as lingua_services
 from lingua import storage as lingua_storage
 from lingua import views as lingua_views
+from lingua.models import LibraryBook as LinguaLibraryBook
 from lingua.models import MilestoneAward as LinguaMilestone
 from lingua.models import Story as LinguaStory
 from curricula.models import Curriculum, CurriculumPlacement
@@ -103,6 +105,56 @@ def lingua_library(request, token):
         "levels": lingua_services.reading_list(learner),
         "totals": lingua_services.reading_totals(learner),
     })
+
+
+def lingua_books(request, token):
+    """The kid's physical-book reading log 'Mis libros' (LGA-75): the books they've
+    logged + a delightful one-to-two-tap entry (pick a suggested book or type another,
+    then a feeling button submits). Tokenless; identity from the signed token."""
+    student = _resolve_student(token)
+    learner = _lingua_learner(student)
+    entries = lingua_services.book_logs(learner)
+    return render(request, "portal/lingua_books.html", {
+        "student": student, "token": token,
+        "entries": entries, "count": len(entries),
+        "suggested": lingua_services.suggested_books(learner),
+        "celebrate": request.GET.get("logged") == "1",
+        "nothing": request.GET.get("nothing") == "1",
+        "today": timezone.localdate(),
+    })
+
+
+@csrf_exempt
+@require_POST
+def lingua_book_log(request, token):
+    """Log one physical book the kid read (LGA-75). Token-authed + csrf-exempt like the
+    other tokenless portal writes. The feeling button's value is ``enjoyed``; ``book_id``
+    is a catalog pk or 'other' (then ``custom_title``)."""
+    student = _resolve_student(token)
+    learner = _lingua_learner(student)
+    bid = (request.POST.get("book_id") or "").strip()
+    # isdigit() is True for non-ASCII digits that int()/the ORM reject, so filter on an
+    # ASCII-only check to keep a hand-crafted POST from raising.
+    book = (LinguaLibraryBook.objects.filter(pk=bid).first()
+            if bid.isdigit() and bid.isascii() else None)
+    try:
+        read_on = date.fromisoformat(request.POST.get("read_on", ""))
+    except ValueError:
+        read_on = None          # blank/garbage → log_book defaults to today
+    entry = lingua_services.log_book(
+        learner, book=book,
+        title=request.POST.get("custom_title", ""),
+        author=request.POST.get("custom_author", ""),
+        read_on=read_on,
+        enjoyed=request.POST.get("enjoyed", ""),
+        note=request.POST.get("note", ""),
+        logged_by="kid",
+    )
+    # Only celebrate when something was actually logged — picking "Otro" without
+    # typing a title logs nothing, and a false "¡Anotado!" would teach the child the
+    # book is recorded when it isn't.
+    suffix = "?logged=1" if entry is not None else "?nothing=1"
+    return redirect(reverse("portal:lingua_books", args=[token]) + suffix)
 
 
 def lingua_read(request, token, story_id):

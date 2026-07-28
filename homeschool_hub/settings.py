@@ -378,6 +378,11 @@ LINGUA = {
     "IMAGE_CLIENT": os.getenv(
         "LINGUA_IMAGE_CLIENT", "homeschool_hub.adapters.lingua_image.TutorImageClient"
     ),
+    # Host WorkLogSink adapter (D-04, LGA-76): mirrors a finished Spanish book into the
+    # host Work Log so it lands in the charter report. Set to "" to disable mirroring.
+    "WORKLOG_SINK": os.getenv(
+        "LINGUA_WORKLOG_SINK", "homeschool_hub.adapters.lingua_worklog.HostWorkLogSink"
+    ),
 }
 
 # ---------------------------------------------------------------------------

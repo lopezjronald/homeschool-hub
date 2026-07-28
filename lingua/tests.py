@@ -3815,3 +3815,67 @@ class ReadingLogViewTests(TestCase):
         r = self.client.get(reverse("lingua:book_log"))
         self.assertEqual(r.status_code, 200)
         self.assertIn("Spanish reading log", r.content.decode())
+
+
+class LibraryTrackTests(TestCase):
+    """LGA-75: the library has separate ladders — native grade-level books, CI/TPRS
+    learner novellas, an adult track, and free/public-domain texts."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from students.models import Student
+        cls.parent = User.objects.create_user("trk_parent", password="pw")
+        Student.objects.create(parent=cls.parent, first_name="Tr")
+        cls.native = LibraryBook.objects.create(
+            title="El libro salvaje", author="Juan Villoro", country="México",
+            grade="4", track=LibraryBook.NATIVE, isbn="978-607-16-0001-1")
+        cls.trans = LibraryBook.objects.create(
+            title="La oruga muy hambrienta", author="Eric Carle", country="EE. UU.",
+            grade="PK", track=LibraryBook.NATIVE, is_translation=True)
+        cls.ci = LibraryBook.objects.create(
+            title="Pobre Ana", author="Blaine Ray", track=LibraryBook.CI,
+            level_label="Level 1 · Present")
+        cls.adult = LibraryBook.objects.create(
+            title="Cuentos de la selva", author="Horacio Quiroga", track=LibraryBook.ADULT)
+        cls.free = LibraryBook.objects.create(
+            title="La Edad de Oro", author="José Martí", track=LibraryBook.FREE,
+            url="https://www.gutenberg.org/ebooks/19898")
+
+    def setUp(self):
+        self.client.force_login(self.parent)
+
+    def _get(self, qs=""):
+        return self.client.get(reverse("lingua:library_list") + qs).content.decode()
+
+    def test_native_track_is_default_and_grade_filtered(self):
+        html = self._get("?grade=4")
+        self.assertIn("El libro salvaje", html)
+        self.assertNotIn("Pobre Ana", html)          # CI book not in the native grade list
+        self.assertNotIn("Cuentos de la selva", html)
+
+    def test_ci_track_lists_learner_novellas_with_levels(self):
+        html = self._get("?track=ci")
+        self.assertIn("Pobre Ana", html)
+        self.assertIn("Level 1 · Present", html)     # the level label badge
+        self.assertIn("written", html)               # the "start here" explainer
+        self.assertNotIn("El libro salvaje", html)   # native book excluded
+
+    def test_adult_and_free_tracks(self):
+        adult = self._get("?track=adult")
+        self.assertIn("Cuentos de la selva", adult)
+        self.assertNotIn("Pobre Ana", adult)
+        free = self._get("?track=free")
+        self.assertIn("La Edad de Oro", free)
+        self.assertIn("gutenberg.org", free)         # free texts link out to the full text
+
+    def test_isbn_and_translation_badge_render(self):
+        html = self._get("?grade=4")
+        self.assertIn("978-607-16-0001-1", html)     # ISBN shown for library lookup
+        pk_html = self._get("?grade=PK")
+        self.assertIn("trad.", pk_html)              # translation marked
+        self.assertNotIn("trad.", html)              # original Spanish is not
+
+    def test_invalid_track_falls_back_to_native(self):
+        html = self._get("?track=bogus&grade=4")
+        self.assertIn("El libro salvaje", html)
+        self.assertNotIn("Pobre Ana", html)

@@ -505,10 +505,31 @@ class LibraryBook(models.Model):
     ]
     GRADE_ORDER = [PK, K, "1", "2", "3", "4", "5", "6", "7", "8"]
 
+    # Which ladder a book belongs to. NATIVE books are graded for native speakers —
+    # the right *target*, but not the right starting point for an English-L1 beginner.
+    # CI (comprehensible-input / TPRS) novellas are written FOR learners with tiny
+    # controlled vocabularies and are age-neutral, so a 12-year-old isn't handed a
+    # board book; they're the practical primary ladder. ADULT is the parent's own
+    # track; FREE is public-domain/no-cost reading.
+    NATIVE, CI, ADULT, FREE = "native", "ci", "adult", "free"
+    TRACK_CHOICES = [
+        (NATIVE, "Native grade-level"), (CI, "For learners (CI/TPRS)"),
+        (ADULT, "Adult track"), (FREE, "Free / public domain"),
+    ]
+    TRACK_ORDER = [NATIVE, CI, ADULT, FREE]
+
     title = models.CharField(max_length=200)
     author = models.CharField(max_length=200, blank=True)
     country = models.CharField(max_length=64, blank=True, help_text="Author/origin, e.g. México, España.")
-    grade = models.CharField(max_length=2, choices=GRADE_CHOICES)
+    grade = models.CharField(max_length=2, choices=GRADE_CHOICES, blank=True,
+                             help_text="Native-track grade; blank for CI/adult/free books.")
+    track = models.CharField(max_length=8, choices=TRACK_CHOICES, default=NATIVE)
+    level_label = models.CharField(max_length=40, blank=True,
+                                   help_text="For non-native tracks, e.g. 'Level 1 · present tense', 'A1'.")
+    isbn = models.CharField(max_length=20, blank=True)
+    is_translation = models.BooleanField(
+        default=False, help_text="True if translated INTO Spanish (vs originally Spanish).")
+    url = models.URLField(blank=True, help_text="Free/public-domain full text, when available.")
     note = models.CharField(max_length=300, blank=True, help_text="One line: theme + why it's good.")
     language = models.CharField(max_length=8, default="es")
     created_at = models.DateTimeField(auto_now_add=True)

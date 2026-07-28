@@ -268,6 +268,10 @@ def library_list(request):
     print-per-grade. Reference content (not per-family), so any signed-in adult may
     view it; kids are tokenless and never reach this login-gated page."""
     label = dict(LibraryBook.GRADE_CHOICES)
+    track_label = dict(LibraryBook.TRACK_CHOICES)
+    active_track = request.GET.get("track") or LibraryBook.NATIVE
+    if active_track not in track_label:
+        active_track = LibraryBook.NATIVE
     active_grade = request.GET.get("grade") or LibraryBook.GRADE_ORDER[0]
     if active_grade not in label:
         active_grade = LibraryBook.GRADE_ORDER[0]
@@ -275,22 +279,34 @@ def library_list(request):
     q = request.GET.get("q", "").strip()
 
     base = LibraryBook.objects.all()
-    counts = {g: 0 for g in LibraryBook.GRADE_ORDER}
-    for row in base.values("grade").annotate(n=Count("id")):
-        counts[row["grade"]] = row["n"]
-    grades = [{"value": g, "label": label[g], "count": counts.get(g, 0)}
-              for g in LibraryBook.GRADE_ORDER]
+    track_counts = {r["track"]: r["n"] for r in base.values("track").annotate(n=Count("id"))}
+    tracks = [{"value": t, "label": track_label[t], "count": track_counts.get(t, 0)}
+              for t in LibraryBook.TRACK_ORDER if track_counts.get(t, 0)]
 
-    books = base.filter(grade=active_grade)
+    books = base.filter(track=active_track)
+    grades = []
+    if active_track == LibraryBook.NATIVE:
+        counts = {g: 0 for g in LibraryBook.GRADE_ORDER}
+        for row in base.filter(track=LibraryBook.NATIVE).values("grade").annotate(n=Count("id")):
+            if row["grade"] in counts:
+                counts[row["grade"]] = row["n"]
+        grades = [{"value": g, "label": label[g], "count": counts.get(g, 0)}
+                  for g in LibraryBook.GRADE_ORDER]
+        books = books.filter(grade=active_grade)
     if region:
         books = books.filter(country__iexact=region)
     if q:
         books = books.filter(Q(title__icontains=q) | Q(author__icontains=q))
+    heading = (label.get(active_grade, active_grade) if active_track == LibraryBook.NATIVE
+               else track_label[active_track])
     return render(request, "lingua/library_list.html", {
         "subnav": "library",
+        "tracks": tracks, "active_track": active_track,
+        "is_native": active_track == LibraryBook.NATIVE,
         "grades": grades, "active_grade": active_grade,
-        "active_grade_label": label.get(active_grade, active_grade),
-        "books": books.order_by("title"),
+        "active_grade_label": heading,
+        "books": books.order_by("level_label", "title") if active_track != LibraryBook.NATIVE
+                 else books.order_by("title"),
         "countries": services.library_countries(),
         "region": region, "q": q,
     })

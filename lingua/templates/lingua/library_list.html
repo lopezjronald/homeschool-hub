@@ -17,19 +17,49 @@
   {# Print-only header so the sheet is self-labeling. #}
   <h2 class="d-none d-print-block mb-3">Spanish Library — {{ active_grade_label }}</h2>
 
+  {# Track selector: native grade-level books vs learner (CI) novellas vs adult vs free. #}
+  <ul class="nav nav-pills gap-1 mb-2 no-print">
+    {% for t in tracks %}
+      <li class="nav-item">
+        <a class="nav-link{% if t.value == active_track %} active{% endif %}"
+           {% if t.value == active_track %}aria-current="page"{% endif %}
+           href="?track={{ t.value }}">{{ t.label }}
+          <span class="badge bg-light text-dark ms-1">{{ t.count }}</span></a>
+      </li>
+    {% endfor %}
+  </ul>
+
+  {% if active_track == 'ci' %}
+    <div class="alert alert-info no-print small">
+      <strong>Start here for an English-speaking beginner.</strong> These novellas are written
+      <em>for learners</em> — tiny controlled vocabularies (~100–350 words), heavy repetition, and
+      age-neutral stories, so an older child isn't handed a board book. Read one of these, then a
+      native picture/chapter book from a lower grade for authentic language, then the next one.
+    </div>
+  {% elif active_track == 'native' %}
+    <div class="alert alert-light border no-print small">
+      These are graded for <em>native</em> speakers — the target to grow into. For a beginner,
+      lead with the <a href="?track=ci">For learners (CI/TPRS)</a> ladder and use these as
+      read-alouds and stretch reading.
+    </div>
+  {% endif %}
+
+  {% if is_native %}
   <ul class="nav nav-tabs mb-3 no-print" role="tablist">
     {% for g in grades %}
       <li class="nav-item">
         <a class="nav-link{% if g.value == active_grade %} active{% endif %}"
            {% if g.value == active_grade %}aria-current="page"{% endif %}
-           href="?grade={{ g.value }}{% if region %}&amp;region={{ region|urlencode }}{% endif %}{% if q %}&amp;q={{ q|urlencode }}{% endif %}">
+           href="?track=native&amp;grade={{ g.value }}{% if region %}&amp;region={{ region|urlencode }}{% endif %}{% if q %}&amp;q={{ q|urlencode }}{% endif %}">
           {{ g.label }} <span class="badge bg-light text-dark ms-1">{{ g.count }}</span>
         </a>
       </li>
     {% endfor %}
   </ul>
+  {% endif %}
 
   <form method="get" class="card no-print mb-3"><div class="card-body">
+    <input type="hidden" name="track" value="{{ active_track }}">
     <input type="hidden" name="grade" value="{{ active_grade }}">
     <div class="row g-2 align-items-end">
       <div class="col-sm-6 col-md-5">
@@ -63,11 +93,19 @@
         <span class="book-check" aria-hidden="true"></span>
         <div class="flex-grow-1">
           <div class="d-flex justify-content-between align-items-baseline flex-wrap gap-2">
-            <span class="fw-semibold lingua-book-title">{{ book.title }}</span>
-            {% if book.country %}<span class="badge bg-light text-dark">{{ book.country }}</span>{% endif %}
+            <span class="fw-semibold lingua-book-title">
+              {% if book.url %}<a href="{{ book.url }}" target="_blank" rel="noopener noreferrer">{{ book.title }}</a>
+              {% else %}{{ book.title }}{% endif %}
+            </span>
+            <span class="d-flex gap-1 flex-wrap">
+              {% if book.level_label %}<span class="badge bg-primary">{{ book.level_label }}</span>{% endif %}
+              {% if book.country %}<span class="badge bg-light text-dark">{{ book.country }}</span>{% endif %}
+              {% if book.is_translation %}<span class="badge bg-light text-dark" title="Translated into Spanish">trad.</span>{% endif %}
+            </span>
           </div>
           {% if book.author %}<div class="text-muted small">{{ book.author }}</div>{% endif %}
           {% if book.note %}<div class="lingua-book-note mt-1">{{ book.note }}</div>{% endif %}
+          {% if book.isbn %}<div class="text-muted small mt-1">ISBN {{ book.isbn }}</div>{% endif %}
         </div>
       </div>
       {% endfor %}

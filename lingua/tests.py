@@ -4050,3 +4050,32 @@ class LibraryReviewFixTests(TestCase):
             reverse("lingua:library_list") + "?track=native&grade=1&region=España").content.decode()
         self.assertIn("Otro español", html)
         self.assertNotIn("Camino a casa", html)              # Colombia filtered out
+
+
+class TemplateCommentLeakGuardTests(TestCase):
+    """LGA-83, generalized: Django `{# #}` comments are SINGLE-LINE only. A multi-line
+    comment, or one containing a comment marker in its text, closes early and renders
+    its tail as literal text on the page. This has now shipped to prod three times, so
+    guard EVERY template in the repo, not just the reader."""
+
+    def test_no_template_has_a_leaky_comment(self):
+        import pathlib
+        import re
+        root = pathlib.Path(__file__).resolve().parent.parent
+        offenders = []
+        for path in root.rglob("*.html"):
+            rel = path.relative_to(root).as_posix()
+            if any(rel.startswith(p) for p in (".venv/", "staticfiles/", "node_modules/")):
+                continue
+            text = path.read_text(encoding="utf-8", errors="replace")
+            for m in re.finditer(r"\{#(.*?)#\}", text, flags=re.S):
+                body = m.group(1)
+                if "\n" in body:
+                    offenders.append(f"{rel}: multi-line comment")
+                    break
+                if "{#" in body or "#}" in body:
+                    offenders.append(f"{rel}: nested comment marker")
+                    break
+            if text.count("{#") != text.count("#}"):
+                offenders.append(f"{rel}: unbalanced {{# vs #}}")
+        self.assertEqual(offenders, [], f"Leaky Django template comments: {offenders}")

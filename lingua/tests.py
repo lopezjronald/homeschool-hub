@@ -3966,3 +3966,87 @@ class BookLogWorkLogMirrorTests(TestCase):
         logged = BookLogEntry.objects.get()
         self.assertEqual(logged.learner, leo_learner)                 # Leo, not Ana
         self.assertEqual(logged.learner.host_student_id, self.leo.pk)
+
+
+class LibraryReviewFixTests(TestCase):
+    """LGA-75 review fixes: kid-endpoint honesty + field forwarding, hostile input,
+    ladder ordering, track-preserving filters."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from students.models import Student
+        from portal.tokens import make_portal_token
+        cls.parent = User.objects.create_user("fix_parent", password="pw")
+        cls.student = Student.objects.create(parent=cls.parent, first_name="Fi")
+        cls.token = make_portal_token(cls.student)
+        cls.book = LibraryBook.objects.create(title="Camino a casa", author="Jairo Buitrago",
+                                              country="Colombia", grade="1")
+
+    def _log_url(self):
+        return reverse("portal:lingua_book_log", args=[self.token])
+
+    def test_empty_other_does_not_claim_success(self):
+        # Picking "Otro libro" and typing nothing logs nothing — the child must NOT be
+        # told "¡Anotado!" for a book that was never recorded.
+        r = self.client.post(self._log_url(), {"book_id": "other", "custom_title": "  ",
+                                               "enjoyed": "loved"})
+        self.assertEqual(r.status_code, 302)
+        self.assertIn("nothing=1", r.url)
+        self.assertNotIn("logged=1", r.url)
+        self.assertFalse(BookLogEntry.objects.exists())
+        html = self.client.get(r.url).content.decode()
+        self.assertNotIn("¡Anotado!", html)          # no false success
+        self.assertIn("Otro libro", html)            # tells them what to do instead
+
+    def test_kid_endpoint_forwards_date_and_author(self):
+        r = self.client.post(self._log_url(), {
+            "book_id": "other", "custom_title": "Un libro suyo", "custom_author": "Autora X",
+            "read_on": "2026-07-04", "enjoyed": "ok"})
+        self.assertEqual(r.status_code, 302)
+        e = BookLogEntry.objects.get()
+        self.assertEqual(e.display_author, "Autora X")       # author no longer dropped
+        self.assertEqual(e.read_on.isoformat(), "2026-07-04")  # date no longer dropped
+
+    def test_kid_endpoint_survives_hostile_book_id(self):
+        # Non-ASCII digits pass str.isdigit() but blow up int()/the ORM.
+        r = self.client.post(self._log_url(), {"book_id": "٧", "custom_title": "T",
+                                               "enjoyed": "ok"})
+        self.assertEqual(r.status_code, 302)                 # not a 500
+        self.assertEqual(BookLogEntry.objects.get().display_title, "T")
+
+    def test_parent_form_survives_non_numeric_book_param(self):
+        self.client.force_login(self.parent)
+        r = self.client.get(reverse("lingua:book_log_add") + "?book=abc")
+        self.assertEqual(r.status_code, 200)                 # not a 500
+
+    def test_suggested_books_follow_the_ladder_not_the_alphabet(self):
+        # grade sorts lexicographically as a CharField ("1" < "2" < "K" < "PK"), which
+        # would put the HARDEST books first for an early reader.
+        for g in ("2", "PK", "1", "K"):
+            LibraryBook.objects.create(title=f"Libro {g}", grade=g, track=LibraryBook.NATIVE)
+        learner = Learner.create_for_host_student(8801, profiles.KIDS_EARLY)
+        grades = [b.grade for b in services.suggested_books(learner)]
+        self.assertEqual(grades[0], "PK")                    # easiest first
+        rank = {g: i for i, g in enumerate(LibraryBook.GRADE_ORDER)}
+        self.assertEqual(grades, sorted(grades, key=lambda g: rank[g]))
+
+    def test_suggested_books_exclude_non_native_tracks(self):
+        LibraryBook.objects.create(title="Pobre Ana", track=LibraryBook.CI)
+        learner = Learner.create_for_host_student(8802, profiles.KIDS_EARLY)
+        self.assertNotIn("Pobre Ana", [b.title for b in services.suggested_books(learner)])
+
+    def test_clear_link_keeps_the_active_track(self):
+        self.client.force_login(self.parent)
+        LibraryBook.objects.create(title="Pobre Ana", track=LibraryBook.CI)
+        html = self.client.get(reverse("lingua:library_list") + "?track=ci&q=x").content.decode()
+        self.assertIn('href="?track=ci"', html)              # Clear stays on the CI track
+
+    def test_country_filter_is_canonical(self):
+        # The two source lists spelled countries differently (Spain/España); the seed
+        # data is canonicalized so one filter value returns them all.
+        self.client.force_login(self.parent)
+        LibraryBook.objects.create(title="Otro español", country="España", grade="1")
+        html = self.client.get(
+            reverse("lingua:library_list") + "?track=native&grade=1&region=España").content.decode()
+        self.assertIn("Otro español", html)
+        self.assertNotIn("Camino a casa", html)              # Colombia filtered out

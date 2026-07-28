@@ -375,7 +375,9 @@ def book_log_add(request):
     # Option value is the HOST student id (the key `learners` is built on above).
     learner_rows = [{"pk": hsid, "name": names.get(hsid, "")}
                     for hsid, l in sorted(learners.items())]
-    prebook = LibraryBook.objects.filter(pk=request.GET.get("book")).first()
+    _bid = (request.GET.get("book") or "").strip()
+    prebook = (LibraryBook.objects.filter(pk=_bid).first()
+               if _bid.isdigit() and _bid.isascii() else None)
     from django.utils import timezone
     return render(request, "lingua/book_log_form.html", {
         "subnav": "books", "learners": learner_rows, "prebook": prebook,
@@ -397,9 +399,3 @@ def book_log_delete(request, entry_id):
             break
     return redirect("lingua:book_log")
 
-
-def _int_or_none(v):
-    try:
-        return int(v)
-    except (TypeError, ValueError):
-        return None

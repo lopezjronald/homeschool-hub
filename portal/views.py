@@ -7,6 +7,7 @@ theirs. Parents generate the link from the child's profile page.
 
 import json
 from collections import defaultdict
+from datetime import date
 from itertools import groupby
 
 from django.contrib.auth import authenticate, login
@@ -118,6 +119,7 @@ def lingua_books(request, token):
         "entries": entries, "count": len(entries),
         "suggested": lingua_services.suggested_books(learner),
         "celebrate": request.GET.get("logged") == "1",
+        "nothing": request.GET.get("nothing") == "1",
         "today": timezone.localdate(),
     })
 
@@ -131,15 +133,28 @@ def lingua_book_log(request, token):
     student = _resolve_student(token)
     learner = _lingua_learner(student)
     bid = (request.POST.get("book_id") or "").strip()
-    book = LinguaLibraryBook.objects.filter(pk=bid).first() if bid.isdigit() else None
-    lingua_services.log_book(
+    # isdigit() is True for non-ASCII digits that int()/the ORM reject, so filter on an
+    # ASCII-only check to keep a hand-crafted POST from raising.
+    book = (LinguaLibraryBook.objects.filter(pk=bid).first()
+            if bid.isdigit() and bid.isascii() else None)
+    try:
+        read_on = date.fromisoformat(request.POST.get("read_on", ""))
+    except ValueError:
+        read_on = None          # blank/garbage → log_book defaults to today
+    entry = lingua_services.log_book(
         learner, book=book,
         title=request.POST.get("custom_title", ""),
+        author=request.POST.get("custom_author", ""),
+        read_on=read_on,
         enjoyed=request.POST.get("enjoyed", ""),
         note=request.POST.get("note", ""),
         logged_by="kid",
     )
-    return redirect(reverse("portal:lingua_books", args=[token]) + "?logged=1")
+    # Only celebrate when something was actually logged — picking "Otro" without
+    # typing a title logs nothing, and a false "¡Anotado!" would teach the child the
+    # book is recorded when it isn't.
+    suffix = "?logged=1" if entry is not None else "?nothing=1"
+    return redirect(reverse("portal:lingua_books", args=[token]) + suffix)
 
 
 def lingua_read(request, token, story_id):

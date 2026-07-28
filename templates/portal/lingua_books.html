@@ -11,6 +11,9 @@
 
   {% if celebrate %}
     <div class="alert alert-success text-center" role="status">🎉 ¡Anotado! Sigue leyendo.</div>
+  {% elif nothing %}
+    <div class="alert alert-warning text-center" role="status">
+      Elige un libro de la lista, o escribe el título en “Otro libro”. ✏️</div>
   {% endif %}
 
   <div class="card portal-card mb-4"><div class="card-body py-3 text-center">

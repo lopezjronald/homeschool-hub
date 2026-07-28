@@ -78,7 +78,7 @@
       </div>
       <div class="col-sm-2 col-md-3 d-flex gap-2">
         <button class="btn btn-primary flex-grow-1" type="submit">Filter</button>
-        <a class="btn btn-outline-secondary" href="?grade={{ active_grade }}">Clear</a>
+        <a class="btn btn-outline-secondary" href="?track={{ active_track }}{% if is_native %}&amp;grade={{ active_grade }}{% endif %}">Clear</a>
       </div>
     </div>
   </div></form>

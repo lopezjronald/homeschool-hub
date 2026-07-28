@@ -142,10 +142,12 @@ def bake_story_audio(story, *, voice=None, engine=None, provider="polly",
 # --- Curated library of real Spanish books + physical-book reading log (LGA-75) ---
 
 def library_by_grade(*, region="", query=""):
-    """The parent-only library catalog grouped by grade in ladder order (Pre-K..8th).
+    """NATIVE-track catalog grouped by grade in ladder order (Pre-K..8th). CI/adult/
+    free books are ungraded by design and are browsed by track instead, so they are
+    deliberately excluded here — this function answers "what's at each grade?".
     ``region`` filters by country (substring, case-insensitive); ``query`` searches
     title + author. Returns a list of {grade, label, books, count}."""
-    qs = LibraryBook.objects.all()
+    qs = LibraryBook.objects.filter(track=LibraryBook.NATIVE)
     if region:
         qs = qs.filter(country__icontains=region)
     if query:
@@ -230,11 +232,16 @@ _BAND_GRADES = {
 
 
 def suggested_books(learner, *, limit=12):
-    """A short list of catalog books at the learner's band, for the kid portal's quick
-    'which book did you read?' picker (the child can still type any other title)."""
+    """A short list of NATIVE-track catalog books at the learner's band, for the kid
+    portal's quick 'which book did you read?' picker (the child can still type any
+    other title). Ordered by the ladder (Pre-K, K, 1, 2…) — NOT by the grade column,
+    which sorts lexicographically ("1" < "2" < "K" < "PK") and would put the hardest
+    books first."""
     band = getattr(getattr(learner, "profile", None), "track_profile", "")
     grades = _BAND_GRADES.get(band) or LibraryBook.GRADE_ORDER
-    return list(LibraryBook.objects.filter(grade__in=grades).order_by("grade", "title")[:limit])
+    books = LibraryBook.objects.filter(track=LibraryBook.NATIVE, grade__in=grades)
+    rank = {g: i for i, g in enumerate(LibraryBook.GRADE_ORDER)}
+    return sorted(books, key=lambda b: (rank.get(b.grade, 99), b.title.lower()))[:limit]
 
 
 def delete_book_log(learner, entry_id, *, worklog_sink=None):

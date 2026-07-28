@@ -50,7 +50,7 @@
  {
   "title": "El pequeño conejo blanco",
   "author": "Xosé Ballesteros (adaptación); ilustró Óscar Villán",
-  "country": "España (cuento tradicional latinoamericano)",
+  "country": "España",
   "grade": "PK",
   "note": "Cuento acumulativo (Kalandraka), Premio Nacional de Ilustración; repetición irresistible para corear.",
   "track": "native",
@@ -146,7 +146,7 @@
  {
   "title": "¡Pío Peep! Rimas tradicionales en español",
   "author": "Alma Flor Ada y F. Isabel Campoy",
-  "country": "Cuba/España",
+  "country": "Cuba",
   "grade": "PK",
   "note": "Antología bilingüe de nanas y rimas tradicionales; básico presente en casi todas las bibliotecas.",
   "track": "native",
@@ -158,7 +158,7 @@
  {
   "title": "¡Muu, Moo! Rimas de animales",
   "author": "Alma Flor Ada y F. Isabel Campoy",
-  "country": "Cuba/España",
+  "country": "Cuba",
   "grade": "PK",
   "note": "Rimas de animales de España y Latinoamérica; ritmo y repetición ideales para bebés.",
   "track": "native",
@@ -326,7 +326,7 @@
  {
   "title": "¿A qué sabe la luna?",
   "author": "Michael Grejniec",
-  "country": "Polonia/Alemania (traducción, Kalandraka)",
+  "country": "Polonia",
   "grade": "PK",
   "note": "Álbum acumulativo sobre la cooperación; uno de los más leídos en aulas y bibliotecas hispanas.",
   "track": "native",
@@ -338,7 +338,7 @@
  {
   "title": "La oruga muy hambrienta",
   "author": "Eric Carle",
-  "country": "EE. UU. (traducción)",
+  "country": "EE. UU.",
   "grade": "PK",
   "note": "Contar, días y comidas con troqueles; clásico universal perfecto para 3-4 años.",
   "track": "native",
@@ -350,7 +350,7 @@
  {
   "title": "Oso pardo, oso pardo, ¿qué ves ahí?",
   "author": "Bill Martin Jr. y Eric Carle",
-  "country": "EE. UU. (traducción)",
+  "country": "EE. UU.",
   "grade": "PK",
   "note": "Colores y animales con repetición predecible; ideal para corear en grupo.",
   "track": "native",
@@ -362,7 +362,7 @@
  {
   "title": "Adivina cuánto te quiero",
   "author": "Sam McBratney y Anita Jeram",
-  "country": "Reino Unido/Irlanda (traducción, Kókinos)",
+  "country": "Reino Unido",
   "grade": "PK",
   "note": "Ternura de hora de dormir; regalo y clásico habitual de bibliotecas.",
   "track": "native",
@@ -374,7 +374,7 @@
  {
   "title": "¿Dónde está Spot?",
   "author": "Eric Hill",
-  "country": "Reino Unido (traducción)",
+  "country": "Reino Unido",
   "grade": "PK",
   "note": "Libro con solapas para levantar; favorito de los más pequeños que aún no leen.",
   "track": "native",
@@ -386,7 +386,7 @@
  {
   "title": "El pollo Pepe",
   "author": "Nick Denchfield y Ant Parker",
-  "country": "Reino Unido (traducción, SM)",
+  "country": "Reino Unido",
   "grade": "PK",
   "note": "Libro pop-up muy sencillo; éxito rotundo en preescolar hispano.",
   "track": "native",
@@ -662,7 +662,7 @@
  {
   "title": "La pequeña oruga glotona",
   "author": "Eric Carle",
-  "country": "Estados Unidos (traducción)",
+  "country": "Estados Unidos",
   "grade": "K",
   "note": "Clásico de biblioteca; texto predecible con días de la semana, números y metamorfosis; páginas troqueladas.",
   "track": "native",
@@ -674,7 +674,7 @@
  {
   "title": "Oso pardo, oso pardo, ¿qué ves ahí?",
   "author": "Bill Martin Jr. (il. Eric Carle)",
-  "country": "Estados Unidos (traducción)",
+  "country": "Estados Unidos",
   "grade": "K",
   "note": "El texto repetitivo y predecible por excelencia, con colores y animales; staple de Kínder.",
   "track": "native",
@@ -686,7 +686,7 @@
  {
   "title": "¿A qué sabe la luna?",
   "author": "Michael Grejniec",
-  "country": "Polonia (traducción)",
+  "country": "Polonia",
   "grade": "K",
   "note": "Cuento acumulativo (Kalandraka); los animales se trepan para probar la luna; cooperación y participación.",
   "track": "native",
@@ -698,7 +698,7 @@
  {
   "title": "El topo que quería saber quién se había hecho aquello en su cabeza",
   "author": "Werner Holzwarth (il. Wolf Erlbruch)",
-  "country": "Alemania (traducción)",
+  "country": "Alemania",
   "grade": "K",
   "note": "Clásico; pregunta repetida y humor escatológico irresistible para niños de Kínder.",
   "track": "native",
@@ -710,7 +710,7 @@
  {
   "title": "Elmer",
   "author": "David McKee",
-  "country": "Reino Unido (traducción)",
+  "country": "Reino Unido",
   "grade": "K",
   "note": "El elefante de cuadros de colores que celebra ser diferente; muy popular en bibliotecas hispanas.",
   "track": "native",
@@ -722,7 +722,7 @@
  {
   "title": "Adivina cuánto te quiero",
   "author": "Sam McBratney (il. Anita Jeram)",
-  "country": "Reino Unido (traducción)",
+  "country": "Reino Unido",
   "grade": "K",
   "note": "Clásico (Kókinos); patrón repetido «te quiero tanto como…», ternura entre liebres.",
   "track": "native",
@@ -734,7 +734,7 @@
  {
   "title": "Choco encuentra una mamá",
   "author": "Keiko Kasza",
-  "country": "Japón (traducción)",
+  "country": "Japón",
   "grade": "K",
   "note": "Patrón repetitivo «¿eres tú mi mamá?» y final tierno sobre las familias (Norma).",
   "track": "native",
@@ -746,7 +746,7 @@
  {
   "title": "El pollo Pepe",
   "author": "Nick Denchfield (il. Ant Parker)",
-  "country": "Reino Unido (traducción)",
+  "country": "Reino Unido",
   "grade": "K",
   "note": "Libro pop-up con texto muy simple y predecible; gran favorito de preescolar y Kínder (SM).",
   "track": "native",
@@ -1082,7 +1082,7 @@
  {
   "title": "Adivina cuánto te quiero",
   "author": "Sam McBratney (il. Anita Jeram)",
-  "country": "Reino Unido (Irlanda del Norte)",
+  "country": "Reino Unido",
   "grade": "1",
   "note": "Traducción. Tender bedtime favorite about big love in simple words; hugely popular with 5–7 year-olds.",
   "track": "native",
@@ -1094,7 +1094,7 @@
  {
   "title": "Choco encuentra una mamá",
   "author": "Keiko Kasza",
-  "country": "Japón/Estados Unidos",
+  "country": "Japón",
   "grade": "1",
   "note": "Traducción. A little bird searches for a mother; a preschool–first-grade favorite widely carried across Latin America (Norma).",
   "track": "native",
@@ -3650,7 +3650,7 @@
  {
   "title": "El Principito",
   "author": "Antoine de Saint-Exupéry",
-  "country": "Francia (traducción)",
+  "country": "Francia",
   "grade": "8",
   "note": "Translated staple; the tender philosophical fable is a fixture of every Spanish-language library and reads beautifully at 13.",
   "track": "native",
@@ -3662,7 +3662,7 @@
  {
   "title": "La historia interminable",
   "author": "Michael Ende",
-  "country": "Alemania (traducción)",
+  "country": "Alemania",
   "grade": "8",
   "note": "Translated staple; immersive fantasy about a boy pulled into the book he's reading — a much-loved library standard.",
   "track": "native",
@@ -3674,7 +3674,7 @@
  {
   "title": "Cocodrilo",
   "author": "Antonio Rubio & Óscar Villán",
-  "country": "Spain",
+  "country": "España",
   "grade": "PK",
   "track": "native",
   "level_label": "",
@@ -3686,7 +3686,7 @@
  {
   "title": "Cinco",
   "author": "Antonio Rubio & Óscar Villán",
-  "country": "Spain",
+  "country": "España",
   "grade": "PK",
   "track": "native",
   "level_label": "",
@@ -3698,7 +3698,7 @@
  {
   "title": "Miau",
   "author": "Antonio Rubio & Óscar Villán",
-  "country": "Spain",
+  "country": "España",
   "grade": "PK",
   "track": "native",
   "level_label": "",
@@ -3710,7 +3710,7 @@
  {
   "title": "Pajarita de papel",
   "author": "Antonio Rubio & Óscar Villán",
-  "country": "Spain",
+  "country": "España",
   "grade": "PK",
   "track": "native",
   "level_label": "",
@@ -3722,7 +3722,7 @@
  {
   "title": "Luna",
   "author": "Antonio Rubio & Óscar Villán",
-  "country": "Spain",
+  "country": "España",
   "grade": "PK",
   "track": "native",
   "level_label": "",
@@ -3734,7 +3734,7 @@
  {
   "title": "Zapato",
   "author": "Antonio Rubio & Óscar Villán",
-  "country": "Spain",
+  "country": "España",
   "grade": "PK",
   "track": "native",
   "level_label": "",
@@ -3746,7 +3746,7 @@
  {
   "title": "Veo veo",
   "author": "Antonio Rubio & Óscar Villán",
-  "country": "Spain",
+  "country": "España",
   "grade": "PK",
   "track": "native",
   "level_label": "",
@@ -3758,7 +3758,7 @@
  {
   "title": "Animales",
   "author": "Antonio Rubio & Óscar Villán",
-  "country": "Spain",
+  "country": "España",
   "grade": "PK",
   "track": "native",
   "level_label": "",
@@ -3770,7 +3770,7 @@
  {
   "title": "Frutas",
   "author": "Antonio Rubio & Óscar Villán",
-  "country": "Spain",
+  "country": "España",
   "grade": "PK",
   "track": "native",
   "level_label": "",
@@ -3782,7 +3782,7 @@
  {
   "title": "Limón",
   "author": "Antonio Rubio & Óscar Villán",
-  "country": "Spain",
+  "country": "España",
   "grade": "PK",
   "track": "native",
   "level_label": "",
@@ -3794,7 +3794,7 @@
  {
   "title": "Violín",
   "author": "Antonio Rubio & Óscar Villán",
-  "country": "Spain",
+  "country": "España",
   "grade": "PK",
   "track": "native",
   "level_label": "",
@@ -3806,7 +3806,7 @@
  {
   "title": "Árbol",
   "author": "Antonio Rubio & Óscar Villán",
-  "country": "Spain",
+  "country": "España",
   "grade": "PK",
   "track": "native",
   "level_label": "",
@@ -3878,7 +3878,7 @@
  {
   "title": "Un Elefante: Numbers/Números",
   "author": "Patty Rodríguez & Ariana Stein",
-  "country": "USA (Latina)",
+  "country": "EE. UU.",
   "grade": "PK",
   "track": "native",
   "level_label": "",
@@ -3890,7 +3890,7 @@
  {
   "title": "¡Pío Peep!",
   "author": "Alma Flor Ada & F. Isabel Campoy (eds.)",
-  "country": "Cuba/USA",
+  "country": "Cuba",
   "grade": "PK",
   "track": "native",
   "level_label": "",
@@ -3902,7 +3902,7 @@
  {
   "title": "Buenas noches, Luna",
   "author": "Margaret Wise Brown",
-  "country": "USA",
+  "country": "EE. UU.",
   "grade": "PK",
   "track": "native",
   "level_label": "",
@@ -3926,7 +3926,7 @@
  {
   "title": "Choco encuentra una mamá",
   "author": "Keiko Kasza",
-  "country": "Japan/USA",
+  "country": "Japón",
   "grade": "PK",
   "track": "native",
   "level_label": "",
@@ -3938,7 +3938,7 @@
  {
   "title": "Do re mi",
   "author": "Antonio Rubio & Óscar Villán",
-  "country": "Spain",
+  "country": "España",
   "grade": "PK",
   "track": "native",
   "level_label": "",
@@ -3950,7 +3950,7 @@
  {
   "title": "Bebé",
   "author": "Antonio Rubio & Óscar Villán",
-  "country": "Spain",
+  "country": "España",
   "grade": "PK",
   "track": "native",
   "level_label": "",
@@ -4046,7 +4046,7 @@
  {
   "title": "Juguetes",
   "author": "Antonio Rubio & Óscar Villán",
-  "country": "Spain",
+  "country": "España",
   "grade": "K",
   "track": "native",
   "level_label": "",
@@ -4058,7 +4058,7 @@
  {
   "title": "Soñadores",
   "author": "Yuyi Morales",
-  "country": "Mexico",
+  "country": "México",
   "grade": "K",
   "track": "native",
   "level_label": "",
@@ -4070,7 +4070,7 @@
  {
   "title": "Niña bonita",
   "author": "Ana María Machado & Rosana Faría",
-  "country": "Brazil/Venezuela",
+  "country": "Brasil",
   "grade": "K",
   "track": "native",
   "level_label": "",
@@ -4082,7 +4082,7 @@
  {
   "title": "Crisantemo",
   "author": "Kevin Henkes",
-  "country": "USA",
+  "country": "EE. UU.",
   "grade": "K",
   "track": "native",
   "level_label": "",
@@ -4094,7 +4094,7 @@
  {
   "title": "Donde viven los monstruos",
   "author": "Maurice Sendak",
-  "country": "USA",
+  "country": "EE. UU.",
   "grade": "K",
   "track": "native",
   "level_label": "",
@@ -4106,7 +4106,7 @@
  {
   "title": "Nadarín (Swimmy)",
   "author": "Leo Lionni",
-  "country": "Italy/USA",
+  "country": "Italia",
   "grade": "K",
   "track": "native",
   "level_label": "",
@@ -4118,7 +4118,7 @@
  {
   "title": "La araña muy ocupada",
   "author": "Eric Carle",
-  "country": "USA",
+  "country": "EE. UU.",
   "grade": "K",
   "track": "native",
   "level_label": "",
@@ -4130,7 +4130,7 @@
  {
   "title": "El grillo silencioso",
   "author": "Eric Carle",
-  "country": "USA",
+  "country": "EE. UU.",
   "grade": "K",
   "track": "native",
   "level_label": "",
@@ -4142,7 +4142,7 @@
  {
   "title": "El conejito andarín",
   "author": "Margaret Wise Brown",
-  "country": "USA",
+  "country": "EE. UU.",
   "grade": "K",
   "track": "native",
   "level_label": "",
@@ -4154,7 +4154,7 @@
  {
   "title": "El gran granero rojo",
   "author": "Margaret Wise Brown",
-  "country": "USA",
+  "country": "EE. UU.",
   "grade": "K",
   "track": "native",
   "level_label": "",
@@ -4166,7 +4166,7 @@
  {
   "title": "gracias · thanks",
   "author": "Pat Mora & John Parra",
-  "country": "USA (Latina)",
+  "country": "EE. UU.",
   "grade": "K",
   "track": "native",
   "level_label": "",
@@ -4178,7 +4178,7 @@
  {
   "title": "El verde es un chile",
   "author": "Roseanne Greenfield Thong & John Parra",
-  "country": "USA",
+  "country": "EE. UU.",
   "grade": "K",
   "track": "native",
   "level_label": "",
@@ -4190,7 +4190,7 @@
  {
   "title": "La velita de los cuentos",
   "author": "Lucía González & Lulu Delacre",
-  "country": "Cuba/USA",
+  "country": "Cuba",
   "grade": "K",
   "track": "native",
   "level_label": "",
@@ -4202,7 +4202,7 @@
  {
   "title": "Viajes",
   "author": "Antonio Rubio & Óscar Villán",
-  "country": "Spain",
+  "country": "España",
   "grade": "K",
   "track": "native",
   "level_label": "",
@@ -4310,7 +4310,7 @@
  {
   "title": "El día de campo de Don Chancho",
   "author": "Keiko Kasza",
-  "country": "Japan/USA",
+  "country": "Japón",
   "grade": "1",
   "track": "native",
   "level_label": "",
@@ -4322,7 +4322,7 @@
  {
   "title": "Choco series sequels",
   "author": "Keiko Kasza",
-  "country": "Japan/USA",
+  "country": "Japón",
   "grade": "1",
   "track": "native",
   "level_label": "",
@@ -4334,7 +4334,7 @@
  {
   "title": "Sapo y Sepo son amigos",
   "author": "Arnold Lobel",
-  "country": "USA",
+  "country": "EE. UU.",
   "grade": "1",
   "track": "native",
   "level_label": "",
@@ -4346,7 +4346,7 @@
  {
   "title": "Sapo y Sepo, inseparables",
   "author": "Arnold Lobel",
-  "country": "USA",
+  "country": "EE. UU.",
   "grade": "1",
   "track": "native",
   "level_label": "",
@@ -4358,7 +4358,7 @@
  {
   "title": "¡No dejes que la paloma conduzca el autobús!",
   "author": "Mo Willems",
-  "country": "USA",
+  "country": "EE. UU.",
   "grade": "1",
   "track": "native",
   "level_label": "",
@@ -4418,7 +4418,7 @@
  {
   "title": "Elmer (El elefante)",
   "author": "David McKee",
-  "country": "UK",
+  "country": "Reino Unido",
   "grade": "1",
   "track": "native",
   "level_label": "",
@@ -4430,7 +4430,7 @@
  {
   "title": "La mariquita gruñona",
   "author": "Eric Carle",
-  "country": "USA",
+  "country": "EE. UU.",
   "grade": "1",
   "track": "native",
   "level_label": "",
@@ -4454,7 +4454,7 @@
  {
   "title": "Cara / Flores",
   "author": "Antonio Rubio & Óscar Villán",
-  "country": "Spain",
+  "country": "España",
   "grade": "1",
   "track": "native",
   "level_label": "",
@@ -4466,7 +4466,7 @@
  {
   "title": "Me gustan los Saturdays y los domingos",
   "author": "Alma Flor Ada",
-  "country": "Cuba/USA",
+  "country": "Cuba",
   "grade": "1",
   "track": "native",
   "level_label": "",
@@ -4478,7 +4478,7 @@
  {
   "title": "Just a Minute / Just in Case (Sp. eds.)",
   "author": "Yuyi Morales",
-  "country": "Mexico",
+  "country": "México",
   "grade": "1",
   "track": "native",
   "level_label": "",
@@ -4502,7 +4502,7 @@
  {
   "title": "La Cucarachita Martina",
   "author": "Traditional Latin American (ed. Alma Flor Ada)",
-  "country": "Cuba/Caribbean",
+  "country": "Cuba",
   "grade": "1",
   "track": "native",
   "level_label": "",
@@ -4514,7 +4514,7 @@
  {
   "title": "Mi mundo (My World)",
   "author": "Margaret Wise Brown",
-  "country": "USA",
+  "country": "EE. UU.",
   "grade": "1",
   "track": "native",
   "level_label": "",
@@ -4526,7 +4526,7 @@
  {
   "title": "(De la cuna a la luna, review titles)",
   "author": "Antonio Rubio & Óscar Villán",
-  "country": "Spain",
+  "country": "España",
   "grade": "1",
   "track": "native",
   "level_label": "",
@@ -4538,7 +4538,7 @@
  {
   "title": "Aníbal y Melquiades",
   "author": "Francisco Hinojosa",
-  "country": "Mexico",
+  "country": "México",
   "grade": "2",
   "track": "native",
   "level_label": "",
@@ -4550,7 +4550,7 @@
  {
   "title": "Camilón, comilón",
   "author": "Ana María Machado",
-  "country": "Brazil",
+  "country": "Brasil",
   "grade": "2",
   "track": "native",
   "level_label": "",
@@ -4586,7 +4586,7 @@
  {
   "title": "Sapo y Sepo, un año entero",
   "author": "Arnold Lobel",
-  "country": "USA",
+  "country": "EE. UU.",
   "grade": "2",
   "track": "native",
   "level_label": "",
@@ -4598,7 +4598,7 @@
  {
   "title": "Días con Sapo y Sepo",
   "author": "Arnold Lobel",
-  "country": "USA",
+  "country": "EE. UU.",
   "grade": "2",
   "track": "native",
   "level_label": "",
@@ -4670,7 +4670,7 @@
  {
   "title": "El Superzorro",
   "author": "Roald Dahl",
-  "country": "UK",
+  "country": "Reino Unido",
   "grade": "2",
   "track": "native",
   "level_label": "",
@@ -4682,7 +4682,7 @@
  {
   "title": "El Grúfalo",
   "author": "Julia Donaldson",
-  "country": "UK",
+  "country": "Reino Unido",
   "grade": "2",
   "track": "native",
   "level_label": "",
@@ -4694,7 +4694,7 @@
  {
   "title": "Willy el tímido",
   "author": "Anthony Browne",
-  "country": "UK",
+  "country": "Reino Unido",
   "grade": "2",
   "track": "native",
   "level_label": "",
@@ -4706,7 +4706,7 @@
  {
   "title": "Gorila",
   "author": "Anthony Browne",
-  "country": "UK",
+  "country": "Reino Unido",
   "grade": "2",
   "track": "native",
   "level_label": "",
@@ -4718,7 +4718,7 @@
  {
   "title": "Cosita linda",
   "author": "Anthony Browne",
-  "country": "UK",
+  "country": "Reino Unido",
   "grade": "2",
   "track": "native",
   "level_label": "",
@@ -4730,7 +4730,7 @@
  {
   "title": "Gato tiene sueño",
   "author": "Satoshi Kitamura",
-  "country": "Japan/UK",
+  "country": "Japón",
   "grade": "2",
   "track": "native",
   "level_label": "",
@@ -4742,7 +4742,7 @@
  {
   "title": "Las gallinas locas series",
   "author": "Christian Jolibois",
-  "country": "France",
+  "country": "Francia",
   "grade": "2",
   "track": "native",
   "level_label": "",
@@ -4766,7 +4766,7 @@
  {
   "title": "Cuentos folklóricos (retellings)",
   "author": "Alma Flor Ada",
-  "country": "Cuba/USA",
+  "country": "Cuba",
   "grade": "2",
   "track": "native",
   "level_label": "",
@@ -4778,7 +4778,7 @@
  {
   "title": "short titles",
   "author": "Gabriela Keselman",
-  "country": "Argentina/Spain",
+  "country": "Argentina",
   "grade": "2",
   "track": "native",
   "level_label": "",
@@ -4814,7 +4814,7 @@
  {
   "title": "Viva Frida",
   "author": "Yuyi Morales",
-  "country": "Mexico",
+  "country": "México",
   "grade": "2",
   "track": "native",
   "level_label": "",
@@ -4838,7 +4838,7 @@
  {
   "title": "A golpe de calcetín",
   "author": "Francisco Hinojosa",
-  "country": "Mexico",
+  "country": "México",
   "grade": "3",
   "track": "native",
   "level_label": "",
@@ -4850,7 +4850,7 @@
  {
   "title": "Del rey Mocho",
   "author": "Ana María Machado",
-  "country": "Brazil",
+  "country": "Brasil",
   "grade": "3",
   "track": "native",
   "level_label": "",
@@ -4862,7 +4862,7 @@
  {
   "title": "Charlie y la fábrica de chocolate",
   "author": "Roald Dahl",
-  "country": "UK",
+  "country": "Reino Unido",
   "grade": "3",
   "track": "native",
   "level_label": "",
@@ -4874,7 +4874,7 @@
  {
   "title": "Las brujas",
   "author": "Roald Dahl",
-  "country": "UK",
+  "country": "Reino Unido",
   "grade": "3",
   "track": "native",
   "level_label": "",
@@ -4910,7 +4910,7 @@
  {
   "title": "La casa del árbol series",
   "author": "Mary Pope Osborne",
-  "country": "USA",
+  "country": "EE. UU.",
   "grade": "3",
   "track": "native",
   "level_label": "",
@@ -4922,7 +4922,7 @@
  {
   "title": "La escuela está embrujada (My Weird School)",
   "author": "Dan Gutman",
-  "country": "USA",
+  "country": "EE. UU.",
   "grade": "3",
   "track": "native",
   "level_label": "",
@@ -4946,7 +4946,7 @@
  {
   "title": "Bibiana y su mundo",
   "author": "José Luis Olaizola",
-  "country": "Spain",
+  "country": "España",
   "grade": "3",
   "track": "native",
   "level_label": "",
@@ -4958,7 +4958,7 @@
  {
   "title": "El Pampinoplas",
   "author": "Consuelo Armijo",
-  "country": "Spain",
+  "country": "España",
   "grade": "3",
   "track": "native",
   "level_label": "",
@@ -4970,7 +4970,7 @@
  {
   "title": "El hombrecito vestido de gris",
   "author": "Fernando Alonso",
-  "country": "Spain",
+  "country": "España",
   "grade": "3",
   "track": "native",
   "level_label": "",
@@ -5042,7 +5042,7 @@
  {
   "title": "Algunos niños, tres perros y más cosas",
   "author": "Juan Farías",
-  "country": "Spain",
+  "country": "España",
   "grade": "3",
   "track": "native",
   "level_label": "",
@@ -5054,7 +5054,7 @@
  {
   "title": "El libro de los cerdos",
   "author": "Anthony Browne",
-  "country": "UK",
+  "country": "Reino Unido",
   "grade": "3",
   "track": "native",
   "level_label": "",
@@ -5078,7 +5078,7 @@
  {
   "title": "Una semana en Lugano",
   "author": "Francisco Hinojosa",
-  "country": "Mexico",
+  "country": "México",
   "grade": "4",
   "track": "native",
   "level_label": "",
@@ -5102,7 +5102,7 @@
  {
   "title": "De carta en carta",
   "author": "Ana María Machado",
-  "country": "Brazil",
+  "country": "Brasil",
   "grade": "4",
   "track": "native",
   "level_label": "",
@@ -5114,7 +5114,7 @@
  {
   "title": "Matilda",
   "author": "Roald Dahl",
-  "country": "UK",
+  "country": "Reino Unido",
   "grade": "4",
   "track": "native",
   "level_label": "",
@@ -5126,7 +5126,7 @@
  {
   "title": "James y el melocotón gigante",
   "author": "Roald Dahl",
-  "country": "UK",
+  "country": "Reino Unido",
   "grade": "4",
   "track": "native",
   "level_label": "",
@@ -5138,7 +5138,7 @@
  {
   "title": "Jim Botón y Lucas el maquinista",
   "author": "Michael Ende",
-  "country": "Germany",
+  "country": "Alemania",
   "grade": "4",
   "track": "native",
   "level_label": "",
@@ -5162,7 +5162,7 @@
  {
   "title": "¡Cómo molo! (Manolito)",
   "author": "Elvira Lindo",
-  "country": "Spain",
+  "country": "España",
   "grade": "4",
   "track": "native",
   "level_label": "",
@@ -5174,7 +5174,7 @@
  {
   "title": "El zulo",
   "author": "Fernando Lalana",
-  "country": "Spain",
+  "country": "España",
   "grade": "4",
   "track": "native",
   "level_label": "",
@@ -5186,7 +5186,7 @@
  {
   "title": "Kafka y la muñeca viajera",
   "author": "Jordi Sierra i Fabra",
-  "country": "Spain",
+  "country": "España",
   "grade": "4",
   "track": "native",
   "level_label": "",
@@ -5198,7 +5198,7 @@
  {
   "title": "La Zarpa series",
   "author": "Ana Alonso & Javier Pelegrín",
-  "country": "Spain",
+  "country": "España",
   "grade": "4",
   "track": "native",
   "level_label": "",
@@ -5210,7 +5210,7 @@
  {
   "title": "juvenile works",
   "author": "Gonzalo Moure",
-  "country": "Spain",
+  "country": "España",
   "grade": "4",
   "track": "native",
   "level_label": "",
@@ -5222,7 +5222,7 @@
  {
   "title": "Las crónicas de Narnia: El león, la bruja...",
   "author": "C.S. Lewis",
-  "country": "UK",
+  "country": "Reino Unido",
   "grade": "4",
   "track": "native",
   "level_label": "",
@@ -5234,7 +5234,7 @@
  {
   "title": "Mi abuelo es poeta",
   "author": "Antonio Malpica",
-  "country": "Mexico",
+  "country": "México",
   "grade": "4",
   "track": "native",
   "level_label": "",
@@ -5270,7 +5270,7 @@
  {
   "title": "La bolsa amarilla",
   "author": "Lygia Bojunga",
-  "country": "Brazil",
+  "country": "Brasil",
   "grade": "4",
   "track": "native",
   "level_label": "",
@@ -5282,7 +5282,7 @@
  {
   "title": "La telaraña de Carlota",
   "author": "E.B. White",
-  "country": "USA",
+  "country": "EE. UU.",
   "grade": "4",
   "track": "native",
   "level_label": "",
@@ -5294,7 +5294,7 @@
  {
   "title": "Ramona la chinche",
   "author": "Beverly Cleary",
-  "country": "USA",
+  "country": "EE. UU.",
   "grade": "4",
   "track": "native",
   "level_label": "",
@@ -5306,7 +5306,7 @@
  {
   "title": "Babe, el cerdito valiente",
   "author": "Dick King-Smith",
-  "country": "UK",
+  "country": "Reino Unido",
   "grade": "4",
   "track": "native",
   "level_label": "",
@@ -5330,7 +5330,7 @@
  {
   "title": "Historias de Ninguno",
   "author": "Pilar Mateos",
-  "country": "Spain",
+  "country": "España",
   "grade": "4",
   "track": "native",
   "level_label": "",
@@ -5342,7 +5342,7 @@
  {
   "title": "El dedo mágico",
   "author": "Roald Dahl",
-  "country": "UK",
+  "country": "Reino Unido",
   "grade": "4",
   "track": "native",
   "level_label": "",
@@ -5378,7 +5378,7 @@
  {
   "title": "El profesor Zíper y la fabulosa guitarra eléctrica",
   "author": "Juan Villoro",
-  "country": "Mexico",
+  "country": "México",
   "grade": "5",
   "track": "native",
   "level_label": "",
@@ -5390,7 +5390,7 @@
  {
   "title": "Por el color del trigo",
   "author": "Antonio Malpica",
-  "country": "Mexico",
+  "country": "México",
   "grade": "5",
   "track": "native",
   "level_label": "",
@@ -5402,7 +5402,7 @@
  {
   "title": "Bisa Bía, Bisa Bel",
   "author": "Ana María Machado",
-  "country": "Brazil",
+  "country": "Brasil",
   "grade": "5",
   "track": "native",
   "level_label": "",
@@ -5426,7 +5426,7 @@
  {
   "title": "El asesinato de la profesora de lengua",
   "author": "Jordi Sierra i Fabra",
-  "country": "Spain",
+  "country": "España",
   "grade": "5",
   "track": "native",
   "level_label": "",
@@ -5438,7 +5438,7 @@
  {
   "title": "Finis Mundi",
   "author": "Laura Gallego",
-  "country": "Spain",
+  "country": "España",
   "grade": "5",
   "track": "native",
   "level_label": "",
@@ -5450,7 +5450,7 @@
  {
   "title": "La leyenda del Rey Errante",
   "author": "Laura Gallego",
-  "country": "Spain",
+  "country": "España",
   "grade": "5",
   "track": "native",
   "level_label": "",
@@ -5462,7 +5462,7 @@
  {
   "title": "Scratch",
   "author": "Fernando Lalana",
-  "country": "Spain",
+  "country": "España",
   "grade": "5",
   "track": "native",
   "level_label": "",
@@ -5474,7 +5474,7 @@
  {
   "title": "Gracias a Winn-Dixie",
   "author": "Kate DiCamillo",
-  "country": "USA",
+  "country": "EE. UU.",
   "grade": "5",
   "track": "native",
   "level_label": "",
@@ -5486,7 +5486,7 @@
  {
   "title": "Despereaux",
   "author": "Kate DiCamillo",
-  "country": "USA",
+  "country": "EE. UU.",
   "grade": "5",
   "track": "native",
   "level_label": "",
@@ -5498,7 +5498,7 @@
  {
   "title": "El GGA (El gran gigante bonachón)",
   "author": "Roald Dahl",
-  "country": "UK",
+  "country": "Reino Unido",
   "grade": "5",
   "track": "native",
   "level_label": "",
@@ -5510,7 +5510,7 @@
  {
   "title": "La tejedora de la muerte / Endrina",
   "author": "Concha López Narváez",
-  "country": "Spain",
+  "country": "España",
   "grade": "5",
   "track": "native",
   "level_label": "",
@@ -5522,7 +5522,7 @@
  {
   "title": "El libro de los héroes (saga)",
   "author": "Antonio Malpica",
-  "country": "Mexico",
+  "country": "México",
   "grade": "5",
   "track": "native",
   "level_label": "",
@@ -5546,7 +5546,7 @@
  {
   "title": "short story collections",
   "author": "Marina Colasanti",
-  "country": "Brazil",
+  "country": "Brasil",
   "grade": "5",
   "track": "native",
   "level_label": "",
@@ -5570,7 +5570,7 @@
  {
   "title": "El hacha (Hatchet)",
   "author": "Gary Paulsen",
-  "country": "USA",
+  "country": "EE. UU.",
   "grade": "5",
   "track": "native",
   "level_label": "",
@@ -5582,7 +5582,7 @@
  {
   "title": "Hoyos (Holes)",
   "author": "Louis Sachar",
-  "country": "USA",
+  "country": "EE. UU.",
   "grade": "5",
   "track": "native",
   "level_label": "",
@@ -5594,7 +5594,7 @@
  {
   "title": "La llamada del agua",
   "author": "Ana Alonso",
-  "country": "Spain",
+  "country": "España",
   "grade": "5",
   "track": "native",
   "level_label": "",
@@ -5630,7 +5630,7 @@
  {
   "title": "El anillo de Irina",
   "author": "Care Santos",
-  "country": "Spain",
+  "country": "España",
   "grade": "5",
   "track": "native",
   "level_label": "",
@@ -5654,7 +5654,7 @@
  {
   "title": "Boy (relatos de infancia)",
   "author": "Roald Dahl",
-  "country": "UK",
+  "country": "Reino Unido",
   "grade": "5",
   "track": "native",
   "level_label": "",
@@ -5666,7 +5666,7 @@
  {
   "title": "Las golondrinas / El profesor Zíper (sequels)",
   "author": "Juan Villoro",
-  "country": "Mexico",
+  "country": "México",
   "grade": "6",
   "track": "native",
   "level_label": "",
@@ -5690,7 +5690,7 @@
  {
   "title": "El perro del cerro y la rana de la sabana",
   "author": "Ana María Machado",
-  "country": "Brazil",
+  "country": "Brasil",
   "grade": "6",
   "track": "native",
   "level_label": "",
@@ -5702,7 +5702,7 @@
  {
   "title": "Campos de fresas",
   "author": "Jordi Sierra i Fabra",
-  "country": "Spain",
+  "country": "España",
   "grade": "6",
   "track": "native",
   "level_label": "",
@@ -5714,7 +5714,7 @@
  {
   "title": "Momo",
   "author": "Michael Ende",
-  "country": "Germany",
+  "country": "Alemania",
   "grade": "6",
   "track": "native",
   "level_label": "",
@@ -5726,7 +5726,7 @@
  {
   "title": "La historia interminable",
   "author": "Michael Ende",
-  "country": "Germany",
+  "country": "Alemania",
   "grade": "6",
   "track": "native",
   "level_label": "",
@@ -5738,7 +5738,7 @@
  {
   "title": "Corazón de tinta",
   "author": "Cornelia Funke",
-  "country": "Germany",
+  "country": "Alemania",
   "grade": "6",
   "track": "native",
   "level_label": "",
@@ -5750,7 +5750,7 @@
  {
   "title": "Harry Potter y la piedra filosofal",
   "author": "J.K. Rowling",
-  "country": "UK",
+  "country": "Reino Unido",
   "grade": "6",
   "track": "native",
   "level_label": "",
@@ -5762,7 +5762,7 @@
  {
   "title": "La ciudad de arena",
   "author": "Ana Alonso",
-  "country": "Spain",
+  "country": "España",
   "grade": "6",
   "track": "native",
   "level_label": "",
@@ -5786,7 +5786,7 @@
  {
   "title": "Ojo de nube",
   "author": "Ricardo Gómez",
-  "country": "Spain",
+  "country": "España",
   "grade": "6",
   "track": "native",
   "level_label": "",
@@ -5798,7 +5798,7 @@
  {
   "title": "La biblioteca de los libros vacíos",
   "author": "Jordi Sierra i Fabra",
-  "country": "Spain",
+  "country": "España",
   "grade": "6",
   "track": "native",
   "level_label": "",
@@ -5810,7 +5810,7 @@
  {
   "title": "Barro de Medellín",
   "author": "Alfredo Gómez Cerdá",
-  "country": "Spain",
+  "country": "España",
   "grade": "6",
   "track": "native",
   "level_label": "",
@@ -5822,7 +5822,7 @@
  {
   "title": "Cuentos escritos a máquina",
   "author": "Gianni Rodari",
-  "country": "Italy",
+  "country": "Italia",
   "grade": "6",
   "track": "native",
   "level_label": "",
@@ -5834,7 +5834,7 @@
  {
   "title": "Un puente hacia Terabithia",
   "author": "Katherine Paterson",
-  "country": "USA",
+  "country": "EE. UU.",
   "grade": "6",
   "track": "native",
   "level_label": "",
@@ -5846,7 +5846,7 @@
  {
   "title": "El dador (The Giver)",
   "author": "Lois Lowry",
-  "country": "USA",
+  "country": "EE. UU.",
   "grade": "6",
   "track": "native",
   "level_label": "",
@@ -5858,7 +5858,7 @@
  {
   "title": "La lección de August (Wonder)",
   "author": "R.J. Palacio",
-  "country": "USA",
+  "country": "EE. UU.",
   "grade": "6",
   "track": "native",
   "level_label": "",
@@ -5882,7 +5882,7 @@
  {
   "title": "later Manolito titles",
   "author": "Elvira Lindo",
-  "country": "Spain",
+  "country": "España",
   "grade": "6",
   "track": "native",
   "level_label": "",
@@ -5894,7 +5894,7 @@
  {
   "title": "juvenile mysteries",
   "author": "Care Santos",
-  "country": "Spain",
+  "country": "España",
   "grade": "6",
   "track": "native",
   "level_label": "",
@@ -5930,7 +5930,7 @@
  {
   "title": "juvenile titles",
   "author": "Fernando Marías",
-  "country": "Spain",
+  "country": "España",
   "grade": "6",
   "track": "native",
   "level_label": "",
@@ -5966,7 +5966,7 @@
  {
   "title": "Las chicas de alambre",
   "author": "Jordi Sierra i Fabra",
-  "country": "Spain",
+  "country": "España",
   "grade": "7",
   "track": "native",
   "level_label": "",
@@ -5978,7 +5978,7 @@
  {
   "title": "Los ojos del lobo",
   "author": "Care Santos",
-  "country": "Spain",
+  "country": "España",
   "grade": "7",
   "track": "native",
   "level_label": "",
@@ -5990,7 +5990,7 @@
  {
   "title": "Apareció en mi ventana",
   "author": "Alfredo Gómez Cerdá",
-  "country": "Spain",
+  "country": "España",
   "grade": "7",
   "track": "native",
   "level_label": "",
@@ -6002,7 +6002,7 @@
  {
   "title": "El paso del estrecho",
   "author": "Fernando Lalana",
-  "country": "Spain",
+  "country": "España",
   "grade": "7",
   "track": "native",
   "level_label": "",
@@ -6014,7 +6014,7 @@
  {
   "title": "Memorias de Idhún (Resistencia)",
   "author": "Laura Gallego",
-  "country": "Spain",
+  "country": "España",
   "grade": "7",
   "track": "native",
   "level_label": "",
@@ -6026,7 +6026,7 @@
  {
   "title": "El señor de los ladrones",
   "author": "Cornelia Funke",
-  "country": "Germany",
+  "country": "Alemania",
   "grade": "7",
   "track": "native",
   "level_label": "",
@@ -6038,7 +6038,7 @@
  {
   "title": "El niño con el pijama de rayas",
   "author": "John Boyne",
-  "country": "Ireland",
+  "country": "Irlanda",
   "grade": "7",
   "track": "native",
   "level_label": "",
@@ -6062,7 +6062,7 @@
  {
   "title": "Rebeldes (The Outsiders)",
   "author": "S.E. Hinton",
-  "country": "USA",
+  "country": "EE. UU.",
   "grade": "7",
   "track": "native",
   "level_label": "",
@@ -6086,7 +6086,7 @@
  {
   "title": "El secreto de If",
   "author": "Ana Alonso & Pelegrín",
-  "country": "Spain",
+  "country": "España",
   "grade": "7",
   "track": "native",
   "level_label": "",
@@ -6098,7 +6098,7 @@
  {
   "title": "Noche de viernes",
   "author": "Jordi Sierra i Fabra",
-  "country": "Spain",
+  "country": "España",
   "grade": "7",
   "track": "native",
   "level_label": "",
@@ -6134,7 +6134,7 @@
  {
   "title": "Poesía eras tú",
   "author": "Francisco Hinojosa",
-  "country": "Mexico",
+  "country": "México",
   "grade": "7",
   "track": "native",
   "level_label": "",
@@ -6170,7 +6170,7 @@
  {
   "title": "juvenile novels",
   "author": "Ricardo Chávez Castañeda",
-  "country": "Mexico",
+  "country": "México",
   "grade": "7",
   "track": "native",
   "level_label": "",
@@ -6230,7 +6230,7 @@
  {
   "title": "El Llano en llamas (relatos, sel.)",
   "author": "Juan Rulfo",
-  "country": "Mexico",
+  "country": "México",
   "grade": "8",
   "track": "native",
   "level_label": "",
@@ -6242,7 +6242,7 @@
  {
   "title": "Como agua para chocolate",
   "author": "Laura Esquivel",
-  "country": "Mexico",
+  "country": "México",
   "grade": "8",
   "track": "native",
   "level_label": "",
@@ -6254,7 +6254,7 @@
  {
   "title": "La casa en Mango Street",
   "author": "Sandra Cisneros",
-  "country": "USA (Chicana)",
+  "country": "EE. UU.",
   "grade": "8",
   "track": "native",
   "level_label": "",
@@ -6266,7 +6266,7 @@
  {
   "title": "De cómo las muchachas García perdieron el acento",
   "author": "Julia Álvarez",
-  "country": "Dominican/USA",
+  "country": "Dominican",
   "grade": "8",
   "track": "native",
   "level_label": "",
@@ -6278,7 +6278,7 @@
  {
   "title": "Primera memoria",
   "author": "Ana María Matute",
-  "country": "Spain",
+  "country": "España",
   "grade": "8",
   "track": "native",
   "level_label": "",
@@ -6290,7 +6290,7 @@
  {
   "title": "Cuatro semanas y media",
   "author": "Jordi Sierra i Fabra",
-  "country": "Spain",
+  "country": "España",
   "grade": "8",
   "track": "native",
   "level_label": "",
@@ -6302,7 +6302,7 @@
  {
   "title": "Los cachorros",
   "author": "Mario Vargas Llosa",
-  "country": "Peru",
+  "country": "Perú",
   "grade": "8",
   "track": "native",
   "level_label": "",
@@ -6350,7 +6350,7 @@
  {
   "title": "Cometas en el cielo",
   "author": "Khaled Hosseini",
-  "country": "Afghan/USA",
+  "country": "Afghan",
   "grade": "8",
   "track": "native",
   "level_label": "",
@@ -6362,7 +6362,7 @@
  {
   "title": "Bajo la misma estrella",
   "author": "John Green",
-  "country": "USA",
+  "country": "EE. UU.",
   "grade": "8",
   "track": "native",
   "level_label": "",
@@ -6374,7 +6374,7 @@
  {
   "title": "Fahrenheit 451",
   "author": "Ray Bradbury",
-  "country": "USA",
+  "country": "EE. UU.",
   "grade": "8",
   "track": "native",
   "level_label": "",
@@ -6386,7 +6386,7 @@
  {
   "title": "Rebelión en la granja",
   "author": "George Orwell",
-  "country": "UK",
+  "country": "Reino Unido",
   "grade": "8",
   "track": "native",
   "level_label": "",
@@ -6398,7 +6398,7 @@
  {
   "title": "Romancero gitano (sel.)",
   "author": "Federico García Lorca",
-  "country": "Spain",
+  "country": "España",
   "grade": "8",
   "track": "native",
   "level_label": "",
@@ -6434,7 +6434,7 @@
  {
   "title": "selección juvenil",
   "author": "Elena Poniatowska",
-  "country": "Mexico",
+  "country": "México",
   "grade": "8",
   "track": "native",
   "level_label": "",
@@ -6458,7 +6458,7 @@
  {
   "title": "juvenile/adult crossover",
   "author": "Rosa Montero",
-  "country": "Spain",
+  "country": "España",
   "grade": "8",
   "track": "native",
   "level_label": "",
@@ -6806,7 +6806,7 @@
  {
   "title": "Como agua para chocolate",
   "author": "Laura Esquivel (Mexico)",
-  "country": "Mexico",
+  "country": "México",
   "grade": "",
   "track": "adult",
   "level_label": "",
@@ -6830,7 +6830,7 @@
  {
   "title": "El Llano en llamas",
   "author": "Juan Rulfo (Mexico)",
-  "country": "Mexico",
+  "country": "México",
   "grade": "",
   "track": "adult",
   "level_label": "",
@@ -6854,7 +6854,7 @@
  {
   "title": "Los cachorros",
   "author": "Mario Vargas Llosa (Peru)",
-  "country": "Peru",
+  "country": "Perú",
   "grade": "",
   "track": "adult",
   "level_label": "",

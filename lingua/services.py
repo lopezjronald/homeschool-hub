@@ -194,6 +194,20 @@ def book_logs(learner):
     return list(learner.book_logs.select_related("book").all())
 
 
+_BAND_GRADES = {
+    profiles.KIDS_EARLY: ["PK", "K", "1", "2"],
+    profiles.KIDS_OLDER: ["3", "4", "5", "6"],
+}
+
+
+def suggested_books(learner, *, limit=12):
+    """A short list of catalog books at the learner's band, for the kid portal's quick
+    'which book did you read?' picker (the child can still type any other title)."""
+    band = getattr(getattr(learner, "profile", None), "track_profile", "")
+    grades = _BAND_GRADES.get(band) or LibraryBook.GRADE_ORDER
+    return list(LibraryBook.objects.filter(grade__in=grades).order_by("grade", "title")[:limit])
+
+
 def delete_book_log(learner, entry_id):
     """Delete one of the learner's own book-log entries. Returns True if removed."""
     entry = learner.book_logs.filter(pk=entry_id).first()

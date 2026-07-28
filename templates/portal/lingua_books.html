@@ -1,0 +1,87 @@
+{% extends "portal/base_portal.html" %}
+{% block title %}Mis libros · {{ student.first_name }}{% endblock %}
+
+{% block content %}
+<div class="container portal-narrow">
+
+  <div class="portal-hero mb-4">
+    <h1>📔 Mis libros</h1>
+    <p class="mb-0">Los libros que leíste. ¡Buen trabajo, {{ student.first_name }}! 🌱</p>
+  </div>
+
+  {% if celebrate %}
+    <div class="alert alert-success text-center" role="status">🎉 ¡Anotado! Sigue leyendo.</div>
+  {% endif %}
+
+  <div class="card portal-card mb-4"><div class="card-body py-3 text-center">
+    <div class="h3 mb-0">{{ count }}</div>
+    <small class="text-muted">libros leídos</small>
+  </div></div>
+
+  {# --- Entry: pick a book, then a feeling submits it (LGA-75) --- #}
+  <div class="card portal-card mb-4"><div class="card-body">
+    <h2 class="portal-section-title">¿Qué libro leíste?</h2>
+    <form method="post" action="{% url 'portal:lingua_book_log' token=token %}" id="book-log-form">
+      <div class="book-pick-list mb-3">
+        {% for book in suggested %}
+        <label class="book-pick">
+          <input type="radio" name="book_id" value="{{ book.id }}" class="visually-hidden" required>
+          <span class="book-pick-title">{{ book.title }}</span>
+          {% if book.author %}<span class="book-pick-sub">{{ book.author }}</span>{% endif %}
+        </label>
+        {% endfor %}
+        <label class="book-pick book-pick--other">
+          <input type="radio" name="book_id" value="other" class="visually-hidden" id="book-other-radio">
+          <span class="book-pick-title">✏️ Otro libro…</span>
+        </label>
+      </div>
+
+      <div class="book-other-fields mb-3" id="book-other-fields" hidden>
+        <input type="text" name="custom_title" class="form-control mb-2" placeholder="Título del libro" maxlength="200">
+        <input type="text" name="custom_author" class="form-control" placeholder="Autor (si lo sabes)" maxlength="200">
+      </div>
+
+      <p class="portal-section-title mb-2">¿Cómo te fue?</p>
+      <div class="finish-choices book-feelings">
+        <button type="submit" name="enjoyed" value="loved" class="felt">😀<span>¡Me encantó!</span></button>
+        <button type="submit" name="enjoyed" value="ok" class="felt">🙂<span>Estuvo bien</span></button>
+        <button type="submit" name="enjoyed" value="meh" class="felt">😐<span>Más o menos</span></button>
+      </div>
+
+      <details class="mt-3">
+        <summary class="text-muted small">Cambiar la fecha o agregar una nota</summary>
+        <input type="date" name="read_on" class="form-control mt-2" value="{{ today|date:'Y-m-d' }}">
+        <input type="text" name="note" class="form-control mt-2" maxlength="140" placeholder="¿Algo que contar?">
+      </details>
+    </form>
+  </div></div>
+
+  {% if entries %}
+    <h2 class="portal-section-title mt-4">Ya leí estos 📚</h2>
+    <div class="list-group">
+      {% for e in entries %}
+      <div class="list-group-item d-flex align-items-center gap-3">
+        <span class="fs-3">{{ e.enjoyed_emoji }}</span>
+        <div class="flex-grow-1">
+          <div class="fw-semibold">{{ e.display_title }}</div>
+          <div class="small text-muted">{{ e.read_on|date:"j M" }}{% if e.display_author %} · {{ e.display_author }}{% endif %}</div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  {% endif %}
+
+  <p class="mt-4"><a href="{% url 'portal:lingua_plan' token=token %}">&larr; Volver</a></p>
+</div>
+
+<script>
+  (function () {
+    var fields = document.getElementById("book-other-fields");
+    document.querySelectorAll('input[name="book_id"]').forEach(function (r) {
+      r.addEventListener("change", function () {
+        fields.hidden = document.getElementById("book-other-radio").checked === false;
+      });
+    });
+  })();
+</script>
+{% endblock %}

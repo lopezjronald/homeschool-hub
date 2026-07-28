@@ -3751,3 +3751,67 @@ class LibraryAndBookLogServiceTests(TestCase):
         self.assertFalse(services.delete_book_log(other, new.pk)) # not other's
         self.assertTrue(services.delete_book_log(self.learner, new.pk))
         self.assertEqual([l.pk for l in services.book_logs(self.learner)], [old.pk])
+
+
+class ReadingLogViewTests(TestCase):
+    """LGA-75: parent Library List browser + dual-portal reading log views."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from students.models import Student
+        from portal.tokens import make_portal_token
+        cls.parent = User.objects.create_user("lib_parent", password="pw")
+        cls.student = Student.objects.create(parent=cls.parent, first_name="Vio")
+        cls.token = make_portal_token(cls.student)
+        cls.book = LibraryBook.objects.create(
+            title="Manuelita la tortuga", author="María Elena Walsh",
+            country="Argentina", grade="1", note="canción-poema")
+        LibraryBook.objects.create(title="El pollo Pepe", author="Nick Denchfield",
+                                   country="España", grade="1")
+
+    def test_library_list_requires_login(self):
+        self.assertIn(self.client.get(reverse("lingua:library_list")).status_code, (301, 302))
+
+    def test_library_list_renders_books_and_filters(self):
+        self.client.force_login(self.parent)
+        html = self.client.get(reverse("lingua:library_list") + "?grade=1").content.decode()
+        self.assertIn("Manuelita la tortuga", html)
+        self.assertIn("María Elena Walsh", html)
+        self.assertIn("Library list", html)             # shared sub-nav present
+        self.assertIn("Print this grade", html)
+
+    def test_library_country_filter_excludes_others(self):
+        self.client.force_login(self.parent)
+        html = self.client.get(reverse("lingua:library_list") + "?grade=1&region=España").content.decode()
+        self.assertIn("El pollo Pepe", html)            # España book kept
+        self.assertNotIn("Manuelita la tortuga", html)  # Argentina book filtered out
+
+    def test_kid_books_page_renders_entry(self):
+        html = self.client.get(reverse("portal:lingua_books", args=[self.token])).content.decode()
+        self.assertIn("Mis libros", html)
+        self.assertIn("¿Cómo te fue?", html)            # the feeling picker
+        self.assertIn('id="book-log-form"', html)
+
+    def test_kid_logs_a_catalog_book(self):
+        r = self.client.post(reverse("portal:lingua_book_log", args=[self.token]),
+                             {"book_id": str(self.book.pk), "enjoyed": "loved"})
+        self.assertEqual(r.status_code, 302)
+        self.assertIn("logged=1", r.url)
+        learner = Learner.objects.get(host_student_id=self.student.pk)
+        e = learner.book_logs.get()
+        self.assertEqual(e.book, self.book)
+        self.assertEqual(e.enjoyed, "loved")
+        self.assertEqual(e.logged_by, "kid")
+
+    def test_kid_logs_custom_title(self):
+        r = self.client.post(reverse("portal:lingua_book_log", args=[self.token]),
+                             {"book_id": "other", "custom_title": "Un libro cualquiera", "enjoyed": "ok"})
+        self.assertEqual(r.status_code, 302)
+        learner = Learner.objects.get(host_student_id=self.student.pk)
+        self.assertEqual(learner.book_logs.get().display_title, "Un libro cualquiera")
+
+    def test_parent_book_log_page_renders(self):
+        self.client.force_login(self.parent)
+        r = self.client.get(reverse("lingua:book_log"))
+        self.assertEqual(r.status_code, 200)
+        self.assertIn("Spanish reading log", r.content.decode())

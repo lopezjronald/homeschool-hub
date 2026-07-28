@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block title %}Spanish Library List · Lingua{% endblock %}
+{% block content %}
+<div class="container py-4">
+
+  <div class="d-flex justify-content-between align-items-center flex-wrap mb-1">
+    <h1 class="h3 mb-0">Spanish Library List</h1>
+    <button type="button" class="btn btn-sm btn-outline-primary no-print" onclick="window.print()">
+      🖨️ Print this grade
+    </button>
+  </div>
+  <p class="text-muted no-print">Real Spanish books to borrow from the library, by grade — from across
+    Latin America and Spain. For parents; the kids don't see this list.</p>
+
+  {% include "lingua/_lingua_subnav.html" with active='library' %}
+
+  {# Print-only header so the sheet is self-labeling. #}
+  <h2 class="d-none d-print-block mb-3">Spanish Library — {{ active_grade_label }}</h2>
+
+  <ul class="nav nav-tabs mb-3 no-print" role="tablist">
+    {% for g in grades %}
+      <li class="nav-item">
+        <a class="nav-link{% if g.value == active_grade %} active{% endif %}"
+           {% if g.value == active_grade %}aria-current="page"{% endif %}
+           href="?grade={{ g.value }}{% if region %}&amp;region={{ region|urlencode }}{% endif %}{% if q %}&amp;q={{ q|urlencode }}{% endif %}">
+          {{ g.label }} <span class="badge bg-light text-dark ms-1">{{ g.count }}</span>
+        </a>
+      </li>
+    {% endfor %}
+  </ul>
+
+  <form method="get" class="card no-print mb-3"><div class="card-body">
+    <input type="hidden" name="grade" value="{{ active_grade }}">
+    <div class="row g-2 align-items-end">
+      <div class="col-sm-6 col-md-5">
+        <label class="form-label" for="q">Search title or author</label>
+        <input type="search" class="form-control" id="q" name="q" value="{{ q }}"
+               placeholder="e.g. Isol, la lluvia, Rubio…">
+      </div>
+      <div class="col-sm-4 col-md-4">
+        <label class="form-label" for="region">Country</label>
+        <select class="form-select" id="region" name="region">
+          <option value="">All countries</option>
+          {% for c in countries %}
+            <option value="{{ c }}"{% if c == region %} selected{% endif %}>{{ c }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-sm-2 col-md-3 d-flex gap-2">
+        <button class="btn btn-primary flex-grow-1" type="submit">Filter</button>
+        <a class="btn btn-outline-secondary" href="?grade={{ active_grade }}">Clear</a>
+      </div>
+    </div>
+  </div></form>
+
+  <p class="text-muted small">{{ books|length }} book{{ books|length|pluralize }}
+    for {{ active_grade_label }}{% if region %} · {{ region }}{% endif %}{% if q %} · “{{ q }}”{% endif %}.</p>
+
+  {% if books %}
+    <div class="list-group lingua-book-list">
+      {% for book in books %}
+      <div class="list-group-item d-flex align-items-start gap-3 py-3 lingua-book-row">
+        <span class="book-check" aria-hidden="true"></span>
+        <div class="flex-grow-1">
+          <div class="d-flex justify-content-between align-items-baseline flex-wrap gap-2">
+            <span class="fw-semibold lingua-book-title">{{ book.title }}</span>
+            {% if book.country %}<span class="badge bg-light text-dark">{{ book.country }}</span>{% endif %}
+          </div>
+          {% if book.author %}<div class="text-muted small">{{ book.author }}</div>{% endif %}
+          {% if book.note %}<div class="lingua-book-note mt-1">{{ book.note }}</div>{% endif %}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  {% else %}
+    <div class="alert alert-info">No books match. Try clearing the filters, or pick another grade.</div>
+  {% endif %}
+</div>
+{% endblock %}

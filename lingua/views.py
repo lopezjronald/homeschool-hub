@@ -13,13 +13,15 @@ from django.urls import reverse
 from django.utils.csp import CSP
 from django.views.decorators.http import require_http_methods
 
-from core.permissions import can_edit_family, user_can_edit
+from django.db.models import Count, Q
+
+from core.permissions import can_edit_family, can_edit_family_or_global, user_can_edit
 from core.utils import get_selected_family
 
 from . import cognates, illustrate, services, storage
 from .csp import LINGUA_CSP
 from .integrations import directory
-from .models import Learner, Story
+from .models import BookLogEntry, Learner, LibraryBook, Story
 
 
 @login_required
@@ -255,5 +257,129 @@ def progress(request):
 def _int_or_none(value):
     try:
         return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+@login_required
+def library_list(request):
+    """Parent-only browser of the curated Library List — REAL Spanish books to borrow
+    (LGA-75), grouped by grade (Pre-K..8th) with region/search filters and
+    print-per-grade. Reference content (not per-family), so any signed-in adult may
+    view it; kids are tokenless and never reach this login-gated page."""
+    label = dict(LibraryBook.GRADE_CHOICES)
+    active_grade = request.GET.get("grade") or LibraryBook.GRADE_ORDER[0]
+    if active_grade not in label:
+        active_grade = LibraryBook.GRADE_ORDER[0]
+    region = request.GET.get("region", "").strip()
+    q = request.GET.get("q", "").strip()
+
+    base = LibraryBook.objects.all()
+    counts = {g: 0 for g in LibraryBook.GRADE_ORDER}
+    for row in base.values("grade").annotate(n=Count("id")):
+        counts[row["grade"]] = row["n"]
+    grades = [{"value": g, "label": label[g], "count": counts.get(g, 0)}
+              for g in LibraryBook.GRADE_ORDER]
+
+    books = base.filter(grade=active_grade)
+    if region:
+        books = books.filter(country__iexact=region)
+    if q:
+        books = books.filter(Q(title__icontains=q) | Q(author__icontains=q))
+    return render(request, "lingua/library_list.html", {
+        "subnav": "library",
+        "grades": grades, "active_grade": active_grade,
+        "active_grade_label": label.get(active_grade, active_grade),
+        "books": books.order_by("title"),
+        "countries": services.library_countries(),
+        "region": region, "q": q,
+    })
+
+
+def _family_learners(request):
+    """(family, {host_student_id: learner}, {host_student_id: name}) for the selected
+    family — shared by the reading-log parent views."""
+    family = get_selected_family(request)
+    ids = directory.list_for_family(family.id) if family else []
+    learners = {l.host_student_id: l for l in Learner.objects.filter(host_student_id__in=ids)}
+    names = {hsid: (directory.get_learner_display(hsid) or {}).get("name") or f"Learner {hsid}"
+             for hsid in learners}
+    return family, learners, names
+
+
+@login_required
+def book_log(request):
+    """Parent view of the family's Spanish physical-book reading log (LGA-75)."""
+    family, learners, names = _family_learners(request)
+    can_edit = can_edit_family_or_global(request.user, family)
+    entries = list(
+        BookLogEntry.objects.filter(learner__in=learners.values())
+        .select_related("book", "learner").order_by("-read_on", "-created_at")
+    )
+    for e in entries:
+        e.child_name = names.get(e.learner.host_student_id, "")
+    return render(request, "lingua/book_log.html", {
+        "subnav": "books", "entries": entries, "can_edit": can_edit,
+        "no_family": family is None,
+    })
+
+
+@login_required
+@require_http_methods(["GET", "POST"])
+def book_log_add(request):
+    """Parent logs a physical book a child read (LGA-75). Family-scoped write."""
+    family, learners, names = _family_learners(request)
+    if not can_edit_family_or_global(request.user, family):
+        raise Http404
+
+    if request.method == "POST":
+        learner = learners.get(_int_or_none(request.POST.get("learner")))
+        if learner is None:
+            raise Http404  # only a learner in the user's own family
+        bid = request.POST.get("book_id") or ""
+        book = LibraryBook.objects.filter(pk=bid).first() if bid.isdigit() else None
+        from datetime import date
+        try:
+            read_on = date.fromisoformat(request.POST.get("read_on", ""))
+        except ValueError:
+            read_on = None
+        services.log_book(
+            learner, book=book,
+            title=request.POST.get("custom_title", ""),
+            author=request.POST.get("custom_author", ""),
+            read_on=read_on, enjoyed=request.POST.get("enjoyed", ""),
+            note=request.POST.get("note", ""), logged_by=BookLogEntry.PARENT,
+        )
+        messages.success(request, "Book added to the reading log.")
+        return redirect("lingua:book_log")
+
+    learner_rows = [{"pk": l.pk, "name": names.get(hsid, "")}
+                    for hsid, l in sorted(learners.items())]
+    prebook = LibraryBook.objects.filter(pk=request.GET.get("book")).first()
+    from django.utils import timezone
+    return render(request, "lingua/book_log_form.html", {
+        "subnav": "books", "learners": learner_rows, "prebook": prebook,
+        "enjoyed_choices": BookLogEntry.ENJOYED_CHOICES, "today": timezone.localdate(),
+        "no_family": family is None,
+    })
+
+
+@login_required
+@require_http_methods(["POST"])
+def book_log_delete(request, entry_id):
+    """Parent removes a book-log entry (only for a learner in their family)."""
+    family, learners, _ = _family_learners(request)
+    if not can_edit_family_or_global(request.user, family):
+        raise Http404
+    for learner in learners.values():
+        if services.delete_book_log(learner, entry_id):
+            messages.success(request, "Entry removed.")
+            break
+    return redirect("lingua:book_log")
+
+
+def _int_or_none(v):
+    try:
+        return int(v)
     except (TypeError, ValueError):
         return None

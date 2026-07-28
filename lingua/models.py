@@ -572,6 +572,10 @@ class BookLogEntry(models.Model):
     def display_author(self):
         return (self.book.author if self.book else self.author) or ""
 
+    @property
+    def enjoyed_emoji(self):
+        return {self.LOVED: "😀", self.OK: "🙂", self.MEH: "😐"}.get(self.enjoyed, "📖")
+
 
 class ReadingSession(models.Model):
     """One reading of a story by a learner — the atom behind the reading-volume hero

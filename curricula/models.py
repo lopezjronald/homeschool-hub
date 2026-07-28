@@ -275,13 +275,16 @@ class CurriculumPlacement(models.Model):
         Skipped lessons are 'resolved' so the bar advances past them (HH-141)."""
         ids = self._progress_lesson_ids()
         id_set = set(ids)
-        # (a) explicit parent marks
-        resolved = set(
+        # (a) explicit parent marks — fetched ONCE with their status, so progress()
+        # can derive the skipped count without a second COUNT query. order_by() clears
+        # the model Meta ordering, which would otherwise join chapter on every read.
+        self._marks = dict(
             LessonProgress.objects.filter(
                 child_id=self.child_id, lesson_id__in=ids,
                 status__in=(LessonProgress.COMPLETED, LessonProgress.SKIPPED),
-            ).values_list("lesson_id", flat=True)
+            ).order_by().values_list("lesson_id", "status")
         )
+        resolved = set(self._marks)
         # (b) submitted student work (imported here to avoid a circular import)
         from tutor.models import QuestionSet, ResponseSheet
         resolved |= set(
@@ -312,9 +315,8 @@ class CurriculumPlacement(models.Model):
         total = len(ids)
         if not total:
             return {"done": 0, "total": 0, "pct": 0, "skipped": 0}
-        skipped = LessonProgress.objects.filter(
-            child_id=self.child_id, lesson_id__in=ids, status=LessonProgress.SKIPPED,
-        ).count()
+        # Derived from the marks _resolved_lesson_ids already fetched — no extra query.
+        skipped = sum(1 for st in self._marks.values() if st == LessonProgress.SKIPPED)
         done = len(resolved)
         return {"done": done, "total": total, "pct": round(done / total * 100),
                 "skipped": skipped}

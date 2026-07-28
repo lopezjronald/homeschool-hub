@@ -25,6 +25,8 @@
     </div>
     {% if current_lesson %}
       <p class="small mt-1 mb-0">Now: <strong>{{ current_lesson.code }} — {{ current_lesson.title }}</strong></p>
+    {% elif finished %}
+      <p class="small mt-1 mb-0 text-success"><strong>🎉 Finished — every lesson is complete or skipped.</strong></p>
     {% endif %}
   </div>
 

@@ -3,6 +3,7 @@ import logging
 from django.contrib.auth import logout
 from django.contrib.auth.decorators import login_required
 from django.db.models import Q, ProtectedError
+from django.http import Http404
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib import messages
 from django.urls import reverse
@@ -282,6 +283,19 @@ def student_delete(request, pk):
     return render(request, "students/student_confirm_delete.html", {"student": student})
 
 
+def _child_curriculum(request, student, curriculum_id):
+    """Resolve a curriculum for a WRITE against ``student`` (HH-141).
+
+    Beyond the normal viewable scope, require that the curriculum belongs to the
+    child's own family (or is family-less content the requester owns). Without this a
+    parent of two families could bind their child to the other family's curriculum."""
+    from django.db.models import Q as _Q
+    from curricula.models import Curriculum as _Curriculum
+    qs = viewable_queryset(_Curriculum.objects.all(), request.user).filter(
+        _Q(family=student.family) | _Q(family__isnull=True))
+    return get_object_or_404(qs, pk=curriculum_id)
+
+
 @login_required
 def student_lessons(request, pk, curriculum_id):
     """Per-child lesson checklist for one curriculum (HH-141): each lesson's status
@@ -312,7 +326,8 @@ def student_lessons(request, pk, curriculum_id):
         ).values_list("question_set__lesson_id", flat=True)
     )
     placement = CurriculumPlacement.objects.filter(child=student, curriculum=curriculum).first()
-    current_id = placement.current_lesson_id if placement else None
+    _act = placement.current_actionable_lesson() if placement else None
+    current_id = _act.id if _act else None
     for lesson in lessons:
         lesson.mark_status = marks.get(lesson.id) or ("submitted" if lesson.id in submitted else "not_started")
         lesson.is_current = lesson.id == current_id
@@ -325,10 +340,14 @@ def student_lessons(request, pk, curriculum_id):
     ]
     prog = placement.progress() if placement else {
         "done": 0, "total": len(lessons), "pct": 0, "skipped": 0}
+    # "Now" is DERIVED live (first unresolved lesson, skips passed over) — the stored
+    # placement pointer is the parent's placement and is never auto-rewritten.
+    actionable = placement.current_actionable_lesson() if placement else None
     return render(request, "students/student_lessons.html", {
         "student": student, "curriculum": curriculum, "chapters": chapters,
         "can_edit": can_edit, "progress": prog,
-        "current_lesson": placement.current_lesson if placement else None,
+        "current_lesson": actionable,
+        "finished": bool(placement and actionable is None and lessons),
     })
 
 
@@ -339,22 +358,30 @@ def lesson_mark(request, pk, curriculum_id):
     (editable_queryset 404s a view-only role). Keeps the placement pointer canonical."""
     from curricula.models import Curriculum, CurriculumPlacement, Lesson, LessonProgress
 
-    student = get_object_or_404(editable_queryset(Student.objects.all(), request.user), pk=pk)
-    curriculum = get_object_or_404(
-        viewable_queryset(Curriculum.objects.all(), request.user), pk=curriculum_id)
-    lesson = get_object_or_404(
-        Lesson.objects.filter(chapter__curriculum=curriculum), pk=request.POST.get("lesson"))
     action = request.POST.get("action")
+    if action not in ("reset", LessonProgress.COMPLETED, LessonProgress.SKIPPED):
+        raise Http404  # unknown action: change nothing
+    student = get_object_or_404(editable_queryset(Student.objects.all(), request.user), pk=pk)
+    curriculum = _child_curriculum(request, student, curriculum_id)
+    lesson_pk = (request.POST.get("lesson") or "").strip()
+    if not (lesson_pk.isdigit() and lesson_pk.isascii()):
+        raise Http404  # a non-numeric pk must 404, not 500
+    lesson = get_object_or_404(
+        Lesson.objects.filter(chapter__curriculum=curriculum), pk=lesson_pk)
     if action == "reset":
         LessonProgress.objects.filter(child=student, lesson=lesson).delete()
-    elif action in (LessonProgress.COMPLETED, LessonProgress.SKIPPED):
+    else:
         LessonProgress.objects.update_or_create(
             child=student, lesson=lesson,
             defaults={"status": action, "marked_by": request.user,
                       "note": (request.POST.get("note", "") or "")[:300]})
-    placement, _ = CurriculumPlacement.objects.get_or_create(child=student, curriculum=curriculum)
-    placement.current_lesson = placement.current_actionable_lesson()
-    placement.save(update_fields=["current_lesson", "updated_at"])
+    # Ensure a placement exists so progress has something to hang off, but NEVER
+    # rewrite its current_lesson: that pointer is the PARENT's placement, and
+    # everything before it counts as done (the floor). Auto-advancing it made "Undo" a
+    # permanent no-op (the floor re-resolved the un-done lesson), silently rewrote an
+    # opener placement, and nulled the pointer on the last lesson. "Where the child is
+    # now" is derived live by CurriculumPlacement.current_actionable_lesson().
+    CurriculumPlacement.objects.get_or_create(child=student, curriculum=curriculum)
     return redirect("students:student_lessons", pk=pk, curriculum_id=curriculum_id)
 
 
@@ -365,8 +392,7 @@ def lessons_skip_practice(request, pk, curriculum_id):
     from curricula.models import Curriculum, CurriculumPlacement, Lesson, LessonProgress
 
     student = get_object_or_404(editable_queryset(Student.objects.all(), request.user), pk=pk)
-    curriculum = get_object_or_404(
-        viewable_queryset(Curriculum.objects.all(), request.user), pk=curriculum_id)
+    curriculum = _child_curriculum(request, student, curriculum_id)
     placement, _ = CurriculumPlacement.objects.get_or_create(child=student, curriculum=curriculum)
     ids, resolved = placement._resolved_lesson_ids()
     practice = (Lesson.objects.filter(chapter__curriculum=curriculum,
@@ -378,7 +404,5 @@ def lessons_skip_practice(request, pk, curriculum_id):
             child=student, lesson=lesson,
             defaults={"status": LessonProgress.SKIPPED, "marked_by": request.user})
         n += 1
-    placement.current_lesson = placement.current_actionable_lesson()
-    placement.save(update_fields=["current_lesson", "updated_at"])
     messages.success(request, f"Skipped {n} remaining practice lesson{'' if n == 1 else 's'}.")
     return redirect("students:student_lessons", pk=pk, curriculum_id=curriculum_id)

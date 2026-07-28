@@ -3778,7 +3778,7 @@ class ReadingLogViewTests(TestCase):
         self.assertIn("Manuelita la tortuga", html)
         self.assertIn("María Elena Walsh", html)
         self.assertIn("Library list", html)             # shared sub-nav present
-        self.assertIn("Print this grade", html)
+        self.assertIn("window.print()", html)           # print action available
 
     def test_library_country_filter_excludes_others(self):
         self.client.force_login(self.parent)
@@ -3871,9 +3871,10 @@ class LibraryTrackTests(TestCase):
     def test_isbn_and_translation_badge_render(self):
         html = self._get("?grade=4")
         self.assertIn("978-607-16-0001-1", html)     # ISBN shown for library lookup
+        self.assertIn("original", html)              # originally-Spanish marked
         pk_html = self._get("?grade=PK")
-        self.assertIn("trad.", pk_html)              # translation marked
-        self.assertNotIn("trad.", html)              # original Spanish is not
+        self.assertIn("traducción", pk_html)         # translation marked
+        self.assertNotIn("traducción", html)         # original Spanish is not
 
     def test_invalid_track_falls_back_to_native(self):
         html = self._get("?track=bogus&grade=4")
@@ -4079,3 +4080,61 @@ class TemplateCommentLeakGuardTests(TestCase):
             if text.count("{#") != text.count("#}"):
                 offenders.append(f"{rel}: unbalanced {{# vs #}}")
         self.assertEqual(offenders, [], f"Leaky Django template comments: {offenders}")
+
+
+class LibraryFilterTests(TestCase):
+    """LGA-75: the grade/country/search filters must actually work together — the
+    country choices are scoped to the CURRENT grade so every option returns books."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.parent = User.objects.create_user("filt_parent", password="pw")
+        # grade 1: México + España ; grade 5: Uruguay only
+        LibraryBook.objects.create(title="Camino a casa", author="Jairo Buitrago",
+                                   country="Colombia", grade="1")
+        LibraryBook.objects.create(title="El pollo Pepe", author="Nick Denchfield",
+                                   country="España", grade="1")
+        LibraryBook.objects.create(title="Cuentos de la selva", author="Horacio Quiroga",
+                                   country="Uruguay", grade="5")
+
+    def setUp(self):
+        self.client.force_login(self.parent)
+
+    def _get(self, qs):
+        return self.client.get(reverse("lingua:library_list") + qs).content.decode()
+
+    def test_country_choices_are_scoped_to_the_active_grade(self):
+        # The reported bug: the dropdown offered every country in the catalog, so most
+        # picks returned nothing and the filter looked broken.
+        g1 = self._get("?track=native&grade=1")
+        self.assertIn('value="Colombia"', g1)
+        self.assertIn('value="España"', g1)
+        self.assertNotIn('value="Uruguay"', g1)      # no grade-1 Uruguay book → not offered
+        g5 = self._get("?track=native&grade=5")
+        self.assertIn('value="Uruguay"', g5)
+        self.assertNotIn('value="Colombia"', g5)
+
+    def test_country_filter_narrows_within_the_grade(self):
+        html = self._get("?track=native&grade=1&region=España")
+        self.assertIn("El pollo Pepe", html)
+        self.assertNotIn("Camino a casa", html)
+
+    def test_search_and_grade_combine(self):
+        self.assertIn("Camino a casa", self._get("?track=native&grade=1&q=camino"))
+        self.assertNotIn("Camino a casa", self._get("?track=native&grade=5&q=camino"))
+
+    def test_out_of_scope_country_is_ignored_not_empty(self):
+        # Selecting grade 5 while ?region=Colombia (a grade-1 country) must fall back to
+        # "all countries" for that grade rather than render a confusing empty page.
+        html = self._get("?track=native&grade=5&region=Colombia")
+        self.assertIn("Cuentos de la selva", html)
+
+    def test_grade_defaults_to_the_first_grade_that_has_books(self):
+        html = self._get("?track=native")
+        self.assertIn("Camino a casa", html)         # grade 1 is the first populated band
+
+    def test_grade_band_shows_its_defining_characteristics(self):
+        from lingua.views import grade_descriptor
+        self.assertTrue(grade_descriptor("PK"))      # loaded from the attachment
+        html = self._get("?track=native&grade=1")
+        self.assertIn("What books look like at this level", html)

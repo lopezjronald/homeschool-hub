@@ -513,10 +513,21 @@ class LibraryBook(models.Model):
     # track; FREE is public-domain/no-cost reading.
     NATIVE, CI, ADULT, FREE = "native", "ci", "adult", "free"
     TRACK_CHOICES = [
-        (NATIVE, "Native grade-level"), (CI, "For learners (CI/TPRS)"),
-        (ADULT, "Adult track"), (FREE, "Free / public domain"),
+        (NATIVE, "By grade"), (CI, "For learners"),
+        (ADULT, "Adult track"), (FREE, "Free online"),
     ]
-    TRACK_ORDER = [NATIVE, CI, ADULT, FREE]
+    TRACK_ORDER = [CI, NATIVE, ADULT, FREE]   # CI first: it's the beginner's ladder
+    TRACK_ICONS = {NATIVE: "📚", CI: "🚀", ADULT: "☕", FREE: "🌐"}
+    TRACK_BLURBS = {
+        CI: ("Start here. These are written FOR learners — tiny controlled vocabularies "
+             "(~100–350 words), heavy repetition and glossaries, and they're age-neutral, "
+             "so a 12-year-old isn't handed a board book. Read one, then a native title "
+             "from a lower grade, then the next one."),
+        NATIVE: ("Graded for NATIVE speakers — the target to grow into, and wonderful "
+                 "read-alouds meanwhile. Each band lists what books at that level look like."),
+        ADULT: "Dad's parallel ladder, easiest to hardest, with CEFR levels.",
+        FREE: "Complete texts you can read online right now, at no cost.",
+    }
 
     title = models.CharField(max_length=200)
     author = models.CharField(max_length=200, blank=True)
@@ -525,7 +536,9 @@ class LibraryBook(models.Model):
                              help_text="Native-track grade; blank for CI/adult/free books.")
     track = models.CharField(max_length=8, choices=TRACK_CHOICES, default=NATIVE)
     level_label = models.CharField(max_length=40, blank=True,
-                                   help_text="For non-native tracks, e.g. 'Level 1 · present tense', 'A1'.")
+                                   help_text="CI level ('Level 1', 'Novice-low') or adult stage ('Etapa 1 · A1–B1').")
+    tense = models.CharField(max_length=40, blank=True,
+                             help_text="CI novellas: which verb tense(s) the book uses — the real leveling axis.")
     isbn = models.CharField(max_length=20, blank=True)
     is_translation = models.BooleanField(
         default=False, help_text="True if translated INTO Spanish (vs originally Spanish).")
@@ -538,8 +551,8 @@ class LibraryBook(models.Model):
         ordering = ["grade", "title"]
         indexes = [models.Index(fields=["grade"])]
         constraints = [
-            models.UniqueConstraint(fields=["title", "author", "grade"],
-                                    name="uniq_book_title_author_grade"),
+            models.UniqueConstraint(fields=["title", "author", "grade", "track"],
+                                    name="uniq_book_title_author_grade_track"),
         ]
 
     def __str__(self):

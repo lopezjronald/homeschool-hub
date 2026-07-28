@@ -261,56 +261,96 @@ def _int_or_none(value):
         return None
 
 
+_GRADE_DESCRIPTORS = None
+
+
+def grade_descriptor(grade):
+    """The band's "defining characteristics" blurb, transcribed from the family's own
+    reading list (lingua/data/library_grades.json). Cached after the first read."""
+    global _GRADE_DESCRIPTORS
+    if _GRADE_DESCRIPTORS is None:
+        import json
+        from pathlib import Path
+        path = Path(__file__).resolve().parent / "data" / "library_grades.json"
+        try:
+            _GRADE_DESCRIPTORS = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            _GRADE_DESCRIPTORS = {}
+    return _GRADE_DESCRIPTORS.get(grade, "")
+
+
 @login_required
 def library_list(request):
-    """Parent-only browser of the curated Library List — REAL Spanish books to borrow
-    (LGA-75), grouped by grade (Pre-K..8th) with region/search filters and
-    print-per-grade. Reference content (not per-family), so any signed-in adult may
-    view it; kids are tokenless and never reach this login-gated page."""
+    """Parent-only browser of the curated Library List — the family's own researched
+    reading list, kept in ITS categories (LGA-75): native books by grade band (each
+    with the band's defining characteristics), CI/TPRS novellas for learners, the
+    adult track by CEFR stage, and free public-domain texts.
+
+    Filters are scoped to what's actually on screen: the country list only offers
+    countries that exist in the CURRENT track+grade, so every option returns results.
+    """
     label = dict(LibraryBook.GRADE_CHOICES)
     track_label = dict(LibraryBook.TRACK_CHOICES)
     active_track = request.GET.get("track") or LibraryBook.NATIVE
     if active_track not in track_label:
         active_track = LibraryBook.NATIVE
-    active_grade = request.GET.get("grade") or LibraryBook.GRADE_ORDER[0]
-    if active_grade not in label:
-        active_grade = LibraryBook.GRADE_ORDER[0]
-    region = request.GET.get("region", "").strip()
-    q = request.GET.get("q", "").strip()
+    is_native = active_track == LibraryBook.NATIVE
 
     base = LibraryBook.objects.all()
     track_counts = {r["track"]: r["n"] for r in base.values("track").annotate(n=Count("id"))}
-    tracks = [{"value": t, "label": track_label[t], "count": track_counts.get(t, 0)}
+    tracks = [{"value": t, "label": track_label[t], "count": track_counts.get(t, 0),
+               "icon": LibraryBook.TRACK_ICONS.get(t, "")}
               for t in LibraryBook.TRACK_ORDER if track_counts.get(t, 0)]
 
-    books = base.filter(track=active_track)
-    grades = []
-    if active_track == LibraryBook.NATIVE:
-        counts = {g: 0 for g in LibraryBook.GRADE_ORDER}
-        for row in base.filter(track=LibraryBook.NATIVE).values("grade").annotate(n=Count("id")):
-            if row["grade"] in counts:
-                counts[row["grade"]] = row["n"]
+    in_track = base.filter(track=active_track)
+    grades, active_grade, descriptor = [], "", ""
+    if is_native:
+        counts = {r["grade"]: r["n"] for r in in_track.values("grade").annotate(n=Count("id"))}
         grades = [{"value": g, "label": label[g], "count": counts.get(g, 0)}
-                  for g in LibraryBook.GRADE_ORDER]
-        books = books.filter(grade=active_grade)
+                  for g in LibraryBook.GRADE_ORDER if counts.get(g, 0)]
+        active_grade = request.GET.get("grade") or (grades[0]["value"] if grades else "")
+        if active_grade not in {g["value"] for g in grades}:
+            active_grade = grades[0]["value"] if grades else ""
+        in_track = in_track.filter(grade=active_grade)
+        descriptor = grade_descriptor(active_grade)
+
+    # The country choices come from the CURRENT slice, so a selected country always
+    # has books (offering all 25 catalog countries made the filter look broken).
+    countries = sorted({c for c in in_track.values_list("country", flat=True) if c})
+    region = request.GET.get("region", "").strip()
+    if region not in countries:
+        region = ""
+    q = request.GET.get("q", "").strip()
+
+    books = in_track
     if region:
-        books = books.filter(country__iexact=region)
+        books = books.filter(country=region)
     if q:
         books = books.filter(Q(title__icontains=q) | Q(author__icontains=q))
-    heading = (label.get(active_grade, active_grade) if active_track == LibraryBook.NATIVE
-               else track_label[active_track])
+    books = list(books.order_by("level_label", "title") if not is_native
+                 else books.order_by("title"))
+
+    # Non-native tracks group by their own ladder (CI level, adult stage).
+    groups = []
+    if not is_native:
+        for book in books:
+            key = book.level_label or "—"
+            if not groups or groups[-1]["label"] != key:
+                groups.append({"label": key, "books": []})
+            groups[-1]["books"].append(book)
+
     return render(request, "lingua/library_list.html", {
         "subnav": "library",
-        "tracks": tracks, "active_track": active_track,
-        "is_native": active_track == LibraryBook.NATIVE,
+        "tracks": tracks, "active_track": active_track, "is_native": is_native,
+        "track_label": track_label[active_track],
+        "track_blurb": LibraryBook.TRACK_BLURBS.get(active_track, ""),
         "grades": grades, "active_grade": active_grade,
-        "active_grade_label": heading,
-        "books": books.order_by("level_label", "title") if active_track != LibraryBook.NATIVE
-                 else books.order_by("title"),
-        "countries": services.library_countries(),
-        "region": region, "q": q,
+        "active_grade_label": label.get(active_grade, ""),
+        "descriptor": descriptor,
+        "books": books, "groups": groups, "total": len(books),
+        "countries": countries, "region": region, "q": q,
+        "filtered": bool(region or q),
     })
-
 
 def _family_learners(request):
     """(family, {host_student_id: learner}, {host_student_id: name}) for the selected

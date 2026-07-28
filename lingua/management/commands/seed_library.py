@@ -1,9 +1,13 @@
 """Seed the curated Spanish Library List (LGA-75) from lingua/data/library_books.json.
 
-Idempotent: keyed on (title, author, grade), so re-running updates country/note and
-adds any new books without duplicating. The JSON was compiled by a verified multi-agent
-research pass — real, published Spanish books (Pre-K..8th) from across Latin America +
-Spain. Run locally and on prod: ``python manage.py seed_library``.
+The catalog is transcribed from the parent's own researched reading list — every book,
+grade band, CI level/tense, adult stage and free text comes from that document. The
+seed PRUNES anything absent from the JSON, so re-running is how you retire titles.
+
+Idempotent: keyed on (title, author, grade, track), so re-running updates a book in
+place without duplicating, and the same title may appear in two tracks (e.g. Quiroga's
+"Cuentos de la selva" is both an adult-track read and a free public-domain text).
+Run locally and on prod: ``python manage.py seed_library``.
 """
 import json
 from pathlib import Path
@@ -39,13 +43,14 @@ class Command(BaseCommand):
                 continue
             if track != LibraryBook.NATIVE:
                 grade = ""
-            seen.add((title[:200], (b.get("author") or "").strip()[:200], grade))
+            seen.add((title[:200], (b.get("author") or "").strip()[:200], grade, track))
             _, was_created = LibraryBook.objects.update_or_create(
                 title=title[:200], author=(b.get("author") or "").strip()[:200], grade=grade,
+                track=track,
                 defaults={"country": (b.get("country") or "").strip()[:64],
                           "note": (b.get("note") or "").strip()[:300],
-                          "track": track,
                           "level_label": (b.get("level_label") or "").strip()[:40],
+                          "tense": (b.get("tense") or "").strip()[:40],
                           "isbn": (b.get("isbn") or "").strip()[:20],
                           "is_translation": bool(b.get("is_translation")),
                           "url": (b.get("url") or "").strip()},
@@ -57,8 +62,8 @@ class Command(BaseCommand):
         # (title, author, grade), so a book whose GRADE or TRACK changed upstream would
         # otherwise linger under its old grade as a phantom duplicate.
         pruned = 0
-        for row in LibraryBook.objects.all().only("id", "title", "author", "grade"):
-            if (row.title, row.author, row.grade) not in seen:
+        for row in LibraryBook.objects.all().only("id", "title", "author", "grade", "track"):
+            if (row.title, row.author, row.grade, row.track) not in seen:
                 row.delete()
                 pruned += 1
 

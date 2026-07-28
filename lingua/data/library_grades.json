@@ -1,0 +1,12 @@
+{
+ "PK": "Board books (libros de cartón) and near-wordless books. One image per page; 0–5 words per page. Heavy rhyme and repetition built on open CV syllables. Present tense, single nouns, naming/labeling. Picture carries 100% of meaning. No plot or minimal cumulative pattern. Ideal for drilling vowels and simple syllables aloud.",
+ "K": "Still picture-dominant, but 1–2 short sentences per page. Strong predictable patterns and cumulative repetition. Present tense and simple commands. Sight words and syllable families reinforced. Beginning of a simple plot (problem → resolution). Diminutives appear (perrito, ratoncito).",
+ "1": "Text and picture now share the load; several sentences per page. Present tense dominant; simple connected narrative with clear beginning-middle-end. Dialogue begins (\"—dijo…\"). Some early past-tense verbs appear in folk/cumulative tales. Maps to Barco de Vapor Serie Blanca and FCE tier 1–2.",
+ "2": "Text-dominant with supporting illustrations; short chapters or long picture books. Present + emerging pretérito/imperfecto for storytelling. Longer sentences with subordinate clauses; richer dialogue. Maps to Barco de Vapor Serie Azul and FCE tier 2.",
+ "3": "Early chapter books; illustrations occasional. Narrative past tenses (pretérito/imperfecto) firmly established; some future and conditional. Multi-episode plots, chapter structure, character development. Maps to Barco de Vapor Serie Naranja and FCE tier 3 (\"los que leen bien\").",
+ "4": "Longer chapter books, few illustrations, denser paragraphs. Full range of indicative tenses plus early subjuntivo. Subplots, figurative language, chapter cliffhangers. Barco de Vapor Naranja/Roja, FCE tier 3–4.",
+ "5": "Full-length middle-grade novels; abstract themes (friendship, loss, identity). Complete tense system including subjuntivo and compound tenses; complex sentences; irony. Barco de Vapor Roja, FCE tier 4.",
+ "6": "Longer novels, mature MG/early-YA themes; historical and social content. Full tense/mood mastery assumed; literary register, extended metaphor. Barco de Vapor Roja, Gran Angular (early), FCE \"grandes lectores.\"",
+ "7": "YA novels; complex narrative structures, ambiguity, social/political themes. Sophisticated vocabulary, regional/colloquial registers, literary devices. SM Gran Angular, Alfaguara Juvenil.",
+ "8": "Upper-YA and bridge-to-adult literature; full literary complexity, unreliable narration, dense figurative language, historical/political depth. SM Gran Angular, Alfaguara, and accessible adult classics."
+}

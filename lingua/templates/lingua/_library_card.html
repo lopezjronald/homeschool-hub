@@ -1,0 +1,23 @@
+{# One book in the Library List grid (LGA-75). Expects `book`. #}
+<article class="lib-card">
+  <span class="lib-check" aria-hidden="true"></span>
+  <div class="lib-card-body">
+    <h4 class="lib-book-title">
+      {% if book.url %}
+        <a href="{{ book.url }}" target="_blank" rel="noopener noreferrer">{{ book.title }}<span class="lib-ext" aria-hidden="true"> ↗</span></a>
+      {% else %}{{ book.title }}{% endif %}
+    </h4>
+    {% if book.author %}<p class="lib-book-author">{{ book.author }}</p>{% endif %}
+    {% if book.note %}<p class="lib-book-note">{{ book.note }}</p>{% endif %}
+    <div class="lib-tags">
+      {% if book.tense %}<span class="lib-tag lib-tag-tense">{{ book.tense }}</span>{% endif %}
+      {% if book.country %}<span class="lib-tag">{{ book.country }}</span>{% endif %}
+      {% if book.is_translation %}
+        <span class="lib-tag lib-tag-muted" title="Translated into Spanish">traducción</span>
+      {% else %}
+        <span class="lib-tag lib-tag-orig" title="Originally written in Spanish">original</span>
+      {% endif %}
+      {% if book.isbn %}<span class="lib-tag lib-tag-isbn">ISBN {{ book.isbn }}</span>{% endif %}
+    </div>
+  </div>
+</article>

@@ -1,117 +1,120 @@
 {% extends "base.html" %}
 {% block title %}Spanish Library List · Lingua{% endblock %}
 {% block content %}
-<div class="container py-4">
-
-  <div class="d-flex justify-content-between align-items-center flex-wrap mb-1">
-    <h1 class="h3 mb-0">Spanish Library List</h1>
-    <button type="button" class="btn btn-sm btn-outline-primary no-print" onclick="window.print()">
-      🖨️ Print this grade
-    </button>
-  </div>
-  <p class="text-muted no-print">Real Spanish books to borrow from the library, by grade — from across
-    Latin America and Spain. For parents; the kids don't see this list.</p>
+<div class="container py-4 lib">
 
   {% include "lingua/_lingua_subnav.html" with active='library' %}
 
-  {# Print-only header so the sheet is self-labeling. #}
-  <h2 class="d-none d-print-block mb-3">Spanish Library — {{ active_grade_label }}</h2>
+  {# ---------- Hero ---------- #}
+  <header class="lib-hero no-print">
+    <div class="lib-hero-body">
+      <p class="lib-eyebrow">Biblioteca · reading list</p>
+      <h1 class="lib-title">Spanish books worth borrowing</h1>
+      <p class="lib-sub">Every title here is a real, published book from our own researched
+        list — Latin America and Spain, Pre-K through 8th, plus a learner track and one for grown-ups.</p>
+    </div>
+    <div class="lib-hero-badge" aria-hidden="true">📖</div>
+  </header>
 
-  {# Track selector: native grade-level books vs learner (CI) novellas vs adult vs free. #}
-  <ul class="nav nav-pills gap-1 mb-2 no-print">
+  {# ---------- Track switcher ---------- #}
+  <nav class="lib-tracks no-print" aria-label="Reading tracks">
     {% for t in tracks %}
-      <li class="nav-item">
-        <a class="nav-link{% if t.value == active_track %} active{% endif %}"
-           {% if t.value == active_track %}aria-current="page"{% endif %}
-           href="?track={{ t.value }}">{{ t.label }}
-          <span class="badge bg-light text-dark ms-1">{{ t.count }}</span></a>
-      </li>
+      <a class="lib-track{% if t.value == active_track %} is-active{% endif %}"
+         {% if t.value == active_track %}aria-current="page"{% endif %}
+         href="?track={{ t.value }}">
+        <span class="lib-track-icon" aria-hidden="true">{{ t.icon }}</span>
+        <span class="lib-track-name">{{ t.label }}</span>
+        <span class="lib-track-count">{{ t.count }}</span>
+      </a>
     {% endfor %}
-  </ul>
+  </nav>
 
-  {% if active_track == 'ci' %}
-    <div class="alert alert-info no-print small">
-      <strong>Start here for an English-speaking beginner.</strong> These novellas are written
-      <em>for learners</em> — tiny controlled vocabularies (~100–350 words), heavy repetition, and
-      age-neutral stories, so an older child isn't handed a board book. Read one of these, then a
-      native picture/chapter book from a lower grade for authentic language, then the next one.
-    </div>
-  {% elif active_track == 'native' %}
-    <div class="alert alert-light border no-print small">
-      These are graded for <em>native</em> speakers — the target to grow into. For a beginner,
-      lead with the <a href="?track=ci">For learners (CI/TPRS)</a> ladder and use these as
-      read-alouds and stretch reading.
-    </div>
+  {% if track_blurb %}
+    <p class="lib-blurb{% if active_track == 'ci' %} is-highlight{% endif %} no-print">{{ track_blurb }}</p>
   {% endif %}
 
+  {# ---------- Grade rail (native track only) ---------- #}
   {% if is_native %}
-  <ul class="nav nav-tabs mb-3 no-print" role="tablist">
-    {% for g in grades %}
-      <li class="nav-item">
-        <a class="nav-link{% if g.value == active_grade %} active{% endif %}"
+    <div class="lib-rail no-print" role="tablist" aria-label="Grade">
+      {% for g in grades %}
+        <a class="lib-grade{% if g.value == active_grade %} is-active{% endif %}"
            {% if g.value == active_grade %}aria-current="page"{% endif %}
-           href="?track=native&amp;grade={{ g.value }}{% if region %}&amp;region={{ region|urlencode }}{% endif %}{% if q %}&amp;q={{ q|urlencode }}{% endif %}">
-          {{ g.label }} <span class="badge bg-light text-dark ms-1">{{ g.count }}</span>
+           href="?track=native&amp;grade={{ g.value }}">
+          <span class="lib-grade-name">{{ g.label }}</span>
+          <span class="lib-grade-count">{{ g.count }}</span>
         </a>
-      </li>
-    {% endfor %}
-  </ul>
+      {% endfor %}
+    </div>
   {% endif %}
 
-  <form method="get" class="card no-print mb-3"><div class="card-body">
+  {# ---------- Print header + the band's defining characteristics ---------- #}
+  <h2 class="lib-print-title d-none d-print-block">
+    Spanish Library List — {% if is_native %}{{ active_grade_label }}{% else %}{{ track_label }}{% endif %}</h2>
+
+  {% if descriptor %}
+    <aside class="lib-descriptor">
+      <span class="lib-descriptor-tag">What books look like at this level</span>
+      <p>{{ descriptor }}</p>
+    </aside>
+  {% endif %}
+
+  {# ---------- Filters ---------- #}
+  <form method="get" class="lib-filters no-print" role="search">
     <input type="hidden" name="track" value="{{ active_track }}">
-    <input type="hidden" name="grade" value="{{ active_grade }}">
-    <div class="row g-2 align-items-end">
-      <div class="col-sm-6 col-md-5">
-        <label class="form-label" for="q">Search title or author</label>
-        <input type="search" class="form-control" id="q" name="q" value="{{ q }}"
-               placeholder="e.g. Isol, la lluvia, Rubio…">
-      </div>
-      <div class="col-sm-4 col-md-4">
-        <label class="form-label" for="region">Country</label>
-        <select class="form-select" id="region" name="region">
+    {% if is_native %}<input type="hidden" name="grade" value="{{ active_grade }}">{% endif %}
+    <div class="lib-filter-field lib-filter-grow">
+      <label for="q">Search</label>
+      <input type="search" id="q" name="q" value="{{ q }}" placeholder="Title or author…">
+    </div>
+    {% if countries %}
+      <div class="lib-filter-field">
+        <label for="region">Country</label>
+        <select id="region" name="region">
           <option value="">All countries</option>
           {% for c in countries %}
             <option value="{{ c }}"{% if c == region %} selected{% endif %}>{{ c }}</option>
           {% endfor %}
         </select>
       </div>
-      <div class="col-sm-2 col-md-3 d-flex gap-2">
-        <button class="btn btn-primary flex-grow-1" type="submit">Filter</button>
-        <a class="btn btn-outline-secondary" href="?track={{ active_track }}{% if is_native %}&amp;grade={{ active_grade }}{% endif %}">Clear</a>
-      </div>
+    {% endif %}
+    <div class="lib-filter-actions">
+      <button type="submit" class="btn btn-primary">Filter</button>
+      {% if filtered %}
+        <a class="btn btn-outline-secondary"
+           href="?track={{ active_track }}{% if is_native %}&amp;grade={{ active_grade }}{% endif %}">Clear</a>
+      {% endif %}
+      <button type="button" class="btn btn-outline-secondary" onclick="window.print()">🖨️ Print</button>
     </div>
-  </div></form>
+  </form>
 
-  <p class="text-muted small">{{ books|length }} book{{ books|length|pluralize }}
-    for {{ active_grade_label }}{% if region %} · {{ region }}{% endif %}{% if q %} · “{{ q }}”{% endif %}.</p>
+  <p class="lib-count">
+    <strong>{{ total }}</strong> book{{ total|pluralize }}
+    {% if is_native %}for {{ active_grade_label }}{% endif %}{% if region %} · {{ region }}{% endif %}{% if q %} · “{{ q }}”{% endif %}
+  </p>
 
+  {# ---------- The books ---------- #}
   {% if books %}
-    <div class="list-group lingua-book-list">
-      {% for book in books %}
-      <div class="list-group-item d-flex align-items-start gap-3 py-3 lingua-book-row">
-        <span class="book-check" aria-hidden="true"></span>
-        <div class="flex-grow-1">
-          <div class="d-flex justify-content-between align-items-baseline flex-wrap gap-2">
-            <span class="fw-semibold lingua-book-title">
-              {% if book.url %}<a href="{{ book.url }}" target="_blank" rel="noopener noreferrer">{{ book.title }}</a>
-              {% else %}{{ book.title }}{% endif %}
-            </span>
-            <span class="d-flex gap-1 flex-wrap">
-              {% if book.level_label %}<span class="badge bg-primary">{{ book.level_label }}</span>{% endif %}
-              {% if book.country %}<span class="badge bg-light text-dark">{{ book.country }}</span>{% endif %}
-              {% if book.is_translation %}<span class="badge bg-light text-dark" title="Translated into Spanish">trad.</span>{% endif %}
-            </span>
-          </div>
-          {% if book.author %}<div class="text-muted small">{{ book.author }}</div>{% endif %}
-          {% if book.note %}<div class="lingua-book-note mt-1">{{ book.note }}</div>{% endif %}
-          {% if book.isbn %}<div class="text-muted small mt-1">ISBN {{ book.isbn }}</div>{% endif %}
+    {% if groups %}
+      {% for group in groups %}
+        <h3 class="lib-group">{{ group.label }}</h3>
+        <div class="lib-grid">
+          {% for book in group.books %}{% include "lingua/_library_card.html" %}{% endfor %}
         </div>
-      </div>
       {% endfor %}
-    </div>
+    {% else %}
+      <div class="lib-grid">
+        {% for book in books %}{% include "lingua/_library_card.html" %}{% endfor %}
+      </div>
+    {% endif %}
   {% else %}
-    <div class="alert alert-info">No books match. Try clearing the filters, or pick another grade.</div>
+    <div class="lib-empty">
+      <div class="lib-empty-icon" aria-hidden="true">🔎</div>
+      <p class="mb-1"><strong>No books match.</strong></p>
+      <p class="text-muted mb-3">Try clearing the filters, or pick another
+        {% if is_native %}grade{% else %}track{% endif %}.</p>
+      <a class="btn btn-primary btn-sm"
+         href="?track={{ active_track }}{% if is_native %}&amp;grade={{ active_grade }}{% endif %}">Clear filters</a>
+    </div>
   {% endif %}
 </div>
 {% endblock %}

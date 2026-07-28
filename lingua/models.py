@@ -491,6 +491,116 @@ class StoryRecording(models.Model):
         return f"StoryRecording<learner={self.learner_id} story={self.story_id}>"
 
 
+class LibraryBook(models.Model):
+    """A curated REAL, physical Spanish-language library book (LGA-75). Seeded content
+    (never user-authored — the app stopped inventing stories; this points parents at
+    actual books to borrow), grouped by grade for the PARENT-ONLY library browser.
+    Sourced from across the Spanish-speaking world. No FK to any host model (D-03)."""
+
+    PK, K = "PK", "K"
+    GRADE_CHOICES = [
+        (PK, "Pre-K"), (K, "Kindergarten"), ("1", "1st grade"), ("2", "2nd grade"),
+        ("3", "3rd grade"), ("4", "4th grade"), ("5", "5th grade"), ("6", "6th grade"),
+        ("7", "7th grade"), ("8", "8th grade"),
+    ]
+    GRADE_ORDER = [PK, K, "1", "2", "3", "4", "5", "6", "7", "8"]
+
+    # Which ladder a book belongs to. NATIVE books are graded for native speakers —
+    # the right *target*, but not the right starting point for an English-L1 beginner.
+    # CI (comprehensible-input / TPRS) novellas are written FOR learners with tiny
+    # controlled vocabularies and are age-neutral, so a 12-year-old isn't handed a
+    # board book; they're the practical primary ladder. ADULT is the parent's own
+    # track; FREE is public-domain/no-cost reading.
+    NATIVE, CI, ADULT, FREE = "native", "ci", "adult", "free"
+    TRACK_CHOICES = [
+        (NATIVE, "Native grade-level"), (CI, "For learners (CI/TPRS)"),
+        (ADULT, "Adult track"), (FREE, "Free / public domain"),
+    ]
+    TRACK_ORDER = [NATIVE, CI, ADULT, FREE]
+
+    title = models.CharField(max_length=200)
+    author = models.CharField(max_length=200, blank=True)
+    country = models.CharField(max_length=64, blank=True, help_text="Author/origin, e.g. México, España.")
+    grade = models.CharField(max_length=2, choices=GRADE_CHOICES, blank=True,
+                             help_text="Native-track grade; blank for CI/adult/free books.")
+    track = models.CharField(max_length=8, choices=TRACK_CHOICES, default=NATIVE)
+    level_label = models.CharField(max_length=40, blank=True,
+                                   help_text="For non-native tracks, e.g. 'Level 1 · present tense', 'A1'.")
+    isbn = models.CharField(max_length=20, blank=True)
+    is_translation = models.BooleanField(
+        default=False, help_text="True if translated INTO Spanish (vs originally Spanish).")
+    url = models.URLField(blank=True, help_text="Free/public-domain full text, when available.")
+    note = models.CharField(max_length=300, blank=True, help_text="One line: theme + why it's good.")
+    language = models.CharField(max_length=8, default="es")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["grade", "title"]
+        indexes = [models.Index(fields=["grade"])]
+        constraints = [
+            models.UniqueConstraint(fields=["title", "author", "grade"],
+                                    name="uniq_book_title_author_grade"),
+        ]
+
+    def __str__(self):
+        return f"{self.title} ({self.grade})"
+
+    @property
+    def grade_rank(self):
+        try:
+            return self.GRADE_ORDER.index(self.grade)
+        except ValueError:
+            return len(self.GRADE_ORDER)
+
+
+class BookLogEntry(models.Model):
+    """A child's PHYSICAL-book reading-log entry (LGA-75) — a real book they finished,
+    logged from the kid portal or by a parent (both portals show the log). Either
+    references a catalog :class:`LibraryBook` or carries a free-text title/author (a
+    book not in the catalog). FK to Learner is a lingua-internal CASCADE (D-03); book is
+    SET_NULL and the title/author are snapshotted so the entry survives a catalog edit
+    or delete."""
+
+    LOVED, OK, MEH = "loved", "ok", "meh"
+    ENJOYED_CHOICES = [(LOVED, "¡Me encantó!"), (OK, "Estuvo bien"), (MEH, "Más o menos")]
+    KID, PARENT = "kid", "parent"
+    BY_CHOICES = [(KID, "Kid"), (PARENT, "Parent")]
+
+    learner = models.ForeignKey(Learner, on_delete=models.CASCADE, related_name="book_logs")
+    book = models.ForeignKey(
+        LibraryBook, on_delete=models.SET_NULL, null=True, blank=True, related_name="+",
+    )
+    title = models.CharField(max_length=200, blank=True, help_text="Snapshot / custom title.")
+    author = models.CharField(max_length=200, blank=True)
+    read_on = models.DateField()
+    enjoyed = models.CharField(max_length=8, choices=ENJOYED_CHOICES, blank=True)
+    note = models.CharField(max_length=500, blank=True)
+    logged_by = models.CharField(max_length=8, choices=BY_CHOICES, default=KID)
+    # Id of the mirrored host work-log record (LGA-76). A PLAIN INT, never a FK — the
+    # book log must stay extractable (D-03); the host adapter owns the other side.
+    host_worklog_id = models.IntegerField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-read_on", "-created_at"]
+        indexes = [models.Index(fields=["learner", "read_on"])]
+
+    def __str__(self):
+        return f"BookLogEntry<learner={self.learner_id} {self.display_title!r}>"
+
+    @property
+    def display_title(self):
+        return (self.book.title if self.book else self.title) or ""
+
+    @property
+    def display_author(self):
+        return (self.book.author if self.book else self.author) or ""
+
+    @property
+    def enjoyed_emoji(self):
+        return {self.LOVED: "😀", self.OK: "🙂", self.MEH: "😐"}.get(self.enjoyed, "📖")
+
+
 class ReadingSession(models.Model):
     """One reading of a story by a learner — the atom behind the reading-volume hero
     metric (D-60/61): cumulative words read + minutes of comprehensible input. FK to

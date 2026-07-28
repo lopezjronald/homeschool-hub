@@ -81,6 +81,18 @@
     </a>
   </div>
 
+  {# Mis libros (LGA-75): the physical-book reading log — anota un libro que leíste. #}
+  <div class="portal-subjects mb-3">
+    <a href="{% url 'portal:lingua_books' token=token %}" class="portal-subject-card">
+      <div class="portal-subject-emoji">📔</div>
+      <div class="portal-subject-body">
+        <div class="portal-subject-name">Mis libros</div>
+        <div class="portal-next-line"><span class="portal-next-label">Anota</span> un libro que leíste</div>
+      </div>
+      <div class="portal-subject-go">Ver ➜</div>
+    </a>
+  </div>
+
   {% if plan.items %}
     <div class="portal-subjects">
       {% for item in plan.items %}

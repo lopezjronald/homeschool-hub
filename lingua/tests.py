@@ -27,9 +27,10 @@ from . import advancement, assets, audio, cognates, comprehension, illustrate, l
 from . import storage as lingua_storage
 from .integrations import directory
 from .models import (
-    AiUsage, AuditEvent, ComprehensionCheck, KnownWord, Learner, LearnerProfile,
-    ListeningResource, ListeningSession, MilestoneAward, PhonicsRule, ReadingSession,
-    ReviewItem, Story, StoryAudio, StoryImage, StoryRecording, Theme,
+    AiUsage, AuditEvent, BookLogEntry, ComprehensionCheck, KnownWord, Learner,
+    LearnerProfile, LibraryBook, ListeningResource, ListeningSession, MilestoneAward,
+    PhonicsRule, ReadingSession, ReviewItem, Story, StoryAudio, StoryImage,
+    StoryRecording, Theme,
 )
 from .ports import AIClient, AIResult, ImageClient
 
@@ -3687,3 +3688,365 @@ class StoryRecordingTests(TestCase):
         html = self.client.get(reverse("lingua:read", args=[self.story.pk])).content.decode()
         self.assertNotIn('id="lingua-recorder"', html)
         self.assertNotIn("recorder.js", html)
+
+
+class LibraryAndBookLogServiceTests(TestCase):
+    """LGA-75: curated library catalog + physical-book reading log services."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.learner = Learner.create_for_host_student(7701, profiles.KIDS_EARLY)
+        cls.b_pk = LibraryBook.objects.create(title="La cebra Camila", author="Marisa Núñez",
+                                              country="España", grade="PK", note="rima")
+        cls.b_k = LibraryBook.objects.create(title="Choco encuentra una mamá", author="Keiko Kasza",
+                                             country="México", grade="K", note="adopción")
+        cls.b_1 = LibraryBook.objects.create(title="El pollo Pepe", author="Nick Denchfield",
+                                             country="España", grade="1", note="pop-up")
+
+    def test_library_grouped_in_ladder_order(self):
+        groups = services.library_by_grade()
+        self.assertEqual([g["grade"] for g in groups], ["PK", "K", "1"])   # PK before K before 1
+        self.assertEqual(groups[0]["count"], 1)
+        self.assertEqual(groups[0]["books"][0].title, "La cebra Camila")
+
+    def test_library_region_and_search_filters(self):
+        es = services.library_by_grade(region="España")
+        titles = [b.title for g in es for b in g["books"]]
+        self.assertIn("La cebra Camila", titles)
+        self.assertNotIn("Choco encuentra una mamá", titles)   # México filtered out
+        found = services.library_by_grade(query="pollo")
+        self.assertEqual([b.title for g in found for b in g["books"]], ["El pollo Pepe"])
+
+    def test_log_book_from_catalog_snapshots_title_author(self):
+        from datetime import date
+        e = services.log_book(self.learner, book=self.b_k, read_on=date(2026, 7, 20),
+                              enjoyed="loved", note="le gustó", logged_by="kid")
+        self.assertEqual(e.book, self.b_k)
+        self.assertEqual(e.title, "Choco encuentra una mamá")   # snapshotted
+        self.assertEqual(e.author, "Keiko Kasza")
+        self.assertEqual(e.enjoyed, "loved")
+        self.assertEqual(e.display_title, "Choco encuentra una mamá")
+
+    def test_log_book_freetext_and_empty(self):
+        e = services.log_book(self.learner, title="Un libro de la biblioteca", author="Autor X")
+        self.assertIsNone(e.book)
+        self.assertEqual(e.display_title, "Un libro de la biblioteca")
+        self.assertIsNone(services.log_book(self.learner))        # nothing to log
+        self.assertIsNone(services.log_book(self.learner, title="   "))
+
+    def test_log_snapshot_survives_catalog_delete(self):
+        e = services.log_book(self.learner, book=self.b_1)
+        self.b_1.delete()
+        e.refresh_from_db()
+        self.assertIsNone(e.book)                                 # SET_NULL
+        self.assertEqual(e.display_title, "El pollo Pepe")        # snapshot preserved
+
+    def test_book_logs_newest_first_and_scoped_delete(self):
+        from datetime import date
+        old = services.log_book(self.learner, title="Viejo", read_on=date(2026, 1, 1))
+        new = services.log_book(self.learner, title="Nuevo", read_on=date(2026, 7, 1))
+        logs = services.book_logs(self.learner)
+        self.assertEqual([l.pk for l in logs], [new.pk, old.pk])  # newest first
+        other = Learner.create_for_host_student(7702, profiles.KIDS_EARLY)
+        self.assertFalse(services.delete_book_log(other, new.pk)) # not other's
+        self.assertTrue(services.delete_book_log(self.learner, new.pk))
+        self.assertEqual([l.pk for l in services.book_logs(self.learner)], [old.pk])
+
+
+class ReadingLogViewTests(TestCase):
+    """LGA-75: parent Library List browser + dual-portal reading log views."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from students.models import Student
+        from portal.tokens import make_portal_token
+        cls.parent = User.objects.create_user("lib_parent", password="pw")
+        cls.student = Student.objects.create(parent=cls.parent, first_name="Vio")
+        cls.token = make_portal_token(cls.student)
+        cls.book = LibraryBook.objects.create(
+            title="Manuelita la tortuga", author="María Elena Walsh",
+            country="Argentina", grade="1", note="canción-poema")
+        LibraryBook.objects.create(title="El pollo Pepe", author="Nick Denchfield",
+                                   country="España", grade="1")
+
+    def test_library_list_requires_login(self):
+        self.assertIn(self.client.get(reverse("lingua:library_list")).status_code, (301, 302))
+
+    def test_library_list_renders_books_and_filters(self):
+        self.client.force_login(self.parent)
+        html = self.client.get(reverse("lingua:library_list") + "?grade=1").content.decode()
+        self.assertIn("Manuelita la tortuga", html)
+        self.assertIn("María Elena Walsh", html)
+        self.assertIn("Library list", html)             # shared sub-nav present
+        self.assertIn("Print this grade", html)
+
+    def test_library_country_filter_excludes_others(self):
+        self.client.force_login(self.parent)
+        html = self.client.get(reverse("lingua:library_list") + "?grade=1&region=España").content.decode()
+        self.assertIn("El pollo Pepe", html)            # España book kept
+        self.assertNotIn("Manuelita la tortuga", html)  # Argentina book filtered out
+
+    def test_kid_books_page_renders_entry(self):
+        html = self.client.get(reverse("portal:lingua_books", args=[self.token])).content.decode()
+        self.assertIn("Mis libros", html)
+        self.assertIn("¿Cómo te fue?", html)            # the feeling picker
+        self.assertIn('id="book-log-form"', html)
+
+    def test_kid_logs_a_catalog_book(self):
+        r = self.client.post(reverse("portal:lingua_book_log", args=[self.token]),
+                             {"book_id": str(self.book.pk), "enjoyed": "loved"})
+        self.assertEqual(r.status_code, 302)
+        self.assertIn("logged=1", r.url)
+        learner = Learner.objects.get(host_student_id=self.student.pk)
+        e = learner.book_logs.get()
+        self.assertEqual(e.book, self.book)
+        self.assertEqual(e.enjoyed, "loved")
+        self.assertEqual(e.logged_by, "kid")
+
+    def test_kid_logs_custom_title(self):
+        r = self.client.post(reverse("portal:lingua_book_log", args=[self.token]),
+                             {"book_id": "other", "custom_title": "Un libro cualquiera", "enjoyed": "ok"})
+        self.assertEqual(r.status_code, 302)
+        learner = Learner.objects.get(host_student_id=self.student.pk)
+        self.assertEqual(learner.book_logs.get().display_title, "Un libro cualquiera")
+
+    def test_parent_book_log_page_renders(self):
+        self.client.force_login(self.parent)
+        r = self.client.get(reverse("lingua:book_log"))
+        self.assertEqual(r.status_code, 200)
+        self.assertIn("Spanish reading log", r.content.decode())
+
+
+class LibraryTrackTests(TestCase):
+    """LGA-75: the library has separate ladders — native grade-level books, CI/TPRS
+    learner novellas, an adult track, and free/public-domain texts."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from students.models import Student
+        cls.parent = User.objects.create_user("trk_parent", password="pw")
+        Student.objects.create(parent=cls.parent, first_name="Tr")
+        cls.native = LibraryBook.objects.create(
+            title="El libro salvaje", author="Juan Villoro", country="México",
+            grade="4", track=LibraryBook.NATIVE, isbn="978-607-16-0001-1")
+        cls.trans = LibraryBook.objects.create(
+            title="La oruga muy hambrienta", author="Eric Carle", country="EE. UU.",
+            grade="PK", track=LibraryBook.NATIVE, is_translation=True)
+        cls.ci = LibraryBook.objects.create(
+            title="Pobre Ana", author="Blaine Ray", track=LibraryBook.CI,
+            level_label="Level 1 · Present")
+        cls.adult = LibraryBook.objects.create(
+            title="Cuentos de la selva", author="Horacio Quiroga", track=LibraryBook.ADULT)
+        cls.free = LibraryBook.objects.create(
+            title="La Edad de Oro", author="José Martí", track=LibraryBook.FREE,
+            url="https://www.gutenberg.org/ebooks/19898")
+
+    def setUp(self):
+        self.client.force_login(self.parent)
+
+    def _get(self, qs=""):
+        return self.client.get(reverse("lingua:library_list") + qs).content.decode()
+
+    def test_native_track_is_default_and_grade_filtered(self):
+        html = self._get("?grade=4")
+        self.assertIn("El libro salvaje", html)
+        self.assertNotIn("Pobre Ana", html)          # CI book not in the native grade list
+        self.assertNotIn("Cuentos de la selva", html)
+
+    def test_ci_track_lists_learner_novellas_with_levels(self):
+        html = self._get("?track=ci")
+        self.assertIn("Pobre Ana", html)
+        self.assertIn("Level 1 · Present", html)     # the level label badge
+        self.assertIn("written", html)               # the "start here" explainer
+        self.assertNotIn("El libro salvaje", html)   # native book excluded
+
+    def test_adult_and_free_tracks(self):
+        adult = self._get("?track=adult")
+        self.assertIn("Cuentos de la selva", adult)
+        self.assertNotIn("Pobre Ana", adult)
+        free = self._get("?track=free")
+        self.assertIn("La Edad de Oro", free)
+        self.assertIn("gutenberg.org", free)         # free texts link out to the full text
+
+    def test_isbn_and_translation_badge_render(self):
+        html = self._get("?grade=4")
+        self.assertIn("978-607-16-0001-1", html)     # ISBN shown for library lookup
+        pk_html = self._get("?grade=PK")
+        self.assertIn("trad.", pk_html)              # translation marked
+        self.assertNotIn("trad.", html)              # original Spanish is not
+
+    def test_invalid_track_falls_back_to_native(self):
+        html = self._get("?track=bogus&grade=4")
+        self.assertIn("El libro salvaje", html)
+        self.assertNotIn("Pobre Ana", html)
+
+
+class BookLogWorkLogMirrorTests(TestCase):
+    """LGA-76: a finished physical book is mirrored into the HOST work log, so it
+    appears in the Work Log and the charter report. Plus the child-selection guard."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from core.models import Family, FamilyMembership
+        from students.models import Student
+        cls.parent = User.objects.create_user("wl_parent", password="pw")
+        cls.family = Family.objects.create(name="WL Fam")
+        FamilyMembership.objects.create(user=cls.parent, family=cls.family, role="parent")
+        cls.ana = Student.objects.create(parent=cls.parent, first_name="Ana", family=cls.family)
+        cls.leo = Student.objects.create(parent=cls.parent, first_name="Leo", family=cls.family)
+        cls.book = LibraryBook.objects.create(
+            title="Camino a casa", author="Jairo Buitrago", country="Colombia", grade="1")
+
+    def _learner(self, student):
+        return Learner.create_for_host_student(student.pk, profiles.KIDS_EARLY)
+
+    def test_logging_a_book_creates_a_worklog_entry(self):
+        from worklog.models import WorkLogEntry
+        learner = self._learner(self.ana)
+        entry = services.log_book(learner, book=self.book, note="le gustó")
+        self.assertIsNotNone(entry.host_worklog_id)                  # mirrored
+        wl = WorkLogEntry.objects.get(pk=entry.host_worklog_id)
+        self.assertEqual(wl.child, self.ana)                         # filed to the right child
+        self.assertEqual(wl.family, self.family)                     # and family (charter report)
+        self.assertEqual(wl.subject, "Spanish reading")
+        self.assertIn("Camino a casa", wl.description)
+        self.assertIn("Jairo Buitrago", wl.description)
+        self.assertEqual(wl.date, entry.read_on)
+
+    def test_deleting_a_book_log_removes_the_worklog_entry(self):
+        from worklog.models import WorkLogEntry
+        learner = self._learner(self.ana)
+        entry = services.log_book(learner, book=self.book)
+        wl_id = entry.host_worklog_id
+        self.assertTrue(WorkLogEntry.objects.filter(pk=wl_id).exists())
+        self.assertTrue(services.delete_book_log(learner, entry.pk))
+        self.assertFalse(WorkLogEntry.objects.filter(pk=wl_id).exists())  # no orphan in the report
+
+    def test_book_log_survives_a_broken_sink(self):
+        # Mirroring is an enhancement: a raising sink must not lose the child's log.
+        from lingua.ports import WorkLogSink
+
+        class _Boom(WorkLogSink):
+            def record_book(self, **kw):
+                raise RuntimeError("host down")
+
+            def remove(self, host_record_id):
+                raise RuntimeError("host down")
+
+        learner = self._learner(self.ana)
+        entry = services.log_book(learner, book=self.book, worklog_sink=_Boom())
+        self.assertIsNotNone(entry)                                   # still logged
+        self.assertIsNone(entry.host_worklog_id)                      # just not mirrored
+        self.assertTrue(services.delete_book_log(learner, entry.pk, worklog_sink=_Boom()))
+
+    def test_parent_form_files_the_book_against_the_SELECTED_child(self):
+        # Regression, end-to-end THROUGH THE RENDERED FORM: the option value the form
+        # emits must be the id the view resolves. It keys its learner map on
+        # host_student_id, so emitting the lingua Learner.pk filed the book against the
+        # wrong sibling. Decoy learners force Learner.pk != host_student_id, so the two
+        # id spaces genuinely differ (otherwise this test can't fail).
+        for decoy in range(9001, 9004):
+            Learner.create_for_host_student(decoy, profiles.KIDS_EARLY)
+        self._learner(self.ana)
+        leo_learner = self._learner(self.leo)
+        self.assertNotEqual(leo_learner.pk, leo_learner.host_student_id)  # guard: ids diverge
+
+        self.client.force_login(self.parent)
+        page = self.client.get(reverse("lingua:book_log_add")).content.decode()
+        # Pull Leo's option value straight out of the rendered <select>.
+        m = re.search(r'<option value="(\d+)">\s*Leo', page)
+        self.assertIsNotNone(m, "Leo is not offered in the child picker")
+        posted_id = m.group(1)
+
+        r = self.client.post(reverse("lingua:book_log_add"), {
+            "host_student_id": posted_id, "book_id": str(self.book.pk),
+            "read_on": "2026-07-20", "enjoyed": "loved",
+        })
+        self.assertEqual(r.status_code, 302)
+        logged = BookLogEntry.objects.get()
+        self.assertEqual(logged.learner, leo_learner)                 # Leo, not Ana
+        self.assertEqual(logged.learner.host_student_id, self.leo.pk)
+
+
+class LibraryReviewFixTests(TestCase):
+    """LGA-75 review fixes: kid-endpoint honesty + field forwarding, hostile input,
+    ladder ordering, track-preserving filters."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from students.models import Student
+        from portal.tokens import make_portal_token
+        cls.parent = User.objects.create_user("fix_parent", password="pw")
+        cls.student = Student.objects.create(parent=cls.parent, first_name="Fi")
+        cls.token = make_portal_token(cls.student)
+        cls.book = LibraryBook.objects.create(title="Camino a casa", author="Jairo Buitrago",
+                                              country="Colombia", grade="1")
+
+    def _log_url(self):
+        return reverse("portal:lingua_book_log", args=[self.token])
+
+    def test_empty_other_does_not_claim_success(self):
+        # Picking "Otro libro" and typing nothing logs nothing — the child must NOT be
+        # told "¡Anotado!" for a book that was never recorded.
+        r = self.client.post(self._log_url(), {"book_id": "other", "custom_title": "  ",
+                                               "enjoyed": "loved"})
+        self.assertEqual(r.status_code, 302)
+        self.assertIn("nothing=1", r.url)
+        self.assertNotIn("logged=1", r.url)
+        self.assertFalse(BookLogEntry.objects.exists())
+        html = self.client.get(r.url).content.decode()
+        self.assertNotIn("¡Anotado!", html)          # no false success
+        self.assertIn("Otro libro", html)            # tells them what to do instead
+
+    def test_kid_endpoint_forwards_date_and_author(self):
+        r = self.client.post(self._log_url(), {
+            "book_id": "other", "custom_title": "Un libro suyo", "custom_author": "Autora X",
+            "read_on": "2026-07-04", "enjoyed": "ok"})
+        self.assertEqual(r.status_code, 302)
+        e = BookLogEntry.objects.get()
+        self.assertEqual(e.display_author, "Autora X")       # author no longer dropped
+        self.assertEqual(e.read_on.isoformat(), "2026-07-04")  # date no longer dropped
+
+    def test_kid_endpoint_survives_hostile_book_id(self):
+        # Non-ASCII digits pass str.isdigit() but blow up int()/the ORM.
+        r = self.client.post(self._log_url(), {"book_id": "٧", "custom_title": "T",
+                                               "enjoyed": "ok"})
+        self.assertEqual(r.status_code, 302)                 # not a 500
+        self.assertEqual(BookLogEntry.objects.get().display_title, "T")
+
+    def test_parent_form_survives_non_numeric_book_param(self):
+        self.client.force_login(self.parent)
+        r = self.client.get(reverse("lingua:book_log_add") + "?book=abc")
+        self.assertEqual(r.status_code, 200)                 # not a 500
+
+    def test_suggested_books_follow_the_ladder_not_the_alphabet(self):
+        # grade sorts lexicographically as a CharField ("1" < "2" < "K" < "PK"), which
+        # would put the HARDEST books first for an early reader.
+        for g in ("2", "PK", "1", "K"):
+            LibraryBook.objects.create(title=f"Libro {g}", grade=g, track=LibraryBook.NATIVE)
+        learner = Learner.create_for_host_student(8801, profiles.KIDS_EARLY)
+        grades = [b.grade for b in services.suggested_books(learner)]
+        self.assertEqual(grades[0], "PK")                    # easiest first
+        rank = {g: i for i, g in enumerate(LibraryBook.GRADE_ORDER)}
+        self.assertEqual(grades, sorted(grades, key=lambda g: rank[g]))
+
+    def test_suggested_books_exclude_non_native_tracks(self):
+        LibraryBook.objects.create(title="Pobre Ana", track=LibraryBook.CI)
+        learner = Learner.create_for_host_student(8802, profiles.KIDS_EARLY)
+        self.assertNotIn("Pobre Ana", [b.title for b in services.suggested_books(learner)])
+
+    def test_clear_link_keeps_the_active_track(self):
+        self.client.force_login(self.parent)
+        LibraryBook.objects.create(title="Pobre Ana", track=LibraryBook.CI)
+        html = self.client.get(reverse("lingua:library_list") + "?track=ci&q=x").content.decode()
+        self.assertIn('href="?track=ci"', html)              # Clear stays on the CI track
+
+    def test_country_filter_is_canonical(self):
+        # The two source lists spelled countries differently (Spain/España); the seed
+        # data is canonicalized so one filter value returns them all.
+        self.client.force_login(self.parent)
+        LibraryBook.objects.create(title="Otro español", country="España", grade="1")
+        html = self.client.get(
+            reverse("lingua:library_list") + "?track=native&grade=1&region=España").content.decode()
+        self.assertIn("Otro español", html)
+        self.assertNotIn("Camino a casa", html)              # Colombia filtered out

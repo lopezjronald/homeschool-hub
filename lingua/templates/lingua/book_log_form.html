@@ -19,7 +19,7 @@
 
           <div class="mb-3">
             <label class="form-label" for="learner">Child</label>
-            <select class="form-select" id="learner" name="learner" required>
+            <select class="form-select" id="learner" name="host_student_id" required>
               {% for l in learners %}<option value="{{ l.pk }}">{{ l.name }}</option>{% endfor %}
             </select>
           </div>

@@ -349,7 +349,10 @@ def book_log_add(request):
         raise Http404
 
     if request.method == "POST":
-        learner = learners.get(_int_or_none(request.POST.get("learner")))
+        # `learners` is keyed by host_student_id, so the form must post THAT id — not
+        # the lingua Learner.pk (the two id spaces differ and mixing them files the
+        # book against the wrong child).
+        learner = learners.get(_int_or_none(request.POST.get("host_student_id")))
         if learner is None:
             raise Http404  # only a learner in the user's own family
         bid = request.POST.get("book_id") or ""
@@ -369,7 +372,8 @@ def book_log_add(request):
         messages.success(request, "Book added to the reading log.")
         return redirect("lingua:book_log")
 
-    learner_rows = [{"pk": l.pk, "name": names.get(hsid, "")}
+    # Option value is the HOST student id (the key `learners` is built on above).
+    learner_rows = [{"pk": hsid, "name": names.get(hsid, "")}
                     for hsid, l in sorted(learners.items())]
     prebook = LibraryBook.objects.filter(pk=request.GET.get("book")).first()
     from django.utils import timezone

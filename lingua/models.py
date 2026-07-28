@@ -576,6 +576,9 @@ class BookLogEntry(models.Model):
     enjoyed = models.CharField(max_length=8, choices=ENJOYED_CHOICES, blank=True)
     note = models.CharField(max_length=500, blank=True)
     logged_by = models.CharField(max_length=8, choices=BY_CHOICES, default=KID)
+    # Id of the mirrored host work-log record (LGA-76). A PLAIN INT, never a FK — the
+    # book log must stay extractable (D-03); the host adapter owns the other side.
+    host_worklog_id = models.IntegerField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

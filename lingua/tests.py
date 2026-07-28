@@ -3879,3 +3879,90 @@ class LibraryTrackTests(TestCase):
         html = self._get("?track=bogus&grade=4")
         self.assertIn("El libro salvaje", html)
         self.assertNotIn("Pobre Ana", html)
+
+
+class BookLogWorkLogMirrorTests(TestCase):
+    """LGA-76: a finished physical book is mirrored into the HOST work log, so it
+    appears in the Work Log and the charter report. Plus the child-selection guard."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from core.models import Family, FamilyMembership
+        from students.models import Student
+        cls.parent = User.objects.create_user("wl_parent", password="pw")
+        cls.family = Family.objects.create(name="WL Fam")
+        FamilyMembership.objects.create(user=cls.parent, family=cls.family, role="parent")
+        cls.ana = Student.objects.create(parent=cls.parent, first_name="Ana", family=cls.family)
+        cls.leo = Student.objects.create(parent=cls.parent, first_name="Leo", family=cls.family)
+        cls.book = LibraryBook.objects.create(
+            title="Camino a casa", author="Jairo Buitrago", country="Colombia", grade="1")
+
+    def _learner(self, student):
+        return Learner.create_for_host_student(student.pk, profiles.KIDS_EARLY)
+
+    def test_logging_a_book_creates_a_worklog_entry(self):
+        from worklog.models import WorkLogEntry
+        learner = self._learner(self.ana)
+        entry = services.log_book(learner, book=self.book, note="le gustó")
+        self.assertIsNotNone(entry.host_worklog_id)                  # mirrored
+        wl = WorkLogEntry.objects.get(pk=entry.host_worklog_id)
+        self.assertEqual(wl.child, self.ana)                         # filed to the right child
+        self.assertEqual(wl.family, self.family)                     # and family (charter report)
+        self.assertEqual(wl.subject, "Spanish reading")
+        self.assertIn("Camino a casa", wl.description)
+        self.assertIn("Jairo Buitrago", wl.description)
+        self.assertEqual(wl.date, entry.read_on)
+
+    def test_deleting_a_book_log_removes_the_worklog_entry(self):
+        from worklog.models import WorkLogEntry
+        learner = self._learner(self.ana)
+        entry = services.log_book(learner, book=self.book)
+        wl_id = entry.host_worklog_id
+        self.assertTrue(WorkLogEntry.objects.filter(pk=wl_id).exists())
+        self.assertTrue(services.delete_book_log(learner, entry.pk))
+        self.assertFalse(WorkLogEntry.objects.filter(pk=wl_id).exists())  # no orphan in the report
+
+    def test_book_log_survives_a_broken_sink(self):
+        # Mirroring is an enhancement: a raising sink must not lose the child's log.
+        from lingua.ports import WorkLogSink
+
+        class _Boom(WorkLogSink):
+            def record_book(self, **kw):
+                raise RuntimeError("host down")
+
+            def remove(self, host_record_id):
+                raise RuntimeError("host down")
+
+        learner = self._learner(self.ana)
+        entry = services.log_book(learner, book=self.book, worklog_sink=_Boom())
+        self.assertIsNotNone(entry)                                   # still logged
+        self.assertIsNone(entry.host_worklog_id)                      # just not mirrored
+        self.assertTrue(services.delete_book_log(learner, entry.pk, worklog_sink=_Boom()))
+
+    def test_parent_form_files_the_book_against_the_SELECTED_child(self):
+        # Regression, end-to-end THROUGH THE RENDERED FORM: the option value the form
+        # emits must be the id the view resolves. It keys its learner map on
+        # host_student_id, so emitting the lingua Learner.pk filed the book against the
+        # wrong sibling. Decoy learners force Learner.pk != host_student_id, so the two
+        # id spaces genuinely differ (otherwise this test can't fail).
+        for decoy in range(9001, 9004):
+            Learner.create_for_host_student(decoy, profiles.KIDS_EARLY)
+        self._learner(self.ana)
+        leo_learner = self._learner(self.leo)
+        self.assertNotEqual(leo_learner.pk, leo_learner.host_student_id)  # guard: ids diverge
+
+        self.client.force_login(self.parent)
+        page = self.client.get(reverse("lingua:book_log_add")).content.decode()
+        # Pull Leo's option value straight out of the rendered <select>.
+        m = re.search(r'<option value="(\d+)">\s*Leo', page)
+        self.assertIsNotNone(m, "Leo is not offered in the child picker")
+        posted_id = m.group(1)
+
+        r = self.client.post(reverse("lingua:book_log_add"), {
+            "host_student_id": posted_id, "book_id": str(self.book.pk),
+            "read_on": "2026-07-20", "enjoyed": "loved",
+        })
+        self.assertEqual(r.status_code, 302)
+        logged = BookLogEntry.objects.get()
+        self.assertEqual(logged.learner, leo_learner)                 # Leo, not Ana
+        self.assertEqual(logged.learner.host_student_id, self.leo.pk)

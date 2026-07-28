@@ -169,16 +169,32 @@ def library_countries():
                    .values_list("country", flat=True)})
 
 
+def get_worklog_sink():
+    """The host WorkLogSink adapter named in LINGUA["WORKLOG_SINK"], or None when
+    unbound/misconfigured (mirroring is an enhancement, never a hard dependency)."""
+    dotted = settings.LINGUA.get("WORKLOG_SINK")
+    if not dotted:
+        return None
+    try:
+        return import_string(dotted)()
+    except Exception:  # noqa: BLE001 — a bad/absent adapter must not break book logging
+        return None
+
+
 def log_book(learner, *, book=None, title="", author="", read_on=None,
-             enjoyed="", note="", logged_by=BookLogEntry.KID):
+             enjoyed="", note="", logged_by=BookLogEntry.KID, worklog_sink=None):
     """Log a physical book a child finished (LGA-75). Either ``book`` (a catalog
     LibraryBook, whose title/author are snapshotted) or a free-text title. Returns the
-    BookLogEntry, or None if there's nothing to log (no book and no title)."""
+    BookLogEntry, or None if there's nothing to log (no book and no title).
+
+    The finished book is ALSO mirrored into the host work log through the WorkLogSink
+    port (LGA-76), so it appears in the Work Log and the charter report. Mirroring is
+    best-effort: if the sink is unbound or raises, the book log still succeeds."""
     from django.utils import timezone
     t = (book.title if book else title or "").strip()
     if not t:
         return None
-    return BookLogEntry.objects.create(
+    entry = BookLogEntry.objects.create(
         learner=learner, book=book,
         title=(book.title if book else t)[:200],
         author=((book.author if book else author) or "")[:200],
@@ -187,6 +203,19 @@ def log_book(learner, *, book=None, title="", author="", read_on=None,
         note=(note or "")[:500],
         logged_by=logged_by if logged_by in dict(BookLogEntry.BY_CHOICES) else BookLogEntry.KID,
     )
+    sink = worklog_sink if worklog_sink is not None else get_worklog_sink()
+    if sink is not None:
+        try:
+            rec = sink.record_book(
+                host_student_id=learner.host_student_id, title=entry.title,
+                author=entry.author, read_on=entry.read_on, note=entry.note,
+            )
+        except Exception:  # noqa: BLE001 — never fail the child's log on a host hiccup
+            rec = None
+        if rec:
+            entry.host_worklog_id = rec
+            entry.save(update_fields=["host_worklog_id"])
+    return entry
 
 
 def book_logs(learner):
@@ -208,12 +237,22 @@ def suggested_books(learner, *, limit=12):
     return list(LibraryBook.objects.filter(grade__in=grades).order_by("grade", "title")[:limit])
 
 
-def delete_book_log(learner, entry_id):
-    """Delete one of the learner's own book-log entries. Returns True if removed."""
+def delete_book_log(learner, entry_id, *, worklog_sink=None):
+    """Delete one of the learner's own book-log entries, and the host work-log record
+    it was mirrored into (LGA-76) so the charter report doesn't keep an orphan.
+    Returns True if removed."""
     entry = learner.book_logs.filter(pk=entry_id).first()
     if entry is None:
         return False
+    host_id = entry.host_worklog_id
     entry.delete()
+    if host_id:
+        sink = worklog_sink if worklog_sink is not None else get_worklog_sink()
+        if sink is not None:
+            try:
+                sink.remove(host_id)
+            except Exception:  # noqa: BLE001 — best-effort cleanup
+                pass
     return True
 
 

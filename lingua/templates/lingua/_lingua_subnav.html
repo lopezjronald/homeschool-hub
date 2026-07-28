@@ -1,5 +1,4 @@
-{# Shared pill sub-nav across the parent Spanish/Lingua pages (LGA-75). Pass `active`
-   as one of: progress | library | books. #}
+{# Shared pill sub-nav across the parent Spanish/Lingua pages (LGA-75). Pass `active` as one of: progress, library or books. Keep this comment to one physical line with no comment markers inside, or it leaks to the page (LGA-83). #}
 <ul class="nav nav-pills gap-1 mb-3 no-print">
   <li class="nav-item">
     <a class="nav-link{% if active == 'progress' %} active{% endif %}"

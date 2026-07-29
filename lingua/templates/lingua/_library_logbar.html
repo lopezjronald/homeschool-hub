@@ -1,0 +1,29 @@
+{# Sticky who/when context so each card needs only ONE control (HH-143). Keep this comment to one physical line, or it leaks to the page (LGA-83). #}
+<form method="get" class="lib-logbar no-print" aria-label="Choose who you are logging for">
+  <input type="hidden" name="shelf" value="{{ shelf }}">
+  {% if q %}<input type="hidden" name="q" value="{{ q }}">{% endif %}
+
+  <span class="lib-logbar-label">Logging for</span>
+
+  {% if multi_child %}
+    <span class="lib-who" role="group" aria-label="Child">
+      {% for c in children %}
+        <button type="submit" name="for" value="{{ c.pk }}"
+                class="lib-who-btn{% if c.pk == log_child.pk %} is-active{% endif %}"
+                {% if c.pk == log_child.pk %}aria-current="true"{% endif %}>{{ c.first_name }}</button>
+      {% endfor %}
+    </span>
+  {% else %}
+    <strong class="lib-who-solo">{{ log_child.first_name }}</strong>
+    <input type="hidden" name="for" value="{{ log_child.pk }}">
+  {% endif %}
+
+  <details class="lib-when"{% if not log_on_is_today %} open{% endif %}>
+    <summary>{% if log_on_is_today %}Read on a different day{% else %}Read on {{ log_on|date:"M j" }}{% endif %}</summary>
+    <span class="lib-when-body">
+      <label class="visually-hidden" for="log-on">Date read</label>
+      <input type="date" id="log-on" name="on" value="{{ log_on|date:'Y-m-d' }}" max="{{ today|date:'Y-m-d' }}">
+      <button type="submit" class="btn btn-sm btn-outline-secondary">Use this date</button>
+    </span>
+  </details>
+</form>

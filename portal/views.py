@@ -23,7 +23,6 @@ from django.views.decorators.http import require_POST
 
 from activities.models import ExternalActivity
 from lingua import comprehension as lingua_comprehension
-from lingua import profiles as lingua_profiles
 from lingua import services as lingua_services
 from lingua import storage as lingua_storage
 from lingua import views as lingua_views
@@ -51,24 +50,15 @@ def _resolve_student(token):
 # a host model (D-03/D-04): the host knows the child's age and hands lingua a plain
 # host_student_id + a track profile.
 
-def _infer_band(student):
-    """Pick a Lingua track band from the child's age (KIDS_EARLY <10, else KIDS_OLDER);
-    default to KIDS_EARLY when the DOB is unknown. A parent settings UI can override
-    this later; v1 auto-provisions a sensible default on first entry."""
-    from datetime import date
-
-    dob = student.date_of_birth
-    if dob:
-        today = date.today()
-        # exact calendar age (no leap-day drift from //365 near the boundary)
-        age = today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
-        return lingua_profiles.KIDS_OLDER if age >= 10 else lingua_profiles.KIDS_EARLY
-    return lingua_profiles.KIDS_EARLY
-
-
 def _lingua_learner(student):
-    """The lingua Learner for this student, provisioned on first entry (idempotent)."""
-    return lingua_services.get_or_create_learner(student.pk, _infer_band(student))
+    """The lingua Learner for this student, provisioned on first entry (idempotent).
+
+    Goes through the shared adapter so the kid portal and the parent Spanish pages
+    provision identically — this used to carry its own copy of the age-band rule, which
+    is exactly the kind of thing that drifts."""
+    from homeschool_hub.adapters import lingua_students
+
+    return lingua_students.learner_for(student)
 
 
 def lingua_plan(request, token):

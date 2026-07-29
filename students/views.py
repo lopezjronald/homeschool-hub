@@ -326,10 +326,22 @@ def student_lessons(request, pk, curriculum_id):
         ).values_list("question_set__lesson_id", flat=True)
     )
     placement = CurriculumPlacement.objects.filter(child=student, curriculum=curriculum).first()
-    _act = placement.current_actionable_lesson() if placement else None
-    current_id = _act.id if _act else None
+    # Resolve ONCE and hand the result to both derived readings below — the checklist,
+    # the "Now" pointer and the progress bar all need it, and each recomputing it meant
+    # the same three queries three times per page load.
+    resolution = placement.resolved_lesson_ids() if placement else ([], set())
+    _, resolved = resolution
+    actionable = placement.current_actionable_lesson(resolution) if placement else None
+    current_id = actionable.id if actionable else None
+    # Lessons BELOW the parent's placement pointer already count as done (the floor),
+    # so they must render TICKED — otherwise the bar says "16 done" while every box
+    # sits empty, which reads as broken.
     for lesson in lessons:
-        lesson.mark_status = marks.get(lesson.id) or ("submitted" if lesson.id in submitted else "not_started")
+        lesson.mark_status = (
+            marks.get(lesson.id)
+            or ("submitted" if lesson.id in submitted else "")
+            or ("completed" if lesson.id in resolved else "not_started")
+        )
         lesson.is_current = lesson.id == current_id
         lesson.is_practice = lesson.lesson_type == Lesson.TYPE_PRACTICE
 
@@ -338,11 +350,10 @@ def student_lessons(request, pk, curriculum_id):
         for (num, _t), group in groupby(lessons, key=lambda x: (x.chapter.number, x.chapter.title))
         for items in [list(group)]
     ]
-    prog = placement.progress() if placement else {
-        "done": 0, "total": len(lessons), "pct": 0, "skipped": 0}
     # "Now" is DERIVED live (first unresolved lesson, skips passed over) — the stored
     # placement pointer is the parent's placement and is never auto-rewritten.
-    actionable = placement.current_actionable_lesson() if placement else None
+    prog = placement.progress(resolution) if placement else {
+        "done": 0, "total": len(lessons), "pct": 0, "skipped": 0}
     return render(request, "students/student_lessons.html", {
         "student": student, "curriculum": curriculum, "chapters": chapters,
         "can_edit": can_edit, "progress": prog,
@@ -394,7 +405,7 @@ def lessons_skip_practice(request, pk, curriculum_id):
     student = get_object_or_404(editable_queryset(Student.objects.all(), request.user), pk=pk)
     curriculum = _child_curriculum(request, student, curriculum_id)
     placement, _ = CurriculumPlacement.objects.get_or_create(child=student, curriculum=curriculum)
-    ids, resolved = placement._resolved_lesson_ids()
+    ids, resolved = placement.resolved_lesson_ids()
     practice = (Lesson.objects.filter(chapter__curriculum=curriculum,
                                       lesson_type=Lesson.TYPE_PRACTICE, id__in=ids)
                 .exclude(id__in=resolved))

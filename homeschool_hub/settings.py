@@ -293,6 +293,9 @@ if _google_client_id:
 EMAIL_HOST = os.getenv("EMAIL_HOST", "")
 if EMAIL_HOST:
     EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
+    # Never inherit the global socket default (which can block forever):
+    # a wedged SES connection would hang a dyno worker on register/invite.
+    EMAIL_TIMEOUT = 10
     EMAIL_PORT = _env_int("EMAIL_PORT", 587)
     EMAIL_USE_TLS = _env_bool("EMAIL_USE_TLS", True)
     EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER", "")
@@ -333,8 +336,8 @@ LINGUA = {
     # if the model/price changes). Story generation is operator content-authoring, so
     # this is a single monthly ceiling, not per-child.
     "MONTHLY_COST_CEILING_USD": _env_int("LINGUA_MONTHLY_COST_CEILING_USD", 25),
-    "AI_PRICE_INPUT_PER_MTOK": _env_float("LINGUA_AI_PRICE_INPUT_PER_MTOK", 15.0),
-    "AI_PRICE_OUTPUT_PER_MTOK": _env_float("LINGUA_AI_PRICE_OUTPUT_PER_MTOK", 75.0),
+    "AI_PRICE_INPUT_PER_MTOK": _env_float("LINGUA_AI_PRICE_INPUT_PER_MTOK", 5.0),
+    "AI_PRICE_OUTPUT_PER_MTOK": _env_float("LINGUA_AI_PRICE_OUTPUT_PER_MTOK", 25.0),
     # Audit-trail retention in days (~18 months); enforced by `purge_stale` (D-56).
     "AUDIT_RETENTION_DAYS": _env_int("LINGUA_AUDIT_RETENTION_DAYS", 548),
     # TTS provider order (SPIKE-01: Polly primary, edge-tts fallback — D-17/D-18).
@@ -382,6 +385,16 @@ LINGUA = {
     # host Work Log so it lands in the charter report. Set to "" to disable mirroring.
     "WORKLOG_SINK": os.getenv(
         "LINGUA_WORKLOG_SINK", "homeschool_hub.adapters.lingua_worklog.HostWorkLogSink"
+    ),
+    # The work-log subject mirrored books are filed under. One definition, read by the
+    # adapter, the Work Log's subject filter, and lingua's legacy redirect — so nobody
+    # has to import anybody to agree on the string (HH-143).
+    "WORKLOG_SUBJECT": os.getenv("LINGUA_WORKLOG_SUBJECT", "Spanish reading"),
+    # Host URL name the legacy reading-log link redirects to. Named here rather than
+    # hard-coded in lingua so extracting the module degrades gracefully instead of
+    # raising NoReverseMatch on a route that left with the host.
+    "WORKLOG_LIST_URL_NAME": os.getenv(
+        "LINGUA_WORKLOG_LIST_URL_NAME", "worklog:worklog_list"
     ),
 }
 

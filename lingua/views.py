@@ -2,18 +2,20 @@
 — that strict policy is reserved for the CSP-clean kid reader). Editors-only views
 raise Http404 for non-editors, matching the rest of the app (tutor/views.py)."""
 import re
-from urllib.parse import urlsplit
+from datetime import date
+from urllib.parse import urlencode, urlsplit
 
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.http import Http404
 from django.shortcuts import get_object_or_404, redirect, render
-from django.urls import reverse
+from django.urls import NoReverseMatch, reverse
+from django.utils import timezone
 from django.utils.csp import CSP
-from django.views.decorators.http import require_http_methods
+from django.views.decorators.http import require_POST, require_http_methods
 
-from django.db.models import Count, Q
+from django.db.models import Count, Max, Q
 
 from core.permissions import can_edit_family, can_edit_family_or_global, user_can_edit
 from core.utils import get_selected_family
@@ -281,161 +283,232 @@ def grade_descriptor(grade):
 
 @login_required
 def library_list(request):
-    """Parent-only browser of the curated Library List — the family's own researched
-    reading list, kept in ITS categories (LGA-75): native books by grade band (each
-    with the band's defining characteristics), CI/TPRS novellas for learners, the
-    adult track by CEFR stage, and free public-domain texts.
+    """The Spanish bookshelf — browse AND log in one place (HH-143).
 
-    Filters are scoped to what's actually on screen: the country list only offers
-    countries that exist in the CURRENT track+grade, so every option returns results.
+    One "shelf" rail replaces the old track+grade double-decision, and every card
+    carries a REAL one-click "Mark read" control (the old one was a decorative span
+    that looked like a checkbox and did nothing — the reported confusion). Logging
+    writes a BookLogEntry AND mirrors into the Work Log, so reading lands in the
+    charter report. Defaults to the shelf matching the selected child's grade.
     """
-    label = dict(LibraryBook.GRADE_CHOICES)
-    track_label = dict(LibraryBook.TRACK_CHOICES)
-    active_track = request.GET.get("track") or LibraryBook.NATIVE
-    if active_track not in track_label:
-        active_track = LibraryBook.NATIVE
-    is_native = active_track == LibraryBook.NATIVE
+    family = get_selected_family(request)
+    can_log = can_edit_family_or_global(request.user, family)
+    children = directory.family_children(getattr(family, "pk", None))
 
+    # --- who / when we are logging for -----------------------------------
+    log_child = None
+    if children:
+        want = _int_or_none(request.GET.get("for"))
+        log_child = next((c for c in children if c["pk"] == want), children[0])
+    today = timezone.localdate()
+    try:
+        log_on = date.fromisoformat(request.GET.get("on", ""))
+    except ValueError:
+        log_on = today
+    if log_on > today:
+        log_on = today
+
+    # --- shelves: ONE rail (learners | by grade | grown-ups | free) -------
     base = LibraryBook.objects.all()
-    track_counts = {r["track"]: r["n"] for r in base.values("track").annotate(n=Count("id"))}
-    tracks = [{"value": t, "label": track_label[t], "count": track_counts.get(t, 0),
-               "icon": LibraryBook.TRACK_ICONS.get(t, "")}
-              for t in LibraryBook.TRACK_ORDER if track_counts.get(t, 0)]
+    counts = {}
+    for row in base.values("track", "grade").annotate(n=Count("id")):
+        counts[(row["track"], row["grade"])] = row["n"]
+    grade_label = dict(LibraryBook.GRADE_CHOICES)
 
-    in_track = base.filter(track=active_track)
-    grades, active_grade, descriptor = [], "", ""
-    if is_native:
-        counts = {r["grade"]: r["n"] for r in in_track.values("grade").annotate(n=Count("id"))}
-        grades = [{"value": g, "label": label[g], "count": counts.get(g, 0)}
-                  for g in LibraryBook.GRADE_ORDER if counts.get(g, 0)]
-        active_grade = request.GET.get("grade") or (grades[0]["value"] if grades else "")
-        if active_grade not in {g["value"] for g in grades}:
-            active_grade = grades[0]["value"] if grades else ""
-        in_track = in_track.filter(grade=active_grade)
-        descriptor = grade_descriptor(active_grade)
+    def _track_total(track):
+        return sum(n for (t, _g), n in counts.items() if t == track)
 
-    # The country choices come from the CURRENT slice, so a selected country always
-    # has books (offering all 25 catalog countries made the filter look broken).
-    countries = sorted({c for c in in_track.values_list("country", flat=True) if c})
-    region = request.GET.get("region", "").strip()
-    if region not in countries:
-        region = ""
+    shelves = []
+    if _track_total(LibraryBook.CI):
+        shelves.append({"key": "learners", "label": "For learners",
+                        "count": _track_total(LibraryBook.CI)})
+    grade_shelves = [
+        {"key": "g-" + g, "label": grade_label[g],
+         "count": counts.get((LibraryBook.NATIVE, g), 0)}
+        for g in LibraryBook.GRADE_ORDER if counts.get((LibraryBook.NATIVE, g), 0)
+    ]
+    if grade_shelves:
+        shelves.append({"divider": "By grade"})
+        shelves.extend(grade_shelves)
+    more = [{"key": "adult", "label": "Grown-ups", "count": _track_total(LibraryBook.ADULT)},
+            {"key": "free", "label": "Free online", "count": _track_total(LibraryBook.FREE)}]
+    more = [m for m in more if m["count"]]
+    if more:
+        shelves.append({"divider": "More"})
+        shelves.extend(more)
+
+    valid_keys = {s["key"] for s in shelves if "key" in s}
+    shelf = request.GET.get("shelf") or ""
+    if shelf not in valid_keys:
+        shelf = _default_shelf(log_child, valid_keys)
+
+    # --- resolve the shelf to a queryset ----------------------------------
+    descriptor, shelf_label = "", ""
+    if shelf.startswith("g-"):
+        grade = shelf[2:]
+        books = base.filter(track=LibraryBook.NATIVE, grade=grade).order_by("title")
+        shelf_label = grade_label.get(grade, grade)
+        descriptor = grade_descriptor(grade)
+    else:
+        track = {"learners": LibraryBook.CI, "adult": LibraryBook.ADULT,
+                 "free": LibraryBook.FREE}.get(shelf, LibraryBook.CI)
+        books = base.filter(track=track).order_by("level_label", "title")
+        shelf_label = dict(LibraryBook.TRACK_CHOICES).get(track, "")
+        descriptor = LibraryBook.TRACK_BLURBS.get(track, "")
+
     q = request.GET.get("q", "").strip()
-
-    books = in_track
-    if region:
-        books = books.filter(country=region)
     if q:
         books = books.filter(Q(title__icontains=q) | Q(author__icontains=q))
-    books = list(books.order_by("level_label", "title") if not is_native
-                 else books.order_by("title"))
+    books = list(books)
 
-    # Non-native tracks group by their own ladder (CI level, adult stage).
+    # --- annotate what this child has already read (one query) ------------
+    for b in books:
+        b.read_count, b.read_last, b.read_entry_id = 0, None, None
+    if log_child and books:
+        learner = Learner.objects.filter(host_student_id=log_child["pk"]).first()
+        if learner:
+            # ONE query for every read of these books, oldest first; last write wins, so
+            # `entry` ends up being the same row whose date the label shows. Deliberately
+            # not Count + Max("id") in SQL: those two diverge the moment a read is
+            # backdated (the log bar invites exactly that), and undo would then remove a
+            # different entry than the one it names. The family's reading log is small,
+            # so folding it in Python costs nothing and can't get that wrong.
+            reads = {}
+            for book_id, entry_id, read_on in (
+                BookLogEntry.objects
+                .filter(learner=learner, book_id__in=[b.pk for b in books])
+                .order_by("read_on", "id")
+                .values_list("book_id", "id", "read_on")
+            ):
+                n = reads[book_id][0] + 1 if book_id in reads else 1
+                reads[book_id] = (n, read_on, entry_id)
+            for b in books:
+                r = reads.get(b.pk)
+                if r:
+                    b.read_count, b.read_last, b.read_entry_id = r
+
+    # non-native shelves group by their own ladder (CI level / adult stage)
     groups = []
-    if not is_native:
+    if not shelf.startswith("g-"):
         for book in books:
             key = book.level_label or "—"
             if not groups or groups[-1]["label"] != key:
                 groups.append({"label": key, "books": []})
             groups[-1]["books"].append(book)
 
+    # The child and any backdate must ride along on EVERY link, or picking "read on
+    # Jul 10" and then switching shelves silently refiles the next tick as today —
+    # wrong data in the charter report, entered without an error. `keep_qs` is the
+    # tail appended to "?shelf=…"; `next_qs` is the full post-log redirect target.
+    keep = {}
+    if log_child:
+        keep["for"] = str(log_child["pk"])
+    if log_on != today:
+        keep["on"] = log_on.isoformat()
+    keep_qs = ("&" + urlencode(keep)) if keep else ""
+    next_kw = dict(keep, shelf=shelf)
+    if q:
+        next_kw["q"] = q
+    next_qs = reverse("lingua:library_list") + "?" + urlencode(next_kw)
+
     return render(request, "lingua/library_list.html", {
         "subnav": "library",
-        "tracks": tracks, "active_track": active_track, "is_native": is_native,
-        "track_label": track_label[active_track],
-        "track_blurb": LibraryBook.TRACK_BLURBS.get(active_track, ""),
-        "grades": grades, "active_grade": active_grade,
-        "active_grade_label": label.get(active_grade, ""),
-        "descriptor": descriptor,
-        "books": books, "groups": groups, "total": len(books),
-        "countries": countries, "region": region, "q": q,
-        "filtered": bool(region or q),
+        "shelves": shelves, "shelf": shelf, "shelf_label": shelf_label,
+        "descriptor": descriptor, "books": books, "groups": groups,
+        "total": len(books), "q": q,
+        "children": children, "log_child": log_child, "multi_child": len(children) > 1,
+        "no_family": family is None,
+        "log_on": log_on, "log_on_is_today": log_on == today, "today": today,
+        # A read from a previous year must show its year, or "Jan 5" reads as this Jan.
+        "this_year": str(today.year),
+        "can_log": bool(can_log and log_child),
+        "keep_qs": keep_qs, "next_qs": next_qs,
     })
 
-def _family_learners(request):
-    """(family, {host_student_id: learner}, {host_student_id: name}) for the selected
-    family — shared by the reading-log parent views."""
+
+def _default_shelf(child, valid_keys):
+    """The shelf to open when none is asked for: match the child's grade, else the
+    learner (CI) ladder — never Pre-K by accident."""
+    grade_map = {"PREK": "PK", "K": "K"}
+    raw = (child or {}).get("grade_level") or ""
+    key = grade_map.get(raw) or (raw[1:].lstrip("0") if raw.startswith("G") else "")
+    if key and "g-" + key in valid_keys:
+        return "g-" + key
+    if "learners" in valid_keys:
+        return "learners"
+    return next(iter(sorted(valid_keys)), "")
+
+
+@login_required
+@require_POST
+def library_mark_read(request):
+    """One-click 'this child read this book' from the shelf (HH-143).
+
+    Logs (or undoes) a read for the child named in the sticky log bar. The child is
+    resolved INSIDE the selected family's queryset — never trusted from the POST — and
+    the redirect target is validated, so neither a wrong-family write nor an open
+    redirect is possible.
+    """
+    from django.utils.http import url_has_allowed_host_and_scheme
+
     family = get_selected_family(request)
-    ids = directory.list_for_family(family.id) if family else []
-    learners = {l.host_student_id: l for l in Learner.objects.filter(host_student_id__in=ids)}
-    names = {hsid: (directory.get_learner_display(hsid) or {}).get("name") or f"Learner {hsid}"
-             for hsid in learners}
-    return family, learners, names
-
-
-@login_required
-def book_log(request):
-    """Parent view of the family's Spanish physical-book reading log (LGA-75)."""
-    family, learners, names = _family_learners(request)
-    can_edit = can_edit_family_or_global(request.user, family)
-    entries = list(
-        BookLogEntry.objects.filter(learner__in=learners.values())
-        .select_related("book", "learner").order_by("-read_on", "-created_at")
-    )
-    for e in entries:
-        e.child_name = names.get(e.learner.host_student_id, "")
-    return render(request, "lingua/book_log.html", {
-        "subnav": "books", "entries": entries, "can_edit": can_edit,
-        "no_family": family is None,
-    })
-
-
-@login_required
-@require_http_methods(["GET", "POST"])
-def book_log_add(request):
-    """Parent logs a physical book a child read (LGA-75). Family-scoped write."""
-    family, learners, names = _family_learners(request)
-    if not can_edit_family_or_global(request.user, family):
+    if family is None or not can_edit_family_or_global(request.user, family):
         raise Http404
+    child = directory.child_in_family(_int_or_none(request.POST.get("child")), family.pk)
+    if child is None:
+        raise Http404
+    learner = services.learner_for_child(child)
 
-    if request.method == "POST":
-        # `learners` is keyed by host_student_id, so the form must post THAT id — not
-        # the lingua Learner.pk (the two id spaces differ and mixing them files the
-        # book against the wrong child).
-        learner = learners.get(_int_or_none(request.POST.get("host_student_id")))
-        if learner is None:
-            raise Http404  # only a learner in the user's own family
-        bid = request.POST.get("book_id") or ""
-        book = LibraryBook.objects.filter(pk=bid).first() if bid.isdigit() else None
-        from datetime import date
-        try:
-            read_on = date.fromisoformat(request.POST.get("read_on", ""))
-        except ValueError:
-            read_on = None
-        services.log_book(
-            learner, book=book,
-            title=request.POST.get("custom_title", ""),
-            author=request.POST.get("custom_author", ""),
-            read_on=read_on, enjoyed=request.POST.get("enjoyed", ""),
-            note=request.POST.get("note", ""), logged_by=BookLogEntry.PARENT,
+    bid = (request.POST.get("book") or "").strip()
+    book = (LibraryBook.objects.filter(pk=bid).first()
+            if bid.isdigit() and bid.isascii() else None)
+    try:
+        read_on = date.fromisoformat(request.POST.get("on", ""))
+    except ValueError:
+        read_on = None
+    # Clamp the same way the GET side does. `max=` on the date input is client-side
+    # only, so a mistyped year would otherwise file a phantom entry decades out — in
+    # the Work Log AND the charter report, sorted to the top forever.
+    if read_on and read_on > timezone.localdate():
+        read_on = timezone.localdate()
+
+    if request.POST.get("action") == "undo":
+        entry_id = _int_or_none(request.POST.get("entry"))
+        if entry_id and services.delete_book_log(learner, entry_id):
+            messages.success(request, "Removed from the reading log.")
+        else:
+            messages.info(request, "Nothing to remove.")
+    else:
+        entry = services.log_book(
+            learner, book=book, title=request.POST.get("title", ""),
+            read_on=read_on, logged_by=BookLogEntry.PARENT,
         )
-        messages.success(request, "Book added to the reading log.")
-        return redirect("lingua:book_log")
+        if entry is None:
+            messages.info(request, "Pick a book, or type a title.")
+        else:
+            messages.success(
+                request,
+                "Logged: " + child["first_name"] + " read " + entry.display_title + ".")
 
-    # Option value is the HOST student id (the key `learners` is built on above).
-    learner_rows = [{"pk": hsid, "name": names.get(hsid, "")}
-                    for hsid, l in sorted(learners.items())]
-    _bid = (request.GET.get("book") or "").strip()
-    prebook = (LibraryBook.objects.filter(pk=_bid).first()
-               if _bid.isdigit() and _bid.isascii() else None)
-    from django.utils import timezone
-    return render(request, "lingua/book_log_form.html", {
-        "subnav": "books", "learners": learner_rows, "prebook": prebook,
-        "enjoyed_choices": BookLogEntry.ENJOYED_CHOICES, "today": timezone.localdate(),
-        "no_family": family is None,
-    })
+    nxt = request.POST.get("next") or ""
+    if not url_has_allowed_host_and_scheme(nxt, allowed_hosts=None):
+        nxt = reverse("lingua:library_list")
+    if book is not None:
+        nxt += "#book-" + str(book.pk)
+    return redirect(nxt)
 
 
 @login_required
-@require_http_methods(["POST"])
-def book_log_delete(request, entry_id):
-    """Parent removes a book-log entry (only for a learner in their family)."""
-    family, learners, _ = _family_learners(request)
-    if not can_edit_family_or_global(request.user, family):
-        raise Http404
-    for learner in learners.values():
-        if services.delete_book_log(learner, entry_id):
-            messages.success(request, "Entry removed.")
-            break
-    return redirect("lingua:book_log")
+def book_log_redirect(request):
+    """The parent reading log now lives IN the Work Log (HH-143) — one record, one
+    place. Kept under the old name so stale links/bookmarks land somewhere sensible.
 
+    Both the host URL name and the subject come from settings, so extracting lingua
+    (which takes the host's worklog with it) degrades to the module's own progress page
+    instead of a NoReverseMatch 500."""
+    subject = settings.LINGUA.get("WORKLOG_SUBJECT", "")
+    try:
+        target = reverse(settings.LINGUA.get("WORKLOG_LIST_URL_NAME") or "")
+    except NoReverseMatch:
+        return redirect("lingua:progress")
+    return redirect(target + "?" + urlencode({"subject": subject}))

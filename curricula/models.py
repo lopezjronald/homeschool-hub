@@ -268,11 +268,15 @@ class CurriculumPlacement(models.Model):
             .values_list("id", flat=True)
         )
 
-    def _resolved_lesson_ids(self):
+    def resolved_lesson_ids(self):
         """(ordered_ids, resolved_set): non-opener lesson ids counted as done/passed —
         the UNION of (a) explicit LessonProgress completed OR skipped marks, (b) lessons
         with submitted student work, and (c) everything before the placement floor.
-        Skipped lessons are 'resolved' so the bar advances past them (HH-141)."""
+        Skipped lessons are 'resolved' so the bar advances past them (HH-141).
+
+        Always reads fresh — callers mutate marks and re-ask within one request. A page
+        that needs it more than once should compute it ONCE and pass the result to
+        current_actionable_lesson()/progress() rather than caching it on the instance."""
         ids = self._progress_lesson_ids()
         id_set = set(ids)
         # (a) explicit parent marks — fetched ONCE with their status, so progress()
@@ -299,23 +303,25 @@ class CurriculumPlacement(models.Model):
             resolved |= set(ids[: ids.index(self.current_lesson_id)])
         return ids, resolved & id_set
 
-    def current_actionable_lesson(self):
+    def current_actionable_lesson(self, precomputed=None):
         """The first non-opener lesson that is NOT resolved (completed / skipped /
-        submitted / below the floor) — the real 'what's next', passing over skips."""
-        ids, resolved = self._resolved_lesson_ids()
+        submitted / below the floor) — the real 'what's next', passing over skips.
+        Pass ``precomputed`` (a resolved_lesson_ids() result) to reuse that query."""
+        ids, resolved = precomputed if precomputed is not None else self.resolved_lesson_ids()
         nxt = next((lid for lid in ids if lid not in resolved), None)
         return Lesson.objects.filter(pk=nxt).select_related("chapter").first() if nxt else None
 
-    def progress(self):
+    def progress(self, precomputed=None):
         """Return {done, total, pct, skipped}. 'done' counts resolved lessons (so a
         skip advances the bar); the explicit complete/skip marks (HH-141) union with
         submitted work + the placement floor, so literature/writing progress is
-        unchanged when no marks exist while math gains a real manual signal."""
-        ids, resolved = self._resolved_lesson_ids()
+        unchanged when no marks exist while math gains a real manual signal. Pass
+        ``precomputed`` (a resolved_lesson_ids() result) to reuse that query."""
+        ids, resolved = precomputed if precomputed is not None else self.resolved_lesson_ids()
         total = len(ids)
         if not total:
             return {"done": 0, "total": 0, "pct": 0, "skipped": 0}
-        # Derived from the marks _resolved_lesson_ids already fetched — no extra query.
+        # Derived from the marks resolved_lesson_ids already fetched — no extra query.
         skipped = sum(1 for st in self._marks.values() if st == LessonProgress.SKIPPED)
         done = len(resolved)
         return {"done": done, "total": total, "pct": round(done / total * 100),

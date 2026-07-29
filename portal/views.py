@@ -90,6 +90,7 @@ def lingua_plan(request, token):
         "totals": lingua_services.reading_totals(learner),
         "band": learner.profile.track_profile,
         "celebrate": celebrate,
+        "tutor_packets": lingua_services.tutor_packets_for(student.pk),
     })
 
 
@@ -176,27 +177,56 @@ def lingua_read(request, token, story_id):
 
 
 def lingua_phonics(request, token):
-    """Spanish phonics mini-lesson (F-04, LGA-64): the handful of Spanish-specific
-    decoding rules + practice words. Linked from the plan for the youngest band; any
-    learner may open it. Provisions the learner on entry (idempotent)."""
+    """Spanish phonics mini-lesson (F-04, LGA-64/84): decoding rules + tappable
+    practice words with pre-baked audio when available. Linked from the plan for
+    the youngest band; any learner may open it. Provisions the learner on entry."""
     student = _resolve_student(token)
     _lingua_learner(student)
     return render(request, "portal/lingua_phonics.html", {
-        "student": student, "token": token, "rules": lingua_services.phonics_rules(),
+        "student": student, "token": token,
+        "rules": lingua_services.phonics_rules_with_audio(),
     })
 
 
 def lingua_listen(request, token):
-    """Spanish listening track (F-02/N-02, LGA-55/57): curated comprehensible-input
-    videos for the learner's band, plus a minutes check-in. Listening minutes feed the
+    """Spanish listening track (F-02/N-02, LGA-55/57/86): curated YouTube plus
+    in-app alphabet chart and tutor practice phrases. Listening minutes feed the
     same 'minutes of input' hero metric as reading. Provisions the learner on entry."""
     student = _resolve_student(token)
     learner = _lingua_learner(student)
     return render(request, "portal/lingua_listen.html", {
         "student": student, "token": token,
         "resources": lingua_services.listening_resources(learner.profile.track_profile),
+        "alphabet": lingua_services.alphabet_tiles_with_audio(),
+        "phrases": lingua_services.practice_phrases_for(student.pk),
         "totals": lingua_services.reading_totals(learner),
         "logged": request.GET.get("logged"),
+    })
+
+
+def lingua_tutor(request, token):
+    """Con el maestro (LGA-85): list of tutor homework packets visible to this child."""
+    student = _resolve_student(token)
+    _lingua_learner(student)
+    packets = lingua_services.tutor_packets_for(student.pk)
+    return render(request, "portal/lingua_tutor.html", {
+        "student": student, "token": token, "packets": packets,
+    })
+
+
+def lingua_tutor_packet(request, token, packet_id):
+    """One tutor packet: download handout + practice phrases (LGA-85)."""
+    student = _resolve_student(token)
+    _lingua_learner(student)
+    packet = lingua_services.tutor_packet_for(student.pk, packet_id)
+    if packet is None:
+        raise Http404("Packet not found.")
+    phrases = [
+        p for p in lingua_services.practice_phrases_for(student.pk)
+        if p["packet_id"] == packet.pk
+    ]
+    return render(request, "portal/lingua_tutor_packet.html", {
+        "student": student, "token": token, "packet": packet, "phrases": phrases,
     })
 
 

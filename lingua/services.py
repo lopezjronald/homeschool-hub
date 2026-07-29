@@ -20,9 +20,10 @@ from . import (
     profiles, safety, schedulers, storage,
 )
 from .models import (
-    AiUsage, AuditEvent, BookLogEntry, ComprehensionCheck, KnownWord, Learner,
-    LibraryBook, ListeningResource, ListeningSession, MilestoneAward, PhonicsRule,
-    ReadingSession, ReviewItem, Story, StoryAudio, StoryImage, StoryRecording, Theme,
+    AiUsage, AlphabetTile, AudioClip, AuditEvent, BookLogEntry, ComprehensionCheck,
+    KnownWord, Learner, LibraryBook, ListeningResource, ListeningSession,
+    MilestoneAward, PhonicsRule, ReadingSession, ReviewItem, Story, StoryAudio,
+    StoryImage, StoryRecording, Theme, TutorPacket,
 )
 from .ports import AIClient, ImageClient
 from .prompts import CRITIC_SYSTEM, STORY_SYSTEM
@@ -873,9 +874,168 @@ def phonics_rules():
     return list(PhonicsRule.objects.filter(active=True))
 
 
+def phonics_example_words(example):
+    """Split a PhonicsRule.example string ('mesa · piso · luna') into words."""
+    if not example:
+        return []
+    return [w.strip() for w in example.replace("·", " ").split() if w.strip()]
+
+
+def _clip_lookup(texts, *, voice=None, engine=None, provider="polly"):
+    """Map exact text -> current AudioClip URL for the given voice (LGA-84)."""
+    voice = voice or settings.LINGUA.get("TTS_VOICE", "Mia")
+    engine = engine or settings.LINGUA.get("TTS_ENGINE", "neural")
+    texts = [t for t in texts if t]
+    if not texts:
+        return {}
+    out = {}
+    for clip in AudioClip.objects.filter(
+        text__in=texts, voice=voice, engine=engine, provider=provider,
+    ):
+        if clip.is_current:
+            try:
+                out[clip.text] = storage.public_url(clip.audio_key)
+            except Exception:  # noqa: BLE001 — missing storage must not 500 the portal
+                continue
+    return out
+
+
+def phonics_rules_with_audio(*, voice=None, engine=None):
+    """Phonics rules with per-word tap targets + optional audio URLs (LGA-84).
+
+    Each rule becomes ``{rule, words: [{text, audio_url|None}]}``. Missing clips
+    degrade to plain text (no dead buttons).
+    """
+    rules = phonics_rules()
+    all_words = []
+    for rule in rules:
+        all_words.extend(phonics_example_words(rule.example))
+    urls = _clip_lookup(all_words, voice=voice, engine=engine)
+    result = []
+    for rule in rules:
+        words = [{"text": w, "audio_url": urls.get(w)} for w in phonics_example_words(rule.example)]
+        result.append({"rule": rule, "words": words})
+    return result
+
+
 def listening_resources(age_band):
     """Active curated listening items for a band, ordered (F-02/N-02, LGA-55/56)."""
     return list(ListeningResource.objects.filter(age_band=age_band, active=True))
+
+
+def tutor_packets_for(host_student_id):
+    """Active tutor packets visible to a host student (LGA-85).
+
+    A packet with ``host_student_id`` NULL is shared; otherwise it must match.
+    """
+    return list(
+        TutorPacket.objects.filter(active=True).filter(
+            Q(host_student_id__isnull=True) | Q(host_student_id=host_student_id)
+        )
+    )
+
+
+def tutor_packet_for(host_student_id, packet_id):
+    """One visible TutorPacket or None (LGA-85)."""
+    return (
+        TutorPacket.objects.filter(pk=packet_id, active=True)
+        .filter(Q(host_student_id__isnull=True) | Q(host_student_id=host_student_id))
+        .first()
+    )
+
+
+def alphabet_tiles():
+    """Active alphabet / digraph tiles in chart order (LGA-86)."""
+    return list(AlphabetTile.objects.filter(active=True))
+
+
+def alphabet_tiles_with_audio(*, voice=None, engine=None):
+    """Alphabet tiles with spoken + example audio URLs when baked (LGA-86)."""
+    tiles = alphabet_tiles()
+    texts = []
+    for t in tiles:
+        texts.append(t.spoken)
+        if t.example:
+            texts.append(t.example)
+    urls = _clip_lookup(texts, voice=voice, engine=engine)
+    return [
+        {
+            "tile": t,
+            "spoken_url": urls.get(t.spoken),
+            "example_url": urls.get(t.example) if t.example else None,
+        }
+        for t in tiles
+    ]
+
+
+def practice_phrases_for(host_student_id, *, voice=None, engine=None):
+    """Practice lines from visible tutor packets, with audio when baked (LGA-86)."""
+    phrases = []
+    for packet in tutor_packets_for(host_student_id):
+        for line in packet.phrase_lines():
+            phrases.append({"text": line, "packet_id": packet.pk, "audio_url": None})
+    urls = _clip_lookup([p["text"] for p in phrases], voice=voice, engine=engine)
+    for p in phrases:
+        p["audio_url"] = urls.get(p["text"])
+    return phrases
+
+
+def bake_audio_clip(text, *, voice=None, engine=None, provider="polly",
+                    link_only=False, force=False, client=None):
+    """Bake or link one AudioClip (LGA-84/86). Idempotent by content hash.
+
+    Returns ``(AudioClip, "baked"|"linked"|"skipped")``. ``link_only`` requires the
+    mp3 already in the public store. Never call from a request path.
+    """
+    text = (text or "").strip()
+    if not text:
+        raise ValueError("Cannot bake an empty clip.")
+    voice = voice or settings.LINGUA.get("TTS_VOICE", "Mia")
+    engine = engine or settings.LINGUA.get("TTS_ENGINE", "neural")
+    digest = assets.content_hash(text, provider=provider, voice=voice, engine=engine)
+    key = assets.clip_key(digest)
+    existing = AudioClip.objects.filter(
+        text=text, voice=voice, engine=engine, provider=provider,
+    ).first()
+    if existing and existing.content_hash == digest and not force:
+        return existing, "skipped"
+    if link_only:
+        if not storage.readalong_storage().exists(key):
+            raise FileNotFoundError(f"Clip asset missing for link-only: {key}")
+        action = "linked"
+    else:
+        out = audio.synthesize_clip(text, voice=voice, engine=engine, client=client)
+        storage.save_audio(key, out["audio"])
+        action = "baked"
+    obj, _ = AudioClip.objects.update_or_create(
+        text=text, voice=voice, engine=engine, provider=provider,
+        defaults={"content_hash": digest, "audio_key": key, "duration_ms": 0},
+    )
+    return obj, action
+
+
+def clip_texts_to_bake(*, phonics=False, alphabet=False, phrases=False):
+    """Collect unique texts that need AudioClip rows (authoring inventory)."""
+    texts = []
+    if phonics:
+        for rule in PhonicsRule.objects.filter(active=True):
+            texts.extend(phonics_example_words(rule.example))
+    if alphabet:
+        for tile in AlphabetTile.objects.filter(active=True):
+            texts.append(tile.spoken)
+            if tile.example:
+                texts.append(tile.example)
+    if phrases:
+        for packet in TutorPacket.objects.filter(active=True):
+            texts.extend(packet.phrase_lines())
+    # Preserve order, drop dupes / blanks
+    seen, out = set(), []
+    for t in texts:
+        t = (t or "").strip()
+        if t and t not in seen:
+            seen.add(t)
+            out.append(t)
+    return out
 
 
 def record_listening(learner, resource, minutes):

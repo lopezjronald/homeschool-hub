@@ -165,3 +165,31 @@ def synthesize_story(text, *, voice=None, engine=None, client=None, tail_ms=400)
         "voice": out["voice"],
         "engine": out["engine"],
     }
+
+
+def synthesize_clip(text, *, voice=None, engine=None, client=None):
+    """Synthesize a single utterance as mp3 only — no speech marks (LGA-84).
+
+    Letter names, phonics practice words, and short homework phrases don't need
+    word-level timings. Same PII fence and injectable client as ``synthesize``.
+    Returns ``{"audio": bytes, "voice", "engine"}``.
+    """
+    if not (text or "").strip():
+        raise TTSError("Refusing to synthesize empty text.")
+    safety.assert_no_pii(text, where="tts")
+    voice = voice or settings.LINGUA.get("TTS_VOICE", "Mia")
+    engine = engine or settings.LINGUA.get("TTS_ENGINE", "neural")
+    ai = client or _polly_client()
+    try:
+        audio_resp = ai.synthesize_speech(
+            Text=text, VoiceId=voice, Engine=engine,
+            OutputFormat="mp3", TextType="text",
+        )
+        audio = audio_resp["AudioStream"].read()
+        if not audio:
+            raise TTSError("Polly returned no audio.")
+    except TTSError:
+        raise
+    except Exception as exc:  # noqa: BLE001 — normalize any boto/IO error
+        raise TTSError(f"Polly synthesis failed: {type(exc).__name__}") from exc
+    return {"audio": audio, "voice": voice, "engine": engine}

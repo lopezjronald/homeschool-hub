@@ -1,4 +1,5 @@
 {% extends "portal/base_portal.html" %}
+{% load static %}
 {% block title %}Sonidos · {{ student.first_name }}{% endblock %}
 
 {% block content %}
@@ -6,18 +7,35 @@
 
   <div class="portal-hero mb-4">
     <h1>🔤 Los sonidos del español</h1>
-    <p class="mb-0">Unos truquitos para leer en español. Lee las palabras en voz alta. 🌱</p>
+    <p class="mb-0">Toca una palabra para oírla. Después léela en voz alta. 🌱</p>
   </div>
 
   {% if rules %}
-    <div class="portal-subjects">
-      {% for rule in rules %}
-      <div class="portal-subject-card" style="cursor: default;">
+    <div class="portal-subjects" data-lingua-clips>
+      {% for item in rules %}
+      <div class="portal-subject-card" style="cursor: default; flex-wrap: wrap;">
         <div class="portal-subject-emoji">🔡</div>
-        <div class="portal-subject-body">
-          <div class="portal-subject-name">{{ rule.title }} <span class="text-muted">— {{ rule.pattern }}</span></div>
-          <div class="portal-next-line">{{ rule.tip }}</div>
-          <div class="portal-next-line"><span class="portal-next-label">Lee</span> {{ rule.example }}</div>
+        <div class="portal-subject-body" style="flex: 1 1 auto;">
+          <div class="portal-subject-name">{{ item.rule.title }} <span class="text-muted">— {{ item.rule.pattern }}</span></div>
+          <div class="portal-next-line">{{ item.rule.tip }}</div>
+          <div class="d-flex flex-wrap gap-2 mt-2 align-items-center">
+            <span class="portal-next-label">Lee</span>
+            {% for w in item.words %}
+              {% if w.audio_url %}
+                <button type="button" class="btn btn-outline-primary lingua-clip-btn"
+                        data-audio-url="{{ w.audio_url }}"
+                        style="min-height:44px; min-width:44px;">{{ w.text }}</button>
+              {% else %}
+                <span class="px-2 py-1">{{ w.text }}</span>
+              {% endif %}
+            {% endfor %}
+            {% if item.words %}
+              <button type="button" class="btn btn-sm btn-primary lingua-clip-playall"
+                      data-play-all
+                      aria-label="Oír todas las palabras"
+                      style="min-height:44px;">▶ Todas</button>
+            {% endif %}
+          </div>
         </div>
       </div>
       {% endfor %}
@@ -28,4 +46,8 @@
 
   <p class="mt-4"><a href="{% url 'portal:lingua_plan' token=token %}">&larr; Volver a leer</a></p>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'lingua/clips.js' %}"></script>
 {% endblock %}

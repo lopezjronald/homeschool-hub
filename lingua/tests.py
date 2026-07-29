@@ -27,10 +27,10 @@ from . import advancement, assets, audio, cognates, comprehension, illustrate, l
 from . import storage as lingua_storage
 from .integrations import directory
 from .models import (
-    AiUsage, AuditEvent, BookLogEntry, ComprehensionCheck, KnownWord, Learner,
-    LearnerProfile, LibraryBook, ListeningResource, ListeningSession, MilestoneAward,
-    PhonicsRule, ReadingSession, ReviewItem, Story, StoryAudio, StoryImage,
-    StoryRecording, Theme,
+    AiUsage, AlphabetTile, AudioClip, AuditEvent, BookLogEntry, ComprehensionCheck,
+    KnownWord, Learner, LearnerProfile, LibraryBook, ListeningResource,
+    ListeningSession, MilestoneAward, PhonicsRule, ReadingSession, ReviewItem,
+    Story, StoryAudio, StoryImage, StoryRecording, Theme, TutorPacket,
 )
 from .ports import AIClient, AIResult, ImageClient
 
@@ -2617,6 +2617,28 @@ class PhonicsTests(TestCase):
         html = self.client.get(url).content.decode()
         self.assertIn("La ñ", html)            # a rule title
         self.assertIn("niño", html)            # a practice word
+        # Without baked clips, words render as plain text (not dead buttons).
+        self.assertNotIn('data-audio-url', html)
+
+    @override_settings(STORAGES=_INMEM_STORAGES)
+    def test_phonics_page_tappable_when_clips_baked(self):
+        self._seed()
+        from django.conf import settings as dj_settings
+        voice = dj_settings.LINGUA.get("TTS_VOICE", "Mia")
+        engine = dj_settings.LINGUA.get("TTS_ENGINE", "neural")
+        word = "niño"
+        digest = assets.content_hash(word, provider="polly", voice=voice, engine=engine)
+        key = assets.clip_key(digest)
+        lingua_storage.save_audio(key, b"ID3fake")
+        AudioClip.objects.create(
+            text=word, voice=voice, engine=engine, provider="polly",
+            content_hash=digest, audio_key=key,
+        )
+        url = reverse("portal:lingua_phonics", kwargs={"token": self.early_token})
+        html = self.client.get(url).content.decode()
+        self.assertIn("data-audio-url", html)
+        self.assertIn("lingua-clip-btn", html)
+        self.assertIn("data-play-all", html)
 
     def test_plan_shows_phonics_only_for_kids_early(self):
         early = self.client.get(reverse("portal:lingua_plan", kwargs={"token": self.early_token})).content.decode()
@@ -4138,3 +4160,155 @@ class LibraryFilterTests(TestCase):
         self.assertTrue(grade_descriptor("PK"))      # loaded from the attachment
         html = self._get("?track=native&grade=1")
         self.assertIn("What books look like at this level", html)
+
+
+class TutorPacketTests(TestCase):
+    """LGA-85: Con el maestro — visibility + portal download surface."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from portal.tokens import make_portal_token
+        cls.parent = User.objects.create_user("tp_parent", email="tp@e.com", password="pw")
+        cls.kaylin = Student.objects.create(parent=cls.parent, first_name="Kaylin")
+        cls.violet = Student.objects.create(parent=cls.parent, first_name="Violet")
+        Learner.create_for_host_student(cls.kaylin.pk, profiles.KIDS_OLDER)
+        Learner.create_for_host_student(cls.violet.pk, profiles.KIDS_EARLY)
+        cls.kaylin_token = make_portal_token(cls.kaylin)
+        cls.violet_token = make_portal_token(cls.violet)
+
+    def test_seed_creates_kaylin_packet(self):
+        from io import StringIO
+        from django.core.management import call_command
+        call_command("seed_tutor_leccion1", stdout=StringIO())
+        pkt = TutorPacket.objects.get(title__startswith="Lección 1")
+        self.assertEqual(pkt.host_student_id, self.kaylin.pk)
+        self.assertGreaterEqual(len(pkt.phrase_lines()), 5)
+
+    def test_kaylin_sees_packet_violet_does_not(self):
+        TutorPacket.objects.create(
+            title="Lección 1 — Mis primeros pasos",
+            source="italki",
+            body="Yo soy amigable.\nMi hermana es alta.",
+            host_student_id=self.kaylin.pk,
+        )
+        kaylin_plan = self.client.get(
+            reverse("portal:lingua_plan", kwargs={"token": self.kaylin_token})
+        ).content.decode()
+        violet_plan = self.client.get(
+            reverse("portal:lingua_plan", kwargs={"token": self.violet_token})
+        ).content.decode()
+        self.assertIn("Con el maestro", kaylin_plan)
+        self.assertNotIn("Con el maestro", violet_plan)
+
+    def test_packet_page_shows_phrases_and_file_url(self):
+        from django.core.files.base import ContentFile
+        pkt = TutorPacket.objects.create(
+            title="Lección 1 — Mis primeros pasos",
+            body="Yo soy amigable.",
+            host_student_id=self.kaylin.pk,
+        )
+        pkt.file.save("leccion1.docx", ContentFile(b"PK fake docx"), save=True)
+        url = reverse("portal:lingua_tutor_packet",
+                      kwargs={"token": self.kaylin_token, "packet_id": pkt.pk})
+        html = self.client.get(url).content.decode()
+        self.assertIn("Yo soy amigable.", html)
+        self.assertIn("Descargar documento", html)
+        self.assertIn(pkt.file.url, html)
+
+    def test_violet_cannot_open_kaylin_packet(self):
+        pkt = TutorPacket.objects.create(
+            title="Secret", body="hola", host_student_id=self.kaylin.pk,
+        )
+        url = reverse("portal:lingua_tutor_packet",
+                      kwargs={"token": self.violet_token, "packet_id": pkt.pk})
+        self.assertEqual(self.client.get(url).status_code, 404)
+
+
+@override_settings(STORAGES=_INMEM_STORAGES)
+class AudioClipBakeTests(TestCase):
+    """LGA-84: content-addressed clip bake; no Polly on link-only / skip."""
+
+    def test_synthesize_clip_mp3_only(self):
+        client = _FakePolly([])
+        out = audio.synthesize_clip("perro", client=client)
+        self.assertEqual(out["audio"], b"ID3" + bytes([3]) + b"fake-mp3")
+        self.assertEqual([c["OutputFormat"] for c in client.calls], ["mp3"])
+
+    def test_bake_audio_clip_idempotent(self):
+        client = _FakePolly([])
+        obj, action = services.bake_audio_clip("perro", client=client)
+        self.assertEqual(action, "baked")
+        self.assertTrue(lingua_storage.readalong_storage().exists(obj.audio_key))
+        obj2, action2 = services.bake_audio_clip("perro", client=client)
+        self.assertEqual(action2, "skipped")
+        self.assertEqual(obj.pk, obj2.pk)
+        self.assertEqual(AudioClip.objects.filter(text="perro").count(), 1)
+
+    def test_bake_link_only_without_asset_fails(self):
+        with self.assertRaises(FileNotFoundError):
+            services.bake_audio_clip("missing-word", link_only=True)
+
+    def test_clips_build_phonics_with_fake_polly(self):
+        from io import StringIO
+        from django.core.management import call_command
+        call_command("seed_phonics", stdout=StringIO())
+        with mock.patch("lingua.audio.synthesize_clip",
+                        side_effect=lambda text, **kw: {
+                            "audio": b"ID3x", "voice": "Mia", "engine": "neural",
+                        }):
+            call_command("clips_build", "--phonics", stdout=StringIO())
+        self.assertGreaterEqual(AudioClip.objects.count(), 8)
+
+
+class AlphabetEscucharTests(TestCase):
+    """LGA-86: alphabet chart incl. ll/rr + Kaylin phrases on Escuchar."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from portal.tokens import make_portal_token
+        cls.parent = User.objects.create_user("ab_parent", email="ab@e.com", password="pw")
+        cls.kaylin = Student.objects.create(parent=cls.parent, first_name="Kaylin")
+        cls.violet = Student.objects.create(parent=cls.parent, first_name="Violet")
+        Learner.create_for_host_student(cls.kaylin.pk, profiles.KIDS_OLDER)
+        Learner.create_for_host_student(cls.violet.pk, profiles.KIDS_EARLY)
+        cls.kaylin_token = make_portal_token(cls.kaylin)
+        cls.violet_token = make_portal_token(cls.violet)
+
+    def _seed_alphabet(self):
+        from io import StringIO
+        from django.core.management import call_command
+        call_command("seed_alphabet", stdout=StringIO())
+
+    def test_seed_includes_ll_and_rr(self):
+        self._seed_alphabet()
+        symbols = set(AlphabetTile.objects.values_list("symbol", flat=True))
+        self.assertIn("ll", symbols)
+        self.assertIn("rr", symbols)
+        self.assertIn("ñ", symbols)
+        self.assertGreaterEqual(len(symbols), 29)
+
+    def test_seed_idempotent(self):
+        self._seed_alphabet()
+        n = AlphabetTile.objects.count()
+        self._seed_alphabet()
+        self.assertEqual(AlphabetTile.objects.count(), n)
+
+    def test_escuchar_shows_alphabet_and_kaylin_phrases(self):
+        self._seed_alphabet()
+        TutorPacket.objects.create(
+            title="Lección 1",
+            body="Yo soy amigable.\nMi hermana es alta.",
+            host_student_id=self.kaylin.pk,
+        )
+        k_html = self.client.get(
+            reverse("portal:lingua_listen", kwargs={"token": self.kaylin_token})
+        ).content.decode()
+        v_html = self.client.get(
+            reverse("portal:lingua_listen", kwargs={"token": self.violet_token})
+        ).content.decode()
+        self.assertIn("Alfabeto", k_html)
+        self.assertRegex(k_html, r">\s*ll\s*<")
+        self.assertRegex(k_html, r">\s*rr\s*<")
+        self.assertIn("Yo soy amigable.", k_html)
+        self.assertIn("Alfabeto", v_html)
+        self.assertNotIn("Yo soy amigable.", v_html)

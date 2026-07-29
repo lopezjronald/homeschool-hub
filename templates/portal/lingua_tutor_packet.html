@@ -1,0 +1,54 @@
+{% extends "portal/base_portal.html" %}
+{% load static %}
+{% block title %}{{ packet.title }} · {{ student.first_name }}{% endblock %}
+
+{% block content %}
+<div class="container portal-narrow">
+
+  <div class="portal-hero mb-4">
+    <h1>📝 {{ packet.title }}</h1>
+    {% if packet.source %}<p class="mb-0 text-muted">{{ packet.source }}</p>{% endif %}
+  </div>
+
+  {% if packet.file %}
+    <div class="card portal-card mb-4"><div class="card-body">
+      <p class="mb-2">Descarga la hoja de tu maestro:</p>
+      <a class="btn btn-primary" href="{{ packet.file.url }}" download>Descargar documento ⬇</a>
+    </div></div>
+  {% endif %}
+
+  {% if phrases %}
+    <h2 class="portal-section-title mb-3">Practica estas frases</h2>
+    <p class="text-muted small mb-3">Toca una frase para oírla. Lee en voz alta después.</p>
+    <div class="portal-subjects mb-3" data-lingua-clips>
+      {% for p in phrases %}
+        {% if p.audio_url %}
+          <button type="button" class="portal-subject-card lingua-clip-btn"
+                  data-audio-url="{{ p.audio_url }}"
+                  style="width:100%; text-align:left; min-height:44px;">
+            <div class="portal-subject-emoji">🔊</div>
+            <div class="portal-subject-body">
+              <div class="portal-subject-name">{{ p.text }}</div>
+            </div>
+          </button>
+        {% else %}
+          <div class="portal-subject-card" style="cursor:default;">
+            <div class="portal-subject-emoji">💬</div>
+            <div class="portal-subject-body">
+              <div class="portal-subject-name">{{ p.text }}</div>
+            </div>
+          </div>
+        {% endif %}
+      {% endfor %}
+    </div>
+  {% elif not packet.file %}
+    <div class="alert alert-info">Esta tarea todavía no tiene hojas ni frases. ¡Vuelve pronto! 🌱</div>
+  {% endif %}
+
+  <p class="mt-4"><a href="{% url 'portal:lingua_tutor' token=token %}">&larr; Con el maestro</a></p>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'lingua/clips.js' %}"></script>
+{% endblock %}

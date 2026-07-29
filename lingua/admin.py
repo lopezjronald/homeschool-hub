@@ -1,9 +1,9 @@
 from django.contrib import admin
 
 from .models import (
-    AiUsage, ComprehensionCheck, KnownWord, Learner, LearnerProfile, ListeningResource,
-    ListeningSession, MilestoneAward, PhonicsRule, ReadingSession, ReviewItem, Story,
-    StoryAudio, StoryImage, Theme,
+    AiUsage, AlphabetTile, AudioClip, ComprehensionCheck, KnownWord, Learner,
+    LearnerProfile, ListeningResource, ListeningSession, MilestoneAward, PhonicsRule,
+    ReadingSession, ReviewItem, Story, StoryAudio, StoryImage, Theme, TutorPacket,
 )
 
 
@@ -31,6 +31,32 @@ class ThemeAdmin(admin.ModelAdmin):
 class PhonicsRuleAdmin(admin.ModelAdmin):
     list_display = ("pattern", "title", "order", "active")
     list_filter = ("active",)
+
+
+@admin.register(TutorPacket)
+class TutorPacketAdmin(admin.ModelAdmin):
+    list_display = ("title", "source", "host_student_id", "order", "active", "updated_at")
+    list_filter = ("active",)
+    search_fields = ("title", "source", "body")
+
+
+@admin.register(AudioClip)
+class AudioClipAdmin(admin.ModelAdmin):
+    list_display = ("text", "voice", "engine", "provider", "is_current", "updated_at")
+    list_filter = ("provider", "voice", "engine")
+    search_fields = ("text", "content_hash")
+    readonly_fields = ("content_hash", "audio_key", "created_at", "updated_at")
+
+    @admin.display(boolean=True, description="Current")
+    def is_current(self, obj):
+        return obj.is_current
+
+
+@admin.register(AlphabetTile)
+class AlphabetTileAdmin(admin.ModelAdmin):
+    list_display = ("symbol", "spoken", "example", "kind", "order", "active")
+    list_filter = ("kind", "active")
+    search_fields = ("symbol", "spoken", "example")
 
 
 @admin.register(AiUsage)

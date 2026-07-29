@@ -1,0 +1,34 @@
+{% extends "portal/base_portal.html" %}
+{% block title %}Con el maestro · {{ student.first_name }}{% endblock %}
+
+{% block content %}
+<div class="container portal-narrow">
+
+  <div class="portal-hero mb-4">
+    <h1>👩‍🏫 Con el maestro</h1>
+    <p class="mb-0">Tareas y hojas de tu clase de español. 🌱</p>
+  </div>
+
+  {% if packets %}
+    <div class="portal-subjects">
+      {% for p in packets %}
+      <a href="{% url 'portal:lingua_tutor_packet' token=token packet_id=p.id %}" class="portal-subject-card">
+        <div class="portal-subject-emoji">📝</div>
+        <div class="portal-subject-body">
+          <div class="portal-subject-name">{{ p.title }}</div>
+          <div class="portal-next-line">
+            {% if p.source %}<span class="portal-next-label">{{ p.source }}</span>{% endif %}
+            {% if p.file %}documento{% else %}frases{% endif %}
+          </div>
+        </div>
+        <div class="portal-subject-go">Ver ➜</div>
+      </a>
+      {% endfor %}
+    </div>
+  {% else %}
+    <div class="alert alert-info">Todavía no hay tareas del maestro. 🌱</div>
+  {% endif %}
+
+  <p class="mt-4"><a href="{% url 'portal:lingua_plan' token=token %}">&larr; Volver a leer</a></p>
+</div>
+{% endblock %}

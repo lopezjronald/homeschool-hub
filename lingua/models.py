@@ -818,3 +818,107 @@ class KnownWord(models.Model):
 
     def __str__(self):
         return f"KnownWord<learner={self.learner_id} {self.word!r}>"
+
+
+class TutorPacket(models.Model):
+    """Homework / materials from a live tutor (italki, etc.) for the kid portal
+    (LGA-85). Content-only with an optional ``host_student_id`` filter (plain int,
+    NOT an FK — D-03) so a packet can be Kaylin-only without coupling to
+    ``students.Student``. File lives on the default (private) storage — same
+    pattern as host CurriculumDocument."""
+
+    title = models.CharField(max_length=200)
+    source = models.CharField(
+        max_length=120, blank=True,
+        help_text="e.g. 'italki · Juan Cárdenas'.",
+    )
+    body = models.TextField(
+        blank=True,
+        help_text="Practice phrases, one per line. Shown on the packet page and Escuchar.",
+    )
+    file = models.FileField(
+        upload_to="lingua/tutor/%Y/%m/", blank=True, null=True,
+        help_text="Optional teacher handout (DOCX/PDF).",
+    )
+    host_student_id = models.IntegerField(
+        null=True, blank=True, db_index=True,
+        help_text="students.Student.pk when packet is for one child; blank = all learners.",
+    )
+    order = models.IntegerField(default=0)
+    active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["order", "id"]
+
+    def __str__(self):
+        return f"TutorPacket<{self.title}>"
+
+    def phrase_lines(self):
+        """Non-blank practice lines from ``body`` (skip # comment lines)."""
+        lines = []
+        for raw in (self.body or "").splitlines():
+            line = raw.strip()
+            if line and not line.startswith("#"):
+                lines.append(line)
+        return lines
+
+
+class AudioClip(models.Model):
+    """A single baked utterance (word / letter name / phrase) for tap-to-hear
+    (LGA-84 / LGA-86). Content-addressed like StoryAudio: hash of text + voice +
+    engine + provider. No timings — single words/phrases don't need them. Baked
+    at authoring time only (never per request)."""
+
+    text = models.CharField(max_length=240)
+    provider = models.CharField(max_length=16, default="polly")
+    voice = models.CharField(max_length=32)
+    engine = models.CharField(max_length=16, default="neural")
+    content_hash = models.CharField(max_length=64, db_index=True)
+    audio_key = models.CharField(max_length=200, help_text="R2 object key for the mp3.")
+    duration_ms = models.IntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["text"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["text", "voice", "engine", "provider"],
+                name="uniq_clip_text_voice_engine_provider",
+            ),
+        ]
+
+    def __str__(self):
+        return f"AudioClip<{self.text!r}>"
+
+    @property
+    def is_current(self):
+        from . import assets
+        expected = assets.content_hash(
+            self.text, provider=self.provider, voice=self.voice, engine=self.engine,
+        )
+        return self.content_hash == expected
+
+
+class AlphabetTile(models.Model):
+    """One letter or digraph on the Escuchar alphabet chart (LGA-86): A–Z, ñ, ll, rr.
+    ``spoken`` is what Polly says (letter name); ``example`` is an optional practice
+    word shown under the tile. Content-only; audio comes from AudioClip rows."""
+
+    LETTER, DIGRAPH = "letter", "digraph"
+    KIND_CHOICES = [(LETTER, "Letter"), (DIGRAPH, "Digraph")]
+
+    symbol = models.CharField(max_length=4, unique=True, help_text="Displayed glyph, e.g. ñ or ll.")
+    spoken = models.CharField(max_length=40, help_text="What to synthesize, e.g. 'eñe' or 'elle'.")
+    example = models.CharField(max_length=40, blank=True, help_text="Optional example word.")
+    kind = models.CharField(max_length=8, choices=KIND_CHOICES, default=LETTER)
+    order = models.IntegerField(default=0)
+    active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ["order", "symbol"]
+
+    def __str__(self):
+        return f"AlphabetTile<{self.symbol}>"

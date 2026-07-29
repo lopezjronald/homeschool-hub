@@ -15,6 +15,7 @@ import hashlib
 
 ASSET_PREFIX = "lingua/readalong"
 IMAGE_PREFIX = "lingua/illustrations"
+CLIP_PREFIX = "lingua/clips"
 
 
 def content_hash(text, *, provider, voice, engine):
@@ -55,3 +56,8 @@ def image_content_hash(*, model, style, character_block, setting, tone, aspect, 
 def image_key(digest, ext="webp"):
     """R2 object key for an illustration of a given content hash."""
     return f"{IMAGE_PREFIX}/{digest}.{ext}"
+
+
+def clip_key(digest):
+    """R2 object key for a single-utterance AudioClip mp3 (LGA-84/86)."""
+    return f"{CLIP_PREFIX}/{digest}.mp3"

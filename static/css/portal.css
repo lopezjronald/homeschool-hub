@@ -720,8 +720,28 @@
 .portal-subject-card:hover .portal-subject-go { text-decoration: underline; }
 
 @media (max-width: 480px) {
-  .portal-subject-go { display: none; }   /* the whole card is tappable anyway */
+  /* Only hide the chevron when the whole card is the link (home/plan).
+     Keep it when the card is a div and .portal-subject-go is the real action
+     (e.g. Escuchar → open YouTube). */
+  a.portal-subject-card > .portal-subject-go { display: none; }
   .portal-subject-name { font-size: 1.08rem; }
+}
+
+/* Tap-to-hear feedback (Lingua clips.js adds .lingua-clip-playing). */
+.lingua-clip-playing {
+  border-color: rgba(30, 122, 80, 0.55) !important;
+  background: rgba(30, 122, 80, 0.12) !important;
+  box-shadow: 0 0 0 2px rgba(30, 122, 80, 0.22);
+}
+.lingua-clip-muted {
+  opacity: 0.45;
+  pointer-events: none;
+}
+button.portal-subject-card {
+  font: inherit;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
 }
 
 /* ---- subject drill-in ---- */

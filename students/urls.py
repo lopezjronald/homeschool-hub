@@ -14,6 +14,7 @@ urlpatterns = [
     # Per-child lesson complete/skip tracking (HH-141)
     path("<int:pk>/lessons/<int:curriculum_id>/", views.student_lessons, name="student_lessons"),
     path("<int:pk>/lessons/<int:curriculum_id>/mark/", views.lesson_mark, name="lesson_mark"),
+    path("<int:pk>/lessons/<int:curriculum_id>/save/", views.lessons_save, name="lessons_save"),
     path("<int:pk>/lessons/<int:curriculum_id>/skip-practice/", views.lessons_skip_practice, name="lessons_skip_practice"),
     path("<int:pk>/edit/", views.student_update, name="student_update"),
     path("<int:pk>/delete/", views.student_delete, name="student_delete"),

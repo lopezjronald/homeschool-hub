@@ -406,3 +406,54 @@ def lessons_skip_practice(request, pk, curriculum_id):
         n += 1
     messages.success(request, f"Skipped {n} remaining practice lesson{'' if n == 1 else 's'}.")
     return redirect("students:student_lessons", pk=pk, curriculum_id=curriculum_id)
+
+
+@login_required
+@require_POST
+def lessons_save(request, pk, curriculum_id):
+    """Save the whole lesson checklist in one submit (HH-142).
+
+    The parent's mental model is a checklist: tick the lessons the child finished.
+    So the page is ONE form of checkboxes and this view reconciles the full state —
+    ``done`` holds the lesson ids that are now ticked, ``skip`` the ones marked
+    skipped. Anything previously marked but absent from both is cleared, which makes
+    un-ticking work exactly the way un-ticking should. Works with no JavaScript.
+    """
+    from curricula.models import CurriculumPlacement, Lesson, LessonProgress
+
+    student = get_object_or_404(editable_queryset(Student.objects.all(), request.user), pk=pk)
+    curriculum = _child_curriculum(request, student, curriculum_id)
+
+    valid = set(
+        Lesson.objects.filter(chapter__curriculum=curriculum)
+        .exclude(lesson_type=Lesson.TYPE_OPENER).values_list("id", flat=True)
+    )
+
+    def _ids(field):
+        out = set()
+        for raw in request.POST.getlist(field):
+            raw = (raw or "").strip()
+            if raw.isdigit() and raw.isascii() and int(raw) in valid:
+                out.add(int(raw))
+        return out
+
+    done = _ids("done")
+    skipped = _ids("skip") - done            # ticking "done" wins over a stale skip
+    keep = done | skipped
+
+    # Clear marks the parent un-ticked, then upsert the current state.
+    LessonProgress.objects.filter(child=student, lesson_id__in=valid - keep).delete()
+    for lesson_id in keep:
+        LessonProgress.objects.update_or_create(
+            child=student, lesson_id=lesson_id,
+            defaults={"status": (LessonProgress.COMPLETED if lesson_id in done
+                                 else LessonProgress.SKIPPED),
+                      "marked_by": request.user},
+        )
+    CurriculumPlacement.objects.get_or_create(child=student, curriculum=curriculum)
+    messages.success(
+        request,
+        f"Saved — {len(done)} lesson{'' if len(done) == 1 else 's'} done"
+        + (f", {len(skipped)} skipped." if skipped else "."),
+    )
+    return redirect("students:student_lessons", pk=pk, curriculum_id=curriculum_id)

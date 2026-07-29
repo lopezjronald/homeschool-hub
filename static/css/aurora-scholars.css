@@ -588,3 +588,65 @@ a:focus-visible > .hub-tile {
   a[href]:after { content: none !important; }
   @page { margin: 1.4cm; }
 }
+
+/* ===== Lesson checklist (HH-142) ========================================= */
+.lessons { max-width: 860px; }
+.lessons-head {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: 1rem; flex-wrap: wrap; margin-bottom: .6rem;
+}
+.lessons-progress { text-align: right; }
+.lessons-pct { font-size: 1.6rem; font-weight: 800; color: var(--ss-green); line-height: 1; }
+.lessons-bar { height: .5rem; border-radius: var(--ss-r-pill); margin-bottom: .5rem; }
+.lessons-now { font-size: .93rem; color: var(--ss-muted); margin-bottom: 1rem; }
+
+.lessons-toolbar {
+  position: sticky; top: 0; z-index: 5;
+  display: flex; align-items: center; gap: .75rem; flex-wrap: wrap;
+  background: var(--ss-parchment); border: 1px solid var(--ss-line);
+  border-radius: var(--ss-r-md); padding: .6rem .85rem; margin-bottom: 1rem;
+}
+
+.lessons-chapter { margin-bottom: 1.4rem; }
+.lessons-chapter-title {
+  font-size: .78rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--ss-green-700); margin: 0 0 .4rem;
+}
+.lessons-list { list-style: none; margin: 0; padding: 0; border-radius: var(--ss-r-md); overflow: hidden; border: 1px solid var(--ss-line); }
+.lessons-row {
+  display: flex; align-items: center; gap: .6rem;
+  padding: .1rem .75rem; background: var(--ss-paper);
+  border-bottom: 1px solid var(--ss-line);
+}
+.lessons-row:last-child { border-bottom: none; }
+.lessons-row:hover { background: var(--ss-cloud); }
+.lessons-row.is-skipped .lessons-name,
+.lessons-row.is-skipped .lessons-code { text-decoration: line-through; opacity: .55; }
+
+/* the big, obvious checkbox — the whole row label is the hit area */
+.lessons-check { display: flex; align-items: center; gap: .65rem; flex: 1 1 auto; cursor: pointer; padding: .55rem 0; margin: 0; min-height: 44px; }
+.lessons-check input[type="checkbox"] { width: 1.15rem; height: 1.15rem; flex: 0 0 auto; accent-color: var(--ss-green); cursor: pointer; }
+.lessons-check input[type="checkbox"]:checked ~ .lessons-label .lessons-name { color: var(--ss-muted); }
+.lessons-label { display: flex; align-items: baseline; gap: .5rem; flex-wrap: wrap; min-width: 0; }
+.lessons-code { font-weight: 700; color: var(--ss-forest); font-size: .92rem; white-space: nowrap; }
+.lessons-name { color: var(--ss-ink); font-size: .93rem; }
+.lessons-static { width: 1.15rem; text-align: center; color: var(--ss-green); font-weight: 800; }
+.lessons-badge {
+  font-size: .68rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em;
+  background: var(--ss-amber-tint); color: var(--ss-amber-700);
+  border-radius: var(--ss-r-pill); padding: .05rem .4rem;
+}
+.lessons-badge.is-info { background: var(--ss-green-tint); color: var(--ss-green-700); }
+
+.lessons-skip {
+  display: flex; align-items: center; gap: .25rem; margin: 0; cursor: pointer;
+  font-size: .74rem; color: var(--ss-muted); user-select: none; padding: .35rem .1rem;
+}
+.lessons-skip input { width: .9rem; height: .9rem; accent-color: var(--ss-muted); cursor: pointer; }
+
+.lessons-savebar { position: sticky; bottom: 0; padding: .7rem 0; background: linear-gradient(to top, var(--ss-parchment) 65%, transparent); }
+
+@media (max-width: 575px) {
+  .lessons-name { font-size: .88rem; }
+  .lessons-skip span { display: none; }
+}

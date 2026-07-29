@@ -1,23 +1,45 @@
-{# One book in the Library List grid (LGA-75). Expects `book`. #}
-<article class="lib-card">
-  <span class="lib-check" aria-hidden="true"></span>
+{# One book + a REAL one-click mark-read control (HH-143). The old decorative square looked like a checkbox but did nothing, which is what made the page confusing. Keep this comment to one physical line, or it leaks to the page (LGA-83). #}
+<article class="lib-card{% if book.read_count %} is-read{% endif %}" id="book-{{ book.pk }}" tabindex="-1">
   <div class="lib-card-body">
-    <h4 class="lib-book-title">
+    <h3 class="lib-book-title">
       {% if book.url %}
         <a href="{{ book.url }}" target="_blank" rel="noopener noreferrer">{{ book.title }}<span class="lib-ext" aria-hidden="true"> ↗</span></a>
       {% else %}{{ book.title }}{% endif %}
-    </h4>
+    </h3>
     {% if book.author %}<p class="lib-book-author">{{ book.author }}</p>{% endif %}
     {% if book.note %}<p class="lib-book-note">{{ book.note }}</p>{% endif %}
     <div class="lib-tags">
       {% if book.tense %}<span class="lib-tag lib-tag-tense">{{ book.tense }}</span>{% endif %}
       {% if book.country %}<span class="lib-tag">{{ book.country }}</span>{% endif %}
-      {% if book.is_translation %}
-        <span class="lib-tag lib-tag-muted" title="Translated into Spanish">traducción</span>
-      {% else %}
-        <span class="lib-tag lib-tag-orig" title="Originally written in Spanish">original</span>
-      {% endif %}
-      {% if book.isbn %}<span class="lib-tag lib-tag-isbn">ISBN {{ book.isbn }}</span>{% endif %}
+      {% if book.isbn %}<span class="lib-tag lib-tag-isbn d-none d-print-inline">ISBN {{ book.isbn }}</span>{% endif %}
     </div>
   </div>
+
+  {% if can_log %}
+    <form method="post" action="{% url 'lingua:mark_read' %}" class="lib-mark-form no-print">
+      {% csrf_token %}
+      <input type="hidden" name="book" value="{{ book.pk }}">
+      <input type="hidden" name="child" value="{{ log_child.pk }}">
+      <input type="hidden" name="on" value="{{ log_on|date:'Y-m-d' }}">
+      <input type="hidden" name="next" value="{{ next_qs }}">
+      {% if book.read_count %}
+        <input type="hidden" name="entry" value="{{ book.read_entry_id }}">
+        <button type="submit" name="action" value="undo" class="lib-mark is-done"
+                aria-label="Undo — {{ log_child.first_name }} read {{ book.title }}">
+          <span class="lib-mark-box" aria-hidden="true">✓</span>
+          <span class="lib-mark-text">Read{% if book.read_count > 1 %} {{ book.read_count }}×{% endif %} · {{ book.read_last|date:"M j" }}</span>
+        </button>
+        <button type="submit" name="action" value="log" class="lib-again"
+                aria-label="{{ log_child.first_name }} read {{ book.title }} again">＋<span class="visually-hidden"> read again</span></button>
+      {% else %}
+        <button type="submit" name="action" value="log" class="lib-mark"
+                aria-label="Mark {{ book.title }} read for {{ log_child.first_name }}">
+          <span class="lib-mark-box" aria-hidden="true"></span>
+          <span class="lib-mark-text">Mark read{% if multi_child %} for {{ log_child.first_name }}{% endif %}</span>
+        </button>
+      {% endif %}
+    </form>
+  {% endif %}
+
+  <span class="lib-print-box d-none d-print-block" aria-hidden="true">☐</span>
 </article>

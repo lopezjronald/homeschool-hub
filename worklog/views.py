@@ -1,4 +1,5 @@
 import csv
+import logging
 import os
 from collections import OrderedDict, defaultdict
 from datetime import timedelta
@@ -6,6 +7,7 @@ from itertools import groupby
 from operator import attrgetter
 from urllib.parse import urlencode
 
+from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.db import transaction
@@ -28,16 +30,42 @@ from core.utils import get_active_family, get_selected_family, resolve_family_fo
 from .forms import WorkLogEntryForm, WorkLogReportForm
 from .models import WorkLogEntry
 
+logger = logging.getLogger(__name__)
+
+
+# Same string the Spanish module files mirrored books under (settings.LINGUA), so the
+# chip and the card badge track it without importing the module.
+READING_SUBJECT = settings.LINGUA.get("WORKLOG_SUBJECT", "Spanish reading")
+
 
 @login_required
 def worklog_list(request):
-    """List work log entries the user can view, scoped to the selected family."""
+    """List work log entries the user can view, scoped to the selected family.
+
+    Reading the girls do in Spanish is mirrored in here as a normal entry (LGA-76), so
+    the Work Log is the one place a parent manages logged work — including books. The
+    subject filter makes that findable without a second page (HH-143).
+    """
     family = get_selected_family(request)
     entries = scoped_queryset(
         WorkLogEntry.objects.all(), request.user, family,
     ).select_related("child", "curriculum")
+
+    subjects = sorted(
+        {s for s in entries.values_list("subject", flat=True) if s},
+        key=str.lower,
+    )
+    subject = request.GET.get("subject", "").strip()
+    if subject in subjects:
+        entries = entries.filter(subject=subject)
+    else:
+        subject = ""
+
     return render(request, "worklog/worklog_list.html", {
         "entries": entries,
+        "subjects": subjects,
+        "subject": subject,
+        "reading_subject": READING_SUBJECT,
         "can_edit": can_edit_family_or_global(request.user, family),
     })
 
@@ -451,6 +479,14 @@ def worklog_delete(request, pk):
         editable_queryset(WorkLogEntry.objects.all(), request.user), pk=pk,
     )
     if request.method == "POST":
+        # Delete the uploaded file too — entry.delete() only drops the row, so the
+        # object would otherwise sit in the bucket forever (curricula does the same
+        # for its documents). Best-effort: a storage hiccup must not block the delete.
+        if entry.attachment:
+            try:
+                entry.attachment.delete(save=False)
+            except Exception:  # noqa: BLE001
+                logger.exception("Could not delete work-log attachment for entry %s", entry.pk)
         entry.delete()
         messages.success(request, "Work log entry deleted.")
         return redirect("worklog:worklog_list")

@@ -5,13 +5,16 @@ the host (D-04). A book the child finishes becomes a real WorkLogEntry, so it sh
 in the Work Log AND in the charter report with no report-side changes. To extract
 lingua, reimplement just this file and point LINGUA["WORKLOG_SINK"] at it.
 """
+from django.conf import settings
+from django.db.models.signals import post_delete
+from django.dispatch import receiver
 from django.utils import timezone
 
 from lingua.ports import WorkLogSink
 from students.models import Student
 from worklog.models import WorkLogEntry
 
-SUBJECT = "Spanish reading"
+SUBJECT = settings.LINGUA.get("WORKLOG_SUBJECT", "Spanish reading")
 
 
 class HostWorkLogSink(WorkLogSink):
@@ -42,3 +45,17 @@ class HostWorkLogSink(WorkLogSink):
     def remove(self, host_record_id):
         if host_record_id:
             WorkLogEntry.objects.filter(pk=host_record_id, subject=SUBJECT).delete()
+
+
+@receiver(post_delete, sender=WorkLogEntry, dispatch_uid="lingua_forget_mirror")
+def _forget_mirrored_book(sender, instance, **kwargs):
+    """Deleting the work-log entry also un-reads the book (HH-143).
+
+    The Work Log is now where the parent manages reading entries, so a delete there
+    has to clear the lingua-side BookLogEntry — otherwise the library keeps the book
+    ticked and points at a row that no longer exists. Connected from
+    ``worklog.apps.WorklogConfig.ready``; only fires for our own subject."""
+    if instance.subject != SUBJECT:
+        return
+    from lingua import services
+    services.forget_mirror(instance.pk)

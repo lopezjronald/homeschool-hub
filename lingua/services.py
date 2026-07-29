@@ -263,6 +263,38 @@ def delete_book_log(learner, entry_id, *, worklog_sink=None):
     return True
 
 
+def band_for_dob(dob):
+    """The track band a child of this birth date starts in: KIDS_EARLY under 10, else
+    KIDS_OLDER; KIDS_EARLY when the DOB is unknown. The ONE definition — the host
+    adapter delegates here rather than keeping its own copy."""
+    if not dob:
+        return profiles.KIDS_EARLY
+    from datetime import date as _date
+    today = _date.today()
+    # exact calendar age (no leap-day drift from //365 near the boundary)
+    age = today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
+    return profiles.KIDS_OLDER if age >= 10 else profiles.KIDS_EARLY
+
+
+def learner_for_child(child):
+    """The Learner for a ``directory`` child row, provisioned on first use. ``child`` is
+    a plain dict, not a host model — lingua never sees one (D-03/D-04)."""
+    return get_or_create_learner(child["pk"], band_for_dob(child.get("date_of_birth")))
+
+
+def forget_mirror(host_record_id):
+    """Drop the book-log rows mirrored into a host record that no longer exists.
+
+    The other half of :func:`delete_book_log`: the parent can also delete the entry
+    from the host's own log, and without this the library page would keep showing the
+    book as read, pointing at a work-log row that is gone. Deliberately does NOT call
+    the sink back — the host record is already deleted. Returns the number removed."""
+    if not host_record_id:
+        return 0
+    deleted, _ = BookLogEntry.objects.filter(host_worklog_id=host_record_id).delete()
+    return deleted
+
+
 # --- Illustrated storybook pictures (LGA-71) ---------------------------------
 
 def get_image_client() -> ImageClient:

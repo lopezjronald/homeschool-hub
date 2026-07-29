@@ -10,7 +10,8 @@ urlpatterns = [
     path("read/<int:story_id>/", views.read_story, name="read"),
     # Curated Library List + physical-book reading log (LGA-75)
     path("library/", views.library_list, name="library_list"),
-    path("books/", views.book_log, name="book_log"),
-    path("books/add/", views.book_log_add, name="book_log_add"),
-    path("books/<int:entry_id>/delete/", views.book_log_delete, name="book_log_delete"),
+    path("library/mark-read/", views.library_mark_read, name="mark_read"),
+    # The parent reading log lives in the Work Log now; keep the name so stale
+    # links and bookmarks land somewhere sensible instead of 500-ing (HH-143).
+    path("books/", views.book_log_redirect, name="book_log"),
 ]

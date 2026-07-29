@@ -4224,3 +4224,16 @@ class ReadingInTheWorkLogTests(TestCase):
             date=timezone.localdate(), subject="Math", description="p. 40")
         self.client.post(reverse("worklog:worklog_delete", args=[other.pk]))
         self.assertTrue(BookLogEntry.objects.filter(pk=entry.pk).exists())
+
+    def test_deleting_one_book_leaves_the_other_books_read(self):
+        # The cleanup must clear exactly ONE mirror. Deleting a single work-log entry
+        # cannot be allowed to wipe the whole reading history — which is what a
+        # forget_mirror that forgot to filter would do.
+        other_book = LibraryBook.objects.create(title="El pollo Pepe", grade="1")
+        first = self._log_a_book()
+        self.client.post(reverse("lingua:mark_read"), {
+            "book": str(other_book.pk), "child": str(self.vio.pk), "action": "log"})
+        second = BookLogEntry.objects.exclude(pk=first.pk).get()
+        self.client.post(reverse("worklog:worklog_delete", args=[first.host_worklog_id]))
+        self.assertFalse(BookLogEntry.objects.filter(pk=first.pk).exists())
+        self.assertTrue(BookLogEntry.objects.filter(pk=second.pk).exists())

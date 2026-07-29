@@ -390,6 +390,12 @@ LINGUA = {
     # adapter, the Work Log's subject filter, and lingua's legacy redirect — so nobody
     # has to import anybody to agree on the string (HH-143).
     "WORKLOG_SUBJECT": os.getenv("LINGUA_WORKLOG_SUBJECT", "Spanish reading"),
+    # Host URL name the legacy reading-log link redirects to. Named here rather than
+    # hard-coded in lingua so extracting the module degrades gracefully instead of
+    # raising NoReverseMatch on a route that left with the host.
+    "WORKLOG_LIST_URL_NAME": os.getenv(
+        "LINGUA_WORKLOG_LIST_URL_NAME", "worklog:worklog_list"
+    ),
 }
 
 # ---------------------------------------------------------------------------

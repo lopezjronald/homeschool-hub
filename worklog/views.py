@@ -33,9 +33,11 @@ from .models import WorkLogEntry
 logger = logging.getLogger(__name__)
 
 
-# Same string the Spanish module files mirrored books under (settings.LINGUA), so the
-# chip and the card badge track it without importing the module.
-READING_SUBJECT = settings.LINGUA.get("WORKLOG_SUBJECT", "Spanish reading")
+def _reading_subject():
+    """The subject the Spanish module files mirrored books under, so the chip and the
+    card badge can mark them. Read per-request off a possibly-absent setting: the core
+    Work Log must keep working with the module (and its settings) removed."""
+    return getattr(settings, "LINGUA", {}).get("WORKLOG_SUBJECT", "")
 
 
 @login_required
@@ -65,7 +67,7 @@ def worklog_list(request):
         "entries": entries,
         "subjects": subjects,
         "subject": subject,
-        "reading_subject": READING_SUBJECT,
+        "reading_subject": _reading_subject(),
         "can_edit": can_edit_family_or_global(request.user, family),
     })
 

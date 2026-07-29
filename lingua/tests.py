@@ -2407,7 +2407,7 @@ class KidPortalTests(TestCase):
     def test_band_inferred_from_dob(self):
         from datetime import date
 
-        from portal.views import _infer_band
+        from homeschool_hub.adapters.lingua_students import infer_band as _infer_band
         y = date.today().year
         young = Student.objects.create(parent=self.parent, first_name="Bo",
                                        date_of_birth=date(y - 8, 1, 1))
@@ -2421,7 +2421,7 @@ class KidPortalTests(TestCase):
         # //365 math would drift to 10 (KIDS_OLDER) after ~2-3 leap days.
         from datetime import date, timedelta
 
-        from portal.views import _infer_band
+        from homeschool_hub.adapters.lingua_students import infer_band as _infer_band
         today = date.today()
         try:
             tenth_bday = today.replace(year=today.year - 10)
@@ -3959,9 +3959,9 @@ class ShelfLibraryTests(TestCase):
         cls.family = Family.objects.create(name="Shelf Fam")
         FamilyMembership.objects.create(user=cls.parent, family=cls.family, role="parent")
         cls.vio = Student.objects.create(parent=cls.parent, first_name="Vio",
-                                         family=cls.family, grade_level="G3")
+                                         family=cls.family, grade_level="G03")
         cls.ada = Student.objects.create(parent=cls.parent, first_name="Ada",
-                                         family=cls.family, grade_level="G1")
+                                         family=cls.family, grade_level="G01")
         cls.g1 = LibraryBook.objects.create(
             title="Camino a casa", author="Jairo Buitrago", country="Colombia",
             grade="1", track=LibraryBook.NATIVE)
@@ -4050,7 +4050,7 @@ class MarkReadTests(TestCase):
         cls.family = Family.objects.create(name="Mark Fam")
         FamilyMembership.objects.create(user=cls.parent, family=cls.family, role="parent")
         cls.vio = Student.objects.create(parent=cls.parent, first_name="Vio",
-                                         family=cls.family, grade_level="G1")
+                                         family=cls.family, grade_level="G01")
         cls.outsider_parent = User.objects.create_user("out_parent", "out@example.com", "pw")
         cls.outsider_family = Family.objects.create(name="Other Fam")
         FamilyMembership.objects.create(user=cls.outsider_parent,
@@ -4157,7 +4157,7 @@ class ReadingInTheWorkLogTests(TestCase):
         cls.family = Family.objects.create(name="WLUI Fam")
         FamilyMembership.objects.create(user=cls.parent, family=cls.family, role="parent")
         cls.vio = Student.objects.create(parent=cls.parent, first_name="Vio",
-                                         family=cls.family, grade_level="G1")
+                                         family=cls.family, grade_level="G01")
         cls.book = LibraryBook.objects.create(title="Camino a casa",
                                               author="Jairo Buitrago", grade="1")
 
@@ -4237,3 +4237,191 @@ class ReadingInTheWorkLogTests(TestCase):
         self.client.post(reverse("worklog:worklog_delete", args=[first.host_worklog_id]))
         self.assertFalse(BookLogEntry.objects.filter(pk=first.pk).exists())
         self.assertTrue(BookLogEntry.objects.filter(pk=second.pk).exists())
+
+
+class LibraryReviewFollowupTests(TestCase):
+    """HH-143 review round: the paths the first pass left unpinned — viewer-only
+    refusal, sibling isolation on undo, the date the log bar promises, and the
+    zero-padded Level codes production actually stores."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from core.models import Family, FamilyMembership
+        from students.models import Student
+        cls.parent = User.objects.create_user("rf_parent", "rf_parent@example.com", "pw")
+        cls.teacher = User.objects.create_user("rf_teacher", "rf_teacher@example.com", "pw")
+        cls.family = Family.objects.create(name="RF Fam")
+        FamilyMembership.objects.create(user=cls.parent, family=cls.family, role="parent")
+        FamilyMembership.objects.create(user=cls.teacher, family=cls.family, role="teacher")
+        cls.vio = Student.objects.create(parent=cls.parent, first_name="Vio",
+                                         family=cls.family, grade_level="G03")
+        cls.ada = Student.objects.create(parent=cls.parent, first_name="Ada",
+                                         family=cls.family, grade_level="G01")
+        cls.book = LibraryBook.objects.create(title="Camino a casa",
+                                              author="Jairo Buitrago", grade="1")
+        cls.g3 = LibraryBook.objects.create(title="El libro salvaje",
+                                            author="Juan Villoro", grade="3")
+
+    def _mark(self, child, **extra):
+        data = {"book": str(self.book.pk), "child": str(child.pk), "action": "log"}
+        data.update(extra)
+        return self.client.post(reverse("lingua:mark_read"), data)
+
+    # --- authorization ----------------------------------------------------
+    def test_view_only_member_gets_no_control_and_cannot_log(self):
+        # can_edit_family_or_global has two branches and only the editor one was
+        # exercised. A teacher/grandparent may READ the shelf but not log against it.
+        self.client.force_login(self.teacher)
+        html = self.client.get(
+            reverse("lingua:library_list") + "?shelf=g-3&for=%d" % self.vio.pk
+        ).content.decode()
+        self.assertIn("El libro salvaje", html)              # can still browse
+        self.assertNotIn('name="action" value="log"', html)  # but no control offered
+        self.assertEqual(self._mark(self.vio).status_code, 404)   # nor via a raw POST
+        self.assertFalse(BookLogEntry.objects.exists())
+
+    def test_undo_cannot_reach_a_siblings_entry(self):
+        # Same family, so the child check passes — it is delete_book_log's learner
+        # scoping that has to refuse, and nothing pinned that.
+        self.client.force_login(self.parent)
+        self._mark(self.ada)
+        ada_entry = BookLogEntry.objects.get()
+        r = self.client.post(reverse("lingua:mark_read"), {
+            "book": str(self.book.pk), "child": str(self.vio.pk),
+            "entry": str(ada_entry.pk), "action": "undo"})
+        self.assertEqual(r.status_code, 302)
+        self.assertTrue(BookLogEntry.objects.filter(pk=ada_entry.pk).exists())
+
+    # --- the date the log bar promises ------------------------------------
+    def test_a_backdate_survives_changing_shelf_and_searching(self):
+        # Pick "read on Jul 10", switch shelves, and the next tick must STILL be
+        # Jul 10 — otherwise the parent silently files it today, in the charter report.
+        self.client.force_login(self.parent)
+        html = self.client.get(
+            reverse("lingua:library_list")
+            + "?shelf=g-3&for=%d&on=2026-07-10" % self.vio.pk
+        ).content.decode()
+        # Assert on the SHELF LINKS specifically — `next_qs` also carries the date, so a
+        # bare "on=2026-07-10 appears somewhere" check passes even when the rail drops it.
+        shelf_hrefs = re.findall(r'class="lib-shelf[^"]*"[^>]*href="([^"]+)"', html)
+        self.assertTrue(shelf_hrefs, "no shelf links rendered")
+        for href in shelf_hrefs:
+            self.assertIn("on=2026-07-10", href)
+        self.assertIn('name="on" value="2026-07-10"', html)   # and the search form
+        # and the mark-read control posts that date, not today
+        self.assertNotIn('name="on" value="%s"' % timezone.localdate().isoformat(), html)
+
+    def test_a_future_date_is_clamped_on_the_write_path(self):
+        from worklog.models import WorkLogEntry
+        self.client.force_login(self.parent)
+        self._mark(self.vio, on="2099-01-01")
+        today = timezone.localdate()
+        self.assertEqual(BookLogEntry.objects.get().read_on, today)
+        self.assertEqual(WorkLogEntry.objects.get().date, today)  # not decades out
+
+    def test_undo_targets_the_entry_whose_date_is_shown(self):
+        # Log today, then backdate a second read. The label shows the LATEST read;
+        # clicking undo must remove that one, not whichever row happens to be newest.
+        self.client.force_login(self.parent)
+        self._mark(self.vio)
+        self._mark(self.vio, on="2026-01-05")
+        latest = max(BookLogEntry.objects.all(), key=lambda e: e.read_on)
+        html = self.client.get(
+            reverse("lingua:library_list") + "?shelf=g-1&for=%d" % self.vio.pk
+        ).content.decode()
+        m = re.search(r'name="entry" value="(\d+)"', html)
+        self.assertIsNotNone(m, "no undo target rendered")
+        self.assertEqual(int(m.group(1)), latest.pk)
+        self.assertIn(latest.read_on.strftime("%b").lstrip("0"), html)
+
+    # --- production Level codes -------------------------------------------
+    def test_default_shelf_handles_the_zero_padded_level_codes(self):
+        # Student.LEVEL_CHOICES stores G01..G12 zero-padded; "G3" is not a real value.
+        # Parsing that wrong sends every child to the wrong shelf.
+        from lingua.views import _default_shelf
+        keys = {"learners", "g-PK", "g-K", "g-1", "g-3"}
+        self.assertEqual(_default_shelf({"grade_level": "G03"}, keys), "g-3")
+        self.assertEqual(_default_shelf({"grade_level": "G01"}, keys), "g-1")
+        self.assertEqual(_default_shelf({"grade_level": "PREK"}, keys), "g-PK")
+        self.assertEqual(_default_shelf({"grade_level": "K"}, keys), "g-K")
+        self.assertEqual(_default_shelf({"grade_level": "G12"}, keys), "learners")  # no shelf
+        self.assertEqual(_default_shelf(None, keys), "learners")
+
+    # --- messaging honesty ------------------------------------------------
+    def test_logging_nothing_is_not_reported_as_a_success(self):
+        from django.contrib.messages import constants as levels
+        self.client.force_login(self.parent)
+        r = self._mark(self.vio, book="", title="   ", follow=True)
+        got = [m.level for m in self.client.get(
+            reverse("lingua:library_list"), follow=True).context["messages"]]
+        self.assertNotIn(levels.SUCCESS, got)
+        self.assertIn(levels.INFO, got)
+
+    def test_the_worklog_subject_comes_from_settings(self):
+        from worklog.models import WorkLogEntry
+        with override_settings(LINGUA={**settings.LINGUA, "WORKLOG_SUBJECT": "Lectura"}):
+            self.client.force_login(self.parent)
+            self._mark(self.vio)
+            self.assertEqual(WorkLogEntry.objects.get().subject, "Lectura")
+
+    # --- the browse-only page still explains itself -----------------------
+    def test_a_user_with_no_children_is_told_why_there_are_no_buttons(self):
+        from core.models import Family, FamilyMembership
+        lone = User.objects.create_user("rf_lone", "rf_lone@example.com", "pw")
+        empty = Family.objects.create(name="Empty Fam")
+        FamilyMembership.objects.create(user=lone, family=empty, role="parent")
+        self.client.force_login(lone)
+        html = self.client.get(reverse("lingua:library_list")).content.decode()
+        self.assertNotIn('name="action" value="log"', html)
+        self.assertIn("My Children", html)          # says what to do about it
+
+
+class MirroredEntryRenameTests(TestCase):
+    """HH-143 review, HIGH: the subject is a free-text field the parent can edit. Both
+    directions of the mirror keyed on it, so renaming a mirrored entry stranded one
+    side or the other — the exact ghost-tick this feature exists to prevent."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from core.models import Family, FamilyMembership
+        from students.models import Student
+        cls.parent = User.objects.create_user("ren_parent", "ren@example.com", "pw")
+        cls.family = Family.objects.create(name="Ren Fam")
+        FamilyMembership.objects.create(user=cls.parent, family=cls.family, role="parent")
+        cls.vio = Student.objects.create(parent=cls.parent, first_name="Vio",
+                                         family=cls.family, grade_level="G01")
+        cls.book = LibraryBook.objects.create(title="Camino a casa", grade="1")
+
+    def setUp(self):
+        self.client.force_login(self.parent)
+
+    def _log(self):
+        self.client.post(reverse("lingua:mark_read"), {
+            "book": str(self.book.pk), "child": str(self.vio.pk), "action": "log"})
+        return BookLogEntry.objects.get()
+
+    def _rename(self, wl_id, subject):
+        from worklog.models import WorkLogEntry
+        WorkLogEntry.objects.filter(pk=wl_id).update(subject=subject)
+
+    def test_deleting_a_RENAMED_mirrored_entry_still_un_reads_the_book(self):
+        entry = self._log()
+        self._rename(entry.host_worklog_id, "Reading")     # the parent retitles it
+        self.client.post(reverse("worklog:worklog_delete", args=[entry.host_worklog_id]))
+        self.assertFalse(BookLogEntry.objects.filter(pk=entry.pk).exists())
+        html = self.client.get(
+            reverse("lingua:library_list") + "?shelf=g-1&for=%d" % self.vio.pk
+        ).content.decode()
+        self.assertNotIn('name="action" value="undo"', html)   # no ghost tick
+
+    def test_undoing_a_RENAMED_mirrored_entry_leaves_no_orphan_in_the_report(self):
+        from worklog.models import WorkLogEntry
+        entry = self._log()
+        wl_id = entry.host_worklog_id
+        self._rename(wl_id, "Reading")
+        self.client.post(reverse("lingua:mark_read"), {
+            "book": str(self.book.pk), "child": str(self.vio.pk),
+            "entry": str(entry.pk), "action": "undo"})
+        self.assertFalse(BookLogEntry.objects.filter(pk=entry.pk).exists())
+        # Nothing left pointing at it, so an orphan here would be permanent.
+        self.assertFalse(WorkLogEntry.objects.filter(pk=wl_id).exists())

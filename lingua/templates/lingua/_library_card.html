@@ -27,7 +27,7 @@
         <button type="submit" name="action" value="undo" class="lib-mark is-done"
                 aria-label="Undo — {{ log_child.first_name }} read {{ book.title }}">
           <span class="lib-mark-box" aria-hidden="true">✓</span>
-          <span class="lib-mark-text">Read{% if book.read_count > 1 %} {{ book.read_count }}×{% endif %} · {{ book.read_last|date:"M j" }}</span>
+          <span class="lib-mark-text">Read{% if book.read_count > 1 %} {{ book.read_count }}×{% endif %} · {% if book.read_last|date:"Y" == this_year %}{{ book.read_last|date:"M j" }}{% else %}{{ book.read_last|date:"M j, Y" }}{% endif %}</span>
         </button>
         <button type="submit" name="action" value="log" class="lib-again"
                 aria-label="{{ log_child.first_name }} read {{ book.title }} again">＋<span class="visually-hidden"> read again</span></button>

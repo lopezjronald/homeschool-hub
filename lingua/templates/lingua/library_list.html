@@ -8,9 +8,15 @@
   <h1 class="h4 mb-1">Spanish books</h1>
   <p class="text-muted mb-3">Real books from our reading list — pick a shelf and tick what they read.</p>
 
-  {% if can_log %}{% include "lingua/_library_logbar.html" %}{% endif %}
+  {% if can_log %}
+    {% include "lingua/_library_logbar.html" %}
+  {% elif no_family %}
+    <p class="alert alert-info py-2 small">Browse away — ticking books off needs a family with children in it. Add one from <a href="{% url 'students:student_list' %}">My Children</a>.</p>
+  {% elif not children %}
+    <p class="alert alert-info py-2 small">Browse away — once you add a child under <a href="{% url 'students:student_list' %}">My Children</a>, each book gets a “Mark read” button.</p>
+  {% endif %}
 
-  {# One shelf rail: for-learners, then the grade bands, then grown-ups/free. #}
+  {# One shelf rail: for-learners, then the grade bands, then grown-ups/free. `keep` carries the child and any backdate so they survive navigation. #}
   <nav class="lib-shelves no-print" aria-label="Bookshelf">
     {% for s in shelves %}
       {% if s.divider %}
@@ -18,7 +24,7 @@
       {% else %}
         <a class="lib-shelf{% if s.key == shelf %} is-active{% endif %}"
            {% if s.key == shelf %}aria-current="page"{% endif %}
-           href="?shelf={{ s.key }}{% if log_child %}&amp;for={{ log_child.pk }}{% endif %}">
+           href="?shelf={{ s.key }}{{ keep_qs }}">
           {{ s.label }}<span class="lib-shelf-n">{{ s.count }}</span>
         </a>
       {% endif %}
@@ -32,9 +38,10 @@
     <form method="get" class="lib-search no-print" role="search">
       <input type="hidden" name="shelf" value="{{ shelf }}">
       {% if log_child %}<input type="hidden" name="for" value="{{ log_child.pk }}">{% endif %}
+      {% if not log_on_is_today %}<input type="hidden" name="on" value="{{ log_on|date:'Y-m-d' }}">{% endif %}
       <label class="visually-hidden" for="q">Search these books</label>
       <input type="search" id="q" name="q" value="{{ q }}" placeholder="Search title or author">
-      {% if q %}<a class="lib-search-clear" href="?shelf={{ shelf }}{% if log_child %}&amp;for={{ log_child.pk }}{% endif %}" aria-label="Clear search">×</a>{% endif %}
+      {% if q %}<a class="lib-search-clear" href="?shelf={{ shelf }}{{ keep_qs }}" aria-label="Clear search">×</a>{% endif %}
     </form>
 
     <button type="button" class="lib-print no-print" onclick="window.print()">Print</button>
@@ -74,7 +81,7 @@
       <div class="lib-empty-icon" aria-hidden="true">🔎</div>
       <p class="mb-1"><strong>No books here.</strong></p>
       <p class="text-muted mb-3">Try another shelf{% if q %}, or clear the search{% endif %}.</p>
-      {% if q %}<a class="btn btn-primary btn-sm" href="?shelf={{ shelf }}{% if log_child %}&amp;for={{ log_child.pk }}{% endif %}">Clear search</a>{% endif %}
+      {% if q %}<a class="btn btn-primary btn-sm" href="?shelf={{ shelf }}{{ keep_qs }}">Clear search</a>{% endif %}
     </div>
   {% endif %}
 </div>

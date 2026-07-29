@@ -1,8 +1,11 @@
 """Host-side Student→Learner resolution (D-04).
 
-The ONLY place the host maps a child onto a lingua Learner. The portal and the parent
-Spanish pages both import from here, so band inference and lazy provisioning have one
-definition. lingua itself still imports no host model (D-03/D-04).
+Where the host maps a *host model* onto a lingua Learner: the kid portal hands its
+Student straight here. The parent Spanish pages never hold a Student — they read plain
+dicts from ``lingua.integrations.directory`` and call ``services.learner_for_child`` —
+so both paths land on the same provisioning and the same band rule
+(``services.band_for_dob``), which is the one definition. lingua itself imports no host
+model (D-03/D-04).
 """
 from lingua import services as lingua_services
 from students.models import Student

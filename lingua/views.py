@@ -10,7 +10,7 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.http import Http404
 from django.shortcuts import get_object_or_404, redirect, render
-from django.urls import reverse
+from django.urls import NoReverseMatch, reverse
 from django.utils import timezone
 from django.utils.csp import CSP
 from django.views.decorators.http import require_POST, require_http_methods
@@ -367,14 +367,25 @@ def library_list(request):
     if log_child and books:
         learner = Learner.objects.filter(host_student_id=log_child["pk"]).first()
         if learner:
-            reads = {r["book_id"]: r for r in BookLogEntry.objects
-                     .filter(learner=learner, book_id__in=[b.pk for b in books])
-                     .values("book_id").annotate(n=Count("id"), last=Max("read_on"),
-                                                 entry=Max("id"))}
+            # ONE query for every read of these books, oldest first; last write wins, so
+            # `entry` ends up being the same row whose date the label shows. Deliberately
+            # not Count + Max("id") in SQL: those two diverge the moment a read is
+            # backdated (the log bar invites exactly that), and undo would then remove a
+            # different entry than the one it names. The family's reading log is small,
+            # so folding it in Python costs nothing and can't get that wrong.
+            reads = {}
+            for book_id, entry_id, read_on in (
+                BookLogEntry.objects
+                .filter(learner=learner, book_id__in=[b.pk for b in books])
+                .order_by("read_on", "id")
+                .values_list("book_id", "id", "read_on")
+            ):
+                n = reads[book_id][0] + 1 if book_id in reads else 1
+                reads[book_id] = (n, read_on, entry_id)
             for b in books:
                 r = reads.get(b.pk)
                 if r:
-                    b.read_count, b.read_last, b.read_entry_id = r["n"], r["last"], r["entry"]
+                    b.read_count, b.read_last, b.read_entry_id = r
 
     # non-native shelves group by their own ladder (CI level / adult stage)
     groups = []
@@ -385,14 +396,20 @@ def library_list(request):
                 groups.append({"label": key, "books": []})
             groups[-1]["books"].append(book)
 
-    keep = {"shelf": shelf}
+    # The child and any backdate must ride along on EVERY link, or picking "read on
+    # Jul 10" and then switching shelves silently refiles the next tick as today —
+    # wrong data in the charter report, entered without an error. `keep_qs` is the
+    # tail appended to "?shelf=…"; `next_qs` is the full post-log redirect target.
+    keep = {}
     if log_child:
         keep["for"] = str(log_child["pk"])
     if log_on != today:
         keep["on"] = log_on.isoformat()
+    keep_qs = ("&" + urlencode(keep)) if keep else ""
+    next_kw = dict(keep, shelf=shelf)
     if q:
-        keep["q"] = q
-    next_qs = reverse("lingua:library_list") + "?" + urlencode(keep)
+        next_kw["q"] = q
+    next_qs = reverse("lingua:library_list") + "?" + urlencode(next_kw)
 
     return render(request, "lingua/library_list.html", {
         "subnav": "library",
@@ -400,8 +417,12 @@ def library_list(request):
         "descriptor": descriptor, "books": books, "groups": groups,
         "total": len(books), "q": q,
         "children": children, "log_child": log_child, "multi_child": len(children) > 1,
+        "no_family": family is None,
         "log_on": log_on, "log_on_is_today": log_on == today, "today": today,
-        "can_log": bool(can_log and log_child), "next_qs": next_qs,
+        # A read from a previous year must show its year, or "Jan 5" reads as this Jan.
+        "this_year": str(today.year),
+        "can_log": bool(can_log and log_child),
+        "keep_qs": keep_qs, "next_qs": next_qs,
     })
 
 
@@ -445,6 +466,11 @@ def library_mark_read(request):
         read_on = date.fromisoformat(request.POST.get("on", ""))
     except ValueError:
         read_on = None
+    # Clamp the same way the GET side does. `max=` on the date input is client-side
+    # only, so a mistyped year would otherwise file a phantom entry decades out — in
+    # the Work Log AND the charter report, sorted to the top forever.
+    if read_on and read_on > timezone.localdate():
+        read_on = timezone.localdate()
 
     if request.POST.get("action") == "undo":
         entry_id = _int_or_none(request.POST.get("entry"))
@@ -475,6 +501,14 @@ def library_mark_read(request):
 @login_required
 def book_log_redirect(request):
     """The parent reading log now lives IN the Work Log (HH-143) — one record, one
-    place. Kept under the old name so stale links/bookmarks land somewhere sensible."""
+    place. Kept under the old name so stale links/bookmarks land somewhere sensible.
+
+    Both the host URL name and the subject come from settings, so extracting lingua
+    (which takes the host's worklog with it) degrades to the module's own progress page
+    instead of a NoReverseMatch 500."""
     subject = settings.LINGUA.get("WORKLOG_SUBJECT", "")
-    return redirect(reverse("worklog:worklog_list") + "?" + urlencode({"subject": subject}))
+    try:
+        target = reverse(settings.LINGUA.get("WORKLOG_LIST_URL_NAME") or "")
+    except NoReverseMatch:
+        return redirect("lingua:progress")
+    return redirect(target + "?" + urlencode({"subject": subject}))

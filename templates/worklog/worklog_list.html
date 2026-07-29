@@ -63,7 +63,7 @@
       {% endfor %}
     </div>
   {% elif subject %}
-    {% include "includes/empty_state.html" with emoji="🔎" heading="Nothing logged under that subject yet" body="Try another subject, or show everything." action_url=none can_edit=False %}
+    {% include "includes/empty_state.html" with emoji="🔎" heading="Nothing logged under that subject yet" body="Try another subject, or show everything." action_url=None can_edit=False %}
     <p class="text-center"><a class="btn btn-outline-primary" href="{% url 'worklog:worklog_list' %}">Show all work</a></p>
   {% else %}
     {% url 'worklog:worklog_create' as add_url %}

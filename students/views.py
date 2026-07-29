@@ -328,8 +328,16 @@ def student_lessons(request, pk, curriculum_id):
     placement = CurriculumPlacement.objects.filter(child=student, curriculum=curriculum).first()
     _act = placement.current_actionable_lesson() if placement else None
     current_id = _act.id if _act else None
+    # Lessons BELOW the parent's placement pointer already count as done (the floor),
+    # so they must render TICKED — otherwise the bar says "16 done" while every box
+    # sits empty, which reads as broken.
+    _, resolved = placement._resolved_lesson_ids() if placement else ([], set())
     for lesson in lessons:
-        lesson.mark_status = marks.get(lesson.id) or ("submitted" if lesson.id in submitted else "not_started")
+        lesson.mark_status = (
+            marks.get(lesson.id)
+            or ("submitted" if lesson.id in submitted else "")
+            or ("completed" if lesson.id in resolved else "not_started")
+        )
         lesson.is_current = lesson.id == current_id
         lesson.is_practice = lesson.lesson_type == Lesson.TYPE_PRACTICE
 

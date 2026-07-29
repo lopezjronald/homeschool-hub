@@ -1025,3 +1025,41 @@ class LessonChecklistSaveTests(TestCase):
             "pk": self.child.pk, "curriculum_id": self.curriculum.pk})).content.decode()
         self.assertIn(f'name="done" value="{self.lessons[0].pk}"\n                     checked', html.replace("\r", ""))
         self.assertIn("is-skipped", html)                           # skipped row styled
+
+
+class LessonChecklistFloorTests(TestCase):
+    """HH-142: lessons already counted done by the placement floor must render TICKED,
+    so the progress number and the checkboxes never disagree."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.parent = User.objects.create_user(username="fl", email="fl@e.com", password="pw")
+        cls.family = Family.objects.create(name="FL Fam")
+        FamilyMembership.objects.create(user=cls.parent, family=cls.family, role="parent")
+        cls.child = Student.objects.create(
+            parent=cls.parent, first_name="Violet", grade_level="G03", family=cls.family)
+        cls.curriculum = Curriculum.objects.create(
+            parent=cls.parent, name="Dimensions Math 3A", subject="Math", family=cls.family)
+        apply_blueprint(cls.curriculum, get_blueprint("dimensions_math_3a"))
+        cls.lessons = list(
+            Lesson.objects.filter(chapter__curriculum=cls.curriculum)
+            .exclude(lesson_type=Lesson.TYPE_OPENER).order_by("chapter__number", "order"))
+
+    def test_lessons_below_the_pointer_render_checked(self):
+        # Parent placed the child mid-curriculum: everything before the pointer is done.
+        pointer = self.lessons[5]
+        p = CurriculumPlacement.objects.create(
+            child=self.child, curriculum=self.curriculum, current_lesson=pointer)
+        self.assertEqual(p.progress()["done"], 5)
+
+        c = Client(); c.login(username="fl", password="pw")
+        html = c.get(reverse("students:student_lessons", kwargs={
+            "pk": self.child.pk, "curriculum_id": self.curriculum.pk})).content.decode()
+        flat = " ".join(html.split())
+        # the 5 lessons before the pointer are ticked...
+        for lesson in self.lessons[:5]:
+            self.assertIn(f'name="done" value="{lesson.pk}" checked', flat,
+                          f"{lesson.code} should render checked (below the floor)")
+        # ...and the pointer lesson itself is NOT ticked (it's the one still to do)
+        self.assertNotIn(f'name="done" value="{pointer.pk}" checked', flat)
+        self.assertIn(f'name="done" value="{pointer.pk}"', flat)   # but it is on the page

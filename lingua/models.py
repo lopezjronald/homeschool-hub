@@ -1011,3 +1011,27 @@ class StationVisit(models.Model):
 
     def __str__(self):
         return f"StationVisit<{self.learner_id} {self.station_kind}:{self.target_ref}>"
+
+
+class PathwayCheckmark(models.Model):
+    """Kid self-report that a Camino map stop is done (LGA-93). The map never locks
+    stations; this checkbox is how a stop turns 'Hecho' without an opaque unlock
+    rule the child can't see."""
+
+    learner = models.ForeignKey(
+        Learner, on_delete=models.CASCADE, related_name="pathway_checkmarks",
+    )
+    step = models.ForeignKey(
+        PathwayStep, on_delete=models.CASCADE, related_name="checkmarks",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["learner", "step"], name="uniq_pathway_checkmark",
+            ),
+        ]
+
+    def __str__(self):
+        return f"PathwayCheckmark<learner={self.learner_id} step={self.step_id}>"

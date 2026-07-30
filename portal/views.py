@@ -89,23 +89,19 @@ def lingua_plan(request, token):
 
 
 def lingua_path(request, token):
-    """Kid Camino map: ordered PathwaySteps with derived status (LGA-88)."""
+    """Kid Camino map: every visible stop is open; checkbox marks Hecho (LGA-93)."""
     student = _resolve_student(token)
     learner = _lingua_learner(student)
     status = lingua_services.pathway_status(learner)
     steps = []
     for row in status["steps"]:
         step = row["step"]
-        if row["practicar"]:
-            label = "Practicar otra vez"
-        elif row["status"] == lingua_services.PATH_AVAILABLE:
-            label = "¡Empezar!"
-        elif row["status"] == lingua_services.PATH_COMPLETE:
-            label = "Hecho"
-        elif step.optional:
-            label = "Pronto — opcional"
+        if row["status"] == lingua_services.PATH_COMPLETE:
+            label = "Practicar otra vez" if row["practicar"] else "Hecho"
+        elif row["primary"]:
+            label = "Siguiente · ¡Empezar!"
         else:
-            label = "Pronto"
+            label = "¡Empezar!"
         steps.append({
             **row,
             "href": _pathway_step_href(token, student.pk, step),
@@ -117,6 +113,32 @@ def lingua_path(request, token):
         "steps": steps,
         "band": learner.profile.track_profile,
     })
+
+
+@csrf_exempt
+@require_POST
+def lingua_path_check(request, token):
+    """Toggle a Camino map checkbox (LGA-93). Tokenless like other kid portal writes."""
+    student = _resolve_student(token)
+    learner = _lingua_learner(student)
+    try:
+        step_id = int(request.POST.get("step_id", ""))
+    except (TypeError, ValueError):
+        step_id = None
+    step = (
+        PathwayStep.objects.filter(pk=step_id, pathway__active=True).first()
+        if step_id else None
+    )
+    if step is None:
+        raise Http404("Step not found.")
+    # Only allow checking steps on this child's band pathway / visible tutor steps.
+    status = lingua_services.pathway_status(learner)
+    allowed = {row["step"].pk for row in status["steps"]}
+    if step.pk not in allowed:
+        raise Http404("Step not found.")
+    done = request.POST.get("done", "1") not in ("0", "false", "off", "")
+    lingua_services.set_pathway_checkmark(learner, step, done)
+    return redirect(reverse("portal:lingua_path", args=[token]))
 
 
 def _pathway_step_href(token, host_student_id, step):

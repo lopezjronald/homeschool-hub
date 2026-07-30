@@ -3,8 +3,8 @@ from django.contrib import admin
 from .models import (
     AiUsage, AlphabetTile, AudioClip, ComprehensionCheck, KnownWord, Learner,
     LearnerProfile, ListeningResource, ListeningSession, MilestoneAward, Pathway,
-    PathwayStep, PhonicsRule, ReadingSession, ReviewItem, StationVisit, Story,
-    StoryAudio, StoryImage, Theme, TutorPacket,
+    PathwayCheckmark, PathwayStep, PhonicsRule, ReadingSession, ReviewItem,
+    StationVisit, Story, StoryAudio, StoryImage, Theme, TutorPacket,
 )
 
 
@@ -86,6 +86,12 @@ class StationVisitAdmin(admin.ModelAdmin):
     list_display = ("learner", "station_kind", "target_ref", "created_at")
     list_filter = ("station_kind",)
     search_fields = ("target_ref",)
+
+
+@admin.register(PathwayCheckmark)
+class PathwayCheckmarkAdmin(admin.ModelAdmin):
+    list_display = ("learner", "step", "created_at")
+    list_filter = ("step__pathway",)
 
 
 @admin.register(AiUsage)

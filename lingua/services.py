@@ -22,8 +22,9 @@ from . import (
 from .models import (
     AiUsage, AlphabetTile, AudioClip, AuditEvent, BookLogEntry, ComprehensionCheck,
     KnownWord, Learner, LibraryBook, ListeningResource, ListeningSession,
-    MilestoneAward, Pathway, PathwayStep, PhonicsRule, ReadingSession, ReviewItem,
-    StationVisit, Story, StoryAudio, StoryImage, StoryRecording, Theme, TutorPacket,
+    MilestoneAward, Pathway, PathwayCheckmark, PathwayStep, PhonicsRule,
+    ReadingSession, ReviewItem, StationVisit, Story, StoryAudio, StoryImage,
+    StoryRecording, Theme, TutorPacket,
 )
 from .ports import AIClient, ImageClient
 from .prompts import CRITIC_SYSTEM, STORY_SYSTEM
@@ -1486,53 +1487,21 @@ def _has_station_visit(learner, station_kind, target_ref=""):
     ).exists()
 
 
-def _step_complete(learner, step):
-    """Derive whether a PathwayStep is done from existing session/mastery data."""
-    kind, ref = step.kind, (step.target_ref or "").strip()
-    rule = step.pass_rule or {}
-
-    if kind == PathwayStep.STORY:
-        if not ref.isdigit():
-            return False
-        return learner.reading_sessions.filter(story_id=int(ref)).exists()
-
-    if kind == PathwayStep.STORY_LEVEL:
-        level = ref or "L1"
-        min_stories = int(rule.get("min_stories", 1))
-        return len(_stories_read_at_level(learner, level)) >= min_stories
-
-    if kind == PathwayStep.PHONICS:
-        # Honest: only after opening Sonidos (LGA-90) — not from unrelated reading.
-        return _has_station_visit(learner, PathwayStep.PHONICS, ref)
-
-    if kind == PathwayStep.LISTEN:
-        return learner.listening_sessions.exists()
-
-    if kind == PathwayStep.TUTOR_PACKET:
-        # Complete after opening the tutor list or a specific packet (LGA-90).
-        if ref.isdigit():
-            return _has_station_visit(learner, PathwayStep.TUTOR_PACKET, ref)
-        return (
-            _has_station_visit(learner, PathwayStep.TUTOR_PACKET, "")
-            or learner.station_visits.filter(station_kind=PathwayStep.TUTOR_PACKET).exists()
-        )
-
-    if kind == PathwayStep.REVIEW:
-        min_known = int(rule.get("min_known", 1))
-        return learner.known_words.count() >= min_known
-
-    if kind == PathwayStep.LINK:
-        return bool(rule.get("soft", False))
-
-    return False
+def _step_complete(learner, step, *, checked_ids=None):
+    """Camino map 'Hecho' is the kid's checkbox (LGA-93). Activity still happens
+    in the stations; the map does not infer completion for them."""
+    if checked_ids is not None:
+        return step.pk in checked_ids
+    return learner.pathway_checkmarks.filter(step=step).exists()
 
 
-def _step_ceiling_ok(learner, step):
-    """story_level steps stay locked until content_ceiling reaches that level."""
-    if step.kind != PathwayStep.STORY_LEVEL:
+def set_pathway_checkmark(learner, step, done):
+    """Toggle the kid's 'Hecho' checkbox for a map stop (LGA-93)."""
+    if done:
+        PathwayCheckmark.objects.get_or_create(learner=learner, step=step)
         return True
-    level = (step.target_ref or "").strip() or "L1"
-    return profiles.level_rank(level) <= profiles.level_rank(learner.profile.content_ceiling)
+    PathwayCheckmark.objects.filter(learner=learner, step=step).delete()
+    return False
 
 
 def _step_visible(learner, step):
@@ -1547,46 +1516,42 @@ def _step_visible(learner, step):
 
 
 def pathway_status(learner):
-    """Ordered Camino stops with derived locked/available/complete (LGA-88).
+    """Ordered Camino stops — never locked (LGA-93).
 
-    Unlock: prior *required* steps must be complete; story_level also needs
-    ``content_ceiling``. Optional steps never block later unlocks. Returns
-    ``{"pathway": Pathway|None, "steps": [...], "next": dict|None, "hint": str}``.
+    Every visible stop is open to tap. ``complete`` comes from the kid's checkbox
+    and/or real activity; ``primary`` is the first incomplete stop (soft hint only).
+    Returns ``{"pathway", "steps", "next", "hint"}``.
     """
     pathway = pathway_for(learner)
     if pathway is None:
         return {"pathway": None, "steps": [], "next": None, "hint": ""}
 
     steps = list(pathway.steps.all())
-    prior_required_done = True
+    checked_ids = set(
+        learner.pathway_checkmarks.filter(step__pathway=pathway)
+        .values_list("step_id", flat=True)
+    )
     out = []
     next_available = None
     primary_marked = False
 
     for step in steps:
         if not _step_visible(learner, step):
-            # Invisible required steps must still block unlock (M-3 / LGA-93 intent).
-            if not step.optional and not _step_complete(learner, step):
-                prior_required_done = False
             continue
-        complete = _step_complete(learner, step)
-        ceiling_ok = _step_ceiling_ok(learner, step)
-        if complete:
-            status = PATH_COMPLETE
-        elif prior_required_done and ceiling_ok:
-            status = PATH_AVAILABLE
-        else:
-            status = PATH_LOCKED
+        complete = _step_complete(learner, step, checked_ids=checked_ids)
+        status = PATH_COMPLETE if complete else PATH_AVAILABLE
 
         is_primary = False
         if status == PATH_AVAILABLE and not primary_marked:
             is_primary = True
             primary_marked = True
 
+        checked = step.pk in checked_ids
         row = {
             "step": step,
             "status": status,
             "primary": is_primary,
+            "checked": checked,
             "practicar": complete and step.kind in (
                 PathwayStep.STORY, PathwayStep.STORY_LEVEL, PathwayStep.PHONICS,
                 PathwayStep.LISTEN, PathwayStep.TUTOR_PACKET,
@@ -1595,8 +1560,6 @@ def pathway_status(learner):
         out.append(row)
         if is_primary:
             next_available = row
-        if not step.optional and not complete:
-            prior_required_done = False
 
     hint = ""
     if next_available is not None:

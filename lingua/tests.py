@@ -30,9 +30,9 @@ from .integrations import directory
 from .models import (
     AiUsage, AlphabetTile, AudioClip, AuditEvent, BookLogEntry, ComprehensionCheck,
     KnownWord, Learner, LearnerProfile, LibraryBook, ListeningResource,
-    ListeningSession, MilestoneAward, Pathway, PathwayStep, PhonicsRule,
-    ReadingSession, ReviewItem, StationVisit, Story, StoryAudio, StoryImage,
-    StoryRecording, Theme, TutorPacket,
+    ListeningSession, MilestoneAward, Pathway, PathwayCheckmark, PathwayStep,
+    PhonicsRule, ReadingSession, ReviewItem, StationVisit, Story, StoryAudio,
+    StoryImage, StoryRecording, Theme, TutorPacket,
 )
 from .ports import AIClient, AIResult, ImageClient
 
@@ -4607,7 +4607,7 @@ class AlphabetEscucharTests(TestCase):
 
 
 class PathwayStatusTests(TestCase):
-    """LGA-88: Pathway overlay derives locked/available/complete without a write model."""
+    """LGA-88/93: Camino map never locks; kid checkbox marks Hecho."""
 
     @classmethod
     def setUpTestData(cls):
@@ -4633,43 +4633,54 @@ class PathwayStatusTests(TestCase):
         self.assertTrue(Pathway.objects.filter(slug="camino-early", age_band=profiles.KIDS_EARLY).exists())
         self.assertTrue(Pathway.objects.filter(slug="camino-older", age_band=profiles.KIDS_OLDER).exists())
 
-    def test_early_first_required_is_l1_available(self):
+    def test_all_visible_steps_are_open_never_locked(self):
         status = services.pathway_status(self.early)
-        kinds = [r["step"].kind for r in status["steps"]]
-        self.assertIn(PathwayStep.PHONICS, kinds)
-        self.assertIn(PathwayStep.STORY_LEVEL, kinds)
-        l1 = next(r for r in status["steps"] if r["step"].kind == PathwayStep.STORY_LEVEL)
-        self.assertEqual(l1["status"], services.PATH_AVAILABLE)
+        self.assertTrue(status["steps"])
+        self.assertTrue(all(r["status"] != services.PATH_LOCKED for r in status["steps"]))
         listen = next(r for r in status["steps"] if r["step"].kind == PathwayStep.LISTEN)
-        self.assertEqual(listen["status"], services.PATH_LOCKED)
-
-    def test_reading_l1_unlocks_listen(self):
-        ReadingSession.objects.create(learner=self.early, story=self.story, words=2, seconds=30)
-        status = services.pathway_status(self.early)
-        l1 = next(r for r in status["steps"] if r["step"].kind == PathwayStep.STORY_LEVEL)
-        listen = next(r for r in status["steps"] if r["step"].kind == PathwayStep.LISTEN)
-        self.assertEqual(l1["status"], services.PATH_COMPLETE)
-        self.assertTrue(l1["practicar"])
         self.assertEqual(listen["status"], services.PATH_AVAILABLE)
 
-    def test_phonics_not_complete_from_reading_alone(self):
+    def test_checkmark_marks_step_complete(self):
+        l1 = next(
+            r["step"] for r in services.pathway_status(self.early)["steps"]
+            if r["step"].kind == PathwayStep.STORY_LEVEL
+        )
+        services.set_pathway_checkmark(self.early, l1, True)
+        status = services.pathway_status(self.early)
+        row = next(r for r in status["steps"] if r["step"].pk == l1.pk)
+        self.assertEqual(row["status"], services.PATH_COMPLETE)
+        self.assertTrue(row["checked"])
+        self.assertTrue(row["practicar"])
+
+    def test_uncheck_reopens_step(self):
+        phonics = next(
+            r["step"] for r in services.pathway_status(self.early)["steps"]
+            if r["step"].kind == PathwayStep.PHONICS
+        )
+        services.set_pathway_checkmark(self.early, phonics, True)
+        services.set_pathway_checkmark(self.early, phonics, False)
+        row = next(
+            r for r in services.pathway_status(self.early)["steps"]
+            if r["step"].pk == phonics.pk
+        )
+        self.assertEqual(row["status"], services.PATH_AVAILABLE)
+        self.assertFalse(row["checked"])
+
+    def test_reading_alone_does_not_complete_map_step(self):
         ReadingSession.objects.create(learner=self.early, story=self.story, words=2, seconds=30)
-        status = services.pathway_status(self.early)
-        phonics = next(r for r in status["steps"] if r["step"].kind == PathwayStep.PHONICS)
-        self.assertNotEqual(phonics["status"], services.PATH_COMPLETE)
+        l1 = next(
+            r for r in services.pathway_status(self.early)["steps"]
+            if r["step"].kind == PathwayStep.STORY_LEVEL
+        )
+        self.assertEqual(l1["status"], services.PATH_AVAILABLE)
 
-    def test_phonics_completes_after_visit(self):
+    def test_phonics_visit_alone_does_not_complete_map_step(self):
         services.record_station_visit(self.early, PathwayStep.PHONICS)
-        status = services.pathway_status(self.early)
-        phonics = next(r for r in status["steps"] if r["step"].kind == PathwayStep.PHONICS)
-        self.assertEqual(phonics["status"], services.PATH_COMPLETE)
-        self.assertTrue(phonics["practicar"])
-
-    def test_tutor_completes_after_visit(self):
-        services.record_station_visit(self.older, PathwayStep.TUTOR_PACKET)
-        status = services.pathway_status(self.older)
-        tutor = next(r for r in status["steps"] if r["step"].kind == PathwayStep.TUTOR_PACKET)
-        self.assertEqual(tutor["status"], services.PATH_COMPLETE)
+        phonics = next(
+            r for r in services.pathway_status(self.early)["steps"]
+            if r["step"].kind == PathwayStep.PHONICS
+        )
+        self.assertEqual(phonics["status"], services.PATH_AVAILABLE)
 
     def test_review_due_respects_absence_pause(self):
         from datetime import timedelta
@@ -4697,25 +4708,35 @@ class PathwayStatusTests(TestCase):
         self.assertFalse(any(r["step"].kind == PathwayStep.TUTOR_PACKET for r in v["steps"]))
         self.assertTrue(any(r["step"].kind == PathwayStep.TUTOR_PACKET for r in k["steps"]))
 
-    def test_l2_locked_until_ceiling(self):
-        # Finish L1 so only the ceiling (not prior-required) keeps L2 locked.
+    def test_l2_open_even_when_ceiling_is_l1(self):
         self.older.profile.content_ceiling = "L1"
         self.older.profile.save(update_fields=["content_ceiling"])
-        ReadingSession.objects.create(
-            learner=self.older, story=self.story, words=2, seconds=30,
-        )
         status = services.pathway_status(self.older)
         l2 = next(
             r for r in status["steps"]
             if r["step"].kind == PathwayStep.STORY_LEVEL and r["step"].target_ref == "L2"
         )
-        self.assertEqual(l2["status"], services.PATH_LOCKED)
+        self.assertEqual(l2["status"], services.PATH_AVAILABLE)
 
-    def test_map_page_renders(self):
+    def test_map_page_renders_checkboxes(self):
         r = self.client.get(reverse("portal:lingua_path", kwargs={"token": self.violet_token}))
         self.assertEqual(r.status_code, 200)
-        self.assertContains(r, "Camino")
+        self.assertContains(r, "Tu mapa")
         self.assertContains(r, "Leer historias L1")
+        self.assertContains(r, "Marcar hecho")
+        self.assertNotContains(r, "🔒")
+
+    def test_checkbox_post_toggles_hecho(self):
+        step = next(
+            r["step"] for r in services.pathway_status(self.early)["steps"]
+            if r["step"].kind == PathwayStep.LISTEN
+        )
+        url = reverse("portal:lingua_path_check", kwargs={"token": self.violet_token})
+        r = self.client.post(url, {"step_id": step.pk, "done": "1"})
+        self.assertEqual(r.status_code, 302)
+        self.assertTrue(PathwayCheckmark.objects.filter(learner=self.early, step=step).exists())
+        r = self.client.post(url, {"step_id": step.pk, "done": "0"})
+        self.assertFalse(PathwayCheckmark.objects.filter(learner=self.early, step=step).exists())
 
     def test_plan_links_to_map(self):
         r = self.client.get(reverse("portal:lingua_plan", kwargs={"token": self.violet_token}))

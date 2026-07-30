@@ -11,6 +11,7 @@ urlpatterns = [
     # free of host imports, D-04).
     path("<str:token>/lingua/", views.lingua_plan, name="lingua_plan"),
     path("<str:token>/lingua/path/", views.lingua_path, name="lingua_path"),
+    path("<str:token>/lingua/path/check/", views.lingua_path_check, name="lingua_path_check"),
     path("<str:token>/lingua/library/", views.lingua_library, name="lingua_library"),
     path("<str:token>/lingua/books/", views.lingua_books, name="lingua_books"),
     path("<str:token>/lingua/books/log/", views.lingua_book_log, name="lingua_book_log"),

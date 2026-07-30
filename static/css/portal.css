@@ -1048,12 +1048,12 @@ button.portal-subject-card {
   text-decoration: none;
 }
 
-/* Pathway map (LGA-88) */
+/* Pathway map (LGA-88 / LGA-93) */
 .portal-path-step {
   display: flex;
-  gap: 0.85rem;
-  align-items: flex-start;
-  padding: 0.9rem 1rem;
+  gap: 0.75rem;
+  align-items: center;
+  padding: 0.75rem 1rem;
   background: #fff;
   border: 1px solid rgba(30, 122, 80, 0.18);
   border-radius: 14px;
@@ -1062,8 +1062,8 @@ button.portal-subject-card {
   color: inherit;
 }
 .portal-path-step.is-locked {
+  /* kept for legacy; map no longer locks stops (LGA-93) */
   opacity: 0.45;
-  pointer-events: none;
 }
 .portal-path-step.is-complete {
   border-color: rgba(30, 122, 80, 0.4);
@@ -1076,6 +1076,47 @@ button.portal-subject-card {
 .portal-path-step.is-available.is-secondary {
   border-color: rgba(30, 122, 80, 0.18);
   box-shadow: none;
+}
+.portal-path-check-form {
+  flex: 0 0 auto;
+  margin: 0;
+}
+.portal-path-check {
+  width: 2.75rem;
+  height: 2.75rem;
+  min-width: 44px;
+  min-height: 44px;
+  border: 2px solid rgba(30, 122, 80, 0.35);
+  border-radius: 10px;
+  background: #fff;
+  color: var(--ss-forest, #0F3D2E);
+  font-size: 1.35rem;
+  font-weight: 800;
+  line-height: 1;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+.portal-path-check.is-checked {
+  background: rgba(30, 122, 80, 0.15);
+  border-color: var(--ss-green, #1E7A50);
+  color: var(--ss-green, #1E7A50);
+}
+.portal-path-check:focus-visible {
+  outline: 2px solid var(--ss-green, #1E7A50);
+  outline-offset: 2px;
+}
+.portal-path-step-body {
+  flex: 1 1 auto;
+  min-width: 0;
+  text-decoration: none;
+  color: inherit;
+  padding: 0.25rem 0;
+}
+.portal-path-step-body:hover .portal-path-step-title {
+  text-decoration: underline;
 }
 .portal-path-step-mark {
   font-size: 1.25rem;

@@ -6,7 +6,7 @@
 
   <div class="portal-hero mb-3">
     <p class="portal-camino-eyebrow mb-1">Camino de español</p>
-    <h1>Hoy en el camino</h1>
+    <h1>Hoy</h1>
     <p class="mb-0">¡Vamos, {{ student.first_name }}! 🌱</p>
   </div>
 
@@ -30,7 +30,7 @@
        class="portal-camino-cta mb-3">
       <span class="portal-camino-cta-kicker">{% if item.kind == 'reread' %}Practicar otra vez{% else %}Hoy{% endif %}</span>
       <span class="portal-camino-cta-title">{{ item.story.title }}</span>
-      <span class="portal-camino-cta-meta">~{{ item.minutes }} min · {% if item.kind == 'reread' %}Seguir ➜{% else %}¡Empezar! ➜{% endif %}</span>
+      <span class="portal-camino-cta-meta">{{ item.minutes }} min · {% if item.kind == 'reread' %}Seguir{% else %}¡Empezar!{% endif %}</span>
     </a>
     {% endwith %}
     {% if plan.items|length > 1 %}
@@ -39,7 +39,7 @@
         <a href="{% url 'portal:lingua_read' token=token story_id=item.story.id %}" class="portal-camino-more-link">
           {% if item.kind == 'reread' %}🔁{% else %}✨{% endif %}
           {{ item.story.title }}
-          <span class="text-muted">· ~{{ item.minutes }} min</span>
+          <span class="text-muted">· {{ item.minutes }} min</span>
         </a>
         {% endfor %}
       </div>
@@ -48,42 +48,42 @@
     <div class="alert alert-info mb-4">No hay historias todavía. ¡Vuelve pronto! 🌱</div>
   {% endif %}
 
-  {% if camino_hint %}
-    <p class="portal-camino-hint mb-3">{{ camino_hint }}</p>
-  {% endif %}
-
   {# Soft one-line metrics — not three equal cards (D-60/61). #}
-  <p class="portal-camino-metrics text-muted mb-4">
+  <p class="portal-camino-metrics mb-2">
     {{ totals.words_read }} palabras leídas
     · {{ totals.known_words }} que sabes
     · {{ totals.minutes }} min
   </p>
 
+  {% if camino_hint %}
+    <p class="portal-camino-hint mb-4">{{ camino_hint }}</p>
+  {% endif %}
+
   {# Trail stones — stations on the Camino, not a second hub of subject cards. #}
-  <h2 class="portal-section-title">Tu camino</h2>
+  <h2 class="portal-section-title">Sigue explorando</h2>
   <div class="portal-camino-trail mb-4" role="list">
-    <a href="{% url 'portal:lingua_path' token=token %}" class="portal-camino-stone" role="listitem">
+    <a href="{% url 'portal:lingua_path' token=token %}" class="portal-camino-stone">
       <span class="portal-camino-stone-emoji">🗺️</span>
       <span class="portal-camino-stone-label">Mapa</span>
     </a>
     {% if band == 'KIDS_EARLY' %}
-    <a href="{% url 'portal:lingua_phonics' token=token %}" class="portal-camino-stone" role="listitem">
+    <a href="{% url 'portal:lingua_phonics' token=token %}" class="portal-camino-stone">
       <span class="portal-camino-stone-emoji">🔤</span>
       <span class="portal-camino-stone-label">Sonidos</span>
     </a>
     {% endif %}
-    <a href="{% url 'portal:lingua_listen' token=token %}" class="portal-camino-stone" role="listitem">
+    <a href="{% url 'portal:lingua_listen' token=token %}" class="portal-camino-stone">
       <span class="portal-camino-stone-emoji">🎧</span>
       <span class="portal-camino-stone-label">Escuchar</span>
     </a>
     {% if tutor_packets %}
-    <a href="{% url 'portal:lingua_tutor' token=token %}" class="portal-camino-stone" role="listitem">
+    <a href="{% url 'portal:lingua_tutor' token=token %}" class="portal-camino-stone">
       <span class="portal-camino-stone-emoji">👩‍🏫</span>
       <span class="portal-camino-stone-label">Maestro</span>
     </a>
     {% endif %}
     {% if review_due %}
-    <span class="portal-camino-stone portal-camino-stone--soft" role="listitem" title="Pronto: repaso de palabras">
+    <span class="portal-camino-stone portal-camino-stone--soft" aria-disabled="true" title="Pronto: repaso de palabras">
       <span class="portal-camino-stone-emoji">🧠</span>
       <span class="portal-camino-stone-label">Repaso</span>
     </span>

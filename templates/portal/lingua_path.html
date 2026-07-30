@@ -6,15 +6,18 @@
 
   <div class="portal-hero mb-3">
     <p class="portal-camino-eyebrow mb-1">Camino de español</p>
-    <h1>{% if pathway %}{{ pathway.title }}{% else %}Tu mapa{% endif %}</h1>
+    <h1>Tu mapa</h1>
+    {% if pathway %}
+      <p class="portal-camino-path-sub mb-0">{{ pathway.title }}</p>
+    {% endif %}
     <p class="mb-0">Una parada a la vez, {{ student.first_name }}.</p>
   </div>
 
   {% if steps %}
-    <div class="mb-4">
+    <div class="mb-4 portal-path-list">
       {% for row in steps %}
         {% if row.status == "locked" %}
-          <div class="portal-path-step is-locked" aria-disabled="true">
+          <div class="portal-path-step is-locked{% if row.step.optional %} is-optional{% endif %}" aria-disabled="true">
             <div class="portal-path-step-mark">🔒</div>
             <div>
               <div class="portal-path-step-title">{{ row.step.title }}</div>
@@ -23,8 +26,8 @@
           </div>
         {% else %}
           <a href="{{ row.href }}"
-             class="portal-path-step {% if row.status == 'complete' %}is-complete{% else %}is-available{% endif %}">
-            <div class="portal-path-step-mark">{% if row.status == "complete" %}✓{% else %}●{% endif %}</div>
+             class="portal-path-step {% if row.practicar %}is-complete is-practicar{% elif row.status == 'complete' %}is-complete{% elif row.primary %}is-available is-primary{% else %}is-available is-secondary{% endif %}">
+            <div class="portal-path-step-mark">{% if row.practicar %}↻{% elif row.status == "complete" %}✓{% elif row.primary %}●{% else %}○{% endif %}</div>
             <div>
               <div class="portal-path-step-title">{{ row.step.title }}</div>
               <div class="portal-path-step-meta">{{ row.label }}</div>
@@ -36,7 +39,7 @@
   {% else %}
     <div class="alert alert-info mb-4">
       El mapa todavía se está armando. Mientras tanto, sigue con
-      <a href="{% url 'portal:lingua_plan' token=token %}">Hoy en el camino</a>.
+      <a href="{% url 'portal:lingua_plan' token=token %}">Hoy</a>.
     </div>
   {% endif %}
 

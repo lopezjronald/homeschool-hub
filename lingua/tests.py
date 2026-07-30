@@ -31,8 +31,8 @@ from .models import (
     AiUsage, AlphabetTile, AudioClip, AuditEvent, BookLogEntry, ComprehensionCheck,
     KnownWord, Learner, LearnerProfile, LibraryBook, ListeningResource,
     ListeningSession, MilestoneAward, Pathway, PathwayStep, PhonicsRule,
-    ReadingSession, ReviewItem, Story, StoryAudio, StoryImage, StoryRecording,
-    Theme, TutorPacket,
+    ReadingSession, ReviewItem, StationVisit, Story, StoryAudio, StoryImage,
+    StoryRecording, Theme, TutorPacket,
 )
 from .ports import AIClient, AIResult, ImageClient
 
@@ -2323,7 +2323,7 @@ class KidPortalTests(TestCase):
         self.assertEqual(r.status_code, 200)
         self.assertTrue(Learner.objects.filter(host_student_id=self.student.pk).exists())
         self.assertContains(r, "El sol")                 # the approved story is in the plan
-        self.assertContains(r, "Hoy en el camino")       # Camino IA hero
+        self.assertContains(r, "Hoy")                    # Camino IA hero
         self.assertContains(r, "palabras leídas")        # soft metrics line
 
     def test_plan_provision_is_idempotent(self):
@@ -2648,8 +2648,9 @@ class PhonicsTests(TestCase):
         older = self.client.get(reverse("portal:lingua_plan", kwargs={"token": self.older_token})).content.decode()
         self.assertIn("Sonidos", early)     # phonics trail stone for the youngest band
         self.assertNotIn(">Sonidos<", older)  # not for older kids
-        self.assertIn("Hoy en el camino", early)
+        self.assertIn("Hoy", early)
         self.assertIn("Mapa", early)
+        self.assertIn("Sigue explorando", early)
 
 
 class ReviewItemTests(TestCase):
@@ -4650,6 +4651,45 @@ class PathwayStatusTests(TestCase):
         self.assertEqual(l1["status"], services.PATH_COMPLETE)
         self.assertTrue(l1["practicar"])
         self.assertEqual(listen["status"], services.PATH_AVAILABLE)
+
+    def test_phonics_not_complete_from_reading_alone(self):
+        ReadingSession.objects.create(learner=self.early, story=self.story, words=2, seconds=30)
+        status = services.pathway_status(self.early)
+        phonics = next(r for r in status["steps"] if r["step"].kind == PathwayStep.PHONICS)
+        self.assertNotEqual(phonics["status"], services.PATH_COMPLETE)
+
+    def test_phonics_completes_after_visit(self):
+        services.record_station_visit(self.early, PathwayStep.PHONICS)
+        status = services.pathway_status(self.early)
+        phonics = next(r for r in status["steps"] if r["step"].kind == PathwayStep.PHONICS)
+        self.assertEqual(phonics["status"], services.PATH_COMPLETE)
+        self.assertTrue(phonics["practicar"])
+
+    def test_tutor_completes_after_visit(self):
+        services.record_station_visit(self.older, PathwayStep.TUTOR_PACKET)
+        status = services.pathway_status(self.older)
+        tutor = next(r for r in status["steps"] if r["step"].kind == PathwayStep.TUTOR_PACKET)
+        self.assertEqual(tutor["status"], services.PATH_COMPLETE)
+
+    def test_review_due_respects_absence_pause(self):
+        from datetime import timedelta
+
+        now = timezone.now()
+        ReviewItem.objects.create(
+            learner=self.early, target_ref="gato", scheduler=ReviewItem.LEITNER,
+            scheduler_state={"box": 1}, due=now - timedelta(minutes=5),
+        )
+        self.assertTrue(services.camino_plan_extras(self.early)["review_due"])
+        services.pause_reviews(self.early, now + timedelta(days=3))
+        self.assertFalse(services.camino_plan_extras(self.early)["review_due"])
+
+    def test_primary_available_is_first_only(self):
+        status = services.pathway_status(self.early)
+        available = [r for r in status["steps"] if r["status"] == services.PATH_AVAILABLE]
+        self.assertGreaterEqual(len(available), 1)
+        self.assertTrue(available[0]["primary"])
+        self.assertTrue(all(not r["primary"] for r in available[1:]))
+        self.assertTrue(status["hint"].startswith("Después:"))
 
     def test_tutor_step_only_for_kaylin(self):
         v = services.pathway_status(self.early)

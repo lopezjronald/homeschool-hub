@@ -96,15 +96,20 @@ def lingua_path(request, token):
     steps = []
     for row in status["steps"]:
         step = row["step"]
+        if row["practicar"]:
+            label = "Practicar otra vez"
+        elif row["status"] == lingua_services.PATH_AVAILABLE:
+            label = "¡Empezar!"
+        elif row["status"] == lingua_services.PATH_COMPLETE:
+            label = "Hecho"
+        elif step.optional:
+            label = "Pronto — opcional"
+        else:
+            label = "Pronto"
         steps.append({
             **row,
             "href": _pathway_step_href(token, student.pk, step),
-            "label": (
-                "Practicar otra vez" if row["practicar"]
-                else "¡Empezar!" if row["status"] == lingua_services.PATH_AVAILABLE
-                else "Hecho" if row["status"] == lingua_services.PATH_COMPLETE
-                else "Pronto"
-            ),
+            "label": label,
         })
     return render(request, "portal/lingua_path.html", {
         "student": student, "token": token,
@@ -227,7 +232,8 @@ def lingua_phonics(request, token):
     practice words with pre-baked audio when available. Linked from the plan for
     the youngest band; any learner may open it. Provisions the learner on entry."""
     student = _resolve_student(token)
-    _lingua_learner(student)
+    learner = _lingua_learner(student)
+    lingua_services.record_station_visit(learner, PathwayStep.PHONICS)
     return render(request, "portal/lingua_phonics.html", {
         "student": student, "token": token,
         "rules": lingua_services.phonics_rules_with_audio(),
@@ -253,7 +259,8 @@ def lingua_listen(request, token):
 def lingua_tutor(request, token):
     """Con el maestro (LGA-85): list of tutor homework packets visible to this child."""
     student = _resolve_student(token)
-    _lingua_learner(student)
+    learner = _lingua_learner(student)
+    lingua_services.record_station_visit(learner, PathwayStep.TUTOR_PACKET)
     packets = lingua_services.tutor_packets_for(student.pk)
     return render(request, "portal/lingua_tutor.html", {
         "student": student, "token": token, "packets": packets,
@@ -263,10 +270,14 @@ def lingua_tutor(request, token):
 def lingua_tutor_packet(request, token, packet_id):
     """One tutor packet: download handout + practice phrases (LGA-85)."""
     student = _resolve_student(token)
-    _lingua_learner(student)
+    learner = _lingua_learner(student)
     packet = lingua_services.tutor_packet_for(student.pk, packet_id)
     if packet is None:
         raise Http404("Packet not found.")
+    lingua_services.record_station_visit(
+        learner, PathwayStep.TUTOR_PACKET, str(packet.pk),
+    )
+    lingua_services.record_station_visit(learner, PathwayStep.TUTOR_PACKET)
     phrases = [
         p for p in lingua_services.practice_phrases_for(student.pk)
         if p["packet_id"] == packet.pk

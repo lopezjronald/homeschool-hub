@@ -23,7 +23,7 @@ from .models import (
     AiUsage, AlphabetTile, AudioClip, AuditEvent, BookLogEntry, ComprehensionCheck,
     KnownWord, Learner, LibraryBook, ListeningResource, ListeningSession,
     MilestoneAward, Pathway, PathwayStep, PhonicsRule, ReadingSession, ReviewItem,
-    Story, StoryAudio, StoryImage, StoryRecording, Theme, TutorPacket,
+    StationVisit, Story, StoryAudio, StoryImage, StoryRecording, Theme, TutorPacket,
 )
 from .ports import AIClient, ImageClient
 from .prompts import CRITIC_SYSTEM, STORY_SYSTEM
@@ -1471,6 +1471,21 @@ def _stories_read_at_level(learner, level):
     )
 
 
+def record_station_visit(learner, station_kind, target_ref=""):
+    """Idempotent Camino station open (LGA-90). Returns (StationVisit, created)."""
+    return StationVisit.objects.get_or_create(
+        learner=learner,
+        station_kind=station_kind,
+        target_ref=(target_ref or "").strip(),
+    )
+
+
+def _has_station_visit(learner, station_kind, target_ref=""):
+    return learner.station_visits.filter(
+        station_kind=station_kind, target_ref=(target_ref or "").strip(),
+    ).exists()
+
+
 def _step_complete(learner, step):
     """Derive whether a PathwayStep is done from existing session/mastery data."""
     kind, ref = step.kind, (step.target_ref or "").strip()
@@ -1487,20 +1502,20 @@ def _step_complete(learner, step):
         return len(_stories_read_at_level(learner, level)) >= min_stories
 
     if kind == PathwayStep.PHONICS:
-        # Soft: any reading engagement counts as having started sonidos station.
-        return learner.reading_sessions.exists() or rule.get("soft", False)
+        # Honest: only after opening Sonidos (LGA-90) — not from unrelated reading.
+        return _has_station_visit(learner, PathwayStep.PHONICS, ref)
 
     if kind == PathwayStep.LISTEN:
         return learner.listening_sessions.exists()
 
     if kind == PathwayStep.TUTOR_PACKET:
-        # No open/ack model yet — only mark complete when pass_rule explicitly soft.
-        if not rule.get("soft"):
-            return False
-        packets = tutor_packets_for(learner.host_student_id)
+        # Complete after opening the tutor list or a specific packet (LGA-90).
         if ref.isdigit():
-            return any(p.pk == int(ref) for p in packets)
-        return bool(packets)
+            return _has_station_visit(learner, PathwayStep.TUTOR_PACKET, ref)
+        return (
+            _has_station_visit(learner, PathwayStep.TUTOR_PACKET, "")
+            or learner.station_visits.filter(station_kind=PathwayStep.TUTOR_PACKET).exists()
+        )
 
     if kind == PathwayStep.REVIEW:
         min_known = int(rule.get("min_known", 1))
@@ -1546,9 +1561,13 @@ def pathway_status(learner):
     prior_required_done = True
     out = []
     next_available = None
+    primary_marked = False
 
     for step in steps:
         if not _step_visible(learner, step):
+            # Invisible required steps must still block unlock (M-3 / LGA-93 intent).
+            if not step.optional and not _step_complete(learner, step):
+                prior_required_done = False
             continue
         complete = _step_complete(learner, step)
         ceiling_ok = _step_ceiling_ok(learner, step)
@@ -1559,24 +1578,29 @@ def pathway_status(learner):
         else:
             status = PATH_LOCKED
 
+        is_primary = False
+        if status == PATH_AVAILABLE and not primary_marked:
+            is_primary = True
+            primary_marked = True
+
         row = {
             "step": step,
             "status": status,
+            "primary": is_primary,
             "practicar": complete and step.kind in (
                 PathwayStep.STORY, PathwayStep.STORY_LEVEL, PathwayStep.PHONICS,
                 PathwayStep.LISTEN, PathwayStep.TUTOR_PACKET,
             ),
         }
         out.append(row)
-        if status == PATH_AVAILABLE and next_available is None:
+        if is_primary:
             next_available = row
         if not step.optional and not complete:
             prior_required_done = False
 
     hint = ""
     if next_available is not None:
-        s = next_available["step"]
-        hint = f"Siguiente en el camino: {s.title}"
+        hint = f"Después: {next_available['step'].title}."
 
     return {
         "pathway": pathway,
@@ -1589,7 +1613,8 @@ def pathway_status(learner):
 def camino_plan_extras(learner):
     """Light Camino context for the Hoy page without mutating build_daily_plan."""
     status = pathway_status(learner)
-    due = due_review_items(learner)
+    # Use the pause-aware queue (LGA-91 / LGA-62) — not raw due_review_items.
+    due = daily_review_queue(learner)
     return {
         "camino_hint": status.get("hint") or "",
         "review_due": len(due) > 0,

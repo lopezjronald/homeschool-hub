@@ -928,26 +928,62 @@ button.portal-subject-card {
   font-weight: 600;
   color: var(--ss-forest, #0F3D2E);
   text-decoration: none;
-  padding: 0.35rem 0.15rem;
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0.35rem 0;
+  border-bottom: 1px solid rgba(15, 61, 46, 0.08);
 }
 .portal-camino-more-link:hover { text-decoration: underline; }
+.portal-camino-more-link:last-child { border-bottom: 0; }
 .portal-camino-hint {
-  font-size: 0.95rem;
+  font-size: 0.9rem;
   font-weight: 600;
-  color: var(--ss-forest, #0F3D2E);
-  background: rgba(235, 168, 58, 0.12);
-  border-radius: 12px;
-  padding: 0.65rem 0.9rem;
+  font-style: italic;
+  color: #5a6a62;
+  background: none;
+  border-radius: 0;
+  padding: 0;
   margin: 0;
 }
 .portal-camino-metrics {
   font-size: 0.9rem;
   margin: 0;
+  color: #5a6a62;
+}
+.portal-camino-path-sub {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--ss-green, #1E7A50);
+}
+.portal-camino-cta:focus-visible,
+.portal-camino-stone:focus-visible,
+.portal-path-step:focus-visible {
+  outline: 2px solid var(--ss-green, #1E7A50);
+  outline-offset: 2px;
 }
 .portal-camino-trail {
   display: flex;
   flex-wrap: wrap;
   gap: 0.65rem;
+}
+.portal-path-list {
+  position: relative;
+}
+.portal-path-step.is-primary {
+  border-color: rgba(235, 168, 58, 0.55);
+  box-shadow: 0 0 0 1px rgba(235, 168, 58, 0.25);
+}
+.portal-path-step.is-secondary {
+  border-color: rgba(30, 122, 80, 0.18);
+  box-shadow: none;
+}
+.portal-path-step.is-practicar {
+  border-color: rgba(30, 122, 80, 0.4);
+  background: rgba(30, 122, 80, 0.06);
+}
+.portal-path-step.is-optional {
+  border-style: dashed;
 }
 .portal-camino-stone {
   display: flex;
@@ -1033,9 +1069,13 @@ button.portal-subject-card {
   border-color: rgba(30, 122, 80, 0.4);
   background: rgba(30, 122, 80, 0.06);
 }
-.portal-path-step.is-available {
+.portal-path-step.is-available.is-primary {
   border-color: rgba(235, 168, 58, 0.55);
   box-shadow: 0 0 0 1px rgba(235, 168, 58, 0.25);
+}
+.portal-path-step.is-available.is-secondary {
+  border-color: rgba(30, 122, 80, 0.18);
+  box-shadow: none;
 }
 .portal-path-step-mark {
   font-size: 1.25rem;

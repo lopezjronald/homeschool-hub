@@ -922,3 +922,67 @@ class AlphabetTile(models.Model):
 
     def __str__(self):
         return f"AlphabetTile<{self.symbol}>"
+
+
+class Pathway(models.Model):
+    """Ordered Camino trail for an age band (LGA-88). Content-only catalog — no host
+    FKs (D-03). One active pathway per band is typical; ``order`` breaks ties."""
+
+    slug = models.SlugField(max_length=64, unique=True)
+    title = models.CharField(max_length=120)
+    age_band = models.CharField(max_length=16, choices=profiles.TRACK_CHOICES)
+    order = models.IntegerField(default=0)
+    active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ["order", "id"]
+        verbose_name_plural = "pathways"
+
+    def __str__(self):
+        return f"Pathway<{self.slug}>"
+
+
+class PathwayStep(models.Model):
+    """One stop on a Pathway (LGA-88). Opaque ``(kind, target_ref)`` like ReviewItem —
+    no FKs to stories/packets so the overlay stays extractable (D-03). Completion is
+    derived in ``pathway_status``, not stored here."""
+
+    STORY, STORY_LEVEL, PHONICS, LISTEN = "story", "story_level", "phonics", "listen"
+    TUTOR_PACKET, REVIEW, LINK = "tutor_packet", "review", "link"
+    KIND_CHOICES = [
+        (STORY, "Story"),
+        (STORY_LEVEL, "Story level"),
+        (PHONICS, "Phonics"),
+        (LISTEN, "Listen"),
+        (TUTOR_PACKET, "Tutor packet"),
+        (REVIEW, "Review"),
+        (LINK, "Link"),
+    ]
+
+    pathway = models.ForeignKey(Pathway, on_delete=models.CASCADE, related_name="steps")
+    order = models.IntegerField(default=0)
+    title = models.CharField(max_length=160)
+    kind = models.CharField(max_length=16, choices=KIND_CHOICES)
+    target_ref = models.CharField(
+        max_length=128, blank=True,
+        help_text="Opaque target (story pk, L1, packet pk, URL name, …).",
+    )
+    pass_rule = models.JSONField(
+        default=dict, blank=True,
+        help_text="Optional completion hints, e.g. {\"min_stories\": 1}.",
+    )
+    optional = models.BooleanField(
+        default=False,
+        help_text="Optional steps never block unlock of later required steps.",
+    )
+
+    class Meta:
+        ordering = ["order", "id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["pathway", "order"], name="uniq_pathway_step_order",
+            ),
+        ]
+
+    def __str__(self):
+        return f"PathwayStep<{self.pathway_id}:{self.order} {self.kind}>"

@@ -30,8 +30,9 @@ from .integrations import directory
 from .models import (
     AiUsage, AlphabetTile, AudioClip, AuditEvent, BookLogEntry, ComprehensionCheck,
     KnownWord, Learner, LearnerProfile, LibraryBook, ListeningResource,
-    ListeningSession, MilestoneAward, PhonicsRule, ReadingSession, ReviewItem,
-    Story, StoryAudio, StoryImage, StoryRecording, Theme, TutorPacket,
+    ListeningSession, MilestoneAward, Pathway, PathwayStep, PhonicsRule,
+    ReadingSession, ReviewItem, Story, StoryAudio, StoryImage, StoryRecording,
+    Theme, TutorPacket,
 )
 from .ports import AIClient, AIResult, ImageClient
 
@@ -2322,7 +2323,8 @@ class KidPortalTests(TestCase):
         self.assertEqual(r.status_code, 200)
         self.assertTrue(Learner.objects.filter(host_student_id=self.student.pk).exists())
         self.assertContains(r, "El sol")                 # the approved story is in the plan
-        self.assertContains(r, "palabras leídas")        # the hero metric renders
+        self.assertContains(r, "Hoy en el camino")       # Camino IA hero
+        self.assertContains(r, "palabras leídas")        # soft metrics line
 
     def test_plan_provision_is_idempotent(self):
         self.client.get(self._url("lingua_plan"))
@@ -2644,8 +2646,10 @@ class PhonicsTests(TestCase):
     def test_plan_shows_phonics_only_for_kids_early(self):
         early = self.client.get(reverse("portal:lingua_plan", kwargs={"token": self.early_token})).content.decode()
         older = self.client.get(reverse("portal:lingua_plan", kwargs={"token": self.older_token})).content.decode()
-        self.assertIn("Los sonidos", early)     # phonics card for the youngest band
-        self.assertNotIn("Los sonidos", older)  # not for older kids
+        self.assertIn("Sonidos", early)     # phonics trail stone for the youngest band
+        self.assertNotIn(">Sonidos<", older)  # not for older kids
+        self.assertIn("Hoy en el camino", early)
+        self.assertIn("Mapa", early)
 
 
 class ReviewItemTests(TestCase):
@@ -4599,3 +4603,119 @@ class AlphabetEscucharTests(TestCase):
         self.assertIn("Yo soy amigable.", k_html)
         self.assertIn("Alfabeto", v_html)
         self.assertNotIn("Yo soy amigable.", v_html)
+
+
+class PathwayStatusTests(TestCase):
+    """LGA-88: Pathway overlay derives locked/available/complete without a write model."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from django.core.management import call_command
+        from portal.tokens import make_portal_token
+
+        call_command("seed_pathway")
+        cls.parent = User.objects.create_user("path_parent", password="pw")
+        cls.violet = Student.objects.create(parent=cls.parent, first_name="Violet")
+        cls.kaylin = Student.objects.create(parent=cls.parent, first_name="Kaylin")
+        cls.early = Learner.create_for_host_student(cls.violet.pk, profiles.KIDS_EARLY)
+        cls.older = Learner.create_for_host_student(cls.kaylin.pk, profiles.KIDS_OLDER)
+        cls.story = Story.objects.create(
+            title="Hola", body="Hola sol.", level="L1", status=Story.APPROVED,
+        )
+        TutorPacket.objects.create(
+            title="Lección 1", body="Yo soy amigable.", host_student_id=cls.kaylin.pk,
+        )
+        cls.violet_token = make_portal_token(cls.violet)
+        cls.kaylin_token = make_portal_token(cls.kaylin)
+
+    def test_seed_creates_band_pathways(self):
+        self.assertTrue(Pathway.objects.filter(slug="camino-early", age_band=profiles.KIDS_EARLY).exists())
+        self.assertTrue(Pathway.objects.filter(slug="camino-older", age_band=profiles.KIDS_OLDER).exists())
+
+    def test_early_first_required_is_l1_available(self):
+        status = services.pathway_status(self.early)
+        kinds = [r["step"].kind for r in status["steps"]]
+        self.assertIn(PathwayStep.PHONICS, kinds)
+        self.assertIn(PathwayStep.STORY_LEVEL, kinds)
+        l1 = next(r for r in status["steps"] if r["step"].kind == PathwayStep.STORY_LEVEL)
+        self.assertEqual(l1["status"], services.PATH_AVAILABLE)
+        listen = next(r for r in status["steps"] if r["step"].kind == PathwayStep.LISTEN)
+        self.assertEqual(listen["status"], services.PATH_LOCKED)
+
+    def test_reading_l1_unlocks_listen(self):
+        ReadingSession.objects.create(learner=self.early, story=self.story, words=2, seconds=30)
+        status = services.pathway_status(self.early)
+        l1 = next(r for r in status["steps"] if r["step"].kind == PathwayStep.STORY_LEVEL)
+        listen = next(r for r in status["steps"] if r["step"].kind == PathwayStep.LISTEN)
+        self.assertEqual(l1["status"], services.PATH_COMPLETE)
+        self.assertTrue(l1["practicar"])
+        self.assertEqual(listen["status"], services.PATH_AVAILABLE)
+
+    def test_tutor_step_only_for_kaylin(self):
+        v = services.pathway_status(self.early)
+        k = services.pathway_status(self.older)
+        self.assertFalse(any(r["step"].kind == PathwayStep.TUTOR_PACKET for r in v["steps"]))
+        self.assertTrue(any(r["step"].kind == PathwayStep.TUTOR_PACKET for r in k["steps"]))
+
+    def test_l2_locked_until_ceiling(self):
+        # Finish L1 so only the ceiling (not prior-required) keeps L2 locked.
+        self.older.profile.content_ceiling = "L1"
+        self.older.profile.save(update_fields=["content_ceiling"])
+        ReadingSession.objects.create(
+            learner=self.older, story=self.story, words=2, seconds=30,
+        )
+        status = services.pathway_status(self.older)
+        l2 = next(
+            r for r in status["steps"]
+            if r["step"].kind == PathwayStep.STORY_LEVEL and r["step"].target_ref == "L2"
+        )
+        self.assertEqual(l2["status"], services.PATH_LOCKED)
+
+    def test_map_page_renders(self):
+        r = self.client.get(reverse("portal:lingua_path", kwargs={"token": self.violet_token}))
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "Camino")
+        self.assertContains(r, "Leer historias L1")
+
+    def test_plan_links_to_map(self):
+        r = self.client.get(reverse("portal:lingua_plan", kwargs={"token": self.violet_token}))
+        self.assertContains(r, reverse("portal:lingua_path", kwargs={"token": self.violet_token}))
+
+
+class KnownWordFromReviewTests(TestCase):
+    """LGA-89: strong SRS corrects credit KnownWord."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.learner = Learner.create_for_host_student(8901, profiles.KIDS_EARLY)
+
+    def test_leitner_credits_at_warm_box(self):
+        now = timezone.now()
+        item = ReviewItem.objects.create(
+            learner=self.learner, target_ref="gato", scheduler=ReviewItem.LEITNER,
+            scheduler_state={"box": 3}, due=now,
+        )
+        services.grade_review_item(item, True, now=now)  # box 3 -> 4
+        self.assertTrue(KnownWord.objects.filter(learner=self.learner, word="gato").exists())
+
+    def test_leitner_low_box_does_not_credit(self):
+        now = timezone.now()
+        item = ReviewItem.objects.create(
+            learner=self.learner, target_ref="sol", scheduler=ReviewItem.LEITNER,
+            scheduler_state={"box": 1}, due=now,
+        )
+        services.grade_review_item(item, True, now=now)  # box 1 -> 2
+        self.assertFalse(KnownWord.objects.filter(learner=self.learner, word="sol").exists())
+
+    def test_fsrs_correct_credits(self):
+        from lingua import schedulers as sched_mod
+
+        learner = Learner.create_for_host_student(8902, profiles.KIDS_OLDER)
+        now = timezone.now()
+        item = ReviewItem.objects.create(
+            learner=learner, target_ref="casa", scheduler=ReviewItem.FSRS,
+            scheduler_state=sched_mod.get_scheduler(ReviewItem.FSRS).initial_state(),
+            due=now,
+        )
+        services.grade_review_item(item, True, now=now)
+        self.assertTrue(KnownWord.objects.filter(learner=learner, word="casa").exists())

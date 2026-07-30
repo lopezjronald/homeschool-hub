@@ -10,6 +10,7 @@ urlpatterns = [
     # layer and delegates the reader to lingua.views.render_reader (keeps lingua core
     # free of host imports, D-04).
     path("<str:token>/lingua/", views.lingua_plan, name="lingua_plan"),
+    path("<str:token>/lingua/path/", views.lingua_path, name="lingua_path"),
     path("<str:token>/lingua/library/", views.lingua_library, name="lingua_library"),
     path("<str:token>/lingua/books/", views.lingua_books, name="lingua_books"),
     path("<str:token>/lingua/books/log/", views.lingua_book_log, name="lingua_book_log"),

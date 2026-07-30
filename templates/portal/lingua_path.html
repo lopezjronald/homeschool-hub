@@ -1,0 +1,47 @@
+{% extends "portal/base_portal.html" %}
+{% block title %}Mapa · {{ student.first_name }}{% endblock %}
+
+{% block content %}
+<div class="container portal-narrow">
+
+  <div class="portal-hero mb-3">
+    <p class="portal-camino-eyebrow mb-1">Camino de español</p>
+    <h1>{% if pathway %}{{ pathway.title }}{% else %}Tu mapa{% endif %}</h1>
+    <p class="mb-0">Una parada a la vez, {{ student.first_name }}.</p>
+  </div>
+
+  {% if steps %}
+    <div class="mb-4">
+      {% for row in steps %}
+        {% if row.status == "locked" %}
+          <div class="portal-path-step is-locked" aria-disabled="true">
+            <div class="portal-path-step-mark">🔒</div>
+            <div>
+              <div class="portal-path-step-title">{{ row.step.title }}</div>
+              <div class="portal-path-step-meta">{{ row.label }}</div>
+            </div>
+          </div>
+        {% else %}
+          <a href="{{ row.href }}"
+             class="portal-path-step {% if row.status == 'complete' %}is-complete{% else %}is-available{% endif %}">
+            <div class="portal-path-step-mark">{% if row.status == "complete" %}✓{% else %}●{% endif %}</div>
+            <div>
+              <div class="portal-path-step-title">{{ row.step.title }}</div>
+              <div class="portal-path-step-meta">{{ row.label }}</div>
+            </div>
+          </a>
+        {% endif %}
+      {% endfor %}
+    </div>
+  {% else %}
+    <div class="alert alert-info mb-4">
+      El mapa todavía se está armando. Mientras tanto, sigue con
+      <a href="{% url 'portal:lingua_plan' token=token %}">Hoy en el camino</a>.
+    </div>
+  {% endif %}
+
+  <p class="mt-2">
+    <a class="portal-back" href="{% url 'portal:lingua_plan' token=token %}">&larr; Hoy</a>
+  </p>
+</div>
+{% endblock %}

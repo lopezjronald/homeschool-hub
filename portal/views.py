@@ -16,7 +16,7 @@ from django.db.models import Q
 from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.db import transaction
-from django.urls import reverse
+from django.urls import NoReverseMatch, reverse
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
@@ -28,6 +28,7 @@ from lingua import storage as lingua_storage
 from lingua import views as lingua_views
 from lingua.models import LibraryBook as LinguaLibraryBook
 from lingua.models import MilestoneAward as LinguaMilestone
+from lingua.models import PathwayStep
 from lingua.models import Story as LinguaStory
 from curricula.models import Curriculum, CurriculumPlacement
 from curricula.subjects import emoji_for, is_spelling
@@ -62,8 +63,8 @@ def _lingua_learner(student):
 
 
 def lingua_plan(request, token):
-    """The kid's Spanish 'today' page: the daily plan + the warm hero metric. Lives in
-    the portal shell (extends base_portal.html); the reader itself is CSP-clean."""
+    """The kid's Spanish 'today' page: Camino Hoy CTA + trail stones (LGA-87).
+    Lives in the portal shell (extends base_portal.html); the reader itself is CSP-clean."""
     student = _resolve_student(token)
     learner = _lingua_learner(student)
     celebrate = None
@@ -74,6 +75,7 @@ def lingua_plan(request, token):
             celebrate = {"threshold": threshold, "kind": kind}
     except (TypeError, ValueError):
         celebrate = None
+    extras = lingua_services.camino_plan_extras(learner)
     return render(request, "portal/lingua_plan.html", {
         "student": student, "token": token,
         "plan": lingua_services.build_daily_plan(learner),
@@ -81,7 +83,61 @@ def lingua_plan(request, token):
         "band": learner.profile.track_profile,
         "celebrate": celebrate,
         "tutor_packets": lingua_services.tutor_packets_for(student.pk),
+        "camino_hint": extras["camino_hint"],
+        "review_due": extras["review_due"],
     })
+
+
+def lingua_path(request, token):
+    """Kid Camino map: ordered PathwaySteps with derived status (LGA-88)."""
+    student = _resolve_student(token)
+    learner = _lingua_learner(student)
+    status = lingua_services.pathway_status(learner)
+    steps = []
+    for row in status["steps"]:
+        step = row["step"]
+        steps.append({
+            **row,
+            "href": _pathway_step_href(token, student.pk, step),
+            "label": (
+                "Practicar otra vez" if row["practicar"]
+                else "¡Empezar!" if row["status"] == lingua_services.PATH_AVAILABLE
+                else "Hecho" if row["status"] == lingua_services.PATH_COMPLETE
+                else "Pronto"
+            ),
+        })
+    return render(request, "portal/lingua_path.html", {
+        "student": student, "token": token,
+        "pathway": status["pathway"],
+        "steps": steps,
+        "band": learner.profile.track_profile,
+    })
+
+
+def _pathway_step_href(token, host_student_id, step):
+    """Deeplink for a PathwayStep — never invents new content URLs."""
+    kind, ref = step.kind, (step.target_ref or "").strip()
+    if kind == PathwayStep.STORY and ref.isdigit():
+        return reverse("portal:lingua_read", args=[token, int(ref)])
+    if kind == PathwayStep.STORY_LEVEL:
+        return reverse("portal:lingua_library", args=[token])
+    if kind == PathwayStep.PHONICS:
+        return reverse("portal:lingua_phonics", args=[token])
+    if kind == PathwayStep.LISTEN:
+        return reverse("portal:lingua_listen", args=[token])
+    if kind == PathwayStep.TUTOR_PACKET:
+        if ref.isdigit() and lingua_services.tutor_packet_for(host_student_id, int(ref)):
+            return reverse("portal:lingua_tutor_packet", args=[token, int(ref)])
+        return reverse("portal:lingua_tutor", args=[token])
+    if kind == PathwayStep.REVIEW:
+        return reverse("portal:lingua_plan", args=[token])
+    if kind == PathwayStep.LINK and ref:
+        # Allow only named portal lingua routes (no open redirects).
+        try:
+            return reverse(f"portal:{ref}", args=[token])
+        except NoReverseMatch:
+            return reverse("portal:lingua_plan", args=[token])
+    return reverse("portal:lingua_plan", args=[token])
 
 
 def lingua_library(request, token):

@@ -874,3 +874,174 @@ button.portal-subject-card {
 }
 .book-feelings .felt span { font-size: .85rem; font-weight: 600; }
 .book-feelings .felt:hover { border-color: #EBA83A; background: rgba(235, 168, 58, .12); }
+
+/* ---- Camino de español (LGA-87) ---- */
+.portal-camino-eyebrow {
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ss-green, #1E7A50);
+  margin: 0;
+}
+.portal-camino-cta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 1.25rem 1.4rem;
+  background: linear-gradient(135deg, rgba(30, 122, 80, 0.14), rgba(235, 168, 58, 0.12));
+  border: 2px solid rgba(30, 122, 80, 0.45);
+  border-radius: 18px;
+  text-decoration: none;
+  color: var(--ss-forest, #0F3D2E);
+  box-shadow: 0 6px 18px rgba(15, 61, 46, 0.08);
+  transition: border-color 0.12s ease, transform 0.12s ease;
+}
+.portal-camino-cta:hover {
+  border-color: var(--ss-green, #1E7A50);
+  color: var(--ss-forest, #0F3D2E);
+  transform: translateY(-1px);
+}
+.portal-camino-cta-kicker {
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ss-green, #1E7A50);
+}
+.portal-camino-cta-title {
+  font-size: 1.45rem;
+  font-weight: 800;
+  line-height: 1.25;
+}
+.portal-camino-cta-meta {
+  font-size: 0.95rem;
+  font-weight: 600;
+  opacity: 0.9;
+}
+.portal-camino-more {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+.portal-camino-more-link {
+  font-weight: 600;
+  color: var(--ss-forest, #0F3D2E);
+  text-decoration: none;
+  padding: 0.35rem 0.15rem;
+}
+.portal-camino-more-link:hover { text-decoration: underline; }
+.portal-camino-hint {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--ss-forest, #0F3D2E);
+  background: rgba(235, 168, 58, 0.12);
+  border-radius: 12px;
+  padding: 0.65rem 0.9rem;
+  margin: 0;
+}
+.portal-camino-metrics {
+  font-size: 0.9rem;
+  margin: 0;
+}
+.portal-camino-trail {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+}
+.portal-camino-stone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.2rem;
+  min-width: 4.5rem;
+  padding: 0.7rem 0.85rem;
+  background: #fff;
+  border: 1px solid rgba(30, 122, 80, 0.22);
+  border-radius: 999px;
+  text-decoration: none;
+  color: var(--ss-forest, #0F3D2E);
+  font-weight: 700;
+  font-size: 0.8rem;
+  transition: border-color 0.12s ease, background 0.12s ease;
+}
+.portal-camino-stone:hover {
+  border-color: rgba(30, 122, 80, 0.5);
+  background: rgba(30, 122, 80, 0.06);
+  color: var(--ss-forest, #0F3D2E);
+  text-decoration: none;
+}
+.portal-camino-stone--soft {
+  opacity: 0.55;
+  border-style: dashed;
+  cursor: default;
+}
+.portal-camino-stone-emoji { font-size: 1.35rem; line-height: 1; }
+.portal-camino-stone-label { line-height: 1.1; }
+.portal-camino-choices {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+.portal-camino-choice {
+  font-weight: 600;
+  color: var(--ss-forest, #0F3D2E);
+  text-decoration: none;
+  padding: 0.4rem 0;
+}
+.portal-camino-choice:hover { text-decoration: underline; }
+.portal-camino-side {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.portal-camino-chip {
+  display: inline-block;
+  padding: 0.35rem 0.75rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #5a6b63;
+  background: rgba(15, 61, 46, 0.05);
+  border-radius: 999px;
+  text-decoration: none;
+}
+.portal-camino-chip:hover {
+  color: var(--ss-green, #1E7A50);
+  background: rgba(30, 122, 80, 0.1);
+  text-decoration: none;
+}
+
+/* Pathway map (LGA-88) */
+.portal-path-step {
+  display: flex;
+  gap: 0.85rem;
+  align-items: flex-start;
+  padding: 0.9rem 1rem;
+  background: #fff;
+  border: 1px solid rgba(30, 122, 80, 0.18);
+  border-radius: 14px;
+  margin-bottom: 0.55rem;
+  text-decoration: none;
+  color: inherit;
+}
+.portal-path-step.is-locked {
+  opacity: 0.45;
+  pointer-events: none;
+}
+.portal-path-step.is-complete {
+  border-color: rgba(30, 122, 80, 0.4);
+  background: rgba(30, 122, 80, 0.06);
+}
+.portal-path-step.is-available {
+  border-color: rgba(235, 168, 58, 0.55);
+  box-shadow: 0 0 0 1px rgba(235, 168, 58, 0.25);
+}
+.portal-path-step-mark {
+  font-size: 1.25rem;
+  line-height: 1;
+  min-width: 1.5rem;
+  text-align: center;
+}
+.portal-path-step-title { font-weight: 700; color: var(--ss-forest, #0F3D2E); }
+.portal-path-step-meta { font-size: 0.85rem; color: #7a8781; }

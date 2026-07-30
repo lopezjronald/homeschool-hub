@@ -2,8 +2,9 @@ from django.contrib import admin
 
 from .models import (
     AiUsage, AlphabetTile, AudioClip, ComprehensionCheck, KnownWord, Learner,
-    LearnerProfile, ListeningResource, ListeningSession, MilestoneAward, PhonicsRule,
-    ReadingSession, ReviewItem, Story, StoryAudio, StoryImage, Theme, TutorPacket,
+    LearnerProfile, ListeningResource, ListeningSession, MilestoneAward, Pathway,
+    PathwayStep, PhonicsRule, ReadingSession, ReviewItem, Story, StoryAudio,
+    StoryImage, Theme, TutorPacket,
 )
 
 
@@ -57,6 +58,27 @@ class AlphabetTileAdmin(admin.ModelAdmin):
     list_display = ("symbol", "spoken", "example", "kind", "order", "active")
     list_filter = ("kind", "active")
     search_fields = ("symbol", "spoken", "example")
+
+
+class PathwayStepInline(admin.TabularInline):
+    model = PathwayStep
+    extra = 0
+    ordering = ("order",)
+
+
+@admin.register(Pathway)
+class PathwayAdmin(admin.ModelAdmin):
+    list_display = ("slug", "title", "age_band", "order", "active")
+    list_filter = ("age_band", "active")
+    search_fields = ("slug", "title")
+    inlines = [PathwayStepInline]
+
+
+@admin.register(PathwayStep)
+class PathwayStepAdmin(admin.ModelAdmin):
+    list_display = ("pathway", "order", "title", "kind", "target_ref", "optional")
+    list_filter = ("kind", "optional", "pathway")
+    search_fields = ("title", "target_ref")
 
 
 @admin.register(AiUsage)

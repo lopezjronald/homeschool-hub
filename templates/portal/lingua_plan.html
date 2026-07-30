@@ -1,12 +1,13 @@
 {% extends "portal/base_portal.html" %}
-{% block title %}Español · {{ student.first_name }}{% endblock %}
+{% block title %}Camino · {{ student.first_name }}{% endblock %}
 
 {% block content %}
 <div class="container portal-narrow">
 
-  <div class="portal-hero mb-4">
-    <h1>📖 Tu lectura de hoy</h1>
-    <p class="mb-0">¡Vamos a leer, {{ student.first_name }}! 🌱</p>
+  <div class="portal-hero mb-3">
+    <p class="portal-camino-eyebrow mb-1">Camino de español</p>
+    <h1>Hoy en el camino</h1>
+    <p class="mb-0">¡Vamos, {{ student.first_name }}! 🌱</p>
   </div>
 
   {% if celebrate %}
@@ -22,124 +23,88 @@
     </div>
   {% endif %}
 
-  {# Warm, non-competitive hero metric (D-60/61) — words read, words known, minutes. #}
-  <div class="row text-center g-2 mb-4">
-    <div class="col">
-      <div class="card portal-card h-100"><div class="card-body py-3">
-        <div class="h3 mb-0">{{ totals.words_read }}</div>
-        <small class="text-muted">palabras leídas</small>
-      </div></div>
-    </div>
-    <div class="col">
-      <div class="card portal-card h-100"><div class="card-body py-3">
-        <div class="h3 mb-0">{{ totals.known_words }}</div>
-        <small class="text-muted">palabras que sabes</small>
-      </div></div>
-    </div>
-    <div class="col">
-      <div class="card portal-card h-100"><div class="card-body py-3">
-        <div class="h3 mb-0">{{ totals.minutes }}</div>
-        <small class="text-muted">minutos</small>
-      </div></div>
-    </div>
-  </div>
-
-  {# Today's stories first — reading is the hero job of this page (UI review). #}
+  {# One primary Continue CTA — today's first plan item (Camino P0). #}
   {% if plan.items %}
-    <div class="portal-subjects mb-4">
-      {% for item in plan.items %}
-      <a href="{% url 'portal:lingua_read' token=token story_id=item.story.id %}" class="portal-subject-card">
-        <div class="portal-subject-emoji">{% if item.kind == 'reread' %}🔁{% else %}✨{% endif %}</div>
-        <div class="portal-subject-body">
-          <div class="portal-subject-name">{{ item.story.title }}</div>
-          <div class="portal-next-line">
-            <span class="portal-next-label">{% if item.kind == 'reread' %}Otra vez{% else %}Nuevo{% endif %}</span>
-            ~{{ item.minutes }} min
-          </div>
-        </div>
-        <div class="portal-subject-go">Leer ➜</div>
-      </a>
-      {% endfor %}
-    </div>
+    {% with item=plan.items.0 %}
+    <a href="{% url 'portal:lingua_read' token=token story_id=item.story.id %}"
+       class="portal-camino-cta mb-3">
+      <span class="portal-camino-cta-kicker">{% if item.kind == 'reread' %}Practicar otra vez{% else %}Hoy{% endif %}</span>
+      <span class="portal-camino-cta-title">{{ item.story.title }}</span>
+      <span class="portal-camino-cta-meta">~{{ item.minutes }} min · {% if item.kind == 'reread' %}Seguir ➜{% else %}¡Empezar! ➜{% endif %}</span>
+    </a>
+    {% endwith %}
+    {% if plan.items|length > 1 %}
+      <div class="portal-camino-more mb-4">
+        {% for item in plan.items|slice:"1:" %}
+        <a href="{% url 'portal:lingua_read' token=token story_id=item.story.id %}" class="portal-camino-more-link">
+          {% if item.kind == 'reread' %}🔁{% else %}✨{% endif %}
+          {{ item.story.title }}
+          <span class="text-muted">· ~{{ item.minutes }} min</span>
+        </a>
+        {% endfor %}
+      </div>
+    {% endif %}
   {% else %}
     <div class="alert alert-info mb-4">No hay historias todavía. ¡Vuelve pronto! 🌱</div>
   {% endif %}
 
+  {% if camino_hint %}
+    <p class="portal-camino-hint mb-3">{{ camino_hint }}</p>
+  {% endif %}
+
+  {# Soft one-line metrics — not three equal cards (D-60/61). #}
+  <p class="portal-camino-metrics text-muted mb-4">
+    {{ totals.words_read }} palabras leídas
+    · {{ totals.known_words }} que sabes
+    · {{ totals.minutes }} min
+  </p>
+
+  {# Trail stones — stations on the Camino, not a second hub of subject cards. #}
+  <h2 class="portal-section-title">Tu camino</h2>
+  <div class="portal-camino-trail mb-4" role="list">
+    <a href="{% url 'portal:lingua_path' token=token %}" class="portal-camino-stone" role="listitem">
+      <span class="portal-camino-stone-emoji">🗺️</span>
+      <span class="portal-camino-stone-label">Mapa</span>
+    </a>
+    {% if band == 'KIDS_EARLY' %}
+    <a href="{% url 'portal:lingua_phonics' token=token %}" class="portal-camino-stone" role="listitem">
+      <span class="portal-camino-stone-emoji">🔤</span>
+      <span class="portal-camino-stone-label">Sonidos</span>
+    </a>
+    {% endif %}
+    <a href="{% url 'portal:lingua_listen' token=token %}" class="portal-camino-stone" role="listitem">
+      <span class="portal-camino-stone-emoji">🎧</span>
+      <span class="portal-camino-stone-label">Escuchar</span>
+    </a>
+    {% if tutor_packets %}
+    <a href="{% url 'portal:lingua_tutor' token=token %}" class="portal-camino-stone" role="listitem">
+      <span class="portal-camino-stone-emoji">👩‍🏫</span>
+      <span class="portal-camino-stone-label">Maestro</span>
+    </a>
+    {% endif %}
+    {% if review_due %}
+    <span class="portal-camino-stone portal-camino-stone--soft" role="listitem" title="Pronto: repaso de palabras">
+      <span class="portal-camino-stone-emoji">🧠</span>
+      <span class="portal-camino-stone-label">Repaso</span>
+    </span>
+    {% endif %}
+  </div>
+
   {% if plan.choices %}
-    <h2 class="portal-section-title">O elige otra 👇</h2>
-    <div class="portal-subjects mb-4">
+    <h2 class="portal-section-title">O elige otra</h2>
+    <div class="portal-camino-choices mb-4">
       {% for story in plan.choices %}
-      <a href="{% url 'portal:lingua_read' token=token story_id=story.id %}" class="portal-subject-card">
-        <div class="portal-subject-emoji">📗</div>
-        <div class="portal-subject-body"><div class="portal-subject-name">{{ story.title }}</div></div>
-        <div class="portal-subject-go">Leer ➜</div>
+      <a href="{% url 'portal:lingua_read' token=token story_id=story.id %}" class="portal-camino-choice">
+        📗 {{ story.title }}
       </a>
       {% endfor %}
     </div>
   {% endif %}
 
-  <h2 class="portal-section-title">También puedes…</h2>
-
-  {% if band == 'KIDS_EARLY' %}
-    <div class="portal-subjects mb-3">
-      <a href="{% url 'portal:lingua_phonics' token=token %}" class="portal-subject-card">
-        <div class="portal-subject-emoji">🔤</div>
-        <div class="portal-subject-body">
-          <div class="portal-subject-name">Los sonidos</div>
-          <div class="portal-next-line"><span class="portal-next-label">Practica</span> cómo suena el español</div>
-        </div>
-        <div class="portal-subject-go">Ver ➜</div>
-      </a>
-    </div>
-  {% endif %}
-
-  {% if tutor_packets %}
-    <div class="portal-subjects mb-3">
-      <a href="{% url 'portal:lingua_tutor' token=token %}" class="portal-subject-card">
-        <div class="portal-subject-emoji">👩‍🏫</div>
-        <div class="portal-subject-body">
-          <div class="portal-subject-name">Con el maestro</div>
-          <div class="portal-next-line"><span class="portal-next-label">Tareas</span> de tu clase</div>
-        </div>
-        <div class="portal-subject-go">Ver ➜</div>
-      </a>
-    </div>
-  {% endif %}
-
-  {# Listening track (F-02, LGA-55): comprehensible-input videos for every band. #}
-  <div class="portal-subjects mb-3">
-    <a href="{% url 'portal:lingua_listen' token=token %}" class="portal-subject-card">
-      <div class="portal-subject-emoji">🎧</div>
-      <div class="portal-subject-body">
-        <div class="portal-subject-name">Escuchar</div>
-        <div class="portal-next-line"><span class="portal-next-label">Videos</span> en español</div>
-      </div>
-      <div class="portal-subject-go">Ver ➜</div>
-    </a>
-  </div>
-
-  {# Biblioteca (LGA-72): the full leveled reading list — every story, by level. #}
-  <div class="portal-subjects mb-3">
-    <a href="{% url 'portal:lingua_library' token=token %}" class="portal-subject-card">
-      <div class="portal-subject-emoji">📚</div>
-      <div class="portal-subject-body">
-        <div class="portal-subject-name">Biblioteca</div>
-        <div class="portal-next-line"><span class="portal-next-label">Todas</span> las historias, por nivel</div>
-      </div>
-      <div class="portal-subject-go">Ver ➜</div>
-    </a>
-  </div>
-
-  {# Mis libros (LGA-75): the physical-book reading log — anota un libro que leíste. #}
-  <div class="portal-subjects mb-3">
-    <a href="{% url 'portal:lingua_books' token=token %}" class="portal-subject-card">
-      <div class="portal-subject-emoji">📔</div>
-      <div class="portal-subject-body">
-        <div class="portal-subject-name">Mis libros</div>
-        <div class="portal-next-line"><span class="portal-next-label">Anota</span> un libro que leíste</div>
-      </div>
-      <div class="portal-subject-go">Ver ➜</div>
-    </a>
+  {# Quiet side paths — Biblioteca / Mis libros are not trail weight. #}
+  <div class="portal-camino-side mb-3">
+    <a href="{% url 'portal:lingua_library' token=token %}" class="portal-camino-chip">📚 Biblioteca</a>
+    <a href="{% url 'portal:lingua_books' token=token %}" class="portal-camino-chip">📔 Mis libros</a>
   </div>
 
   <p class="mt-4"><a href="{% url 'portal:portal_home' token=token %}">&larr; Volver</a></p>

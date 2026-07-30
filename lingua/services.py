@@ -22,8 +22,8 @@ from . import (
 from .models import (
     AiUsage, AlphabetTile, AudioClip, AuditEvent, BookLogEntry, ComprehensionCheck,
     KnownWord, Learner, LibraryBook, ListeningResource, ListeningSession,
-    MilestoneAward, PhonicsRule, ReadingSession, ReviewItem, Story, StoryAudio,
-    StoryImage, StoryRecording, Theme, TutorPacket,
+    MilestoneAward, Pathway, PathwayStep, PhonicsRule, ReadingSession, ReviewItem,
+    Story, StoryAudio, StoryImage, StoryRecording, Theme, TutorPacket,
 )
 from .ports import AIClient, ImageClient
 from .prompts import CRITIC_SYSTEM, STORY_SYSTEM
@@ -1124,13 +1124,30 @@ def add_review_item(learner, target_ref, *, target_kind=ReviewItem.VOCAB,
 def grade_review_item(item, correct, *, now=None):
     """Apply a review grade to a card via its scheduler (LGA-59). ``correct`` comes from
     a parent tap (got-it/missed) or an auto-graded recognition match — the scheduler
-    handles both identically. A miss is non-punitive (Leitner resets to box 1)."""
+    handles both identically. A miss is non-punitive (Leitner resets to box 1).
+    Strong correct vocab grades also credit KnownWord (LGA-89)."""
     now = now or timezone.now()
     sched = schedulers.get_scheduler(item.scheduler)
     item.scheduler_state, item.due = sched.review(item.scheduler_state, correct, now=now)
     item.save(update_fields=["scheduler_state", "due", "updated_at"])
     record_reviews_served(item.learner, now=now)   # count toward the per-day cap (LGA-62)
+    if correct and item.target_kind == ReviewItem.VOCAB:
+        _maybe_credit_known_from_review(item)
     return item
+
+
+def _maybe_credit_known_from_review(item):
+    """Credit KnownWord after a strong SRS hit (LGA-89): FSRS Good, or Leitner box
+    at/above the warm-start threshold (same bar as graduate_to_fsrs)."""
+    if item.scheduler == ReviewItem.FSRS:
+        credit_known_word(item.learner, item.target_ref)
+        return
+    try:
+        box = int((item.scheduler_state or {}).get("box", 1))
+    except (TypeError, ValueError):
+        return
+    if box >= FSRS_WARM_START_BOX:
+        credit_known_word(item.learner, item.target_ref)
 
 
 def auto_grade_recognition(item, chosen, correct, *, now=None):
@@ -1426,3 +1443,155 @@ def create_story_draft(*, theme, level, ai_client=None):
                       "flag_count": len(review["flags"]), "tokens": tokens},
         )
     return obj
+
+
+# --- Camino pathway overlay (LGA-88) ---------------------------------------
+
+PATH_LOCKED, PATH_AVAILABLE, PATH_COMPLETE = "locked", "available", "complete"
+
+
+def pathway_for(learner):
+    """Active Pathway for the learner's age band, or None."""
+    band = getattr(getattr(learner, "profile", None), "track_profile", "")
+    if not band:
+        return None
+    return (
+        Pathway.objects.filter(age_band=band, active=True)
+        .order_by("order", "id")
+        .first()
+    )
+
+
+def _stories_read_at_level(learner, level):
+    """Distinct approved-story pks at ``level`` the learner has read at least once."""
+    return set(
+        learner.reading_sessions.filter(story__level=level, story__isnull=False)
+        .values_list("story_id", flat=True)
+        .distinct()
+    )
+
+
+def _step_complete(learner, step):
+    """Derive whether a PathwayStep is done from existing session/mastery data."""
+    kind, ref = step.kind, (step.target_ref or "").strip()
+    rule = step.pass_rule or {}
+
+    if kind == PathwayStep.STORY:
+        if not ref.isdigit():
+            return False
+        return learner.reading_sessions.filter(story_id=int(ref)).exists()
+
+    if kind == PathwayStep.STORY_LEVEL:
+        level = ref or "L1"
+        min_stories = int(rule.get("min_stories", 1))
+        return len(_stories_read_at_level(learner, level)) >= min_stories
+
+    if kind == PathwayStep.PHONICS:
+        # Soft: any reading engagement counts as having started sonidos station.
+        return learner.reading_sessions.exists() or rule.get("soft", False)
+
+    if kind == PathwayStep.LISTEN:
+        return learner.listening_sessions.exists()
+
+    if kind == PathwayStep.TUTOR_PACKET:
+        # No open/ack model yet — only mark complete when pass_rule explicitly soft.
+        if not rule.get("soft"):
+            return False
+        packets = tutor_packets_for(learner.host_student_id)
+        if ref.isdigit():
+            return any(p.pk == int(ref) for p in packets)
+        return bool(packets)
+
+    if kind == PathwayStep.REVIEW:
+        min_known = int(rule.get("min_known", 1))
+        return learner.known_words.count() >= min_known
+
+    if kind == PathwayStep.LINK:
+        return bool(rule.get("soft", False))
+
+    return False
+
+
+def _step_ceiling_ok(learner, step):
+    """story_level steps stay locked until content_ceiling reaches that level."""
+    if step.kind != PathwayStep.STORY_LEVEL:
+        return True
+    level = (step.target_ref or "").strip() or "L1"
+    return profiles.level_rank(level) <= profiles.level_rank(learner.profile.content_ceiling)
+
+
+def _step_visible(learner, step):
+    """Hide Kaylin-only tutor steps when the packet isn't for this child."""
+    if step.kind != PathwayStep.TUTOR_PACKET:
+        return True
+    ref = (step.target_ref or "").strip()
+    packets = tutor_packets_for(learner.host_student_id)
+    if ref.isdigit():
+        return any(p.pk == int(ref) for p in packets)
+    return bool(packets)
+
+
+def pathway_status(learner):
+    """Ordered Camino stops with derived locked/available/complete (LGA-88).
+
+    Unlock: prior *required* steps must be complete; story_level also needs
+    ``content_ceiling``. Optional steps never block later unlocks. Returns
+    ``{"pathway": Pathway|None, "steps": [...], "next": dict|None, "hint": str}``.
+    """
+    pathway = pathway_for(learner)
+    if pathway is None:
+        return {"pathway": None, "steps": [], "next": None, "hint": ""}
+
+    steps = list(pathway.steps.all())
+    prior_required_done = True
+    out = []
+    next_available = None
+
+    for step in steps:
+        if not _step_visible(learner, step):
+            continue
+        complete = _step_complete(learner, step)
+        ceiling_ok = _step_ceiling_ok(learner, step)
+        if complete:
+            status = PATH_COMPLETE
+        elif prior_required_done and ceiling_ok:
+            status = PATH_AVAILABLE
+        else:
+            status = PATH_LOCKED
+
+        row = {
+            "step": step,
+            "status": status,
+            "practicar": complete and step.kind in (
+                PathwayStep.STORY, PathwayStep.STORY_LEVEL, PathwayStep.PHONICS,
+                PathwayStep.LISTEN, PathwayStep.TUTOR_PACKET,
+            ),
+        }
+        out.append(row)
+        if status == PATH_AVAILABLE and next_available is None:
+            next_available = row
+        if not step.optional and not complete:
+            prior_required_done = False
+
+    hint = ""
+    if next_available is not None:
+        s = next_available["step"]
+        hint = f"Siguiente en el camino: {s.title}"
+
+    return {
+        "pathway": pathway,
+        "steps": out,
+        "next": next_available,
+        "hint": hint,
+    }
+
+
+def camino_plan_extras(learner):
+    """Light Camino context for the Hoy page without mutating build_daily_plan."""
+    status = pathway_status(learner)
+    due = due_review_items(learner)
+    return {
+        "camino_hint": status.get("hint") or "",
+        "review_due": len(due) > 0,
+        "pathway_status": status,
+    }

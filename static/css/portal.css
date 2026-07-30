@@ -820,6 +820,35 @@ button.portal-subject-card {
   padding: 0.1rem 0.6rem;
 }
 .portal-chapter-body { padding: 0 0.6rem 0.6rem; }
+.portal-lesson-block {
+  padding: 0.55rem 0.4rem;
+  border-top: 1px solid rgba(30, 122, 80, 0.1);
+}
+.portal-lesson-block:first-child { border-top: 0; }
+.portal-lesson-block.is-current {
+  background: rgba(235, 168, 58, 0.08);
+  border-radius: 10px;
+  margin: 0.2rem 0;
+  padding-left: 0.55rem;
+  padding-right: 0.55rem;
+}
+.portal-lesson-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.6rem;
+  align-items: baseline;
+  margin-bottom: 0.35rem;
+  font-weight: 700;
+  color: var(--ss-forest, #0F3D2E);
+}
+.portal-lesson-code {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ss-green, #1E7A50);
+}
+.portal-lesson-title { font-size: 0.98rem; }
+.portal-manga-row { border-left: 3px solid rgba(235, 168, 58, 0.55); }
 
 .portal-set-row {
   display: flex;

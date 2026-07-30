@@ -28,4 +28,14 @@ urlpatterns = [
         views.curriculum_set_placement,
         name="curriculum_set_placement",
     ),
+    path(
+        "<int:pk>/toggle-active/",
+        views.curriculum_toggle_active,
+        name="curriculum_toggle_active",
+    ),
+    path(
+        "<int:pk>/children/<int:child_pk>/toggle-active/",
+        views.curriculum_toggle_placement_active,
+        name="curriculum_toggle_placement_active",
+    ),
 ]

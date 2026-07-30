@@ -60,6 +60,11 @@ class Curriculum(models.Model):
                   "DIVE). The child's portal launches out to the website instead of "
                   "showing in-app lessons.",
     )
+    is_active = models.BooleanField(
+        default=True,
+        help_text="Inactive curricula are hidden from the Curricula list by default "
+                  "and from every child's portal. Toggle 'Show deactivated' to find them.",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -244,6 +249,11 @@ class CurriculumPlacement(models.Model):
         null=True,
         blank=True,
         related_name="+",
+    )
+    is_active = models.BooleanField(
+        default=True,
+        help_text="Inactive placements hide this subject from this child's portal only "
+                  "(siblings can keep the same curriculum).",
     )
     updated_at = models.DateTimeField(auto_now=True)
 

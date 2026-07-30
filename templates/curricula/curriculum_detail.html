@@ -10,10 +10,27 @@
       <!-- Overview -->
       <div class="card mb-4">
         <div class="card-header d-flex justify-content-between align-items-center">
-          <h4 class="mb-0">{{ curriculum.name }}</h4>
-          {% if curriculum.grade_level %}
-            <span class="badge bg-primary">{{ curriculum.get_grade_level_display }}</span>
-          {% endif %}
+          <h4 class="mb-0">
+            {{ curriculum.name }}
+            {% if not curriculum.is_active %}
+              <span class="badge bg-secondary ms-1">Deactivated</span>
+            {% endif %}
+          </h4>
+          <div class="d-flex align-items-center gap-2">
+            {% if curriculum.grade_level %}
+              <span class="badge bg-primary">{{ curriculum.get_grade_level_display }}</span>
+            {% endif %}
+            {% if can_edit %}
+              <form method="post" action="{% url 'curricula:curriculum_toggle_active' curriculum.pk %}">
+                {% csrf_token %}
+                {% if curriculum.is_active %}
+                  <button type="submit" class="btn btn-sm btn-outline-secondary">Deactivate</button>
+                {% else %}
+                  <button type="submit" class="btn btn-sm btn-success">Reactivate</button>
+                {% endif %}
+              </form>
+            {% endif %}
+          </div>
         </div>
         <div class="card-body">
           <dl class="row mb-0">
@@ -36,10 +53,27 @@
           {% for row in child_rows %}
             <div class="mb-4">
               <div class="d-flex justify-content-between align-items-center mb-1">
-                <strong>{{ row.child.get_full_name }}</strong>
-                {% if row.progress %}
-                  <small class="text-muted">{{ row.progress.done }} of {{ row.progress.total }} lessons</small>
-                {% endif %}
+                <strong>
+                  {{ row.child.get_full_name }}
+                  {% if row.placement and not row.placement.is_active %}
+                    <span class="badge bg-secondary">Off portal</span>
+                  {% endif %}
+                </strong>
+                <div class="d-flex align-items-center gap-2">
+                  {% if row.progress %}
+                    <small class="text-muted">{{ row.progress.done }} of {{ row.progress.total }} lessons</small>
+                  {% endif %}
+                  {% if can_edit %}
+                    <form method="post" action="{% url 'curricula:curriculum_toggle_placement_active' curriculum.pk row.child.pk %}">
+                      {% csrf_token %}
+                      {% if row.placement and row.placement.is_active %}
+                        <button type="submit" class="btn btn-sm btn-outline-secondary">Hide from portal</button>
+                      {% else %}
+                        <button type="submit" class="btn btn-sm btn-outline-success">Show on portal</button>
+                      {% endif %}
+                    </form>
+                  {% endif %}
+                </div>
               </div>
               <div class="progress" role="progressbar" style="height: 12px;">
                 <div class="progress-bar bg-success" style="width: {% if row.progress %}{{ row.progress.pct }}{% else %}0{% endif %}%;"></div>

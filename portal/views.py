@@ -416,18 +416,22 @@ def lingua_finish(request, token, story_id):
 
 
 def _placed_curriculum_ids(student):
-    return list(student.placements.values_list("curriculum_id", flat=True))
+    """Active placements only — deactivated subjects leave the kid portal (HH-149)."""
+    return list(
+        student.placements.filter(is_active=True, curriculum__is_active=True)
+        .values_list("curriculum_id", flat=True)
+    )
 
 
 def _visible_materials(student):
-    """Approved materials for this child (theirs, or unpinned ones in their curricula)."""
+    """Approved materials for this child in their *active* curricula only (HH-149)."""
     curriculum_ids = _placed_curriculum_ids(student)
+    if not curriculum_ids:
+        return Material.objects.none()
     return (
         Material.objects.filter(status=Material.APPROVED)
-        .filter(
-            Q(child=student)
-            | Q(child__isnull=True, lesson__chapter__curriculum_id__in=curriculum_ids)
-        )
+        .filter(lesson__chapter__curriculum_id__in=curriculum_ids)
+        .filter(Q(child=student) | Q(child__isnull=True))
         .select_related("lesson", "lesson__chapter")
         .order_by("lesson__chapter__number", "lesson__order")
     )
@@ -437,15 +441,16 @@ def _visible_question_sets(student):
     """Approved STUDENT-form question sets this child may open.
 
     Teacher-led discussion sets are intentionally excluded — those are for the
-    parent to lead orally, not for the child to fill out.
+    parent to lead orally, not for the child to fill out. Inactive placements
+    (HH-149) drop the whole curriculum from this list.
     """
     curriculum_ids = _placed_curriculum_ids(student)
+    if not curriculum_ids:
+        return QuestionSet.objects.none()
     return (
         QuestionSet.objects.filter(status=QuestionSet.APPROVED, mode=QuestionSet.MODE_STUDENT)
-        .filter(
-            Q(child=student)
-            | Q(child__isnull=True, lesson__chapter__curriculum_id__in=curriculum_ids)
-        )
+        .filter(lesson__chapter__curriculum_id__in=curriculum_ids)
+        .filter(Q(child=student) | Q(child__isnull=True))
         .select_related("lesson", "lesson__chapter", "lesson__chapter__curriculum")
     )
 
@@ -504,29 +509,16 @@ def _subject_cards(student):
 
     placements = {
         p.curriculum_id: p
-        for p in CurriculumPlacement.objects.filter(child=student).select_related(
+        for p in CurriculumPlacement.objects.filter(
+            child=student, is_active=True, curriculum__is_active=True,
+        ).select_related(
             "curriculum", "current_lesson", "current_lesson__chapter",
         )
     }
 
-    # Placements first (stable order), then any other curriculum owning work.
-    curr_ids = list(placements)
-    for cid in list(sets_by_curr) + list(materials_by_curr):
-        if cid not in curr_ids:
-            curr_ids.append(cid)
-
-    curricula = {p.curriculum_id: p.curriculum for p in placements.values()}
-    missing = [cid for cid in curr_ids if cid not in curricula]
-    if missing:
-        for c in Curriculum.objects.filter(id__in=missing):
-            curricula[c.id] = c
-
     cards = []
-    for cid in curr_ids:
-        curriculum = curricula.get(cid)
-        if curriculum is None:
-            continue
-        placement = placements.get(cid)
+    for cid, placement in placements.items():
+        curriculum = placement.curriculum
         curr_sets = sets_by_curr.get(cid, [])
         sets_total = len(curr_sets)
         sets_done = sum(1 for qs in curr_sets if _set_is_done(qs))
@@ -534,8 +526,8 @@ def _subject_cards(student):
             "curriculum": curriculum,
             "emoji": emoji_for(curriculum.subject),
             "placement": placement,
-            "progress": placement.progress() if placement else None,
-            "current_lesson": placement.current_lesson if placement else None,
+            "progress": placement.progress(),
+            "current_lesson": placement.current_lesson,
             "next_set": next((qs for qs in curr_sets if not _set_is_done(qs)), None),
             "sets_done": sets_done,
             "sets_total": sets_total,
@@ -562,8 +554,20 @@ def portal_home(request, token):
 
 
 def portal_subject(request, token, curriculum_id):
-    """Drill into one subject: chapters, the current one open, finished folded."""
+    """Drill into one subject: chapter → lesson outline with nested manga + sets (HH-148)."""
+    from curricula.models import Chapter
+
     student = _resolve_student(token)
+    placement = (
+        CurriculumPlacement.objects
+        .filter(child=student, curriculum_id=curriculum_id, is_active=True,
+                curriculum__is_active=True)
+        .select_related("curriculum", "current_lesson", "current_lesson__chapter")
+        .first()
+    )
+    if placement is None:
+        raise Http404
+    curriculum = placement.curriculum
 
     sets = [
         qs for qs in _annotated_question_sets(student)
@@ -573,42 +577,70 @@ def portal_subject(request, token, curriculum_id):
         m for m in _visible_materials(student)
         if m.lesson.chapter.curriculum_id == curriculum_id
     ]
-    placement = (
-        CurriculumPlacement.objects
-        .filter(child=student, curriculum_id=curriculum_id)
-        .select_related("curriculum", "current_lesson", "current_lesson__chapter")
-        .first()
-    )
-    # Authorize: the child must be placed in this subject or own work in it.
-    if placement is None and not sets and not materials:
-        raise Http404
-    curriculum = placement.curriculum if placement else get_object_or_404(Curriculum, pk=curriculum_id)
+    sets_by_lesson = defaultdict(list)
+    for qs in sets:
+        sets_by_lesson[qs.lesson_id].append(qs)
+    materials_by_lesson = defaultdict(list)
+    for m in materials:
+        materials_by_lesson[m.lesson_id].append(m)
 
     next_set = next((qs for qs in sets if not _set_is_done(qs)), None)
     if next_set is not None:
         current_chapter = next_set.lesson.chapter.number
-    elif placement and placement.current_lesson:
+    elif placement.current_lesson:
         current_chapter = placement.current_lesson.chapter.number
     else:
         current_chapter = None
 
-    # Sets arrive ordered curriculum→chapter→lesson, so group by chapter number.
     chapters = []
-    for (number, title), group in groupby(
-        sets, key=lambda s: (s.lesson.chapter.number, s.lesson.chapter.title),
-    ):
-        items = list(group)
+    db_chapters = (
+        Chapter.objects.filter(curriculum=curriculum)
+        .prefetch_related("lessons")
+        .order_by("number")
+    )
+    for chapter in db_chapters:
+        lessons_out = []
+        for lesson in chapter.lessons.all():
+            les_mats = materials_by_lesson.get(lesson.pk, [])
+            les_sets = sets_by_lesson.get(lesson.pk, [])
+            if not les_mats and not les_sets:
+                continue  # skip empty openers / structure-only noise
+            lessons_out.append({
+                "lesson": lesson,
+                "is_current": (
+                    placement.current_lesson_id == lesson.pk
+                    or (next_set is not None and next_set.lesson_id == lesson.pk)
+                ),
+                "materials": les_mats,
+                "sets": les_sets,
+                "sets_done": sum(1 for qs in les_sets if _set_is_done(qs)),
+                "sets_total": len(les_sets),
+            })
+        if not lessons_out:
+            continue
+        set_count = sum(l["sets_total"] for l in lessons_out)
+        set_done = sum(l["sets_done"] for l in lessons_out)
         chapters.append({
-            "number": number,
-            "title": title,
-            "sets": items,
-            "done": sum(1 for qs in items if _set_is_done(qs)),
-            "total": len(items),
-            "is_current": number == current_chapter,
+            "pk": chapter.pk,
+            "number": chapter.number,
+            "title": chapter.title,
+            "lessons": lessons_out,
+            "done": set_done,
+            "total": set_count or len(lessons_out),
+            "is_current": chapter.number == current_chapter,
         })
-    # If nothing is flagged current (e.g. all finished), open the first chapter.
     if chapters and not any(ch["is_current"] for ch in chapters):
         chapters[0]["is_current"] = True
+
+    next_material = None
+    if next_set is None:
+        for ch in chapters:
+            for les in ch["lessons"]:
+                if les["materials"]:
+                    next_material = les["materials"][0]
+                    break
+            if next_material:
+                break
 
     return render(request, "portal/portal_subject.html", {
         "student": student,
@@ -616,11 +648,11 @@ def portal_subject(request, token, curriculum_id):
         "curriculum": curriculum,
         "emoji": emoji_for(curriculum.subject),
         "placement": placement,
-        "progress": placement.progress() if placement else None,
-        "current_lesson": placement.current_lesson if placement else None,
+        "progress": placement.progress(),
+        "current_lesson": placement.current_lesson,
         "next_set": next_set,
+        "next_material": next_material,
         "chapters": chapters,
-        "materials": materials,
     })
 
 

@@ -1650,3 +1650,82 @@ class ParentGateTests(TestCase):
         resp = self.client.post(self._gate_url(), data={"password": "s3cret"})
         self.assertContains(resp, "Too many tries")
         self.assertNotIn("_auth_user_id", self.client.session)
+
+
+class PortalOutlineAndDeactivateTests(TestCase):
+    """HH-148 outline+manga nesting; HH-149 deactivate curriculum/placement."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from tutor.models import Material
+
+        cls.parent = User.objects.create_user(username="hh148", email="h148@e.com", password="pw")
+        cls.family = Family.objects.create(name="HH148 Fam")
+        FamilyMembership.objects.create(user=cls.parent, family=cls.family, role="parent")
+        cls.violet = Student.objects.create(
+            parent=cls.parent, first_name="Violet", grade_level="G03", family=cls.family,
+        )
+        cls.kaylin = Student.objects.create(
+            parent=cls.parent, first_name="Kaylin", grade_level="G06", family=cls.family,
+        )
+        cls.math = Curriculum.objects.create(
+            parent=cls.parent, name="Dimensions Math 3A", subject="Math",
+            grade_level="G03", family=cls.family,
+        )
+        ch = Chapter.objects.create(curriculum=cls.math, number=2, title="Mental Math")
+        cls.lesson = Lesson.objects.create(
+            chapter=ch, order=8, number=8, title="Sum and Difference",
+        )
+        cls.manga = Material.objects.create(
+            lesson=cls.lesson, title="Chi Sweet Home Math", skill_type="manga",
+            status=Material.APPROVED, family=cls.family, child=cls.violet,
+        )
+        CurriculumPlacement.objects.create(
+            child=cls.violet, curriculum=cls.math, current_lesson=cls.lesson,
+        )
+        cls.beast = Curriculum.objects.create(
+            parent=cls.parent, name="Beast Academy", subject="Math", grade_level="G03",
+            family=cls.family, is_online=True, website_url="https://beastacademy.com/",
+        )
+        CurriculumPlacement.objects.create(child=cls.violet, curriculum=cls.beast)
+        CurriculumPlacement.objects.create(child=cls.kaylin, curriculum=cls.beast)
+        cls.violet_token = make_portal_token(cls.violet)
+        cls.kaylin_token = make_portal_token(cls.kaylin)
+
+    def test_subject_nests_manga_under_lesson(self):
+        resp = self.client.get(reverse("portal:portal_subject", kwargs={
+            "token": self.violet_token, "curriculum_id": self.math.pk,
+        }))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "Chapter 2")
+        self.assertContains(resp, "Sum and Difference")
+        self.assertContains(resp, "Chi Sweet Home Math")
+        self.assertNotContains(resp, "🦸 Adventures")
+        self.assertContains(resp, "portal-lesson-title")
+        self.assertContains(resp, "portal-manga-row")
+
+    def test_inactive_placement_hides_from_violet_portal_not_kaylin(self):
+        placement = CurriculumPlacement.objects.get(child=self.violet, curriculum=self.beast)
+        placement.is_active = False
+        placement.save(update_fields=["is_active"])
+        v_home = self.client.get(reverse("portal:portal_home", kwargs={"token": self.violet_token}))
+        k_home = self.client.get(reverse("portal:portal_home", kwargs={"token": self.kaylin_token}))
+        self.assertNotContains(v_home, "Beast Academy")
+        self.assertContains(k_home, "Beast Academy")
+        resp = self.client.get(reverse("portal:portal_subject", kwargs={
+            "token": self.violet_token, "curriculum_id": self.beast.pk,
+        }))
+        self.assertEqual(resp.status_code, 404)
+
+    def test_inactive_curriculum_hidden_from_list_unless_toggled(self):
+        self.client.login(username="hh148", password="pw")
+        self.beast.is_active = False
+        self.beast.save(update_fields=["is_active"])
+        hidden = self.client.get(reverse("curricula:curriculum_list"))
+        names = [c.name for c in hidden.context["curricula"]]
+        self.assertNotIn("Beast Academy", names)
+        self.assertIn("Dimensions Math 3A", names)
+        shown = self.client.get(reverse("curricula:curriculum_list") + "?show_deactivated=1")
+        shown_names = [c.name for c in shown.context["curricula"]]
+        self.assertIn("Beast Academy", shown_names)
+        self.assertContains(shown, "Deactivated")

@@ -44,6 +44,8 @@
     <div class="alert alert-info">Los sonidos llegan pronto. 🌱</div>
   {% endif %}
 
+  {% include "portal/_station_done.html" %}
+
   <p class="mt-4"><a href="{% url 'portal:lingua_plan' token=token %}">&larr; Volver a leer</a></p>
 </div>
 {% endblock %}

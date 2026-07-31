@@ -5,6 +5,8 @@ custom managers (D-05) — the Django QuerySet is the repository. This module al
 holds the composition helper that resolves the host-provided AIClient adapter
 from settings, so lingua never imports the adapter (or tutor) directly.
 """
+from datetime import timedelta
+
 import json
 import os
 import re
@@ -1634,35 +1636,91 @@ def _has_station_visit(learner, station_kind, target_ref=""):
     ).exists()
 
 
-def _step_complete(learner, step, *, checked_ids=None):
-    """Camino map 'Hecho' is the kid's checkbox (LGA-93). Activity still happens
-    in the stations; the map does not infer completion for them."""
+def _observed_today(learner, on):
+    """The step kinds this learner demonstrably did TODAY, from real activity.
+
+    Auto-tick what the app can SEE; leave the checkbox for what it can't. She should
+    never have to walk back to the map to record work the app already watched her do —
+    that gap is why the map read "0 done" while she was doing it. Saying the sounds
+    out loud, or working a paper packet, genuinely cannot be observed, so those stay
+    self-reported."""
+    kinds = set()
+    if learner.reading_sessions.filter(created_at__date=on).exists():
+        kinds.add(PathwayStep.STORY)
+        kinds.add(PathwayStep.STORY_LEVEL)
+    if ListeningSession.objects.filter(learner=learner, created_at__date=on).exists():
+        kinds.add(PathwayStep.LISTEN)
+    if getattr(learner.profile, "reviews_served_on", None) == on and \
+            getattr(learner.profile, "reviews_served_count", 0) > 0:
+        kinds.add(PathwayStep.REVIEW)
+    return kinds
+
+
+def _step_complete(learner, step, *, checked_ids=None, observed=None):
+    """Done TODAY — either she ticked it, or the app watched her do it."""
+    if observed and step.kind in observed:
+        return True
     if checked_ids is not None:
         return step.pk in checked_ids
-    return learner.pathway_checkmarks.filter(step=step).exists()
+    return learner.pathway_checkmarks.filter(
+        step=step, on_date=timezone.localdate()
+    ).exists()
 
 
-def set_pathway_checkmark(learner, step, done):
-    """Toggle the kid's 'Hecho' checkbox for a map stop (LGA-93)."""
+def set_pathway_checkmark(learner, step, done, *, on=None):
+    """Toggle the kid's 'Hecho' checkbox for a map stop, for ONE day (LGA-100)."""
+    on = on or timezone.localdate()
     if done:
-        PathwayCheckmark.objects.get_or_create(learner=learner, step=step)
+        PathwayCheckmark.objects.get_or_create(learner=learner, step=step, on_date=on)
         return True
-    PathwayCheckmark.objects.filter(learner=learner, step=step).delete()
+    PathwayCheckmark.objects.filter(learner=learner, step=step, on_date=on).delete()
     return False
 
 
-def _step_visible(learner, step):
-    """Hide Kaylin-only tutor steps when the packet isn't for this child."""
+def camino_streak(learner, *, on=None):
+    """Consecutive days up to today with at least one Camino stop done.
+
+    The counterweight to the daily reset. A reset on its own is a treadmill — she does
+    the work and wakes up to "0 of 3" — and the research is explicit about not making
+    a sensitive child feel behind. Today's stops reset; the journey does not.
+
+    Yesterday still counts as an unbroken streak when today hasn't started, so opening
+    the app in the morning never shows the streak already lost."""
+    on = on or timezone.localdate()
+    days = set(
+        learner.pathway_checkmarks.filter(on_date__lte=on)
+        .values_list("on_date", flat=True)
+    )
+    if not days:
+        return 0
+    cursor = on if on in days else on - timedelta(days=1)
+    streak = 0
+    while cursor in days:
+        streak += 1
+        cursor -= timedelta(days=1)
+    return streak
+
+
+def _step_visible(learner, step, *, packets=None):
+    """Hide Kaylin-only tutor steps when the packet isn't for this child, and hide
+    REVIEW stops until there is a review page to send her to.
+
+    A REVIEW stop currently deeplinks back to the plan she just came from, labelled
+    "¡Empezar!" — a stop that goes nowhere and can then be ticked without doing
+    anything. Better absent than lying."""
+    if step.kind == PathwayStep.REVIEW:
+        return False
     if step.kind != PathwayStep.TUTOR_PACKET:
         return True
     ref = (step.target_ref or "").strip()
-    packets = tutor_packets_for(learner.host_student_id)
+    if packets is None:
+        packets = tutor_packets_for(learner.host_student_id)
     if ref.isdigit():
         return any(p.pk == int(ref) for p in packets)
     return bool(packets)
 
 
-def pathway_status(learner):
+def pathway_status(learner, *, on=None):
     """Ordered Camino stops — never locked (LGA-93).
 
     Every visible stop is open to tap. ``complete`` comes from the kid's checkbox
@@ -1673,19 +1731,25 @@ def pathway_status(learner):
     if pathway is None:
         return {"pathway": None, "steps": [], "next": None, "hint": ""}
 
+    today = on or timezone.localdate()
     steps = list(pathway.steps.all())
     checked_ids = set(
-        learner.pathway_checkmarks.filter(step__pathway=pathway)
+        learner.pathway_checkmarks.filter(step__pathway=pathway, on_date=today)
         .values_list("step_id", flat=True)
     )
+    observed = _observed_today(learner, today)
+    # Hoist out of the per-step loop: _step_visible needs this and re-querying inside
+    # the loop made pathway_status linear in the number of tutor steps.
+    packets = tutor_packets_for(learner.host_student_id)
     out = []
     next_available = None
     primary_marked = False
 
     for step in steps:
-        if not _step_visible(learner, step):
+        if not _step_visible(learner, step, packets=packets):
             continue
-        complete = _step_complete(learner, step, checked_ids=checked_ids)
+        complete = _step_complete(
+            learner, step, checked_ids=checked_ids, observed=observed)
         status = PATH_COMPLETE if complete else PATH_AVAILABLE
 
         is_primary = False
@@ -1708,15 +1772,24 @@ def pathway_status(learner):
         if is_primary:
             next_available = row
 
-    hint = ""
-    if next_available is not None:
+    done = sum(1 for r in out if r["status"] == PATH_COMPLETE)
+    finished = bool(out) and done == len(out)
+    if finished:
+        hint = "¡Terminaste el camino de hoy! 🎉"
+    elif next_available is not None:
         hint = f"Después: {next_available['step'].title}."
+    else:
+        hint = ""
 
     return {
         "pathway": pathway,
         "steps": out,
         "next": next_available,
         "hint": hint,
+        "done": done,
+        "total": len(out),
+        "finished": finished,
+        "streak": camino_streak(learner, on=today),
     }
 
 

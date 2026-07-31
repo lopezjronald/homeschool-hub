@@ -18,7 +18,7 @@ from django.contrib.auth import get_user_model
 from django.db import models as dj_models
 from django.test import RequestFactory, TestCase, override_settings
 from django.urls import reverse
-from datetime import timedelta
+from datetime import date, timedelta
 from django.utils import timezone
 
 from students.models import Student
@@ -4696,15 +4696,27 @@ class PathwayStatusTests(TestCase):
         self.assertEqual(row["status"], services.PATH_AVAILABLE)
         self.assertFalse(row["checked"])
 
-    def test_reading_alone_does_not_complete_map_step(self):
+    def test_reading_a_story_TICKS_the_map_step_by_itself(self):
+        # Reverses LGA-93's rule deliberately (LGA-100). Requiring her to walk back to
+        # the map to record work the app already watched her do is why the map read
+        # "0 done" while she was doing it — the single biggest effort/reward gap for
+        # the younger child. Auto-tick what we can observe.
+        l1 = next(
+            r for r in services.pathway_status(self.early)["steps"]
+            if r["step"].kind == PathwayStep.STORY_LEVEL
+        )
+        self.assertEqual(l1["status"], services.PATH_AVAILABLE)   # nothing read yet
+
         ReadingSession.objects.create(learner=self.early, story=self.story, words=2, seconds=30)
         l1 = next(
             r for r in services.pathway_status(self.early)["steps"]
             if r["step"].kind == PathwayStep.STORY_LEVEL
         )
-        self.assertEqual(l1["status"], services.PATH_AVAILABLE)
+        self.assertEqual(l1["status"], services.PATH_COMPLETE)
 
     def test_phonics_visit_alone_does_not_complete_map_step(self):
+        # The other half of the rule: we cannot observe whether she SAID the sounds
+        # out loud, so opening the page proves nothing and this one stays self-reported.
         services.record_station_visit(self.early, PathwayStep.PHONICS)
         phonics = next(
             r for r in services.pathway_status(self.early)["steps"]
@@ -5457,3 +5469,361 @@ class ClassroomPhraseActiveFilterTests(TestCase):
         ]
         self.assertIn("Vigente.", shown)
         self.assertNotIn("Retirada.", shown)
+
+
+class CaminoDailyResetTests(TestCase):
+    """LGA-100: the Camino is a DAILY walk. Before this, a tick was permanent — four
+    ticks filled the map forever and it never said anything again."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from django.core.management import call_command
+        call_command("seed_pathway", verbosity=0)
+
+    def setUp(self):
+        self.learner = Learner.create_for_host_student(9401, profiles.KIDS_EARLY)
+
+    def _phonics_step(self):
+        from lingua.models import PathwayStep
+        return PathwayStep.objects.filter(
+            pathway__slug="camino-early", kind=PathwayStep.PHONICS).first()
+
+    def test_yesterdays_tick_does_not_complete_todays_stop(self):
+        from datetime import date
+        step = self._phonics_step()
+        yesterday, today = date(2026, 8, 1), date(2026, 8, 2)
+        services.set_pathway_checkmark(self.learner, step, True, on=yesterday)
+
+        rows = {r["step"].pk: r for r in
+                services.pathway_status(self.learner, on=today)["steps"]}
+        self.assertEqual(rows[step.pk]["status"], services.PATH_AVAILABLE,
+                         "yesterday's tick still marks today done")
+
+    def test_yesterdays_tick_is_still_on_record(self):
+        # The reset must not erase history — the streak and the charter record want it.
+        from datetime import date
+        from lingua.models import PathwayCheckmark
+        step = self._phonics_step()
+        yesterday = date(2026, 8, 1)
+        services.set_pathway_checkmark(self.learner, step, True, on=yesterday)
+        self.assertTrue(
+            PathwayCheckmark.objects.filter(learner=self.learner, on_date=yesterday).exists()
+        )
+
+    def test_ticking_the_same_stop_on_two_days_keeps_both(self):
+        from datetime import date
+        from lingua.models import PathwayCheckmark
+        step = self._phonics_step()
+        services.set_pathway_checkmark(self.learner, step, True, on=date(2026, 8, 1))
+        services.set_pathway_checkmark(self.learner, step, True, on=date(2026, 8, 2))
+        self.assertEqual(
+            PathwayCheckmark.objects.filter(learner=self.learner, step=step).count(), 2
+        )
+
+    def test_unticking_only_clears_that_day(self):
+        from datetime import date
+        from lingua.models import PathwayCheckmark
+        step = self._phonics_step()
+        services.set_pathway_checkmark(self.learner, step, True, on=date(2026, 8, 1))
+        services.set_pathway_checkmark(self.learner, step, True, on=date(2026, 8, 2))
+        services.set_pathway_checkmark(self.learner, step, False, on=date(2026, 8, 2))
+        remaining = list(
+            PathwayCheckmark.objects.filter(learner=self.learner, step=step)
+            .values_list("on_date", flat=True)
+        )
+        self.assertEqual(remaining, [date(2026, 8, 1)])
+
+
+class CaminoStreakTests(TestCase):
+    """LGA-100: today's stops reset, the journey doesn't. Without the streak the daily
+    reset is a treadmill — she does the work and wakes up to '0 of 3'."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from django.core.management import call_command
+        call_command("seed_pathway", verbosity=0)
+
+    def setUp(self):
+        from lingua.models import PathwayStep
+        self.learner = Learner.create_for_host_student(9402, profiles.KIDS_EARLY)
+        self.step = PathwayStep.objects.filter(pathway__slug="camino-early").first()
+
+    def _tick(self, d):
+        services.set_pathway_checkmark(self.learner, self.step, True, on=d)
+
+    def test_no_activity_is_no_streak(self):
+        from datetime import date
+        self.assertEqual(services.camino_streak(self.learner, on=date(2026, 8, 5)), 0)
+
+    def test_consecutive_days_count(self):
+        from datetime import date
+        for d in (date(2026, 8, 3), date(2026, 8, 4), date(2026, 8, 5)):
+            self._tick(d)
+        self.assertEqual(services.camino_streak(self.learner, on=date(2026, 8, 5)), 3)
+
+    def test_a_gap_breaks_the_streak(self):
+        from datetime import date
+        self._tick(date(2026, 8, 1))
+        self._tick(date(2026, 8, 5))
+        self.assertEqual(services.camino_streak(self.learner, on=date(2026, 8, 5)), 1)
+
+    def test_morning_before_starting_keeps_yesterdays_streak(self):
+        # Opening the app at breakfast must not show the streak already lost.
+        from datetime import date
+        self._tick(date(2026, 8, 3))
+        self._tick(date(2026, 8, 4))
+        self.assertEqual(services.camino_streak(self.learner, on=date(2026, 8, 5)), 2)
+
+    def test_streak_is_per_learner(self):
+        from datetime import date
+        other = Learner.create_for_host_student(9403, profiles.KIDS_EARLY)
+        self._tick(date(2026, 8, 4))
+        self.assertEqual(services.camino_streak(other, on=date(2026, 8, 4)), 0)
+
+
+class CaminoAutoTickTests(TestCase):
+    """LGA-100: auto-tick what the app can observe, keep the checkbox for what it
+    can't. She should never have to re-record work the app already saw."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from django.core.management import call_command
+        call_command("seed_pathway", verbosity=0)
+        cls.story = Story.objects.create(
+            title="Auto", body="Uno dos.", level="L1", status=Story.APPROVED,
+        )
+
+    def setUp(self):
+        self.learner = Learner.create_for_host_student(9404, profiles.KIDS_EARLY)
+
+    def _row(self, kind, on=None):
+        rows = services.pathway_status(self.learner, on=on)["steps"]
+        return next((r for r in rows if r["step"].kind == kind), None)
+
+    def test_listening_ticks_the_listen_stop(self):
+        from lingua.models import ListeningResource, PathwayStep
+        self.assertEqual(self._row(PathwayStep.LISTEN)["status"], services.PATH_AVAILABLE)
+        res = ListeningResource.objects.create(
+            title="Canal", url="https://example.com/v", age_band=profiles.KIDS_EARLY,
+        )
+        services.record_listening(self.learner, res, 10)
+        self.assertEqual(self._row(PathwayStep.LISTEN)["status"], services.PATH_COMPLETE)
+
+    def test_yesterdays_reading_does_not_tick_todays_story_stop(self):
+        from datetime import date, timedelta as td
+        from lingua.models import PathwayStep, ReadingSession
+        rs = ReadingSession.objects.create(learner=self.learner, story=self.story,
+                                           words=2, seconds=30)
+        ReadingSession.objects.filter(pk=rs.pk).update(
+            created_at=timezone.now() - td(days=1))
+        today = timezone.localdate()
+        self.assertEqual(
+            self._row(PathwayStep.STORY_LEVEL, on=today)["status"],
+            services.PATH_AVAILABLE,
+        )
+
+    def test_phonics_still_needs_her_checkbox(self):
+        from lingua.models import PathwayStep
+        step = self._row(PathwayStep.PHONICS)["step"]
+        self.assertEqual(self._row(PathwayStep.PHONICS)["status"], services.PATH_AVAILABLE)
+        services.set_pathway_checkmark(self.learner, step, True)
+        self.assertEqual(self._row(PathwayStep.PHONICS)["status"], services.PATH_COMPLETE)
+
+
+class CaminoFinishLineTests(TestCase):
+    """LGA-97: checking every box produced three near-white rows and no message at
+    all. A trail whose whole payoff is reaching the end has to say so."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from django.core.management import call_command
+        call_command("seed_pathway", verbosity=0)
+
+    def setUp(self):
+        self.learner = Learner.create_for_host_student(9405, profiles.KIDS_EARLY)
+
+    def test_counts_and_finish_state(self):
+        status = services.pathway_status(self.learner)
+        self.assertEqual(status["done"], 0)
+        self.assertGreater(status["total"], 0)
+        self.assertFalse(status["finished"])
+
+        for row in status["steps"]:
+            services.set_pathway_checkmark(self.learner, row["step"], True)
+
+        done = services.pathway_status(self.learner)
+        self.assertEqual(done["done"], done["total"])
+        self.assertTrue(done["finished"])
+        self.assertIn("🎉", done["hint"])
+
+    def test_review_stops_are_not_offered_while_they_go_nowhere(self):
+        # A REVIEW stop deeplinked back to the plan she just came from, labelled
+        # "¡Empezar!", and could then be ticked without doing anything.
+        from lingua.models import PathwayStep
+        older = Learner.create_for_host_student(9406, profiles.KIDS_OLDER)
+        kinds = [r["step"].kind for r in services.pathway_status(older)["steps"]]
+        self.assertNotIn(PathwayStep.REVIEW, kinds)
+
+
+class CaminoQueryCostTests(TestCase):
+    """LGA-99: _step_visible re-queried tutor packets inside the per-step loop, so
+    pathway_status was linear in the number of tutor steps."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from django.core.management import call_command
+        call_command("seed_pathway", verbosity=0)
+
+    def test_query_count_does_not_grow_with_tutor_steps(self):
+        from django.test.utils import CaptureQueriesContext
+        from django.db import connection
+        from lingua.models import Pathway, PathwayStep, TutorPacket
+
+        learner = Learner.create_for_host_student(9407, profiles.KIDS_OLDER)
+        TutorPacket.objects.create(title="P1", body="Hola.", active=True)
+        pathway = Pathway.objects.get(slug="camino-older")
+
+        with CaptureQueriesContext(connection) as base:
+            services.pathway_status(learner)
+
+        for i in range(6):
+            PathwayStep.objects.create(
+                pathway=pathway, order=50 + i, title=f"Maestro {i}",
+                kind=PathwayStep.TUTOR_PACKET,
+            )
+        with CaptureQueriesContext(connection) as more:
+            services.pathway_status(learner)
+
+        self.assertLessEqual(
+            len(more), len(base) + 1,
+            f"query count grew with tutor steps: {len(base)} -> {len(more)}",
+        )
+
+
+class StationDoneControlTests(TestCase):
+    """LGA-97: the map could only be ticked from the map. The reviewer named this the
+    single biggest effort/reward gap for the younger child — she does the phonics and
+    the map still says nothing happened."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from django.core.management import call_command
+        from portal.tokens import make_portal_token
+        call_command("seed_pathway", verbosity=0)
+        call_command("seed_phonics", verbosity=0)
+        cls.parent = User.objects.create_user("st_parent", "st@example.com", "pw")
+        cls.kid = Student.objects.create(
+            parent=cls.parent, first_name="Vi", grade_level="G03",
+        )
+        cls.token = make_portal_token(cls.kid)
+
+    def _learner(self):
+        from homeschool_hub.adapters import lingua_students
+        return lingua_students.learner_for(self.kid)
+
+    def test_phonics_page_offers_the_done_button(self):
+        html = self.client.get(
+            reverse("portal:lingua_phonics", kwargs={"token": self.token})
+        ).content.decode()
+        self.assertIn("portal-station-done", html)
+        self.assertIn("¡Ya lo hice!", html)
+
+    def test_pressing_done_ticks_the_map_without_visiting_it(self):
+        from lingua.models import PathwayStep
+        learner = self._learner()
+        rows = services.pathway_status(learner)["steps"]
+        step = next(r["step"] for r in rows if r["step"].kind == PathwayStep.PHONICS)
+
+        r = self.client.post(
+            reverse("portal:lingua_path_check", kwargs={"token": self.token}),
+            {"step_id": str(step.pk), "done": "1"},
+        )
+        self.assertEqual(r.status_code, 302)
+        row = next(x for x in services.pathway_status(learner)["steps"]
+                   if x["step"].pk == step.pk)
+        self.assertEqual(row["status"], services.PATH_COMPLETE)
+
+    def test_the_button_reflects_state_and_toggles_back(self):
+        from lingua.models import PathwayStep
+        learner = self._learner()
+        step = next(r["step"] for r in services.pathway_status(learner)["steps"]
+                    if r["step"].kind == PathwayStep.PHONICS)
+        services.set_pathway_checkmark(learner, step, True)
+
+        html = self.client.get(
+            reverse("portal:lingua_phonics", kwargs={"token": self.token})
+        ).content.decode()
+        self.assertIn("¡Ya lo hiciste!", html)      # shows the done state
+        self.assertIn('name="done" value="0"', html)  # and offers to undo
+
+    def test_a_child_with_no_date_of_birth_lands_in_the_young_band(self):
+        # Documents a real trap rather than asserting it is desirable: grade_level
+        # says Level 7, but band inference reads date_of_birth, which is optional.
+        from homeschool_hub.adapters import lingua_students
+        no_dob = Student.objects.create(
+            parent=self.parent, first_name="Sin", grade_level="G07",
+        )
+        self.assertIsNone(no_dob.date_of_birth)
+        self.assertEqual(
+            lingua_students.learner_for(no_dob).profile.track_profile,
+            profiles.KIDS_EARLY,
+        )
+
+    def test_no_button_when_the_station_is_not_on_her_pathway(self):
+        # KIDS_OLDER has no phonics stop; rendering a control she cannot tick would
+        # be another thing that looks interactive and does nothing.
+        from portal.tokens import make_portal_token
+        # DOB, not grade_level, decides the band (band_for_dob) — a child with no
+        # DOB silently lands in KIDS_EARLY, which is its own small trap.
+        older = Student.objects.create(
+            parent=self.parent, first_name="Ka", grade_level="G07",
+            date_of_birth=date(timezone.localdate().year - 12, 5, 10),
+        )
+        html = self.client.get(
+            reverse("portal:lingua_phonics", kwargs={"token": make_portal_token(older)})
+        ).content.decode()
+        self.assertNotIn("portal-station-done", html)
+
+
+class CaminoDeadEndsRemovedTests(TestCase):
+    """LGA-97: two things on the child's most-visited screens looked tappable and did
+    nothing. The decorative-span bug had already confused the owner once."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from django.core.management import call_command
+        from portal.tokens import make_portal_token
+        call_command("seed_pathway", verbosity=0)
+        cls.parent = User.objects.create_user("de_parent", "de@example.com", "pw")
+        cls.kid = Student.objects.create(
+            parent=cls.parent, first_name="Vi", grade_level="G03",
+        )
+        cls.token = make_portal_token(cls.kid)
+
+    def test_the_plan_has_no_disabled_stone(self):
+        html = self.client.get(
+            reverse("portal:lingua_plan", kwargs={"token": self.token})
+        ).content.decode()
+        self.assertNotIn("aria-disabled", html)
+        self.assertNotIn("portal-camino-stone--soft", html)
+        self.assertNotIn("Repaso", html)
+
+    def test_every_trail_stone_is_a_real_link(self):
+        import re as _re
+        html = self.client.get(
+            reverse("portal:lingua_plan", kwargs={"token": self.token})
+        ).content.decode()
+        trail = _re.search(r'portal-camino-trail.*?</div>', html, _re.S)
+        self.assertIsNotNone(trail, "trail not rendered")
+        stones = _re.findall(r'<(\w+)[^>]*class="portal-camino-stone"', trail.group(0))
+        self.assertTrue(stones, "no stones rendered")
+        self.assertEqual(set(stones), {"a"}, f"non-link stones present: {set(stones)}")
+
+    def test_the_map_explains_itself_in_english(self):
+        # Procedural copy was in subjunctive Spanish, for a Level-3 beginner, while
+        # the teaching content was in English. That was backwards.
+        html = self.client.get(
+            reverse("portal:lingua_path", kwargs={"token": self.token})
+        ).content.decode()
+        self.assertIn("Tap a stop to open it", html)
+        self.assertNotIn("Abre una parada", html)

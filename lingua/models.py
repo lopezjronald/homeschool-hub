@@ -1055,9 +1055,15 @@ class StationVisit(models.Model):
 
 
 class PathwayCheckmark(models.Model):
-    """Kid self-report that a Camino map stop is done (LGA-93). The map never locks
-    stations; this checkbox is how a stop turns 'Hecho' without an opaque unlock
-    rule the child can't see."""
+    """Kid self-report that a Camino map stop is done ON A GIVEN DAY (LGA-93/100).
+
+    The map never locks stations; this checkbox is how a stop turns 'Hecho' without an
+    opaque unlock rule the child can't see. It is dated because the Camino is a DAILY
+    walk: without ``on_date`` a tick was permanent, so four ticks filled the map
+    forever and it never said anything again.
+
+    Rows are kept rather than cleared each night — the streak and the charter record
+    both want the history."""
 
     learner = models.ForeignKey(
         Learner, on_delete=models.CASCADE, related_name="pathway_checkmarks",
@@ -1065,14 +1071,20 @@ class PathwayCheckmark(models.Model):
     step = models.ForeignKey(
         PathwayStep, on_delete=models.CASCADE, related_name="checkmarks",
     )
+    on_date = models.DateField(
+        default=timezone.localdate, db_index=True,
+        help_text="Local date this stop was ticked (the Camino resets daily).",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         constraints = [
             models.UniqueConstraint(
-                fields=["learner", "step"], name="uniq_pathway_checkmark",
+                fields=["learner", "step", "on_date"], name="uniq_pathway_checkmark_day",
             ),
         ]
+        indexes = [models.Index(fields=["learner", "on_date"])]
 
     def __str__(self):
-        return f"PathwayCheckmark<learner={self.learner_id} step={self.step_id}>"
+        return (f"PathwayCheckmark<learner={self.learner_id} "
+                f"step={self.step_id} on={self.on_date}>")

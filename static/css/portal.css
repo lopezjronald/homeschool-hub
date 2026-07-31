@@ -1155,3 +1155,35 @@ button.portal-subject-card {
 }
 .portal-path-step-title { font-weight: 700; color: var(--ss-forest, #0F3D2E); }
 .portal-path-step-meta { font-size: 0.85rem; color: #7a8781; }
+
+/* ===== Camino: finish line, streak, station "done" (LGA-97/100) =========== */
+.portal-howto { font-size: .95rem; opacity: .92; }
+.portal-camino-count,
+.portal-camino-done,
+.portal-camino-streak { font-weight: 800; margin: 0 0 .4rem; }
+.portal-camino-count { font-size: 1.05rem; color: #2F6B4F; }
+.portal-camino-done { font-size: 1.15rem; color: #1E7A50; }
+.portal-camino-streak { font-size: 1rem; color: #B26A00; }
+
+.portal-station-done { margin: 1.6rem 0 .5rem; }
+.portal-station-done-btn {
+  display: block; width: 100%; min-height: 56px;
+  font: inherit; font-size: 1.15rem; font-weight: 800; cursor: pointer;
+  border-radius: 999px; border: 2px solid #1E7A50;
+  background: #1E7A50; color: #fff; padding: .6rem 1rem;
+}
+.portal-station-done-btn:hover { background: #17603E; border-color: #17603E; }
+.portal-station-done-btn:focus-visible { outline: 3px solid #EBA83A; outline-offset: 3px; }
+.portal-station-done-btn.is-done { background: #fff; color: #1E7A50; }
+
+/* The map's state label carried 3.74:1 contrast — below AA, on the one line that
+   says whether a stop is done. */
+.portal-path-step-meta { color: #5A6A62 !important; }
+
+/* Audio failure must SAY something. A silent flicker is the exact failure mode
+   that made the younger child give up on a screen. */
+.lingua-clip-btn.is-audio-error { border-color: #B3261E !important; color: #B3261E !important; }
+.lingua-clip-error {
+  display: block; margin-top: .5rem; font-size: .95rem; font-weight: 700;
+  color: #B3261E;
+}

@@ -88,6 +88,22 @@ def lingua_plan(request, token):
     })
 
 
+def _station_ctx(learner, kind):
+    """Context for the "¡Ya lo hice! ✓" control on a station page (LGA-97).
+
+    Returns the matching stop on THIS learner's own pathway, or blanks when she has
+    no such stop — the control is never rendered for a step she couldn't tick anyway,
+    and `lingua_path_check` re-derives the same allow-list before writing."""
+    status = lingua_services.pathway_status(learner)
+    row = next((r for r in status["steps"] if r["step"].kind == kind), None)
+    if row is None:
+        return {"station_step_id": None, "station_done": False}
+    return {
+        "station_step_id": row["step"].pk,
+        "station_done": row["status"] == lingua_services.PATH_COMPLETE,
+    }
+
+
 def lingua_path(request, token):
     """Kid Camino map: every visible stop is open; checkbox marks Hecho (LGA-93)."""
     student = _resolve_student(token)
@@ -112,6 +128,9 @@ def lingua_path(request, token):
         "pathway": status["pathway"],
         "steps": steps,
         "band": learner.profile.track_profile,
+        # Two timescales (LGA-100): today's count resets, the streak doesn't.
+        "done": status["done"], "total": status["total"],
+        "finished": status["finished"], "streak": status["streak"],
     })
 
 
@@ -257,6 +276,7 @@ def lingua_phonics(request, token):
     learner = _lingua_learner(student)
     lingua_services.record_station_visit(learner, PathwayStep.PHONICS)
     return render(request, "portal/lingua_phonics.html", {
+        **_station_ctx(learner, PathwayStep.PHONICS),
         "student": student, "token": token,
         "rules": lingua_services.phonics_rules_with_audio(),
     })
@@ -269,6 +289,7 @@ def lingua_listen(request, token):
     student = _resolve_student(token)
     learner = _lingua_learner(student)
     return render(request, "portal/lingua_listen.html", {
+        **_station_ctx(learner, PathwayStep.LISTEN),
         "student": student, "token": token,
         "resources": lingua_services.listening_resources(learner.profile.track_profile),
         "alphabet": lingua_services.alphabet_tiles_with_audio(),

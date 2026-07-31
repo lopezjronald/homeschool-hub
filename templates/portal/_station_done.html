@@ -1,0 +1,10 @@
+{# Tick the matching Camino stop from the station page itself (LGA-97/100). Without this the only way to mark work done was to navigate back to the map and find a checkbox, so the map read "0 done" while the child was actually doing the work. Only rendered when this station maps to a stop on her own pathway. #}
+{% if station_step_id %}
+  <form method="post" action="{% url 'portal:lingua_path_check' token=token %}" class="portal-station-done">
+    <input type="hidden" name="step_id" value="{{ station_step_id }}">
+    <input type="hidden" name="done" value="{% if station_done %}0{% else %}1{% endif %}">
+    <button type="submit" class="portal-station-done-btn{% if station_done %} is-done{% endif %}">
+      {% if station_done %}✓ ¡Ya lo hiciste!{% else %}¡Ya lo hice! ✓{% endif %}
+    </button>
+  </form>
+{% endif %}

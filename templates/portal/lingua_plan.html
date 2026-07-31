@@ -61,7 +61,7 @@
 
   {# Trail stones — stations on the Camino, not a second hub of subject cards. #}
   <h2 class="portal-section-title">Sigue explorando</h2>
-  <div class="portal-camino-trail mb-4" role="list">
+  <div class="portal-camino-trail mb-4">
     <a href="{% url 'portal:lingua_path' token=token %}" class="portal-camino-stone">
       <span class="portal-camino-stone-emoji">🗺️</span>
       <span class="portal-camino-stone-label">Mapa</span>
@@ -81,12 +81,6 @@
       <span class="portal-camino-stone-emoji">👩‍🏫</span>
       <span class="portal-camino-stone-label">Maestro</span>
     </a>
-    {% endif %}
-    {% if review_due %}
-    <span class="portal-camino-stone portal-camino-stone--soft" aria-disabled="true" title="Pronto: repaso de palabras">
-      <span class="portal-camino-stone-emoji">🧠</span>
-      <span class="portal-camino-stone-label">Repaso</span>
-    </span>
     {% endif %}
   </div>
 

@@ -1,7 +1,12 @@
 """Seed Camino Pathway + PathwayStep catalogs per age band (LGA-88).
 
-Idempotent on Pathway.slug. Steps are replaced for each pathway so re-seed
-picks up order/title tweaks without duplicating rows.
+Idempotent on Pathway.slug. Steps are updated IN PLACE, keyed on order, so a
+re-seed picks up title/target tweaks without touching children's checkmarks.
+Never delete-then-recreate: PathwayCheckmark.step cascades (LGA-96).
+
+Caveat for whoever edits the spec next: because steps are keyed on ``order``,
+REORDERING them moves a child's existing tick onto whatever now sits at that
+order. Renaming and retargeting are safe; renumbering is not.
 
     python manage.py seed_pathway
 """

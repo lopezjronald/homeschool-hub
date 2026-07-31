@@ -4926,6 +4926,42 @@ class PinnedWorkStaysVisibleTests(TestCase):
         self.assertIn("PinnedManga", titles)     # theirs — still reachable
         self.assertNotIn("SharedManga", titles)  # shelved — correctly gone
 
+    def test_a_sibling_cannot_see_this_childs_pinned_work(self):
+        # The `child=student` branch is the ONLY one that bypasses the placement
+        # check. Dropping the child predicate turns it into a cross-child IDOR across
+        # nine endpoints, and the full suite stayed green when a reviewer mutated it.
+        from portal.views import _visible_materials, _visible_question_sets
+        sibling = Student.objects.create(
+            parent=self.parent, first_name="Sib", grade_level="G05",
+        )
+        titles = set(_visible_materials(sibling).values_list("title", flat=True))
+        self.assertNotIn("PinnedManga", titles)
+        self.assertFalse(
+            _visible_question_sets(sibling).filter(child=self.kid).exists()
+        )
+
+    def test_another_familys_child_cannot_see_it_either(self):
+        from core.models import Family
+        from portal.views import _visible_materials
+        other_parent = User.objects.create_user("pin_other", "pin2@example.com", "pw")
+        other_fam = Family.objects.create(name="Other Pin Fam")
+        outsider = Student.objects.create(
+            parent=other_parent, first_name="Out", family=other_fam, grade_level="G03",
+        )
+        self.assertNotIn(
+            "PinnedManga",
+            set(_visible_materials(outsider).values_list("title", flat=True)),
+        )
+
+    def test_retiring_the_whole_curriculum_hides_even_pinned_work(self):
+        # Curriculum.is_active promises "hidden from every child's portal". Shelving a
+        # PLACEMENT is the softer control and leaves their own work reachable; retiring
+        # the curriculum is the hard one and must take everything with it.
+        from portal.views import _visible_materials
+        self.cur.is_active = False
+        self.cur.save(update_fields=["is_active"])
+        self.assertEqual(list(_visible_materials(self.kid)), [])
+
     def test_shelving_hides_shared_material(self):
         # The HH-149 feature itself must still work; this is what kills the mutant
         # that drops the is_active filter entirely.

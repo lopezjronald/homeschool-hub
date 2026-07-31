@@ -435,7 +435,11 @@ def _visible_materials(student):
     return (
         Material.objects.filter(status=Material.APPROVED)
         .filter(
-            Q(child=student)
+            # `child=student` is an exact FK match — this is the ONLY branch that
+            # bypasses the placement check, and it must never widen. Dropping the
+            # child predicate here exposes every sibling's and every other family's
+            # pinned work across nine endpoints; there is a test for exactly that.
+            Q(child=student, lesson__chapter__curriculum__is_active=True)
             | Q(child__isnull=True, lesson__chapter__curriculum_id__in=curriculum_ids)
         )
         .select_related("lesson", "lesson__chapter")
@@ -447,14 +451,18 @@ def _visible_question_sets(student):
     """Approved STUDENT-form question sets this child may open.
 
     Teacher-led discussion sets are intentionally excluded — those are for the
-    parent to lead orally, not for the child to fill out. Inactive placements
-    (HH-149) drop the whole curriculum from this list.
+    parent to lead orally, not for the child to fill out.
+
+    Shelving a child's PLACEMENT (HH-149) hides the shared work in that curriculum but
+    leaves the child's own pinned work reachable by link; retiring the whole
+    CURRICULUM hides both, which is what its is_active flag promises. This is the
+    authorization gate for nine endpoints — see the note in _visible_materials.
     """
     curriculum_ids = _placed_curriculum_ids(student)
     return (
         QuestionSet.objects.filter(status=QuestionSet.APPROVED, mode=QuestionSet.MODE_STUDENT)
         .filter(
-            Q(child=student)
+            Q(child=student, lesson__chapter__curriculum__is_active=True)
             | Q(child__isnull=True, lesson__chapter__curriculum_id__in=curriculum_ids)
         )
         .select_related("lesson", "lesson__chapter", "lesson__chapter__curriculum")

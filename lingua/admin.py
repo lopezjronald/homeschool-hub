@@ -1,7 +1,8 @@
 from django.contrib import admin
 
 from .models import (
-    AiUsage, AlphabetTile, AudioClip, ComprehensionCheck, KnownWord, Learner,
+    AiUsage, AlphabetTile, AudioClip, ClassroomPhrase, ComprehensionCheck,
+    KnownWord, Learner,
     LearnerProfile, ListeningResource, ListeningSession, MilestoneAward, Pathway,
     PathwayCheckmark, PathwayStep, PhonicsRule, ReadingSession, ReviewItem,
     StationVisit, Story, StoryAudio, StoryImage, Theme, TutorPacket,
@@ -32,6 +33,18 @@ class ThemeAdmin(admin.ModelAdmin):
 class PhonicsRuleAdmin(admin.ModelAdmin):
     list_display = ("pattern", "title", "order", "active")
     list_filter = ("active",)
+
+
+@admin.register(ClassroomPhrase)
+class ClassroomPhraseAdmin(admin.ModelAdmin):
+    """The parent edits their own session script here — reword, reorder, retire.
+    Changing `text` changes the AudioClip content hash, so re-run
+    `clips_build --classroom` afterwards or the phrase goes mute."""
+
+    list_display = ("text", "english", "category", "order", "active")
+    list_filter = ("category", "active")
+    search_fields = ("text", "english")
+    list_editable = ("order", "active")
 
 
 @admin.register(TutorPacket)

@@ -739,7 +739,11 @@ a:focus-visible > .hub-tile {
 .ses-copia-model, .ses-dictado-model {
   margin: 0 0 .35rem; font-size: 1.02rem; line-height: 1.6; color: var(--ss-ink);
 }
-.ses-dictado-model { color: var(--ss-muted); font-style: italic; }
+.ses-dictado-model { color: var(--ss-green-700); font-style: italic;
+  background: var(--ss-green-tint); border-radius: var(--ss-r-sm); padding: .5rem .7rem; }
+.ses-dictado-cue { font-style: normal; font-weight: 800; font-size: .78rem;
+  letter-spacing: .06em; text-transform: uppercase; margin-right: .4rem; }
+.ses-sheet-note { font-size: .87rem; color: var(--ss-muted); margin: -.4rem 0 .9rem; }
 /* Ruled writing lines — the child writes here, on paper. */
 .ses-rule { height: 2.1rem; border-bottom: 1px solid #b9c4bd; margin-bottom: .5rem; }
 
@@ -751,13 +755,10 @@ a:focus-visible > .hub-tile {
 }
 
 @media print {
-  .no-print, .navbar, footer { display: none !important; }
-  body { background: #fff !important; }
+  /* No @page rule here: @page is document-global, so re-declaring the margin would
+     silently change every other printable page in this stylesheet. */
   .ses-sheet { border-top: none; margin-top: 0; padding-top: 0; }
   .ses-sheet-h3 { color: #000; }
   .ses-rule { border-bottom: 1px solid #333; height: 2.4rem; }
   .ses-copia-model { color: #000; }
-  /* The parent reads the dictado aloud — printing it next to the child defeats it. */
-  .no-print-fold { color: #666; font-size: .9rem; }
-  @page { margin: 1.6cm; }
 }

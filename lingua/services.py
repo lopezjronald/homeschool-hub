@@ -1121,40 +1121,86 @@ def _sentences(text):
     return [p.strip() for p in parts if p.strip()]
 
 
-def session_sheet(learner, *, story=None):
+def _recent_story_for(learner):
+    """The story this learner read most RECENTLY that is still approved, else the
+    easiest approved story at or below her level, else None.
+
+    Ordering has to happen in Python: ``filter(pk__in=read_ids)`` does not preserve the
+    id order, and Story.Meta.ordering silently re-sorts it by authored date — which
+    would pick the newest story she happens to have read rather than the last one."""
+    read_ids = list(dict.fromkeys(
+        learner.reading_sessions.order_by("-created_at")
+        .values_list("story_id", flat=True)[:20]
+    ))
+    if read_ids:
+        approved = set(
+            Story.objects.filter(pk__in=read_ids, status=Story.APPROVED)
+            .values_list("pk", flat=True)
+        )
+        recent = next((sid for sid in read_ids if sid in approved), None)
+        if recent:
+            return Story.objects.filter(pk=recent).first()
+
+    # Nothing read yet: don't hand a Level 7 reader an L1 sheet. Take the HIGHEST
+    # level she's cleared for, so the first sheet is worth doing.
+    ceiling = getattr(getattr(learner, "profile", None), "content_ceiling", "") or ""
+    qs = Story.objects.filter(status=Story.APPROVED)
+    if ceiling:
+        at_or_below = qs.filter(level__lte=ceiling)
+        if at_or_below.exists():
+            return at_or_below.order_by("-level", "id").first()
+    return qs.order_by("level", "id").first()
+
+
+def session_sheet(learner, *, story=None, on=None):
     """The printable half of a session: copia lines + a dictado, drawn from a story
     this child has ALREADY read.
 
     Copying and dictating from familiar text is the point — ACTFL puts transcription at
     the foundation of writing, and the child can only attend to spelling when she isn't
-    also decoding new meaning. Falls back to any approved story at her level, and
-    returns empty lists (never raises) when there's nothing yet.
+    also decoding new meaning. Returns empty lists (never raises) when there's nothing.
+
+    The slice ROTATES by date, so the sheet is stable through a session (print it once,
+    reload safely) but different tomorrow. A sheet that never changes is worse than no
+    sheet: the routine card tells the parent "no new material" about the review step,
+    and it would be lying about the writing step too.
+
+    The dictado is taken from AFTER the copia window so she isn't just copying what is
+    already printed above — dictation only tests spelling if the answer isn't visible.
+    Where the story is too short for that, they overlap; the model line is screen-only
+    either way (the parent reads it aloud), so it never prints next to her lines.
     """
     band = getattr(getattr(learner, "profile", None), "track_profile", "")
     shape = SESSION_SHAPE.get(band, _DEFAULT_SHAPE)
+    empty = {"story": None, "copia": [], "dictado": [], "shape": shape}
 
     if story is None:
-        read_ids = list(
-            learner.reading_sessions.order_by("-created_at")
-            .values_list("story_id", flat=True)[:10]
-        )
-        story = (
-            Story.objects.filter(pk__in=read_ids, status=Story.APPROVED).first()
-            or Story.objects.filter(status=Story.APPROVED).order_by("level", "id").first()
-        )
+        story = _recent_story_for(learner)
     if story is None:
-        return {"story": None, "copia": [], "dictado": [], "shape": shape}
+        return empty
 
     sents = _sentences(story.body)
-    copia = sents[: shape["copia_lines"]]
+    if not sents:
+        return dict(empty, story=story)
+
+    # Rotate the window by day, wrapping, so consecutive sessions get fresh material
+    # out of the same familiar story.
+    start = (on or timezone.localdate()).toordinal() % len(sents)
+
+    def window(begin, count):
+        return [sents[(begin + i) % len(sents)] for i in range(min(count, len(sents)))]
+
+    copia = window(start, shape["copia_lines"])
+    d_start = (start + shape["copia_lines"]) % len(sents)
 
     if shape["dictado_sentences"]:
-        dictado = sents[: shape["dictado_sentences"]]
+        dictado = window(d_start, shape["dictado_sentences"])
     else:
-        # Word-level dictado for the youngest: the first few real words, de-duped, so
-        # the parent reads a short list and she writes it.
+        # Word-level dictado for the youngest: a few real words, de-duped, drawn from
+        # beyond the copia lines wherever the story is long enough to allow it.
+        source = window(d_start, len(sents) - shape["copia_lines"]) or sents
         words, seen = [], set()
-        for w in re.findall(r"[^\W\d_]+", " ".join(sents), flags=re.UNICODE):
+        for w in re.findall(r"[^\W\d_]+", " ".join(source), flags=re.UNICODE):
             key = w.lower()
             if key not in seen:
                 seen.add(key)

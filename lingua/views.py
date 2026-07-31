@@ -524,9 +524,11 @@ def session_kit(request):
         "no_family": family is None,
         "groups": services.classroom_phrases_with_audio(),
         "sheet": sheet,
-        "band_label": (
-            learner.profile.get_track_profile_display() if learner else ""
-        ),
+        # getattr twice: a Learner without a LearnerProfile would otherwise 500 here,
+        # and session_sheet already defends against exactly that case.
+        "band_label": getattr(
+            getattr(learner, "profile", None), "get_track_profile_display", lambda: ""
+        )(),
     })
 
 

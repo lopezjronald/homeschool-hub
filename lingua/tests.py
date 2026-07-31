@@ -18,6 +18,7 @@ from django.contrib.auth import get_user_model
 from django.db import models as dj_models
 from django.test import RequestFactory, TestCase, override_settings
 from django.urls import reverse
+from datetime import timedelta
 from django.utils import timezone
 
 from students.models import Student
@@ -5029,17 +5030,19 @@ class SessionKitTests(TestCase):
         cls.kaylin = Student.objects.create(
             parent=cls.parent, first_name="Kaylin", family=cls.family, grade_level="G07",
         )
+        # Orders deliberately DISAGREE with CATEGORY_ORDER, so a page that grouped by
+        # insertion/order rather than by the session arc would fail the ordering test.
         ClassroomPhrase.objects.create(
             text="¿Qué es esto?", english="What is this?",
-            category=ClassroomPhrase.ASKING, order=1,
+            category=ClassroomPhrase.ASKING, order=5,
         )
         ClassroomPhrase.objects.create(
             text="Vamos a leer.", english="Let's read.",
-            category=ClassroomPhrase.OPENING, order=0,
+            category=ClassroomPhrase.OPENING, order=9,
         )
         ClassroomPhrase.objects.create(
             text="¡Muy bien!", english="Very good!",
-            category=ClassroomPhrase.PRAISE, order=2,
+            category=ClassroomPhrase.PRAISE, order=0,
         )
 
     def setUp(self):
@@ -5118,6 +5121,8 @@ class SessionSheetTests(TestCase):
         # sentences. Handing a 9-year-old three sentences is how you lose her.
         early = services.session_sheet(self._learner(profiles.KIDS_EARLY, 9101))
         older = services.session_sheet(self._learner(profiles.KIDS_OLDER, 9102))
+        self.assertTrue(early["dictado"], "the young band got NO dictado at all")
+        self.assertTrue(older["dictado"], "the older band got NO dictado at all")
         self.assertTrue(all(" " not in d for d in early["dictado"]),
                         f"early band got sentences, not words: {early['dictado']}")
         self.assertTrue(any(" " in d for d in older["dictado"]),
@@ -5159,6 +5164,7 @@ class SessionSheetTests(TestCase):
             status=Story.APPROVED,
         )
         words = services.session_sheet(self._learner(profiles.KIDS_EARLY, 9107))["dictado"]
+        self.assertTrue(words, "no dictado to de-duplicate")
         self.assertEqual(len(words), len(set(w.lower() for w in words)))
 
 
@@ -5192,3 +5198,230 @@ class ClassroomPhraseSeedTests(TestCase):
             text="Retirada.", english="Retired.", active=False,
         )
         self.assertNotIn("Retirada.", services.clip_texts_to_bake(classroom=True))
+
+
+class SessionSheetRotationTests(TestCase):
+    """LGA-94 review: the sheet IS the deliverable, so it has to change. It was
+    sents[:N] with no rotation — day 2 printed the same copia and the same dictado."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.body = (
+            "Uno uno. Dos dos. Tres tres. Cuatro cuatro. Cinco cinco. "
+            "Seis seis. Siete siete. Ocho ocho. Nueve nueve. Diez diez."
+        )
+        cls.story = Story.objects.create(
+            title="Números", body=cls.body, level="L1", status=Story.APPROVED,
+        )
+
+    def _learner(self, host_id, band=None):
+        return Learner.create_for_host_student(host_id, band or profiles.KIDS_EARLY)
+
+    def test_the_sheet_changes_from_one_day_to_the_next(self):
+        from datetime import date
+        learner = self._learner(9201)
+        a = services.session_sheet(learner, on=date(2026, 8, 1))
+        b = services.session_sheet(learner, on=date(2026, 8, 2))
+        self.assertNotEqual(a["copia"], b["copia"])
+
+    def test_the_sheet_is_stable_within_a_day(self):
+        # Reloading mid-session must not reshuffle what she's already writing.
+        from datetime import date
+        learner = self._learner(9202)
+        day = date(2026, 8, 1)
+        self.assertEqual(
+            services.session_sheet(learner, on=day)["copia"],
+            services.session_sheet(learner, on=day)["copia"],
+        )
+
+    def test_dictado_is_not_just_the_copia_she_already_copied(self):
+        # Dictation only tests spelling if the answer isn't sitting above the lines.
+        from datetime import date
+        for band, host in ((profiles.KIDS_EARLY, 9203), (profiles.KIDS_OLDER, 9204)):
+            sheet = services.session_sheet(self._learner(host, band), on=date(2026, 8, 1))
+            copia_text = " ".join(sheet["copia"]).lower()
+            overlap = [d for d in sheet["dictado"] if d.lower() in copia_text]
+            self.assertEqual(
+                overlap, [],
+                f"{band}: dictado items already printed in the copia: {overlap}",
+            )
+
+    def test_rotation_wraps_instead_of_running_out(self):
+        from datetime import date
+        learner = self._learner(9205, profiles.KIDS_OLDER)
+        for offset in range(12):          # more days than the story has sentences
+            sheet = services.session_sheet(learner, on=date(2026, 8, 1).replace(day=1 + offset))
+            self.assertEqual(len(sheet["copia"]), 6)
+            self.assertTrue(sheet["dictado"])
+
+    def test_a_one_sentence_story_still_produces_a_sheet(self):
+        Story.objects.all().delete()
+        Story.objects.create(
+            title="Corto", body="Una sola frase.", level="L1", status=Story.APPROVED,
+        )
+        sheet = services.session_sheet(self._learner(9206))
+        self.assertEqual(sheet["copia"], ["Una sola frase."])
+        self.assertTrue(sheet["dictado"])
+
+    def test_a_body_with_no_sentences_returns_empty_not_junk(self):
+        Story.objects.all().delete()
+        s = Story.objects.create(
+            title="Vacío", body="   \n  ", level="L1", status=Story.APPROVED,
+        )
+        sheet = services.session_sheet(self._learner(9207))
+        self.assertEqual(sheet["story"], s)
+        self.assertEqual(sheet["copia"], [])
+        self.assertEqual(sheet["dictado"], [])
+
+
+class SessionStoryChoiceTests(TestCase):
+    """LGA-94 review H1: 'the story she read most recently' was actually 'the story
+    authored most recently', because Story.Meta.ordering re-sorts a pk__in filter."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.old_story = Story.objects.create(
+            title="Autor primero", body="Alfa alfa. Beta beta. Gama gama.",
+            level="L1", status=Story.APPROVED,
+        )
+        cls.new_story = Story.objects.create(
+            title="Autor último", body="Uno uno. Dos dos. Tres tres.",
+            level="L1", status=Story.APPROVED,
+        )
+        # Force the authored order to fight the read order.
+        Story.objects.filter(pk=cls.old_story.pk).update(created_at=timezone.now() - timedelta(days=30))
+        Story.objects.filter(pk=cls.new_story.pk).update(created_at=timezone.now() - timedelta(days=1))
+
+    def test_picks_the_most_recently_READ_story_not_the_newest_one(self):
+        learner = Learner.create_for_host_student(9301, profiles.KIDS_EARLY)
+        # Read the NEWER story long ago, the OLDER story today.
+        s1 = learner.reading_sessions.create(story=self.new_story, seconds=60)
+        s2 = learner.reading_sessions.create(story=self.old_story, seconds=60)
+        type(s1).objects.filter(pk=s1.pk).update(created_at=timezone.now() - timedelta(days=5))
+        type(s2).objects.filter(pk=s2.pk).update(created_at=timezone.now())
+
+        self.assertEqual(services.session_sheet(learner)["story"], self.old_story)
+
+    def test_a_story_that_lost_approval_is_skipped_for_the_next_most_recent(self):
+        # D-49: only approved content is ever served. A story the parent later rejects
+        # must stop feeding the sheet rather than silently continuing.
+        learner = Learner.create_for_host_student(9302, profiles.KIDS_EARLY)
+        s1 = learner.reading_sessions.create(story=self.new_story, seconds=60)
+        s2 = learner.reading_sessions.create(story=self.old_story, seconds=60)
+        type(s1).objects.filter(pk=s1.pk).update(created_at=timezone.now() - timedelta(days=5))
+        type(s2).objects.filter(pk=s2.pk).update(created_at=timezone.now())
+        Story.objects.filter(pk=self.old_story.pk).update(status=Story.PENDING)
+
+        self.assertEqual(services.session_sheet(learner)["story"], self.new_story)
+
+    def test_first_sheet_respects_the_learners_level_ceiling(self):
+        # Nothing read yet. A Level-7 reader must not be handed the L1 sheet.
+        Story.objects.all().delete()
+        low = Story.objects.create(title="Bajo", body="Uno. Dos.", level="L1",
+                                   status=Story.APPROVED)
+        high = Story.objects.create(title="Alto", body="Tres. Cuatro.", level="L3",
+                                    status=Story.APPROVED)
+        learner = Learner.create_for_host_student(9303, profiles.KIDS_OLDER)
+        learner.profile.content_ceiling = "L3"
+        learner.profile.save(update_fields=["content_ceiling"])
+        self.assertEqual(services.session_sheet(learner)["story"], high)
+
+        capped = Learner.create_for_host_student(9304, profiles.KIDS_EARLY)
+        capped.profile.content_ceiling = "L1"
+        capped.profile.save(update_fields=["content_ceiling"])
+        self.assertEqual(services.session_sheet(capped)["story"], low)
+
+
+class SessionKitScopingTests(TestCase):
+    """LGA-94 review H2: the ?for= child picker had NO scoping test — a mutant that
+    swapped the family-scoped lookup for a global one left the whole suite green."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from core.models import Family, FamilyMembership
+        cls.mine = User.objects.create_user("sc_mine", "scm@example.com", "pw")
+        cls.fam_a = Family.objects.create(name="Fam A")
+        FamilyMembership.objects.create(user=cls.mine, family=cls.fam_a, role="parent")
+        cls.my_kid = Student.objects.create(
+            parent=cls.mine, first_name="Mia", family=cls.fam_a, grade_level="G03",
+        )
+        theirs = User.objects.create_user("sc_theirs", "sct@example.com", "pw")
+        cls.fam_b = Family.objects.create(name="Fam B")
+        FamilyMembership.objects.create(user=theirs, family=cls.fam_b, role="parent")
+        cls.their_kid = Student.objects.create(
+            parent=theirs, first_name="Zzzsecret", family=cls.fam_b, grade_level="G05",
+        )
+
+    def test_cannot_open_a_session_for_another_familys_child(self):
+        self.client.force_login(self.mine)
+        html = self.client.get(
+            reverse("lingua:session") + "?for=%d" % self.their_kid.pk
+        ).content.decode()
+        self.assertNotIn("Zzzsecret", html)   # never names the other family's child
+        self.assertIn("Mia", html)            # falls back to their own
+
+    def test_an_unknown_child_id_falls_back_rather_than_500ing(self):
+        self.client.force_login(self.mine)
+        r = self.client.get(reverse("lingua:session") + "?for=999999")
+        self.assertEqual(r.status_code, 200)
+        self.assertIn("Mia", r.content.decode())
+
+
+class ClipsBuildClassroomTests(TestCase):
+    """The --classroom flag and the fail-loud exit are what make the audio actually
+    reach prod; neither had a test."""
+
+    def test_classroom_flag_bakes_classroom_phrases(self):
+        from django.core.management import call_command
+        from lingua.models import ClassroomPhrase
+        ClassroomPhrase.objects.create(text="Vamos a leer.", english="Let's read.")
+        called = []
+
+        def _fake(text, **kw):
+            called.append(text)
+            return mock.Mock(audio_key="k"), "baked"
+
+        with mock.patch.object(services, "bake_audio_clip", side_effect=_fake):
+            call_command("clips_build", "--classroom", verbosity=0)
+        self.assertIn("Vamos a leer.", called)
+
+    def test_total_failure_exits_non_zero(self):
+        # A deploy step must not go green when every clip failed.
+        from django.core.management import call_command
+        from django.core.management.base import CommandError
+        from lingua.models import ClassroomPhrase
+        ClassroomPhrase.objects.create(text="Otra vez.", english="Again.")
+        with mock.patch.object(services, "bake_audio_clip", side_effect=RuntimeError("polly down")):
+            with self.assertRaises(CommandError):
+                call_command("clips_build", "--classroom", verbosity=0)
+
+    def test_partial_failure_still_succeeds(self):
+        from django.core.management import call_command
+        from lingua.models import ClassroomPhrase
+        ClassroomPhrase.objects.create(text="Uno.", english="One.")
+        ClassroomPhrase.objects.create(text="Dos.", english="Two.")
+        calls = {"n": 0}
+
+        def _flaky(text, **kw):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise RuntimeError("transient")
+            return mock.Mock(audio_key="k"), "baked"
+
+        with mock.patch.object(services, "bake_audio_clip", side_effect=_flaky):
+            call_command("clips_build", "--classroom", verbosity=0)   # must not raise
+
+
+class ClassroomPhraseActiveFilterTests(TestCase):
+    """A retired phrase must leave the page, not just the bake list."""
+
+    def test_inactive_phrases_are_not_shown_to_the_parent(self):
+        from lingua.models import ClassroomPhrase
+        ClassroomPhrase.objects.create(text="Vigente.", english="Current.", active=True)
+        ClassroomPhrase.objects.create(text="Retirada.", english="Retired.", active=False)
+        shown = [
+            p["phrase"].text
+            for g in services.classroom_phrases_with_audio() for p in g["phrases"]
+        ]
+        self.assertIn("Vigente.", shown)
+        self.assertNotIn("Retirada.", shown)

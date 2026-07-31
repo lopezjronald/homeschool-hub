@@ -96,6 +96,11 @@
         <h2>{% if child %}{{ child.first_name }}{% endif %} · {{ sheet.story.title }}</h2>
         <span class="ses-sheet-date">Fecha: ____________</span>
       </header>
+      <p class="ses-sheet-note no-print">
+        These lines rotate each day, so tomorrow's sheet is different.
+        Want other material? Read a different story with her — the sheet follows
+        whatever she read most recently.
+      </p>
 
       {% if sheet.copia %}
         <h3 class="ses-sheet-h3">Copia <span class="ses-sheet-hint">— copy each line exactly</span></h3>
@@ -108,8 +113,11 @@
 
       {% if sheet.dictado %}
         <h3 class="ses-sheet-h3">Dictado
-          <span class="ses-sheet-hint">— read these aloud; fold this edge under so she can't see them</span></h3>
-        <p class="ses-dictado-model no-print-fold">{{ sheet.dictado|join:" · " }}</p>
+          <span class="ses-sheet-hint">— she writes what you read out</span></h3>
+        {# Screen-only, deliberately: the parent reads these off the phone while she writes on the printed page. Printing them would hand her the answers. #}
+        <p class="ses-dictado-model no-print">
+          <span class="ses-dictado-cue">Read aloud:</span> {{ sheet.dictado|join:" · " }}
+        </p>
         {% for item in sheet.dictado %}
           <div class="ses-rule"></div>
         {% endfor %}

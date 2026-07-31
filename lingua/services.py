@@ -1190,15 +1190,22 @@ def session_sheet(learner, *, story=None, on=None):
     def window(begin, count):
         return [sents[(begin + i) % len(sents)] for i in range(min(count, len(sents)))]
 
-    copia = window(start, shape["copia_lines"])
-    d_start = (start + shape["copia_lines"]) % len(sents)
+    # Reserve sentences for the dictado BEFORE handing the rest to the copia. Real
+    # stories are short: at 4-6 sentences the copia would eat the whole text and the
+    # dictado window would wrap straight back onto it, printing the answers on the
+    # very page she writes on. Losing a copia line costs nothing (it's handwriting
+    # practice); losing the dictado's whole point costs the exercise.
+    reserve = max(1, shape["dictado_sentences"])
+    copia_count = min(shape["copia_lines"], max(1, len(sents) - reserve))
+    copia = window(start, copia_count)
+    d_start = (start + copia_count) % len(sents)
 
     if shape["dictado_sentences"]:
         dictado = window(d_start, shape["dictado_sentences"])
     else:
         # Word-level dictado for the youngest: a few real words, de-duped, drawn from
-        # beyond the copia lines wherever the story is long enough to allow it.
-        source = window(d_start, len(sents) - shape["copia_lines"]) or sents
+        # the sentences the copia did NOT take.
+        source = window(d_start, max(1, len(sents) - copia_count))
         words, seen = [], set()
         for w in re.findall(r"[^\W\d_]+", " ".join(source), flags=re.UNICODE):
             key = w.lower()

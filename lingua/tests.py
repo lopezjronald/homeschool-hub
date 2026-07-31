@@ -5234,17 +5234,49 @@ class SessionSheetRotationTests(TestCase):
             services.session_sheet(learner, on=day)["copia"],
         )
 
+    def _assert_disjoint(self, sheet, why):
+        """Dictado must not be the SAME SENTENCES the copia already printed.
+
+        Deliberately sentence-level, not word-level. Beginner Spanish reuses "la",
+        "es", "y" in nearly every line, so demanding unseen words is unachievable —
+        and wrong: dictado in the Literacy Squared method IS dictation of text the
+        child has studied. The thing that must not happen is her copying the exact
+        line she is then asked to write from hearing."""
+        copia = {c.strip().lower() for c in sheet["copia"]}
+        overlap = [d for d in sheet["dictado"] if d.strip().lower() in copia]
+        self.assertEqual(overlap, [], f"{why}: dictado repeats a copia line: {overlap}")
+
     def test_dictado_is_not_just_the_copia_she_already_copied(self):
         # Dictation only tests spelling if the answer isn't sitting above the lines.
         from datetime import date
         for band, host in ((profiles.KIDS_EARLY, 9203), (profiles.KIDS_OLDER, 9204)):
-            sheet = services.session_sheet(self._learner(host, band), on=date(2026, 8, 1))
-            copia_text = " ".join(sheet["copia"]).lower()
-            overlap = [d for d in sheet["dictado"] if d.lower() in copia_text]
-            self.assertEqual(
-                overlap, [],
-                f"{band}: dictado items already printed in the copia: {overlap}",
+            self._assert_disjoint(
+                services.session_sheet(self._learner(host, band), on=date(2026, 8, 1)),
+                band,
             )
+
+    def test_disjoint_even_for_a_SHORT_story(self):
+        # The real ones are short. With 4-6 sentences the copia would take the whole
+        # story and the dictado window would wrap back onto it — which is exactly what
+        # happened on prod, while a 10-sentence fixture passed.
+        from datetime import date
+        Story.objects.all().delete()
+        Story.objects.create(
+            title="La fruta", level="L1", status=Story.APPROVED,
+            body="La manzana es roja. Ana come la manzana. El plátano es amarillo. "
+                 "Nos gusta la fruta.",
+        )
+        for band, host in ((profiles.KIDS_EARLY, 9208), (profiles.KIDS_OLDER, 9209)):
+            for day in range(1, 6):
+                sheet = services.session_sheet(
+                    self._learner(host + day * 100, band), on=date(2026, 8, day),
+                )
+                self.assertTrue(sheet["copia"], "short story produced no copia")
+                self.assertTrue(sheet["dictado"], "short story produced no dictado")
+                self._assert_disjoint(sheet, f"{band} day {day}")
+                # The copia must leave the story something to dictate from.
+                self.assertLess(len(sheet["copia"]), 4,
+                                "copia consumed the whole 4-sentence story")
 
     def test_rotation_wraps_instead_of_running_out(self):
         from datetime import date

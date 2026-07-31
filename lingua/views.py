@@ -499,6 +499,38 @@ def library_mark_read(request):
 
 
 @login_required
+def session_kit(request):
+    """"La sesión" — the parent's 20 minutes with one child (LGA-94).
+
+    The younger girl disengaged from a screen acting as teacher, so this page is aimed
+    at the PARENT, not her: the routine to follow, the Spanish to say it in, and a
+    sheet to print. The audio is the load-bearing part — it lets a non-fluent parent
+    run the routine in Spanish by tapping and repeating.
+    """
+    family = get_selected_family(request)
+    children = directory.family_children(getattr(family, "pk", None))
+
+    child = None
+    if children:
+        want = _int_or_none(request.GET.get("for"))
+        child = next((c for c in children if c["pk"] == want), children[0])
+
+    learner = services.learner_for_child(child) if child else None
+    sheet = services.session_sheet(learner) if learner else None
+
+    return render(request, "lingua/session.html", {
+        "subnav": "session",
+        "children": children, "child": child, "multi_child": len(children) > 1,
+        "no_family": family is None,
+        "groups": services.classroom_phrases_with_audio(),
+        "sheet": sheet,
+        "band_label": (
+            learner.profile.get_track_profile_display() if learner else ""
+        ),
+    })
+
+
+@login_required
 def book_log_redirect(request):
     """The parent reading log now lives IN the Work Log (HH-143) — one record, one
     place. Kept under the old name so stale links/bookmarks land somewhere sensible.

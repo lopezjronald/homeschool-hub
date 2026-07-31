@@ -7,6 +7,7 @@ from settings, so lingua never imports the adapter (or tutor) directly.
 """
 import json
 import os
+import re
 import tempfile
 
 from django.conf import settings
@@ -20,11 +21,11 @@ from . import (
     profiles, safety, schedulers, storage,
 )
 from .models import (
-    AiUsage, AlphabetTile, AudioClip, AuditEvent, BookLogEntry, ComprehensionCheck,
-    KnownWord, Learner, LibraryBook, ListeningResource, ListeningSession,
-    MilestoneAward, Pathway, PathwayCheckmark, PathwayStep, PhonicsRule,
-    ReadingSession, ReviewItem, StationVisit, Story, StoryAudio, StoryImage,
-    StoryRecording, Theme, TutorPacket,
+    AiUsage, AlphabetTile, AudioClip, AuditEvent, BookLogEntry, ClassroomPhrase,
+    ComprehensionCheck, KnownWord, Learner, LibraryBook, ListeningResource,
+    ListeningSession, MilestoneAward, Pathway, PathwayCheckmark, PathwayStep,
+    PhonicsRule, ReadingSession, ReviewItem, StationVisit, Story, StoryAudio,
+    StoryImage, StoryRecording, Theme, TutorPacket,
 )
 from .ports import AIClient, ImageClient
 from .prompts import CRITIC_SYSTEM, STORY_SYSTEM
@@ -1047,7 +1048,7 @@ def bake_audio_clip(text, *, voice=None, engine=None, provider="polly",
     return obj, action
 
 
-def clip_texts_to_bake(*, phonics=False, alphabet=False, phrases=False):
+def clip_texts_to_bake(*, phonics=False, alphabet=False, phrases=False, classroom=False):
     """Collect unique texts that need AudioClip rows (authoring inventory)."""
     texts = []
     if phonics:
@@ -1061,6 +1062,10 @@ def clip_texts_to_bake(*, phonics=False, alphabet=False, phrases=False):
     if phrases:
         for packet in TutorPacket.objects.filter(active=True):
             texts.extend(packet.phrase_lines())
+    if classroom:
+        texts.extend(
+            ClassroomPhrase.objects.filter(active=True).values_list("text", flat=True)
+        )
     # Preserve order, drop dupes / blanks
     seen, out = set(), []
     for t in texts:
@@ -1069,6 +1074,95 @@ def clip_texts_to_bake(*, phonics=False, alphabet=False, phrases=False):
             seen.add(t)
             out.append(t)
     return out
+
+
+# --- "La sesión": the parent-led session kit (LGA-94) ------------------------
+#
+# For the younger child the app is the PARENT's tool, not her screen: it generates
+# the paper, the parent runs the 20 minutes. Handwriting beats typing for
+# orthographic memory (Ouellette & Tims 2014; Acha et al. 2025), so everything here
+# is built to print. Nothing on this path calls an AI or a TTS provider at request
+# time (D-16) — the phrases are seeded content and the audio is pre-baked.
+
+
+def classroom_phrases_with_audio(*, voice=None, engine=None):
+    """The parent's session phrases, grouped into the arc of a real sitting.
+
+    Returns ``[{key, label, phrases: [{phrase, audio_url|None}]}]``. A phrase with no
+    baked clip still appears — the parent can read it — it just isn't tappable, which
+    is the same graceful-degradation rule the reader follows (LGA-54)."""
+    rows = list(ClassroomPhrase.objects.filter(active=True))
+    urls = _clip_lookup([p.text for p in rows], voice=voice, engine=engine)
+    labels = dict(ClassroomPhrase.CATEGORY_CHOICES)
+    by_cat = {}
+    for p in rows:
+        by_cat.setdefault(p.category, []).append(
+            {"phrase": p, "audio_url": urls.get(p.text)}
+        )
+    return [
+        {"key": key, "label": labels.get(key, key), "phrases": by_cat[key]}
+        for key in ClassroomPhrase.CATEGORY_ORDER
+        if by_cat.get(key)
+    ]
+
+
+# How much writing to ask for, by band. The research scales dictado from a handful of
+# words up to a couple of sentences — starting too long is how you lose a 9-year-old.
+SESSION_SHAPE = {
+    profiles.KIDS_EARLY: {"dictado_words": 5, "dictado_sentences": 0, "copia_lines": 4},
+    profiles.KIDS_OLDER: {"dictado_words": 0, "dictado_sentences": 3, "copia_lines": 6},
+}
+_DEFAULT_SHAPE = SESSION_SHAPE[profiles.KIDS_EARLY]
+
+
+def _sentences(text):
+    """Split a story body into trimmed sentences, keeping their end punctuation."""
+    parts = re.split(r"(?<=[.!?…])\s+", (text or "").strip())
+    return [p.strip() for p in parts if p.strip()]
+
+
+def session_sheet(learner, *, story=None):
+    """The printable half of a session: copia lines + a dictado, drawn from a story
+    this child has ALREADY read.
+
+    Copying and dictating from familiar text is the point — ACTFL puts transcription at
+    the foundation of writing, and the child can only attend to spelling when she isn't
+    also decoding new meaning. Falls back to any approved story at her level, and
+    returns empty lists (never raises) when there's nothing yet.
+    """
+    band = getattr(getattr(learner, "profile", None), "track_profile", "")
+    shape = SESSION_SHAPE.get(band, _DEFAULT_SHAPE)
+
+    if story is None:
+        read_ids = list(
+            learner.reading_sessions.order_by("-created_at")
+            .values_list("story_id", flat=True)[:10]
+        )
+        story = (
+            Story.objects.filter(pk__in=read_ids, status=Story.APPROVED).first()
+            or Story.objects.filter(status=Story.APPROVED).order_by("level", "id").first()
+        )
+    if story is None:
+        return {"story": None, "copia": [], "dictado": [], "shape": shape}
+
+    sents = _sentences(story.body)
+    copia = sents[: shape["copia_lines"]]
+
+    if shape["dictado_sentences"]:
+        dictado = sents[: shape["dictado_sentences"]]
+    else:
+        # Word-level dictado for the youngest: the first few real words, de-duped, so
+        # the parent reads a short list and she writes it.
+        words, seen = [], set()
+        for w in re.findall(r"[^\W\d_]+", " ".join(sents), flags=re.UNICODE):
+            key = w.lower()
+            if key not in seen:
+                seen.add(key)
+                words.append(w)
+            if len(words) >= shape["dictado_words"]:
+                break
+        dictado = words
+    return {"story": story, "copia": copia, "dictado": dictado, "shape": shape}
 
 
 def record_listening(learner, resource, minutes):

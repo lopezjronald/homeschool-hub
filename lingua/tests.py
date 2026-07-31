@@ -5010,3 +5010,185 @@ class ShowOnPortalTogglesTheRightWayTests(TestCase):
         self._toggle()
         p.refresh_from_db()
         self.assertFalse(p.is_active)
+
+
+class SessionKitTests(TestCase):
+    """LGA-94: 'La sesión' is the PARENT's tool — the routine, the Spanish to run it
+    in, and a sheet to print. Nothing here may call an AI or TTS at request time."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from core.models import Family, FamilyMembership
+        from lingua.models import ClassroomPhrase
+        cls.parent = User.objects.create_user("ses_parent", "ses@example.com", "pw")
+        cls.family = Family.objects.create(name="Ses Fam")
+        FamilyMembership.objects.create(user=cls.parent, family=cls.family, role="parent")
+        cls.violet = Student.objects.create(
+            parent=cls.parent, first_name="Violet", family=cls.family, grade_level="G03",
+        )
+        cls.kaylin = Student.objects.create(
+            parent=cls.parent, first_name="Kaylin", family=cls.family, grade_level="G07",
+        )
+        ClassroomPhrase.objects.create(
+            text="¿Qué es esto?", english="What is this?",
+            category=ClassroomPhrase.ASKING, order=1,
+        )
+        ClassroomPhrase.objects.create(
+            text="Vamos a leer.", english="Let's read.",
+            category=ClassroomPhrase.OPENING, order=0,
+        )
+        ClassroomPhrase.objects.create(
+            text="¡Muy bien!", english="Very good!",
+            category=ClassroomPhrase.PRAISE, order=2,
+        )
+
+    def setUp(self):
+        self.client.force_login(self.parent)
+
+    def _get(self, qs=""):
+        return self.client.get(reverse("lingua:session") + qs).content.decode()
+
+    def test_requires_login(self):
+        self.client.logout()
+        self.assertIn(self.client.get(reverse("lingua:session")).status_code, (301, 302))
+
+    def test_shows_the_routine_and_both_children(self):
+        html = self._get()
+        self.assertIn("Review", html)
+        self.assertIn("Read together", html)
+        self.assertIn("Write", html)
+        self.assertIn(">Violet<", html)
+        self.assertIn(">Kaylin<", html)
+
+    def test_phrases_render_in_session_order_not_insertion_order(self):
+        # The arc of a real sitting: you open, then ask, then praise. Ordering by the
+        # category list is the point — insertion order would scatter them.
+        html = self._get()
+        self.assertLess(html.index("Vamos a leer."), html.index("¿Qué es esto?"))
+        self.assertLess(html.index("¿Qué es esto?"), html.index("¡Muy bien!"))
+
+    def test_a_phrase_without_audio_is_not_a_dead_button(self):
+        # No AudioClip rows exist in this test, so every phrase should render as text.
+        html = self._get()
+        self.assertIn("Vamos a leer.", html)
+        self.assertNotIn("lingua-clip-btn", html)   # nothing pretends to be tappable
+        # Django escapes the apostrophe in "Let's read.", so assert on a phrase
+        # without one — the point is that the English gloss is still rendered.
+        self.assertIn("Very good!", html)           # the English still helps the parent
+
+    def test_a_phrase_with_audio_becomes_a_real_tap_target(self):
+        from lingua.models import AudioClip
+        from lingua import assets
+        AudioClip.objects.create(
+            text="Vamos a leer.", voice="Mia", engine="neural", provider="polly",
+            content_hash=assets.content_hash(
+                "Vamos a leer.", provider="polly", voice="Mia", engine="neural"),
+            audio_key="lingua/clips/vamos.mp3",
+        )
+        with mock.patch.object(lingua_storage, "public_url", return_value="https://x/vamos.mp3"):
+            html = self._get()
+        self.assertIn("lingua-clip-btn", html)
+        self.assertIn("https://x/vamos.mp3", html)
+
+    def test_the_page_never_synthesizes_audio(self):
+        # D-16: baking happens in management commands only. A request that reached
+        # Polly would be both slow and a surprise bill.
+        from lingua import audio as lingua_audio
+        with mock.patch.object(lingua_audio, "synthesize_clip") as m:
+            self._get()
+        m.assert_not_called()
+
+
+class SessionSheetTests(TestCase):
+    """LGA-94: the printable half. Copia and dictado are drawn from text the child has
+    ALREADY read — she can only attend to spelling when she isn't also decoding."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.body = "El gato come. La niña corre rápido. Vamos a casa. Hoy hace sol."
+        cls.story = Story.objects.create(
+            title="El gato", body=cls.body, level="L1", status=Story.APPROVED,
+        )
+
+    def _learner(self, band, host_id):
+        return Learner.create_for_host_student(host_id, band)
+
+    def test_young_child_gets_WORD_dictado_and_older_gets_SENTENCES(self):
+        # The research scales dictado from a handful of words up to a couple of
+        # sentences. Handing a 9-year-old three sentences is how you lose her.
+        early = services.session_sheet(self._learner(profiles.KIDS_EARLY, 9101))
+        older = services.session_sheet(self._learner(profiles.KIDS_OLDER, 9102))
+        self.assertTrue(all(" " not in d for d in early["dictado"]),
+                        f"early band got sentences, not words: {early['dictado']}")
+        self.assertTrue(any(" " in d for d in older["dictado"]),
+                        f"older band got words, not sentences: {older['dictado']}")
+        self.assertLessEqual(len(early["dictado"]), 5)
+
+    def test_copia_lines_are_whole_sentences_from_the_story(self):
+        sheet = services.session_sheet(self._learner(profiles.KIDS_EARLY, 9103))
+        self.assertTrue(sheet["copia"])
+        for line in sheet["copia"]:
+            self.assertIn(line, self.body)
+            self.assertTrue(line.endswith((".", "!", "?", "…")))
+
+    def test_prefers_a_story_the_child_has_already_read(self):
+        other = Story.objects.create(
+            title="Otro", body="Un perro salta. Nada más.", level="L1",
+            status=Story.APPROVED,
+        )
+        learner = self._learner(profiles.KIDS_EARLY, 9104)
+        learner.reading_sessions.create(story=other, seconds=60)
+        self.assertEqual(services.session_sheet(learner)["story"], other)
+
+    def test_unapproved_stories_are_never_used(self):
+        Story.objects.all().update(status=Story.PENDING)
+        sheet = services.session_sheet(self._learner(profiles.KIDS_EARLY, 9105))
+        self.assertIsNone(sheet["story"])
+        self.assertEqual(sheet["copia"], [])
+        self.assertEqual(sheet["dictado"], [])
+
+    def test_no_stories_at_all_returns_empty_rather_than_raising(self):
+        Story.objects.all().delete()
+        sheet = services.session_sheet(self._learner(profiles.KIDS_EARLY, 9106))
+        self.assertIsNone(sheet["story"])
+
+    def test_dictado_words_are_deduplicated(self):
+        Story.objects.all().delete()
+        Story.objects.create(
+            title="Rep", body="La la la casa casa perro.", level="L1",
+            status=Story.APPROVED,
+        )
+        words = services.session_sheet(self._learner(profiles.KIDS_EARLY, 9107))["dictado"]
+        self.assertEqual(len(words), len(set(w.lower() for w in words)))
+
+
+class ClassroomPhraseSeedTests(TestCase):
+    """The phrase seed backs a page a parent uses mid-session — re-running it must
+    not duplicate or renumber anything."""
+
+    def test_seed_is_idempotent(self):
+        from django.core.management import call_command
+        from lingua.models import ClassroomPhrase
+        call_command("seed_classroom_phrases", verbosity=0)
+        first = ClassroomPhrase.objects.count()
+        pks = set(ClassroomPhrase.objects.values_list("pk", flat=True))
+        call_command("seed_classroom_phrases", verbosity=0)
+        self.assertEqual(ClassroomPhrase.objects.count(), first)
+        self.assertEqual(set(ClassroomPhrase.objects.values_list("pk", flat=True)), pks)
+
+    def test_every_seeded_phrase_is_offered_for_baking(self):
+        from django.core.management import call_command
+        from lingua.models import ClassroomPhrase
+        call_command("seed_classroom_phrases", verbosity=0)
+        texts = services.clip_texts_to_bake(classroom=True)
+        self.assertEqual(
+            set(texts),
+            set(ClassroomPhrase.objects.filter(active=True).values_list("text", flat=True)),
+        )
+
+    def test_inactive_phrases_are_not_baked(self):
+        from lingua.models import ClassroomPhrase
+        ClassroomPhrase.objects.create(
+            text="Retirada.", english="Retired.", active=False,
+        )
+        self.assertNotIn("Retirada.", services.clip_texts_to_bake(classroom=True))

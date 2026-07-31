@@ -646,3 +646,118 @@ a:focus-visible > .hub-tile {
   .lessons-name { font-size: .88rem; }
   .lessons-skip span { display: none; }
 }
+
+/* ===== "La sesión" — the parent-led session kit (LGA-94) ================== */
+.ses { max-width: 920px; }
+
+.ses-who {
+  display: flex; align-items: center; flex-wrap: wrap; gap: .6rem;
+  background: var(--ss-amber-tint); border: 1px solid var(--ss-line);
+  border-radius: var(--ss-r-md); padding: .55rem .85rem; margin-bottom: 1.1rem;
+}
+.ses-who-label { font-size: .78rem; font-weight: 800; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--ss-amber-700); }
+.ses-who-btns { display: flex; gap: .3rem; }
+.ses-who-btn {
+  font: inherit; font-weight: 700; font-size: .9rem; cursor: pointer;
+  padding: .3rem .8rem; min-height: 40px; border-radius: var(--ss-r-pill);
+  border: 1.5px solid var(--ss-line); background: var(--ss-paper); color: var(--ss-ink);
+}
+.ses-who-btn:hover { border-color: var(--ss-green); }
+.ses-who-btn.is-active { background: var(--ss-forest); border-color: var(--ss-forest); color: #fff; }
+.ses-band { font-size: .82rem; color: var(--ss-muted); }
+.ses-print { margin-left: auto; font: inherit; font-size: .88rem; font-weight: 700;
+  min-height: 40px; padding: .3rem .9rem; cursor: pointer;
+  border-radius: var(--ss-r-pill); border: 1.5px solid var(--ss-green);
+  background: var(--ss-paper); color: var(--ss-green-700); }
+.ses-print:hover { background: var(--ss-green-tint); }
+
+/* The routine — three steps, scannable mid-session */
+.ses-routine { list-style: none; counter-reset: step; padding: 0; margin: 0 0 1.1rem; }
+.ses-routine li {
+  counter-increment: step;
+  display: grid; grid-template-columns: 3.6rem 1fr; gap: .1rem .8rem;
+  align-items: baseline;
+  padding: .7rem .9rem .7rem 2.6rem; position: relative;
+  background: var(--ss-paper); border: 1px solid var(--ss-line);
+  border-left: 3px solid var(--ss-green); border-radius: var(--ss-r-md);
+  margin-bottom: .45rem;
+}
+.ses-routine li::before {
+  content: counter(step); position: absolute; left: .85rem; top: .8rem;
+  width: 1.3rem; height: 1.3rem; border-radius: 50%;
+  background: var(--ss-forest); color: #fff;
+  font-size: .78rem; font-weight: 800; line-height: 1.3rem; text-align: center;
+}
+.ses-step-time { font-size: .78rem; font-weight: 800; color: var(--ss-green-700); }
+.ses-step-name { font-weight: 700; }
+.ses-step-what { grid-column: 2; font-size: .9rem; color: var(--ss-muted); line-height: 1.5; }
+
+.ses-coach {
+  background: var(--ss-parchment); border: 1px solid var(--ss-line);
+  border-radius: var(--ss-r-md); padding: .85rem 1rem; margin-bottom: 1.4rem;
+  font-size: .93rem; line-height: 1.6;
+}
+
+.ses-h2 { font-size: 1.15rem; font-weight: 700; margin: 0 0 .3rem; }
+.ses-cat {
+  font-size: .76rem; font-weight: 800; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--ss-green-700); margin: 1.1rem 0 .45rem;
+  padding-bottom: .22rem; border-bottom: 2px solid var(--ss-green-tint);
+}
+.ses-phrases { list-style: none; padding: 0; margin: 0; }
+.ses-phrase {
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: .1rem .9rem;
+  align-items: center; padding: .3rem 0;
+  border-bottom: 1px solid var(--ss-cloud);
+}
+.ses-say {
+  display: inline-flex; align-items: center; gap: .55rem;
+  font: inherit; font-size: 1rem; font-weight: 700; text-align: left;
+  min-height: 44px; padding: .3rem .7rem .3rem .5rem; cursor: pointer;
+  background: transparent; border: 1.5px solid transparent;
+  border-radius: var(--ss-r-sm); color: var(--ss-forest);
+}
+.ses-say:hover { background: var(--ss-green-tint); border-color: var(--ss-green); }
+.ses-say:focus-visible { outline: 3px solid rgba(30,122,80,.45); outline-offset: 2px; }
+.ses-say.is-mute { cursor: default; color: var(--ss-ink); font-weight: 600; }
+.ses-say.lingua-clip-playing { background: var(--ss-green-tint); border-color: var(--ss-green); }
+.ses-say-icon { flex: 0 0 auto; font-size: .95rem; }
+.ses-en { font-size: .92rem; color: var(--ss-muted); }
+.ses-note { grid-column: 1 / -1; font-size: .82rem; color: var(--ss-green-700);
+  padding: 0 0 .3rem .5rem; }
+
+/* ---- The printable sheet ---- */
+.ses-sheet { margin-top: 1.6rem; padding-top: 1.2rem; border-top: 2px dashed var(--ss-line); }
+.ses-sheet-head { display: flex; align-items: baseline; justify-content: space-between;
+  flex-wrap: wrap; gap: .6rem; margin-bottom: .9rem; }
+.ses-sheet-head h2 { font-size: 1.1rem; font-weight: 700; margin: 0; }
+.ses-sheet-date { font-size: .9rem; color: var(--ss-muted); }
+.ses-sheet-h3 { font-size: .95rem; font-weight: 800; margin: 1.2rem 0 .5rem;
+  color: var(--ss-green-700); }
+.ses-sheet-hint { font-weight: 500; color: var(--ss-muted); font-size: .85rem; }
+.ses-copia-model, .ses-dictado-model {
+  margin: 0 0 .35rem; font-size: 1.02rem; line-height: 1.6; color: var(--ss-ink);
+}
+.ses-dictado-model { color: var(--ss-muted); font-style: italic; }
+/* Ruled writing lines — the child writes here, on paper. */
+.ses-rule { height: 2.1rem; border-bottom: 1px solid #b9c4bd; margin-bottom: .5rem; }
+
+@media (max-width: 575px) {
+  .ses-phrase { grid-template-columns: 1fr; }
+  .ses-print { margin-left: 0; }
+  .ses-routine li { grid-template-columns: 1fr; }
+  .ses-step-what { grid-column: 1; }
+}
+
+@media print {
+  .no-print, .navbar, footer { display: none !important; }
+  body { background: #fff !important; }
+  .ses-sheet { border-top: none; margin-top: 0; padding-top: 0; }
+  .ses-sheet-h3 { color: #000; }
+  .ses-rule { border-bottom: 1px solid #333; height: 2.4rem; }
+  .ses-copia-model { color: #000; }
+  /* The parent reads the dictado aloud — printing it next to the child defeats it. */
+  .no-print-fold { color: #666; font-size: .9rem; }
+  @page { margin: 1.6cm; }
+}

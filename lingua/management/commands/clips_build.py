@@ -22,8 +22,10 @@ class Command(BaseCommand):
                             help="Bake AlphabetTile spoken names + examples (LGA-86).")
         parser.add_argument("--phrases", action="store_true",
                             help="Bake TutorPacket practice lines (LGA-86).")
+        parser.add_argument("--classroom", action="store_true",
+                            help="Bake the parent's ClassroomPhrase session lines (LGA-94).")
         parser.add_argument("--all", action="store_true",
-                            help="Shorthand for --phonics --alphabet --phrases.")
+                            help="Shorthand for --phonics --alphabet --phrases --classroom.")
         parser.add_argument("--voice", default=None, help="Polly voice (default: settings).")
         parser.add_argument("--engine", default=None, help="Polly engine (default: settings).")
         parser.add_argument("--link-only", action="store_true",
@@ -35,11 +37,14 @@ class Command(BaseCommand):
         phonics = options["phonics"] or options["all"]
         alphabet = options["alphabet"] or options["all"]
         phrases = options["phrases"] or options["all"]
-        if not (phonics or alphabet or phrases):
-            raise CommandError("Pass --phonics, --alphabet, --phrases, and/or --all.")
+        classroom = options["classroom"] or options["all"]
+        if not (phonics or alphabet or phrases or classroom):
+            raise CommandError(
+                "Pass --phonics, --alphabet, --phrases, --classroom, and/or --all."
+            )
 
         texts = services.clip_texts_to_bake(
-            phonics=phonics, alphabet=alphabet, phrases=phrases,
+            phonics=phonics, alphabet=alphabet, phrases=phrases, classroom=classroom,
         )
         if not texts:
             self.stdout.write("No matching texts to bake (seed phonics/alphabet/packets first).")
@@ -67,3 +72,7 @@ class Command(BaseCommand):
             f"Done: {baked} baked, {linked} linked, {skipped} skipped, {failed} failed "
             f"({len(texts)} texts)."
         ))
+        # Exit non-zero when EVERYTHING failed — otherwise a deploy step goes green on
+        # a total outage and the pages silently render without audio.
+        if failed and not (baked or linked):
+            raise CommandError(f"All {failed} clip(s) failed — nothing was baked or linked.")

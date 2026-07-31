@@ -216,6 +216,47 @@ class PhonicsRule(models.Model):
         return f"PhonicsRule<{self.pattern}>"
 
 
+class ClassroomPhrase(models.Model):
+    """One Spanish phrase a non-fluent parent uses to RUN the session (LGA-94).
+
+    The point is not to teach the parent Spanish — it's to let the routine happen in
+    Spanish anyway. He taps, hears a native voice, repeats it. Content-only (no learner
+    FK, D-03); seeded idempotently by ``seed_classroom_phrases`` and voiced through the
+    same content-addressed ``AudioClip`` pipeline as phonics and the alphabet.
+    """
+
+    OPENING = "opening"
+    ASKING = "asking"
+    PRAISE = "praise"
+    REDIRECT = "redirect"
+    CLOSING = "closing"
+    CATEGORY_CHOICES = [
+        (OPENING, "Starting the session"),
+        (ASKING, "Asking about the book"),
+        (PRAISE, "Encouraging"),
+        (REDIRECT, "Nudging back on track"),
+        (CLOSING, "Finishing up"),
+    ]
+    # Display order for the session page — the arc of an actual sitting.
+    CATEGORY_ORDER = [OPENING, ASKING, PRAISE, REDIRECT, CLOSING]
+
+    text = models.CharField(max_length=120, unique=True, help_text="The Spanish phrase.")
+    english = models.CharField(max_length=160, help_text="What it means, for the parent.")
+    category = models.CharField(max_length=16, choices=CATEGORY_CHOICES, default=ASKING)
+    note = models.CharField(
+        max_length=200, blank=True,
+        help_text="Optional coaching note — when to reach for this one.",
+    )
+    order = models.IntegerField(default=0)
+    active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ["order", "id"]
+
+    def __str__(self):
+        return f"ClassroomPhrase<{self.text}>"
+
+
 class Theme(models.Model):
     """A content theme for the age-banded rotation (D-51, N-01). The daily plan
     draws a learner's next-story choices from active themes matching their band."""

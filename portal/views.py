@@ -424,14 +424,20 @@ def _placed_curriculum_ids(student):
 
 
 def _visible_materials(student):
-    """Approved materials for this child in their *active* curricula only (HH-149)."""
+    """Approved materials this child may open.
+
+    Work pinned to THIS child stays visible even with no active placement in its
+    curriculum — that's how the manga lessons are assigned, and requiring a placement
+    made them vanish along with their bookmarked links. Deactivation (HH-149) applies
+    to the shared branch, which is the one a parent shelves.
+    """
     curriculum_ids = _placed_curriculum_ids(student)
-    if not curriculum_ids:
-        return Material.objects.none()
     return (
         Material.objects.filter(status=Material.APPROVED)
-        .filter(lesson__chapter__curriculum_id__in=curriculum_ids)
-        .filter(Q(child=student) | Q(child__isnull=True))
+        .filter(
+            Q(child=student)
+            | Q(child__isnull=True, lesson__chapter__curriculum_id__in=curriculum_ids)
+        )
         .select_related("lesson", "lesson__chapter")
         .order_by("lesson__chapter__number", "lesson__order")
     )
@@ -445,12 +451,12 @@ def _visible_question_sets(student):
     (HH-149) drop the whole curriculum from this list.
     """
     curriculum_ids = _placed_curriculum_ids(student)
-    if not curriculum_ids:
-        return QuestionSet.objects.none()
     return (
         QuestionSet.objects.filter(status=QuestionSet.APPROVED, mode=QuestionSet.MODE_STUDENT)
-        .filter(lesson__chapter__curriculum_id__in=curriculum_ids)
-        .filter(Q(child=student) | Q(child__isnull=True))
+        .filter(
+            Q(child=student)
+            | Q(child__isnull=True, lesson__chapter__curriculum_id__in=curriculum_ids)
+        )
         .select_related("lesson", "lesson__chapter", "lesson__chapter__curriculum")
     )
 

@@ -345,11 +345,16 @@ def curriculum_toggle_placement_active(request, pk, child_pk):
     """Turn a subject on/off for one child without deleting the placement (HH-149)."""
     curriculum = get_object_or_404(editable_queryset(Curriculum.objects.all(), request.user), pk=pk)
     child = get_object_or_404(_curriculum_students(request.user, curriculum), pk=child_pk)
-    placement, _ = CurriculumPlacement.objects.get_or_create(
-        child=child, curriculum=curriculum,
+    # The button reads "Show on portal" when there is no placement yet, so CREATING
+    # one has to mean shown. Toggling unconditionally made the first click create it
+    # active and immediately flip it off — the parent pressed "Show" and was told it
+    # was hidden, and had to press twice.
+    placement, created = CurriculumPlacement.objects.get_or_create(
+        child=child, curriculum=curriculum, defaults={"is_active": True},
     )
-    placement.is_active = not placement.is_active
-    placement.save(update_fields=["is_active", "updated_at"])
+    if not created:
+        placement.is_active = not placement.is_active
+        placement.save(update_fields=["is_active", "updated_at"])
     if placement.is_active:
         messages.success(request, f"{child.first_name} can see {curriculum.name} again.")
     else:

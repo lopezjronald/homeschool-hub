@@ -49,19 +49,24 @@ class Command(BaseCommand):
             )
             created += was_created
             updated += not was_created
-            pathway.steps.all().delete()
-            PathwayStep.objects.bulk_create([
-                PathwayStep(
+            # Update steps IN PLACE, keyed on order. Never delete-then-recreate:
+            # PathwayCheckmark.step cascades, so wiping the steps wipes every child's
+            # "Hecho" — the one thing this feature stores. Row counts come out
+            # identical either way, so the damage is invisible from the summary line.
+            for o, t, k, ref, rule, opt in steps:
+                PathwayStep.objects.update_or_create(
                     pathway=pathway,
                     order=o,
-                    title=t,
-                    kind=k,
-                    target_ref=ref,
-                    pass_rule=rule,
-                    optional=opt,
+                    defaults={
+                        "title": t,
+                        "kind": k,
+                        "target_ref": ref,
+                        "pass_rule": rule,
+                        "optional": opt,
+                    },
                 )
-                for o, t, k, ref, rule, opt in steps
-            ])
+            # Drop only the orders this pathway no longer defines.
+            pathway.steps.exclude(order__in=[s[0] for s in steps]).delete()
         self.stdout.write(self.style.SUCCESS(
             f"Pathways seeded: {created} created, {updated} updated; "
             f"{sum(len(s) for *_, s in PATHWAYS)} steps written."

@@ -4512,8 +4512,14 @@ class TutorPacketTests(TestCase):
         violet_plan = self.client.get(
             reverse("portal:lingua_plan", kwargs={"token": self.violet_token})
         ).content.decode()
-        self.assertIn("Con el maestro", kaylin_plan)
-        self.assertNotIn("Con el maestro", violet_plan)
+        # Assert on the LINK, not a display string. The original asserted the label
+        # "Con el maestro", which LGA-87 renamed to "Maestro" on this page — so the
+        # positive half broke on a rename and the negative half could never fail,
+        # since that string is on nobody's plan page.
+        kaylin_link = reverse("portal:lingua_tutor", kwargs={"token": self.kaylin_token})
+        violet_link = reverse("portal:lingua_tutor", kwargs={"token": self.violet_token})
+        self.assertIn(kaylin_link, kaylin_plan)
+        self.assertNotIn(violet_link, violet_plan)
 
     def test_packet_page_shows_phrases_and_file_url(self):
         from django.core.files.base import ContentFile
@@ -4803,3 +4809,168 @@ class KnownWordFromReviewTests(TestCase):
         )
         services.grade_review_item(item, True, now=now)
         self.assertTrue(KnownWord.objects.filter(learner=learner, word="casa").exists())
+
+
+class CaminoSeedIsNonDestructiveTests(TestCase):
+    """LGA-96: re-seeding the Camino must not destroy the girls' progress.
+
+    PathwayCheckmark.step CASCADEs, so a delete-then-recreate seed wipes every
+    child's "Hecho" while leaving the row COUNTS identical — invisible from the
+    command's own summary line."""
+
+    def _seed(self):
+        from django.core.management import call_command
+        call_command("seed_pathway", verbosity=0)
+
+    def test_reseeding_keeps_checkmarks_and_step_pks(self):
+        from lingua.models import Pathway, PathwayCheckmark, PathwayStep
+        self._seed()
+        learner = Learner.create_for_host_student(7701, profiles.KIDS_EARLY)
+        step = PathwayStep.objects.filter(pathway__slug="camino-early").order_by("order").first()
+        self.assertIsNotNone(step, "seed produced no steps")
+        PathwayCheckmark.objects.create(learner=learner, step=step)
+        pks_before = list(PathwayStep.objects.order_by("pk").values_list("pk", flat=True))
+
+        self._seed()
+
+        self.assertTrue(
+            PathwayCheckmark.objects.filter(learner=learner, step_id=step.pk).exists(),
+            "re-seeding destroyed the child's progress",
+        )
+        self.assertEqual(
+            list(PathwayStep.objects.order_by("pk").values_list("pk", flat=True)),
+            pks_before,
+            "step PKs churned on re-seed — anything referencing them breaks",
+        )
+
+    def test_reseeding_still_removes_a_step_dropped_from_the_spec(self):
+        # Update-in-place must not mean "never delete" — a step taken out of the
+        # spec has to disappear, or the map keeps a stop that no longer exists.
+        from lingua.models import Pathway, PathwayStep
+        self._seed()
+        pathway = Pathway.objects.get(slug="camino-early")
+        orphan = PathwayStep.objects.create(
+            pathway=pathway, order=999, title="Parada vieja", kind=PathwayStep.LINK,
+        )
+        self._seed()
+        self.assertFalse(PathwayStep.objects.filter(pk=orphan.pk).exists())
+
+
+class PathCheckAuthorizationTests(TestCase):
+    """LGA-99 / M2: the IDOR gate on the tokenless checkmark endpoint had NO test —
+    deleting it left all 523 lingua+portal tests green."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from portal.tokens import make_portal_token
+        from datetime import date
+        cls.parent = User.objects.create_user("pc_parent", "pc@example.com", "pw")
+        cls.violet = Student.objects.create(
+            parent=cls.parent, first_name="Violet", grade_level="G03",
+            date_of_birth=date(2017, 10, 10),
+        )
+        cls.violet_token = make_portal_token(cls.violet)
+
+    def test_cannot_tick_a_step_from_another_bands_pathway(self):
+        from django.core.management import call_command
+        from lingua.models import PathwayCheckmark, PathwayStep
+        call_command("seed_pathway", verbosity=0)
+        # Provision Violet (KIDS_EARLY) by visiting her plan.
+        self.client.get(reverse("portal:lingua_plan", kwargs={"token": self.violet_token}))
+        foreign = PathwayStep.objects.filter(pathway__slug="camino-older").first()
+        self.assertIsNotNone(foreign)
+
+        r = self.client.post(
+            reverse("portal:lingua_path_check", kwargs={"token": self.violet_token}),
+            {"step_id": str(foreign.pk)},
+        )
+        self.assertEqual(r.status_code, 404)
+        self.assertFalse(
+            PathwayCheckmark.objects.filter(step_id=foreign.pk).exists(),
+            "a child ticked a step that is not on their own pathway",
+        )
+
+
+class PinnedWorkStaysVisibleTests(TestCase):
+    """HH-150: HH-148 required an active placement for ALL portal work, which hid
+    material pinned directly to a child — the manga-lesson assignment path."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from curricula.models import Chapter, Curriculum, CurriculumPlacement, Lesson
+        from portal.tokens import make_portal_token
+        from tutor.models import Material
+        cls.parent = User.objects.create_user("pin_parent", "pin@example.com", "pw")
+        cls.kid = Student.objects.create(parent=cls.parent, first_name="Nia", grade_level="G03")
+        cls.token = make_portal_token(cls.kid)
+        cls.cur = Curriculum.objects.create(name="Unplaced Math", parent=cls.parent)
+        ch = Chapter.objects.create(curriculum=cls.cur, number=1, title="Ch1")
+        cls.lesson = Lesson.objects.create(chapter=ch, order=1, title="L1")
+        cls.pinned = Material.objects.create(
+            lesson=cls.lesson, child=cls.kid, title="PinnedManga",
+            status=Material.APPROVED,
+        )
+        cls.shared = Material.objects.create(
+            lesson=cls.lesson, child=None, title="SharedManga",
+            status=Material.APPROVED,
+        )
+        cls.placement = CurriculumPlacement.objects.create(
+            child=cls.kid, curriculum=cls.cur, is_active=True,
+        )
+
+    def test_child_pinned_material_survives_an_inactive_placement(self):
+        from portal.views import _visible_materials
+        self.placement.is_active = False
+        self.placement.save(update_fields=["is_active"])
+        titles = set(_visible_materials(self.kid).values_list("title", flat=True))
+        self.assertIn("PinnedManga", titles)     # theirs — still reachable
+        self.assertNotIn("SharedManga", titles)  # shelved — correctly gone
+
+    def test_shelving_hides_shared_material(self):
+        # The HH-149 feature itself must still work; this is what kills the mutant
+        # that drops the is_active filter entirely.
+        from portal.views import _visible_materials
+        self.assertIn("SharedManga",
+                      set(_visible_materials(self.kid).values_list("title", flat=True)))
+        self.placement.is_active = False
+        self.placement.save(update_fields=["is_active"])
+        self.assertNotIn("SharedManga",
+                         set(_visible_materials(self.kid).values_list("title", flat=True)))
+
+
+class ShowOnPortalTogglesTheRightWayTests(TestCase):
+    """HH-150: 'Show on portal' created the placement active then immediately
+    flipped it off — the parent pressed Show and was told it was hidden."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from core.models import Family, FamilyMembership
+        from curricula.models import Curriculum
+        cls.parent = User.objects.create_user("tog_parent", "tog@example.com", "pw")
+        cls.family = Family.objects.create(name="Tog Fam")
+        FamilyMembership.objects.create(user=cls.parent, family=cls.family, role="parent")
+        cls.kid = Student.objects.create(
+            parent=cls.parent, first_name="Nia", family=cls.family, grade_level="G03",
+        )
+        cls.cur = Curriculum.objects.create(
+            name="Dimensions Math 3A", parent=cls.parent, family=cls.family,
+        )
+
+    def setUp(self):
+        self.client.force_login(self.parent)
+
+    def _toggle(self):
+        return self.client.post(reverse(
+            "curricula:curriculum_toggle_placement_active",
+            kwargs={"pk": self.cur.pk, "child_pk": self.kid.pk},
+        ))
+
+    def test_first_click_shows_and_second_hides(self):
+        from curricula.models import CurriculumPlacement
+        self.assertFalse(CurriculumPlacement.objects.filter(child=self.kid).exists())
+        self._toggle()
+        p = CurriculumPlacement.objects.get(child=self.kid, curriculum=self.cur)
+        self.assertTrue(p.is_active, "'Show on portal' created the placement hidden")
+        self._toggle()
+        p.refresh_from_db()
+        self.assertFalse(p.is_active)

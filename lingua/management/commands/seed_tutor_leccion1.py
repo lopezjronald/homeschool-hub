@@ -10,6 +10,7 @@ named Kaylin when the host app is available.
 """
 from django.core.management.base import BaseCommand
 
+from lingua.integrations import directory
 from lingua.models import TutorPacket
 
 TITLE = "Lección 1 — Mis primeros pasos"
@@ -42,13 +43,21 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         host_id = options["host_student_id"]
         if host_id is None:
-            try:
-                from students.models import Student
-                kaylin = Student.objects.filter(first_name__iexact="Kaylin").first()
-                if kaylin:
-                    host_id = kaylin.pk
-            except Exception:  # noqa: BLE001 — host app may be absent when extracted
-                host_id = None
+            # Resolve through the directory seam — lingua never imports a host model,
+            # not even in a try/except (D-04, AST-enforced by the test suite).
+            host_id = directory.find_student_id("Kaylin")
+            if host_id is None:
+                self.stdout.write(self.style.WARNING(
+                    "No unique child named 'Kaylin' found — the packet will be shared "
+                    "with ALL learners. Pass --host-student-id to scope it to one child."
+                ))
+        elif not directory.learner_exists(host_id):
+            # Scoping to an id that doesn't exist hides the packet from everyone, and
+            # nothing downstream would ever say so.
+            self.stdout.write(self.style.WARNING(
+                f"No child with pk={host_id}; the packet would be visible to nobody."
+            ))
+            return
 
         obj, created = TutorPacket.objects.get_or_create(
             title=TITLE,

@@ -75,6 +75,26 @@ def child_in_family(host_student_id, host_family_id):
     return dict(row) if row else None
 
 
+def find_student_id(first_name):
+    """host_student_id for a child matched by first name, or None.
+
+    Authoring-time convenience for seed commands that target one named child, so
+    they don't have to reach for a host model themselves (D-04). Returns None when
+    the name matches nothing OR more than one child: this app is multi-family, and
+    silently picking one of two same-named children would scope private material —
+    a tutor's homework, say — to somebody else's kid.
+    """
+    name = (first_name or "").strip()
+    if not name:
+        return None
+    ids = list(
+        Student.objects
+        .filter(first_name__iexact=name)
+        .values_list("pk", flat=True)[:2]
+    )
+    return ids[0] if len(ids) == 1 else None
+
+
 def existing_student_ids(host_student_ids):
     """The subset of the given ids that still exist as host Students (one query).
     Used by lingua_prune_orphans to find orphaned learners efficiently."""

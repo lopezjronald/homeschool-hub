@@ -177,6 +177,29 @@ class UserDirectoryTests(TestCase):
             {self.student.pk},
         )
 
+    def test_find_student_id_matches_one_child_case_insensitively(self):
+        self.assertEqual(directory.find_student_id("ada"), self.student.pk)
+        self.assertEqual(directory.find_student_id("  Ada  "), self.student.pk)
+
+    def test_find_student_id_returns_none_for_no_match_or_blank(self):
+        self.assertIsNone(directory.find_student_id("Nobody"))
+        self.assertIsNone(directory.find_student_id(""))
+        self.assertIsNone(directory.find_student_id(None))
+
+    def test_find_student_id_refuses_an_AMBIGUOUS_name(self):
+        # This app is multi-family. Seed commands scope private material (a tutor's
+        # homework) by host_student_id, so picking one of two same-named children
+        # would hand one family's material to another family's kid. Refuse instead.
+        other_parent = User.objects.create_user(
+            username="p2", email="p2@example.com", password="x", is_active=True,
+        )
+        twin = Student.objects.create(
+            parent=other_parent, first_name="Ada", last_name="Other", grade_level="G05",
+        )
+        self.assertIsNone(directory.find_student_id("Ada"))
+        self.assertNotEqual(directory.find_student_id("Ada"), self.student.pk)
+        self.assertNotEqual(directory.find_student_id("Ada"), twin.pk)
+
 
 class PortsAndAdapterTests(TestCase):
     """The AIClient port + host adapter seam (D-04)."""

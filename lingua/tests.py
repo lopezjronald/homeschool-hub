@@ -6809,6 +6809,30 @@ class ProgressiveCaminoTests(TestCase):
         self.assertIn("L3", row["title"])
         self.assertNotIn("@level", row["title"])   # never leak the token
 
+    def test_a_LITERAL_level_step_does_not_get_its_level_doubled(self):
+        # This is the live state between the release and the manual re-seed: the DB
+        # still holds target_ref="L1" on a step whose title already ends in "L1".
+        # Appending unconditionally rendered "Leer historias L1 L1" to both girls.
+        from lingua.models import Pathway, PathwayStep
+        learner = self._learner(9920, "L2")
+        PathwayStep.objects.filter(
+            pathway__slug="camino-early", kind=PathwayStep.STORY_LEVEL
+        ).update(title="Leer historias L1", target_ref="L1")
+        row = self._story_row(learner)
+        self.assertEqual(row["title"], "Leer historias L1")
+        self.assertNotIn("L1 L1", row["title"])
+
+    def test_a_literal_step_is_satisfied_by_its_own_level(self):
+        # The pass-through must still WORK, not just avoid doubling.
+        from lingua.models import PathwayStep, ReadingSession
+        learner = self._learner(9921, "L2")
+        PathwayStep.objects.filter(
+            pathway__slug="camino-early", kind=PathwayStep.STORY_LEVEL
+        ).update(title="Leer historias L1", target_ref="L1")
+        ReadingSession.objects.create(
+            learner=learner, story=Story.objects.get(level="L1"), words=1, seconds=20)
+        self.assertEqual(self._story_row(learner)["status"], services.PATH_COMPLETE)
+
     def test_two_children_at_different_levels_get_different_stops(self):
         a = self._story_row(self._learner(9904, "L1"))
         b = self._story_row(self._learner(9905, "L5"))

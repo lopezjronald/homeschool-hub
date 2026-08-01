@@ -912,12 +912,49 @@ class TutorSpendLedgerTests(TestCase):
         )
 
     def test_usage_accumulates_across_calls(self):
-        spend.record_usage("small", _fake_usage(1_000_000, 0))
-        spend.record_usage("small", _fake_usage(1_000_000, 0))
+        # Output tokens are the 5x side of the price table, so they are asserted
+        # separately from input and the resulting cost is pinned exactly — reading
+        # the wrong field would otherwise under-count the expensive half silently.
+        spend.record_usage("small", _fake_usage(1_000_000, 1_000_000))
+        spend.record_usage("small", _fake_usage(1_000_000, 1_000_000))
         row = AiSpend.objects.get()
         self.assertEqual(row.calls, 2)
         self.assertEqual(row.input_tokens, 2_000_000)
-        self.assertEqual(spend.month_to_date_usd(), 2.0)
+        self.assertEqual(row.output_tokens, 2_000_000)
+        self.assertEqual(row.micro_usd, 12_000_000)   # 2 × ($1 in + $5 out)
+        self.assertEqual(spend.month_to_date_usd(), 12.0)
+
+    def test_cached_prompt_tokens_are_billed_too(self):
+        # Anthropic reports cached tokens SEPARATELY from input_tokens. Reading
+        # only input_tokens would under-count the moment anyone adds cache_control.
+        usage = SimpleNamespace(
+            input_tokens=1_000_000, output_tokens=0,
+            cache_creation_input_tokens=1_000_000, cache_read_input_tokens=1_000_000,
+        )
+        spend.record_usage("small", usage)
+        # 1M base + 1.25M weighted writes + 0.1M weighted reads
+        self.assertEqual(AiSpend.objects.get().input_tokens, 2_350_000)
+
+    def test_a_dated_snapshot_id_is_priced_as_its_family(self):
+        # The API answers with the resolved snapshot, not the alias we asked for.
+        # Exact-match-only pricing would bill every real call at the fallback tier.
+        self.assertEqual(
+            spend.prices_for("small-20260101"), spend.prices_for("small"),
+        )
+
+    def test_the_served_model_is_what_gets_priced(self):
+        # A server-side substitution must not be billed at the tier we asked for.
+        client = FakeAnthropic(GOOD_JSON, usage=_fake_usage(1_000_000, 0))
+        client._create = lambda **kw: SimpleNamespace(
+            content=[SimpleNamespace(type="text", text=GOOD_JSON)],
+            usage=_fake_usage(1_000_000, 0),
+            model="big",  # we asked for the grading model; the API served "big"
+        )
+        client.messages = SimpleNamespace(create=client._create)
+        with override_settings(TUTOR_MODEL="small"):
+            ai.grade_work(rubric="r", answers="a", grade_level="3rd",
+                          subject="Math", client=client)
+        self.assertEqual(AiSpend.objects.get().micro_usd, 15_000_000)  # big, not small
 
     def test_a_call_with_no_usage_object_still_counts_as_a_call(self):
         # Token counts can be missing; the call count is what reveals a runaway
@@ -959,13 +996,49 @@ class TutorSpendLedgerTests(TestCase):
 
     def test_the_writing_helpers_degrade_instead_of_raising_at_a_child(self):
         # Deliberate asymmetry: a billing notice does not belong in a kid's
-        # writing box, so these go quiet rather than erroring.
+        # writing box, so these go quiet rather than erroring. Asserting the LOG is
+        # what makes this discriminating — the generic `except Exception: return []`
+        # underneath already returns [], so an empty list alone proves nothing.
         AiSpend.objects.create(period=timezone.now().strftime("%Y-%m"),
                                micro_usd=10_000_000)
         client = FakeAnthropic('["glad"]', usage=_fake_usage(10, 10))
-        self.assertEqual(ai.suggest_words("happy", client=client), [])
-        self.assertEqual(ai.check_spelling("becuse", client=client), [])
+        with self.assertLogs("tutor.ai", level="WARNING") as logs:
+            self.assertEqual(ai.suggest_words("happy", client=client), [])
+            self.assertEqual(ai.check_spelling("becuse", client=client), [])
         self.assertEqual(client.calls, 0)
+        joined = "\n".join(logs.output)
+        self.assertIn("Word suggestions skipped", joined)
+        self.assertIn("Spellcheck skipped", joined)
+
+    def test_the_draft_coach_degrades_rather_than_500ing_at_a_child(self):
+        # review_draft's only caller is the kid's writing box, which catches
+        # GraderError. Letting BudgetExceeded escape 500s a child-facing endpoint.
+        AiSpend.objects.create(period=timezone.now().strftime("%Y-%m"),
+                               micro_usd=10_000_000)
+        client = FakeAnthropic('{"praise": "p", "suggestions": []}')
+        with self.assertLogs("tutor.ai", level="WARNING"):
+            with self.assertRaises(ai.GraderError):
+                ai.review_draft(draft="d", assignment="a", grade_level="3rd",
+                                subject="Writing", client=client)
+        self.assertEqual(client.calls, 0)
+
+    def test_the_scheduled_sweep_stops_once_instead_of_per_sheet(self):
+        AiSpend.objects.create(period=timezone.now().strftime("%Y-%m"),
+                               micro_usd=10_000_000)
+        with self.assertLogs("tutor.grading", level="WARNING") as logs:
+            self.assertEqual(grading.grade_pending_sheets(), (0, 0))
+        self.assertEqual(len(logs.output), 1)
+        self.assertIn("sweep skipped", logs.output[0])
+
+    def test_the_month_rolls_over_in_local_time_not_utc(self):
+        # Under America/Los_Angeles, UTC rolls the month seven hours early — the
+        # ceiling would lift on the evening of the 31st while the refusal message
+        # was still promising "the 1st".
+        from datetime import datetime, timezone as dt_timezone
+        from unittest.mock import patch as _patch
+        late_august_pdt = datetime(2026, 9, 1, 1, 0, tzinfo=dt_timezone.utc)  # 6pm Aug 31 PDT
+        with _patch("django.utils.timezone.now", return_value=late_august_pdt):
+            self.assertEqual(spend._period(), "2026-08")
 
     def test_the_refusal_message_says_the_numbers_and_when_it_lifts(self):
         AiSpend.objects.create(period=timezone.now().strftime("%Y-%m"),

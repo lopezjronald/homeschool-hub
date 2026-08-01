@@ -135,7 +135,14 @@ def assess_status(request, entry_pk):
             "ready": True,
             "url": reverse("tutor:assess_detail", kwargs={"pk": assessment.pk}),
         })
-    return JsonResponse({"ready": False, "grading": ai.is_configured()})
+    # `grading: false` is what the template turns into a legible message instead of
+    # a spinner. The ceiling can be crossed between the create-time check and the
+    # background thread, and that grade dies inside a broad except — without this,
+    # the parent watches "Still working…" for 150s and is then told to try again.
+    return JsonResponse({
+        "ready": False,
+        "grading": ai.is_configured() and not spend.budget_exceeded(),
+    })
 
 
 @login_required

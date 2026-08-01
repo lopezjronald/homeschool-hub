@@ -41,3 +41,9 @@ class AiSpendAdmin(admin.ModelAdmin):
 
     def has_change_permission(self, request, obj=None):
         return False
+
+    def has_delete_permission(self, request, obj=None):
+        # Deleting the row is STRICTLY more destructive than the typo this class
+        # guards against: it doesn't skew the month's total, it removes the
+        # ceiling for the month entirely, silently.
+        return False

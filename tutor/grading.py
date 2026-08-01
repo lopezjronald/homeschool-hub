@@ -184,6 +184,13 @@ def grade_pending_sheets(limit=None):
 
     if not ai.is_configured():
         return 0, 0
+    # Check once, not once per sheet. The Scheduler runs this every 10 minutes, and
+    # over the ceiling the loop would otherwise re-query the ledger and log an
+    # identical warning for every pending sheet, then report "graded 0, failed 0" —
+    # indistinguishable from having nothing to do (HH-145).
+    if spend.budget_exceeded():
+        logger.warning("grade_pending: sweep skipped — %s", spend.refusal_message())
+        return 0, 0
     graded_entry_ids = MasteryAssessment.objects.values_list("work_entry_id", flat=True)
     pending = (
         ResponseSheet.objects

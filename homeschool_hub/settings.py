@@ -352,9 +352,14 @@ TUTOR_MONTHLY_COST_CEILING_USD = _env_float("TUTOR_MONTHLY_COST_CEILING_USD", 25
 # model for grading and coaching, a small one for word help and spellcheck — and
 # they differ by more than 10x, so cost has to be priced per model at the moment
 # of the call, not derived from a token total afterwards.
+#
+# These are ESTIMATES, not a bill. They set where the ceiling trips and what the
+# admin's spend column reads, so check them against the current price list when a
+# model changes — pricing that is wrong by 3x turns a $25 ceiling into an $8 one.
+# Override any of them via TUTOR_AI_PRICES in code, or raise the ceiling.
 TUTOR_AI_PRICES = {
-    "claude-opus-4-8": (15.0, 75.0),
-    "claude-opus-5": (15.0, 75.0),
+    "claude-opus-4-8": (5.0, 25.0),
+    "claude-opus-5": (5.0, 25.0),
     "claude-sonnet-5": (3.0, 15.0),
     "claude-haiku-4-5": (1.0, 5.0),
 }

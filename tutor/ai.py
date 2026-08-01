@@ -114,7 +114,11 @@ def _create_message(client, *, model, max_tokens, system, user_prompt):
         system=system,
         messages=[{"role": "user", "content": user_prompt}],
     )
-    spend.record_usage(model, getattr(response, "usage", None))
+    # Price what the provider actually SERVED, falling back to what we asked for:
+    # a server-side substitution would otherwise be billed at the wrong tier.
+    spend.record_usage(
+        getattr(response, "model", None) or model, getattr(response, "usage", None),
+    )
     return response
 
 
@@ -352,8 +356,13 @@ def review_draft(*, draft, assignment, grade_level, subject, client=None):
             client, model=grading_model(), max_tokens=1000,
             system=COACH_PROMPT, user_prompt=user_prompt,
         )
-    except spend.BudgetExceeded:
-        raise  # not a grader failure — the caller must say WHY, not "try again"
+    except spend.BudgetExceeded as exc:
+        # The coach lives in a CHILD's draft box (portal_draft_feedback is its only
+        # caller), so it degrades like the other writing-box helpers rather than
+        # raising. Letting BudgetExceeded escape here 500s a kid-facing endpoint —
+        # a billing notice must never be a child's error page.
+        logger.warning("Draft coaching skipped: %s", spend.refusal_message())
+        raise GraderError(str(exc))
     except Exception as exc:  # noqa: BLE001 — surface any API/transport error uniformly
         raise GraderError(str(exc))
 

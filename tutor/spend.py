@@ -36,7 +36,15 @@ class BudgetExceeded(Exception):
 
 
 def _period():
-    return timezone.now().strftime("%Y-%m")
+    """The current calendar month, in the SITE's timezone.
+
+    localtime, not now(): under America/Los_Angeles, UTC rolls the month over
+    seven hours early, so the ceiling would lift on the evening of the 31st while
+    ``refusal_message`` was still promising "the 1st". (lingua's ``_current_period``
+    still uses UTC — same bug, its own ticket, since moving it shifts a compliance
+    ledger's period boundary.)
+    """
+    return timezone.localtime(timezone.now()).strftime("%Y-%m")
 
 
 def prices_for(model):
@@ -48,9 +56,17 @@ def prices_for(model):
     """
     table = getattr(settings, "TUTOR_AI_PRICES", {}) or {}
     fallback = getattr(settings, "TUTOR_AI_PRICE_FALLBACK", (15.0, 75.0))
-    if model not in table:
-        logger.warning("No price for tutor AI model %r; using the fallback tier.", model)
-    return table.get(model, fallback)
+    if model in table:
+        return table[model]
+    # The API answers with the RESOLVED snapshot id ("claude-opus-4-8-20250101"),
+    # not the alias we asked for, so an exact-match-only table would price every
+    # real call at the fallback tier. Longest prefix wins, so a longer alias is
+    # never shadowed by a shorter one that happens to be a prefix of it.
+    for alias in sorted(table, key=len, reverse=True):
+        if (model or "").startswith(alias):
+            return table[alias]
+    logger.warning("No price for tutor AI model %r; using the fallback tier.", model)
+    return fallback
 
 
 def micro_usd_for(model, input_tokens, output_tokens):
@@ -60,6 +76,21 @@ def micro_usd_for(model, input_tokens, output_tokens):
     return int(round(dollars * 1_000_000))
 
 
+def _billable_input_tokens(usage):
+    """Input tokens to charge for, prompt caching included.
+
+    Anthropic reports cached tokens SEPARATELY from ``input_tokens``, so reading
+    only that field silently under-counts the moment anyone adds ``cache_control``
+    to a prompt — and under-counting is the one direction this module must never
+    fail in. Cache writes bill above the base rate and cache reads well below it,
+    so each is weighted rather than lumped in at face value.
+    """
+    base = int(getattr(usage, "input_tokens", 0) or 0)
+    writes = int(getattr(usage, "cache_creation_input_tokens", 0) or 0)
+    reads = int(getattr(usage, "cache_read_input_tokens", 0) or 0)
+    return base + int(round(writes * 1.25 + reads * 0.1))
+
+
 def record_usage(model, usage):
     """Accumulate one call's tokens and cost into the current month.
 
@@ -67,7 +98,7 @@ def record_usage(model, usage):
     missing or partial ``usage`` object — an unbilled call is still a call, and the
     count is what reveals a runaway loop even when the token numbers are absent.
     """
-    it = int(getattr(usage, "input_tokens", 0) or 0)
+    it = _billable_input_tokens(usage)
     ot = int(getattr(usage, "output_tokens", 0) or 0)
     period = _period()
     AiSpend.objects.get_or_create(period=period)

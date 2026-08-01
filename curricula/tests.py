@@ -495,6 +495,36 @@ class BlueprintTests(TestCase):
         )
         self.assertEqual(opener.code, "Ch 1 Opener")
 
+    def test_every_teaching_lesson_in_chapters_1_to_3_has_objectives(self):
+        # Objectives are not decoration: tutor.views._entry_objectives feeds them to
+        # the AI grader as concept context, so a lesson with none is graded blind.
+        # Openers, practices and reviews carry none by design — they have no new
+        # objective of their own.
+        apply_blueprint(self.curriculum, get_blueprint("dimensions_math_3a"))
+        blind = [
+            f"Ch{L.chapter.number} L{L.number} {L.title}"
+            for L in Lesson.objects.filter(
+                chapter__curriculum=self.curriculum,
+                chapter__number__in=(1, 2, 3),
+                lesson_type=Lesson.TYPE_LESSON,
+            ).select_related("chapter")
+            if not (L.objectives or "").strip()
+        ]
+        self.assertEqual(blind, [], f"lessons the grader would judge blind: {blind}")
+
+    def test_re_applying_the_blueprint_backfills_objectives_in_place(self):
+        # How Ch3's objectives reach a curriculum that was created before they were
+        # written: apply_blueprint updates rather than skipping existing lessons.
+        apply_blueprint(self.curriculum, get_blueprint("dimensions_math_3a"))
+        lesson = Lesson.objects.get(
+            chapter__curriculum=self.curriculum, chapter__number=3, number=4)
+        Lesson.objects.filter(pk=lesson.pk).update(objectives="")
+
+        apply_blueprint(self.curriculum, get_blueprint("dimensions_math_3a"))
+
+        lesson.refresh_from_db()
+        self.assertIn("estimate", lesson.objectives.lower())
+
     def test_apply_blueprint_view_requires_editor(self):
         # teacher (view-only) cannot apply
         teacher = User.objects.create_user(username="bt", email="bt@e.com", password="pw")

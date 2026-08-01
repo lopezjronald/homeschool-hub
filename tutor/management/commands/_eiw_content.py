@@ -372,17 +372,28 @@ EXERCISES = {
     7: [
         {
             'instructions': 'Match the correct punctuation mark to the type of sentence it belongs with.',
-            'kind': 'multiple-choice',
+            # A MATCHING exercise, not multiple choice. Seeded as 'multiple-choice'
+            # it became eight separate text questions — so the four lettered ANSWER
+            # CHOICES rendered as questions of their own, each with its own answer
+            # box, and the four sentence types had nothing to choose from.
+            'kind': 'matching',
             'assessment': False,
+            # (sentence type, the punctuation it takes). The pool below keeps the
+            # workbook's printed A-D order so a child working from the book sees
+            # the same four choices in the same order.
+            'options': [
+                'Question Mark (?)',                    # A
+                'Period (.) OR Exclamation Point (!)',  # B
+                'Period (.)',                           # C
+                'Exclamation Point (!)',                # D
+            ],
             'items': [
-                '______ Declarative',
-                '______ Interrogative',
-                '______ Exclamatory',
-                '______ Imperative',
-                'A. Question Mark (?)',
-                'B. Period (.) OR Exclamation Point (!)',
-                'C. Period (.)',
-                'D. Exclamation Point (!)',
+                ('Declarative', 'Period (.)'),
+                ('Interrogative', 'Question Mark (?)'),
+                ('Exclamatory', 'Exclamation Point (!)'),
+                # An imperative (a command) ends with a period or, if it is
+                # forceful, an exclamation point — hence the workbook's option B.
+                ('Imperative', 'Period (.) OR Exclamation Point (!)'),
             ],
         },
         {

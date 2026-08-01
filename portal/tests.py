@@ -362,6 +362,70 @@ class MarkupTests(TestCase):
         call_command("seed_eiw_violet", "--for-user", "mup", stdout=StringIO())
         self.assertEqual(QuestionSet.objects.count(), before)
 
+    def test_eiw_matching_exercise_is_one_question_not_one_per_row(self):
+        # Lesson 7 is a MATCHING grid: four sentence types beside a lettered answer
+        # bank. Seeded as separate questions, the four ANSWER CHOICES became four
+        # questions of their own, each with its own empty answer box, and the four
+        # sentence types had nothing to choose from.
+        import json
+        call_command("seed_eiw_violet", "--for-user", "mup", stdout=StringIO())
+        qs = QuestionSet.objects.get(
+            lesson__number=7, title__endswith="Match them up")
+        self.assertEqual(qs.questions.count(), 1)
+        q = qs.questions.get()
+        self.assertEqual(q.response_type, Question.TYPE_MATCHING)
+        data = json.loads(q.passage)
+        self.assertEqual(
+            {d["text"]: d["word"] for d in data["definitions"]},
+            {
+                "Declarative": "Period (.)",
+                "Interrogative": "Question Mark (?)",
+                "Exclamatory": "Exclamation Point (!)",
+                # A command takes a period, or an exclamation point if forceful.
+                "Imperative": "Period (.) OR Exclamation Point (!)",
+            },
+        )
+        # Every answer the child can pick has to be in the pool she picks from.
+        self.assertEqual(
+            sorted(data["words"]),
+            sorted(d["word"] for d in data["definitions"]),
+        )
+
+    def test_no_eiw_question_is_really_an_answer_choice(self):
+        # The general shape of the Lesson 7 bug: a lettered option from an answer
+        # bank standing on its own as a question. There is nothing to answer.
+        import re
+        call_command("seed_eiw_violet", "--for-user", "mup", stdout=StringIO())
+        offenders = [
+            f"{q.question_set.title} Q{q.order}: {q.prompt!r}"
+            for q in Question.objects.exclude(prompt="").select_related("question_set")
+            if re.match(r"^[A-D]\.\s", q.prompt.strip())
+        ]
+        self.assertEqual(offenders, [], f"answer choices seeded as questions: {offenders}")
+
+    def test_retitled_exercise_does_not_leave_the_old_set_behind(self):
+        # Sets are keyed on title, so renaming an exercise would otherwise leave the
+        # superseded one beside the new one — and the superseded one is the broken one.
+        call_command("seed_eiw_violet", "--for-user", "mup", stdout=StringIO())
+        self.assertFalse(
+            QuestionSet.objects.filter(
+                lesson__number=7, title__endswith="Choose the answer").exists()
+        )
+
+    def test_a_stale_set_with_saved_answers_is_kept(self):
+        # ...but never at the cost of a child's work.
+        call_command("seed_eiw_violet", "--for-user", "mup", stdout=StringIO())
+        lesson7 = QuestionSet.objects.filter(lesson__number=7).first()
+        keeper = QuestionSet.objects.create(
+            lesson=lesson7.lesson, title="Lesson 7 · Retired exercise",
+            family=lesson7.family, intro="x", rubric="x",
+        )
+        ResponseSheet.objects.create(
+            question_set=keeper, child=self.violet, answers={"1": "her work"},
+        )
+        call_command("seed_eiw_violet", "--for-user", "mup", stdout=StringIO())
+        self.assertTrue(QuestionSet.objects.filter(pk=keeper.pk).exists())
+
     def test_eiw_seed_builds_write_markup_forms(self):
         # "Write sentences… circle/underline X" exercises become write-then-markup
         # boxes: she types the sentence, then draws on it. They keep the writing

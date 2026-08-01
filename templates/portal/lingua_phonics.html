@@ -8,7 +8,7 @@
   <div class="portal-hero mb-4">
     <h1>🔤 Los sonidos del español</h1>
     <p class="mb-0">Toca una palabra para oírla. Después léela en voz alta. 🌱</p>
-    {% if focus_pattern %}<p class="portal-focus-note mb-0">Hoy: <strong>este sonido</strong> ⬇</p>{% endif %}
+    {% if focus_title %}<p class="portal-focus-note mb-0">Hoy: <strong>{{ focus_title }}</strong></p>{% endif %}
   </div>
 
   {% if rules %}

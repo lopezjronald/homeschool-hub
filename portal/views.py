@@ -282,7 +282,9 @@ def lingua_phonics(request, token):
     lingua_services.record_station_visit(learner, PathwayStep.PHONICS)
     band = learner.profile.track_profile
     rules = lingua_services.phonics_rules_with_audio(band=band)
-    focus = lingua_services.phonics_focus(learner, band=band)
+    # Reuse the rules already fetched — phonics_focus takes them for this reason.
+    focus = lingua_services.phonics_focus(
+        learner, band=band, rules=[i["rule"] for i in rules])
     return render(request, "portal/lingua_phonics.html", {
         **_station_ctx(learner, PathwayStep.PHONICS),
         "student": student, "token": token,
@@ -290,6 +292,7 @@ def lingua_phonics(request, token):
         # One sound to actually work on today; the rest stay below. A wall of eight
         # rules is a wall a 9-year-old works on none of.
         "focus_pattern": focus.pattern if focus else "",
+        "focus_title": focus.title if focus else "",
     })
 
 

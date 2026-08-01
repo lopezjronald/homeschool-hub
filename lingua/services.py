@@ -1859,7 +1859,7 @@ def phonics_focus(learner, *, band=None, rules=None):
         return None
     done = (
         learner.pathway_checkmarks
-        .filter(step__kind=PathwayStep.PHONICS)
+        .filter(step__kind=PathwayStep.PHONICS, on_date__lt=timezone.localdate())
         .values("on_date").distinct().count()
     )
     return rules[done % len(rules)]
@@ -1903,8 +1903,14 @@ def _step_observed(step, observed, *, level=None):
     kind, ref = step.kind, (step.target_ref or "").strip()
     if kind == PathwayStep.STORY_LEVEL:
         ref = level if level is not None else ref
-        # Scoped by level, or any read when the stop names no level.
-        return ref in observed["levels"] if ref else bool(observed["levels"])
+        if not ref:
+            return bool(observed["levels"])
+        # AT OR BELOW the target, matching what content_ceiling means everywhere else
+        # (_servable_stories serves LADDER[:rank+1]) and what the daily plan actually
+        # hands her — which is often a level below her ceiling. Demanding an exact
+        # rung meant she could read the only story offered and the stop stayed grey.
+        cap = profiles.level_rank(ref)
+        return any(profiles.level_rank(lv) <= cap for lv in observed["levels"])
     if kind == PathwayStep.STORY:
         if ref.isdigit():
             return int(ref) in observed["story_ids"]
@@ -2042,8 +2048,12 @@ def pathway_status(learner, *, on=None):
             # Resolved so the map can say "Leer historias L3" rather than the literal
             # "@level", and so the title follows her as she advances.
             "level": level,
+            # Append ONLY for a dynamic step: a literal-ref step already carries its
+            # level in the title, so appending gave "Leer historias L1 L1".
             "title": (f"{step.title} {level}".strip()
-                      if step.kind == PathwayStep.STORY_LEVEL and level else step.title),
+                      if (step.kind == PathwayStep.STORY_LEVEL and level
+                          and (step.target_ref or "").strip() == DYNAMIC_LEVEL)
+                      else step.title),
             "primary": is_primary,
             "checked": checked,
             "practicar": complete and step.kind in (
@@ -2060,7 +2070,7 @@ def pathway_status(learner, *, on=None):
     if finished:
         hint = "¡Terminaste el camino de hoy! 🎉"
     elif next_available is not None:
-        hint = f"Después: {next_available['step'].title}."
+        hint = f"Después: {next_available['title']}."
     else:
         hint = ""
 

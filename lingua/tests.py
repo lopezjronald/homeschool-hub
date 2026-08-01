@@ -5869,14 +5869,25 @@ class CaminoAutoTickScopingTests(TestCase):
         self.learner.profile.content_ceiling = level
         self.learner.profile.save(update_fields=["content_ceiling"])
 
-    def test_reading_BELOW_her_level_does_not_complete_the_stop(self):
-        # She is on L2; an L1 read is fine practice but is not the day's work.
+    def test_reading_BELOW_her_ceiling_still_completes_the_stop(self):
+        # content_ceiling means "how far UP the ladder", inclusive — that is what
+        # _servable_stories uses, and her own daily plan routinely offers a level
+        # below it. Demanding an exact rung meant she could read the only story the
+        # app gave her and the map stayed grey. Verified against live prod: Kaylin's
+        # ceiling is L2 while today's plan is all L1.
         from lingua.models import ReadingSession
         self._set_ceiling("L2")
         ReadingSession.objects.create(learner=self.learner, story=self.l1,
                                       words=1, seconds=20)
+        self.assertEqual(self._story_row()["status"], services.PATH_COMPLETE)
+
+    def test_reading_ABOVE_her_ceiling_does_not_complete_the_stop(self):
+        from lingua.models import ReadingSession
+        self._set_ceiling("L1")
+        ReadingSession.objects.create(learner=self.learner, story=self.l2,
+                                      words=1, seconds=20)
         self.assertEqual(self._story_row()["status"], services.PATH_AVAILABLE,
-                         "a below-level read falsely completed the stop")
+                         "a read above her ceiling completed the stop")
 
     def test_reading_AT_her_level_completes_it(self):
         from lingua.models import ReadingSession
@@ -5885,16 +5896,18 @@ class CaminoAutoTickScopingTests(TestCase):
                                       words=1, seconds=20)
         self.assertEqual(self._story_row()["status"], services.PATH_COMPLETE)
 
-    def test_the_same_read_completes_it_once_she_is_at_that_level(self):
-        # The stop follows her: an L1 read counts while she is on L1, and stops
-        # counting once she advances.
+    def test_the_stop_still_NAMES_her_new_level_after_she_advances(self):
+        # The label follows her even though an earlier read still satisfies it — the
+        # stop moves, the credit for work already done does not evaporate.
         from lingua.models import ReadingSession
         self._set_ceiling("L1")
         ReadingSession.objects.create(learner=self.learner, story=self.l1,
                                       words=1, seconds=20)
-        self.assertEqual(self._story_row()["status"], services.PATH_COMPLETE)
+        self.assertEqual(self._story_row()["level"], "L1")
         self._set_ceiling("L2")
-        self.assertEqual(self._story_row()["status"], services.PATH_AVAILABLE)
+        row = self._story_row()
+        self.assertEqual(row["level"], "L2")
+        self.assertEqual(row["status"], services.PATH_COMPLETE)
 
     def test_a_story_stop_naming_one_story_needs_THAT_story(self):
         from lingua.models import Pathway, PathwayStep, ReadingSession
@@ -6858,37 +6871,63 @@ class PhonicsFocusTests(TestCase):
 
     def _phonics_step(self):
         from lingua.models import PathwayStep
-        return PathwayStep.objects.get(pathway__slug="camino-early",
-                                       kind=PathwayStep.PHONICS)
+        return PathwayStep.objects.filter(
+            pathway__slug="camino-early", kind=PathwayStep.PHONICS
+        ).order_by("order").first()
 
     def test_a_new_learner_starts_at_the_first_sound(self):
         rules = services.phonics_rules(profiles.KIDS_EARLY)
         self.assertEqual(services.phonics_focus(self.learner).pattern, rules[0].pattern)
 
+    def _tick_days_ago(self, n, step=None):
+        services.set_pathway_checkmark(
+            self.learner, step or self._phonics_step(), True,
+            on=timezone.localdate() - timedelta(days=n))
+
     def test_the_focus_advances_only_when_she_DOES_a_session(self):
-        from datetime import date
         rules = services.phonics_rules(profiles.KIDS_EARLY)
-        step = self._phonics_step()
-        services.set_pathway_checkmark(self.learner, step, True, on=date(2026, 8, 1))
+        self._tick_days_ago(2)
         self.assertEqual(services.phonics_focus(self.learner).pattern, rules[1].pattern)
-        services.set_pathway_checkmark(self.learner, step, True, on=date(2026, 8, 2))
+        self._tick_days_ago(1)
         self.assertEqual(services.phonics_focus(self.learner).pattern, rules[2].pattern)
 
-    def test_two_ticks_on_the_SAME_day_only_advance_once(self):
-        from datetime import date
+    def test_todays_own_tick_does_not_move_the_sound_under_her(self):
+        # She ticks "Los sonidos" and comes back — the page must still highlight the
+        # sound she just worked on, not the next one.
         rules = services.phonics_rules(profiles.KIDS_EARLY)
-        step = self._phonics_step()
-        services.set_pathway_checkmark(self.learner, step, True, on=date(2026, 8, 1))
-        services.set_pathway_checkmark(self.learner, step, True, on=date(2026, 8, 1))
+        before = services.phonics_focus(self.learner).pattern
+        services.set_pathway_checkmark(self.learner, self._phonics_step(), True)
+        self.assertEqual(services.phonics_focus(self.learner).pattern, before)
+
+    def test_two_ticks_on_the_SAME_day_only_advance_once(self):
+        # Two DIFFERENT phonics steps on one day, so the unique constraint isn't what
+        # makes this pass — the distinct-on-date count is.
+        from lingua.models import Pathway, PathwayStep
+        rules = services.phonics_rules(profiles.KIDS_EARLY)
+        original = self._phonics_step()          # grab before adding the second one
+        extra = PathwayStep.objects.create(
+            pathway=Pathway.objects.get(slug="camino-early"), order=90,
+            title="Más sonidos", kind=PathwayStep.PHONICS,
+        )
+        self._tick_days_ago(1, step=original)
+        self._tick_days_ago(1, step=extra)
+        self.assertEqual(services.phonics_focus(self.learner).pattern, rules[1].pattern)
+
+    def test_ticking_a_NON_phonics_stop_does_not_move_the_sound(self):
+        # Violet ticks three stops a day on prod; without the kind filter her sound
+        # would jump three places daily.
+        from lingua.models import PathwayStep
+        rules = services.phonics_rules(profiles.KIDS_EARLY)
+        listen = PathwayStep.objects.get(pathway__slug="camino-early",
+                                         kind=PathwayStep.LISTEN)
+        self._tick_days_ago(1)
+        self._tick_days_ago(1, step=listen)
         self.assertEqual(services.phonics_focus(self.learner).pattern, rules[1].pattern)
 
     def test_the_focus_wraps_rather_than_running_out(self):
-        from datetime import date, timedelta as td
         rules = services.phonics_rules(profiles.KIDS_EARLY)
-        step = self._phonics_step()
         for i in range(len(rules)):
-            services.set_pathway_checkmark(
-                self.learner, step, True, on=date(2026, 8, 1) + td(days=i))
+            self._tick_days_ago(i + 1)
         self.assertEqual(services.phonics_focus(self.learner).pattern, rules[0].pattern)
 
     def test_no_rules_for_the_band_is_not_a_crash(self):
@@ -6918,3 +6957,18 @@ class PhonicsFocusTests(TestCase):
         for title in ("Vocales puras", "La ñ", "La rr fuerte", "El acento"):
             self.assertIn(title, html)
         self.assertNotIn("disabled", html)
+
+    def test_no_stylesheet_rule_hides_the_non_focus_sounds(self):
+        # The HTML check alone let a CSS mutant through: adding
+        # `.portal-subject-card:not(.is-focus){display:none}` passed every test while
+        # hiding seven of the eight rules. Highlighting must never become gating.
+        import pathlib
+        import re as _re
+        from django.conf import settings
+        css = (pathlib.Path(settings.BASE_DIR) / "static" / "css" / "portal.css").read_text(
+            encoding="utf-8")
+        offenders = [
+            m for m in _re.findall(r"[^}]*:not\(\.is-focus\)[^{]*\{[^}]*\}", css)
+            if "display" in m or "visibility" in m
+        ]
+        self.assertEqual(offenders, [], f"CSS hides non-focus sounds: {offenders}")

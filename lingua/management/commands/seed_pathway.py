@@ -12,20 +12,28 @@ order. Renaming and retargeting are safe; renumbering is not.
 """
 from django.core.management.base import BaseCommand
 
-from lingua import profiles
+from lingua import profiles, services
 from lingua.models import Pathway, PathwayStep
 
 # (order, title, kind, target_ref, pass_rule, optional)
+# "@level" resolves to the learner's own ceiling at render time, so the stop follows
+# her up the ladder. The old fixed "L1"/"L2" refs meant the map still said L1 after
+# she had advanced past it, and gave the older band two stops that were really one.
+_LVL = services.DYNAMIC_LEVEL
+
 EARLY_STEPS = [
     (0, "Los sonidos", PathwayStep.PHONICS, "", {}, True),
-    (1, "Leer historias L1", PathwayStep.STORY_LEVEL, "L1", {"min_stories": 1}, False),
+    (1, "Leer historias", PathwayStep.STORY_LEVEL, _LVL, {"min_stories": 1}, False),
     (2, "Escuchar", PathwayStep.LISTEN, "", {}, False),
     (3, "Con el maestro", PathwayStep.TUTOR_PACKET, "", {}, True),
 ]
 
 OLDER_STEPS = [
-    (0, "Leer historias L1", PathwayStep.STORY_LEVEL, "L1", {"min_stories": 1}, False),
-    (1, "Leer historias L2", PathwayStep.STORY_LEVEL, "L2", {"min_stories": 1}, False),
+    (0, "Leer historias", PathwayStep.STORY_LEVEL, _LVL, {"min_stories": 1}, False),
+    # Order 1 (the old fixed "Leer historias L2") is deliberately gone — @level covers
+    # both rungs. The remaining orders keep their original numbers ON PURPOSE: steps
+    # are keyed on `order`, so renumbering these would move a child's existing ticks
+    # onto different activities. Only the dropped order's checkmarks are lost.
     (2, "Escuchar", PathwayStep.LISTEN, "", {}, False),
     (3, "Con el maestro", PathwayStep.TUTOR_PACKET, "", {}, True),
     (4, "Palabras que sabes", PathwayStep.REVIEW, "", {"min_known": 5}, True),

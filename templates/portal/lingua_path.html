@@ -32,12 +32,12 @@
             <button type="submit"
                     class="portal-path-check{% if row.checked %} is-checked{% endif %}"
                     aria-pressed="{% if row.checked %}true{% else %}false{% endif %}"
-                    aria-label="{% if row.checked %}Quitar hecho: {{ row.step.title }}{% else %}Marcar hecho: {{ row.step.title }}{% endif %}">
+                    aria-label="{% if row.checked %}Quitar hecho: {{ row.title }}{% else %}Marcar hecho: {{ row.title }}{% endif %}">
               {% if row.checked %}✓{% else %}☐{% endif %}
             </button>
           </form>
           <a href="{{ row.href }}" class="portal-path-step-body">
-            <div class="portal-path-step-title">{{ row.step.title }}</div>
+            <div class="portal-path-step-title">{{ row.title }}</div>
             <div class="portal-path-step-meta">{{ row.label }}</div>
           </a>
         </div>

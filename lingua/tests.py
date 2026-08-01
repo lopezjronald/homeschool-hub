@@ -4751,15 +4751,21 @@ class PathwayStatusTests(TestCase):
         self.assertFalse(any(r["step"].kind == PathwayStep.TUTOR_PACKET for r in v["steps"]))
         self.assertTrue(any(r["step"].kind == PathwayStep.TUTOR_PACKET for r in k["steps"]))
 
-    def test_l2_open_even_when_ceiling_is_l1(self):
-        self.older.profile.content_ceiling = "L1"
-        self.older.profile.save(update_fields=["content_ceiling"])
-        status = services.pathway_status(self.older)
-        l2 = next(
-            r for r in status["steps"]
-            if r["step"].kind == PathwayStep.STORY_LEVEL and r["step"].target_ref == "L2"
-        )
-        self.assertEqual(l2["status"], services.PATH_AVAILABLE)
+    def test_the_story_stop_FOLLOWS_her_ceiling(self):
+        # Replaces test_l2_open_even_when_ceiling_is_l1, which a review showed could
+        # never fail: content_ceiling was read nowhere in the Camino, so its setup had
+        # no bearing on its assertion. It is read now, and the point has inverted — the
+        # stop should MOVE with her rather than naming a fixed rung forever.
+        for ceiling in ("L1", "L3"):
+            self.older.profile.content_ceiling = ceiling
+            self.older.profile.save(update_fields=["content_ceiling"])
+            row = next(
+                r for r in services.pathway_status(self.older)["steps"]
+                if r["step"].kind == PathwayStep.STORY_LEVEL
+            )
+            self.assertEqual(row["level"], ceiling)
+            self.assertIn(ceiling, row["title"])
+            self.assertEqual(row["status"], services.PATH_AVAILABLE)
 
     def test_map_page_renders_checkboxes(self):
         r = self.client.get(reverse("portal:lingua_path", kwargs={"token": self.violet_token}))
@@ -5854,22 +5860,41 @@ class CaminoAutoTickScopingTests(TestCase):
             if r["step"].kind == PathwayStep.STORY_LEVEL
         }
 
-    def test_reading_L1_does_not_complete_the_L2_stop(self):
+    def _story_row(self):
+        from lingua.models import PathwayStep
+        return next(r for r in services.pathway_status(self.learner)["steps"]
+                    if r["step"].kind == PathwayStep.STORY_LEVEL)
+
+    def _set_ceiling(self, level):
+        self.learner.profile.content_ceiling = level
+        self.learner.profile.save(update_fields=["content_ceiling"])
+
+    def test_reading_BELOW_her_level_does_not_complete_the_stop(self):
+        # She is on L2; an L1 read is fine practice but is not the day's work.
         from lingua.models import ReadingSession
+        self._set_ceiling("L2")
         ReadingSession.objects.create(learner=self.learner, story=self.l1,
                                       words=1, seconds=20)
-        rows = self._by_ref()
-        self.assertEqual(rows.get("L1"), services.PATH_COMPLETE)
-        self.assertEqual(rows.get("L2"), services.PATH_AVAILABLE,
-                         "an L1 read falsely completed the L2 stop")
+        self.assertEqual(self._story_row()["status"], services.PATH_AVAILABLE,
+                         "a below-level read falsely completed the stop")
 
-    def test_reading_L2_completes_only_the_L2_stop(self):
+    def test_reading_AT_her_level_completes_it(self):
         from lingua.models import ReadingSession
+        self._set_ceiling("L2")
         ReadingSession.objects.create(learner=self.learner, story=self.l2,
                                       words=1, seconds=20)
-        rows = self._by_ref()
-        self.assertEqual(rows.get("L2"), services.PATH_COMPLETE)
-        self.assertEqual(rows.get("L1"), services.PATH_AVAILABLE)
+        self.assertEqual(self._story_row()["status"], services.PATH_COMPLETE)
+
+    def test_the_same_read_completes_it_once_she_is_at_that_level(self):
+        # The stop follows her: an L1 read counts while she is on L1, and stops
+        # counting once she advances.
+        from lingua.models import ReadingSession
+        self._set_ceiling("L1")
+        ReadingSession.objects.create(learner=self.learner, story=self.l1,
+                                      words=1, seconds=20)
+        self.assertEqual(self._story_row()["status"], services.PATH_COMPLETE)
+        self._set_ceiling("L2")
+        self.assertEqual(self._story_row()["status"], services.PATH_AVAILABLE)
 
     def test_a_story_stop_naming_one_story_needs_THAT_story(self):
         from lingua.models import Pathway, PathwayStep, ReadingSession
@@ -6737,3 +6762,159 @@ class WritingPageReviewFixTests(TestCase):
             "child": str(self.kaylin.pk), "minutes": "5"}, follow=True)
         self.assertEqual(FreeWrite.objects.count(), 0)
         self.assertNotIn("0 words in 5 min", r.content.decode())
+
+
+class ProgressiveCaminoTests(TestCase):
+    """LGA-100, progressive half: the map has to move as she does. The seeded stop
+    said "Leer historias L1" forever, so it still pointed at L1 after she advanced."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from django.core.management import call_command
+        call_command("seed_pathway", verbosity=0)
+        for lvl in ("L1", "L2", "L3"):
+            Story.objects.create(title=f"S{lvl}", body="Uno.", level=lvl,
+                                 status=Story.APPROVED)
+
+    def _learner(self, host_id, ceiling, band=None):
+        l = Learner.create_for_host_student(host_id, band or profiles.KIDS_EARLY)
+        l.profile.content_ceiling = ceiling
+        l.profile.save(update_fields=["content_ceiling"])
+        return l
+
+    def _story_row(self, learner):
+        from lingua.models import PathwayStep
+        return next(r for r in services.pathway_status(learner)["steps"]
+                    if r["step"].kind == PathwayStep.STORY_LEVEL)
+
+    def test_the_stop_names_her_own_level(self):
+        self.assertEqual(self._story_row(self._learner(9901, "L1"))["level"], "L1")
+        self.assertEqual(self._story_row(self._learner(9902, "L4"))["level"], "L4")
+
+    def test_the_title_shown_to_her_carries_the_level(self):
+        row = self._story_row(self._learner(9903, "L3"))
+        self.assertIn("L3", row["title"])
+        self.assertNotIn("@level", row["title"])   # never leak the token
+
+    def test_two_children_at_different_levels_get_different_stops(self):
+        a = self._story_row(self._learner(9904, "L1"))
+        b = self._story_row(self._learner(9905, "L5"))
+        self.assertNotEqual(a["level"], b["level"])
+
+    def test_the_stop_moves_when_she_advances(self):
+        learner = self._learner(9906, "L1")
+        self.assertEqual(self._story_row(learner)["level"], "L1")
+        learner.profile.content_ceiling = "L2"
+        learner.profile.save(update_fields=["content_ceiling"])
+        self.assertEqual(self._story_row(learner)["level"], "L2")
+
+    def test_a_learner_with_no_ceiling_still_renders(self):
+        learner = Learner.create_for_host_student(9907, profiles.KIDS_EARLY)
+        learner.profile.content_ceiling = ""
+        learner.profile.save(update_fields=["content_ceiling"])
+        row = self._story_row(learner)
+        self.assertEqual(row["level"], "")
+        self.assertNotIn("@level", row["title"])
+
+    def test_the_older_band_no_longer_has_two_story_stops(self):
+        # It had "Leer historias L1" AND "Leer historias L2" — two stops that were
+        # really one, neither of which followed her.
+        from lingua.models import PathwayStep
+        older = self._learner(9908, "L2", profiles.KIDS_OLDER)
+        story_rows = [r for r in services.pathway_status(older)["steps"]
+                      if r["step"].kind == PathwayStep.STORY_LEVEL]
+        self.assertEqual(len(story_rows), 1)
+
+    def test_reseeding_still_preserves_ticks_on_the_kept_orders(self):
+        # The new spec DROPS order 1 from the older pathway. The remaining orders keep
+        # their original numbers on purpose, because steps are keyed on `order` and
+        # renumbering would move a child's ticks onto different activities.
+        from django.core.management import call_command
+        from lingua.models import PathwayCheckmark, PathwayStep
+        older = self._learner(9909, "L2", profiles.KIDS_OLDER)
+        listen = PathwayStep.objects.get(pathway__slug="camino-older",
+                                         kind=PathwayStep.LISTEN)
+        self.assertEqual(listen.order, 2, "Escuchar moved — ticks would follow the slot")
+        services.set_pathway_checkmark(older, listen, True)
+        call_command("seed_pathway", verbosity=0)
+        listen.refresh_from_db()
+        self.assertEqual(listen.kind, PathwayStep.LISTEN)
+        self.assertTrue(
+            PathwayCheckmark.objects.filter(learner=older, step=listen).exists())
+
+
+class PhonicsFocusTests(TestCase):
+    """LGA-100, progressive half: one sound to work on today. A wall of eight rules is
+    a wall a 9-year-old works on none of."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from django.core.management import call_command
+        call_command("seed_pathway", verbosity=0)
+        call_command("seed_phonics", verbosity=0)
+
+    def setUp(self):
+        self.learner = Learner.create_for_host_student(9910, profiles.KIDS_EARLY)
+
+    def _phonics_step(self):
+        from lingua.models import PathwayStep
+        return PathwayStep.objects.get(pathway__slug="camino-early",
+                                       kind=PathwayStep.PHONICS)
+
+    def test_a_new_learner_starts_at_the_first_sound(self):
+        rules = services.phonics_rules(profiles.KIDS_EARLY)
+        self.assertEqual(services.phonics_focus(self.learner).pattern, rules[0].pattern)
+
+    def test_the_focus_advances_only_when_she_DOES_a_session(self):
+        from datetime import date
+        rules = services.phonics_rules(profiles.KIDS_EARLY)
+        step = self._phonics_step()
+        services.set_pathway_checkmark(self.learner, step, True, on=date(2026, 8, 1))
+        self.assertEqual(services.phonics_focus(self.learner).pattern, rules[1].pattern)
+        services.set_pathway_checkmark(self.learner, step, True, on=date(2026, 8, 2))
+        self.assertEqual(services.phonics_focus(self.learner).pattern, rules[2].pattern)
+
+    def test_two_ticks_on_the_SAME_day_only_advance_once(self):
+        from datetime import date
+        rules = services.phonics_rules(profiles.KIDS_EARLY)
+        step = self._phonics_step()
+        services.set_pathway_checkmark(self.learner, step, True, on=date(2026, 8, 1))
+        services.set_pathway_checkmark(self.learner, step, True, on=date(2026, 8, 1))
+        self.assertEqual(services.phonics_focus(self.learner).pattern, rules[1].pattern)
+
+    def test_the_focus_wraps_rather_than_running_out(self):
+        from datetime import date, timedelta as td
+        rules = services.phonics_rules(profiles.KIDS_EARLY)
+        step = self._phonics_step()
+        for i in range(len(rules)):
+            services.set_pathway_checkmark(
+                self.learner, step, True, on=date(2026, 8, 1) + td(days=i))
+        self.assertEqual(services.phonics_focus(self.learner).pattern, rules[0].pattern)
+
+    def test_no_rules_for_the_band_is_not_a_crash(self):
+        from lingua.models import PhonicsRule
+        PhonicsRule.objects.update(active=False)
+        self.assertIsNone(services.phonics_focus(self.learner))
+
+    def test_the_page_highlights_exactly_one_sound(self):
+        from portal.tokens import make_portal_token
+        parent = User.objects.create_user("pf_parent", "pf@example.com", "pw")
+        kid = Student.objects.create(parent=parent, first_name="Vi", grade_level="G03")
+        html = self.client.get(
+            reverse("portal:lingua_phonics", kwargs={"token": make_portal_token(kid)})
+        ).content.decode()
+        self.assertEqual(html.count("is-focus"), 1)
+        self.assertIn("Hoy:", html)
+
+    def test_nothing_is_locked_by_the_focus(self):
+        # Highlighting must not become gating — LGA-93 removed locking deliberately
+        # and it is right for a 9-year-old.
+        from portal.tokens import make_portal_token
+        parent = User.objects.create_user("pf2_parent", "pf2@example.com", "pw")
+        kid = Student.objects.create(parent=parent, first_name="Vi", grade_level="G03")
+        html = self.client.get(
+            reverse("portal:lingua_phonics", kwargs={"token": make_portal_token(kid)})
+        ).content.decode()
+        for title in ("Vocales puras", "La ñ", "La rr fuerte", "El acento"):
+            self.assertIn(title, html)
+        self.assertNotIn("disabled", html)

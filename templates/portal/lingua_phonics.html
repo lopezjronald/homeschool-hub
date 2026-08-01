@@ -8,12 +8,13 @@
   <div class="portal-hero mb-4">
     <h1>🔤 Los sonidos del español</h1>
     <p class="mb-0">Toca una palabra para oírla. Después léela en voz alta. 🌱</p>
+    {% if focus_pattern %}<p class="portal-focus-note mb-0">Hoy: <strong>este sonido</strong> ⬇</p>{% endif %}
   </div>
 
   {% if rules %}
     <div class="portal-subjects" data-lingua-clips>
       {% for item in rules %}
-      <div class="portal-subject-card" style="cursor: default; flex-wrap: wrap;">
+      <div class="portal-subject-card{% if item.rule.pattern == focus_pattern %} is-focus{% endif %}" style="cursor: default; flex-wrap: wrap;">
         <div class="portal-subject-emoji">🔡</div>
         <div class="portal-subject-body" style="flex: 1 1 auto;">
           <div class="portal-subject-name">{{ item.rule.title }} <span class="text-muted">— {{ item.rule.pattern }}</span></div>

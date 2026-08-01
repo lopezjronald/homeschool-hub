@@ -127,7 +127,7 @@ def lingua_path(request, token):
             **row,
             "href": _pathway_step_href(token, student.pk, step),
             "label": label,
-        })
+        })  # row["title"] carries the level-resolved name
     return render(request, "portal/lingua_path.html", {
         "student": student, "token": token,
         "pathway": status["pathway"],
@@ -280,11 +280,16 @@ def lingua_phonics(request, token):
     student = _resolve_student(token)
     learner = _lingua_learner(student)
     lingua_services.record_station_visit(learner, PathwayStep.PHONICS)
+    band = learner.profile.track_profile
+    rules = lingua_services.phonics_rules_with_audio(band=band)
+    focus = lingua_services.phonics_focus(learner, band=band)
     return render(request, "portal/lingua_phonics.html", {
         **_station_ctx(learner, PathwayStep.PHONICS),
         "student": student, "token": token,
-        "rules": lingua_services.phonics_rules_with_audio(
-            band=learner.profile.track_profile),
+        "rules": rules,
+        # One sound to actually work on today; the rest stay below. A wall of eight
+        # rules is a wall a 9-year-old works on none of.
+        "focus_pattern": focus.pattern if focus else "",
     })
 
 

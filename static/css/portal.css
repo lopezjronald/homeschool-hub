@@ -1205,3 +1205,11 @@ button.portal-subject-card {
   background: #E7F3EC; color: #1E7A50; font-size: 1.1rem; font-weight: 800;
   text-align: center;
 }
+
+/* One sound to work on today (LGA-100, progressive). The rest stay available —
+   nothing is locked — but a 9-year-old needs somewhere to start. */
+.portal-focus-note { font-size: .95rem; font-weight: 700; }
+.portal-subject-card.is-focus {
+  border: 2px solid #EBA83A; background: #FFF7E8;
+  box-shadow: 0 2px 10px rgba(235,168,58,.25);
+}

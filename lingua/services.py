@@ -1830,6 +1830,41 @@ def _has_station_visit(learner, station_kind, target_ref=""):
     ).exists()
 
 
+# A PathwayStep target_ref of "@level" means "wherever she is now" rather than a
+# fixed rung. Without it the seeded stop said "Leer historias L1" forever, so the map
+# still pointed at L1 after she had advanced past it (LGA-100, progressive half).
+DYNAMIC_LEVEL = "@level"
+
+
+def resolve_step_level(learner, step):
+    """The level a STORY_LEVEL stop points at, resolving @level to her ceiling."""
+    ref = (step.target_ref or "").strip()
+    if ref != DYNAMIC_LEVEL:
+        return ref
+    return getattr(getattr(learner, "profile", None), "content_ceiling", "") or ""
+
+
+def phonics_focus(learner, *, band=None, rules=None):
+    """The ONE sound to work on today, advancing as she completes sessions.
+
+    A 9-year-old opening a wall of eight rules works on none of them. The index is the
+    number of DISTINCT DAYS she has ticked the phonics stop, so it moves when she
+    actually does the work — not with the calendar, which would skip sounds on the days
+    she doesn't practise. Wraps, because revisiting a sound is the point of phonics.
+
+    Returns None when there are no rules for her band."""
+    band = band or getattr(getattr(learner, "profile", None), "track_profile", "")
+    rules = rules if rules is not None else phonics_rules(band)
+    if not rules:
+        return None
+    done = (
+        learner.pathway_checkmarks
+        .filter(step__kind=PathwayStep.PHONICS)
+        .values("on_date").distinct().count()
+    )
+    return rules[done % len(rules)]
+
+
 def _observed_today(learner, on):
     """Everything the app can SEE this learner do today, fetched once.
 
@@ -1858,12 +1893,16 @@ def _observed_today(learner, on):
     }
 
 
-def _step_observed(step, observed):
-    """Whether TODAY's observed activity satisfies this specific stop."""
+def _step_observed(step, observed, *, level=None):
+    """Whether TODAY's observed activity satisfies this specific stop.
+
+    ``level`` is the RESOLVED target level — "@level" must be turned into her actual
+    ceiling first, or a dynamic stop could never be satisfied by anything."""
     if not observed:
         return False
     kind, ref = step.kind, (step.target_ref or "").strip()
     if kind == PathwayStep.STORY_LEVEL:
+        ref = level if level is not None else ref
         # Scoped by level, or any read when the stop names no level.
         return ref in observed["levels"] if ref else bool(observed["levels"])
     if kind == PathwayStep.STORY:
@@ -1877,9 +1916,9 @@ def _step_observed(step, observed):
     return False
 
 
-def _step_complete(learner, step, *, checked_ids=None, observed=None):
+def _step_complete(learner, step, *, checked_ids=None, observed=None, level=None):
     """Done TODAY — either she ticked it, or the app watched her do it."""
-    if _step_observed(step, observed):
+    if _step_observed(step, observed, level=level):
         return True
     if checked_ids is not None:
         return step.pk in checked_ids
@@ -1985,8 +2024,10 @@ def pathway_status(learner, *, on=None):
     for step in steps:
         if not _step_visible(learner, step, packets=packets):
             continue
+        level = resolve_step_level(learner, step) if (
+            step.kind == PathwayStep.STORY_LEVEL) else None
         complete = _step_complete(
-            learner, step, checked_ids=checked_ids, observed=observed)
+            learner, step, checked_ids=checked_ids, observed=observed, level=level)
         status = PATH_COMPLETE if complete else PATH_AVAILABLE
 
         is_primary = False
@@ -1998,6 +2039,11 @@ def pathway_status(learner, *, on=None):
         row = {
             "step": step,
             "status": status,
+            # Resolved so the map can say "Leer historias L3" rather than the literal
+            # "@level", and so the title follows her as she advances.
+            "level": level,
+            "title": (f"{step.title} {level}".strip()
+                      if step.kind == PathwayStep.STORY_LEVEL and level else step.title),
             "primary": is_primary,
             "checked": checked,
             "practicar": complete and step.kind in (

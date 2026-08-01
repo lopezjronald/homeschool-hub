@@ -1168,6 +1168,8 @@ class PathwayStep(models.Model):
 
     def __str__(self):
         return f"PathwayStep<{self.pathway_id}:{self.order} {self.kind}>"
+
+
 class PathwayCheckmark(models.Model):
     """Kid self-report that a Camino map stop is done ON A GIVEN DAY (LGA-93/100).
 

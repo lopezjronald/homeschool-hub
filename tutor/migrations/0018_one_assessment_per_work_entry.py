@@ -19,6 +19,25 @@ def keep_one(rows):
     )[0]
 
 
+def doomed_pks(rows):
+    """The assessments to delete so that at most one survives per work entry.
+
+    Split out from the migration body so the part that actually destroys data can
+    be tested: once the constraint stands there is no way to build a duplicate
+    through the ORM to feed an end-to-end test.
+    """
+    by_entry = {}
+    for a in rows:
+        by_entry.setdefault(a.work_entry_id, []).append(a)
+    doomed = []
+    for group in by_entry.values():
+        if len(group) < 2:
+            continue
+        keep = keep_one(group)
+        doomed += [r.pk for r in group if r.pk != keep.pk]
+    return doomed
+
+
 def drop_duplicate_assessments(apps, schema_editor):
     """Dedupe before the constraint lands, or the migration aborts the release.
 
@@ -27,17 +46,27 @@ def drop_duplicate_assessments(apps, schema_editor):
     with it.
     """
     Assessment = apps.get_model("tutor", "MasteryAssessment")
-    by_entry = {}
-    for a in Assessment.objects.all():
-        by_entry.setdefault(a.work_entry_id, []).append(a)
-    doomed = []
-    for rows in by_entry.values():
-        if len(rows) < 2:
-            continue
-        keep = keep_one(rows)
-        doomed += [r.pk for r in rows if r.pk != keep.pk]
-    if doomed:
-        Assessment.objects.filter(pk__in=doomed).delete()
+    rows = list(
+        # final_level is included because the log line below reads it; leaving it
+        # deferred would fire one extra query per doomed row.
+        Assessment.objects.only(
+            "pk", "work_entry_id", "status", "created_at", "final_level"
+        )
+    )
+    doomed = set(doomed_pks(rows))
+    if not doomed:
+        return
+    # This runs once, unattended, against irreplaceable data, and a FINALIZED row
+    # is a level a parent stamped. RunPython cannot bring them back, so put what
+    # they were in the release log — that is the only record anyone will have.
+    for r in rows:
+        if r.pk in doomed:
+            print(
+                f"HH-144 deleting duplicate assessment pk={r.pk} "
+                f"work_entry={r.work_entry_id} status={r.status} "
+                f"final_level={r.final_level!r} created={r.created_at.isoformat()}"
+            )
+    Assessment.objects.filter(pk__in=doomed).delete()
 
 
 class Migration(migrations.Migration):

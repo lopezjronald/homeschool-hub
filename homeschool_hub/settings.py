@@ -216,7 +216,11 @@ AUTH_PASSWORD_VALIDATORS = [
 # `manage.py test`. Django hashes a password on nearly every user-creating test,
 # and the default PBKDF2 hasher dominates runtime. This is auto-detected from
 # argv, so no separate settings module or test runner flag is needed.
-TESTING = "test" in sys.argv
+# Match the SUBCOMMAND, not any argument: `"test" in sys.argv` also fires for
+# `manage.py createsuperuser --username test`, which then writes an MD5 password
+# hash the web dyno cannot verify — that account can never log in, with nothing
+# to explain why. It now also decides a security default (SECURE_SSL_REDIRECT).
+TESTING = (len(sys.argv) > 1 and sys.argv[1] == "test") or "PYTEST_CURRENT_TEST" in os.environ
 if TESTING:
     PASSWORD_HASHERS = ["django.contrib.auth.hashers.MD5PasswordHasher"]
     # Grade inline (no daemon thread) under the test runner: a background grade

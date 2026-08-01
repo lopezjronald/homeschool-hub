@@ -315,7 +315,7 @@ def lingua_listen(request, token):
 def lingua_tutor(request, token):
     """Con el maestro (LGA-85): list of tutor homework packets visible to this child."""
     student = _resolve_student(token)
-    learner = _lingua_learner(student)
+    _lingua_learner(student)  # provisions on first entry; the return value is unused
     packets = lingua_services.tutor_packets_for(student.pk)
     return render(request, "portal/lingua_tutor.html", {
         "student": student, "token": token, "packets": packets,
@@ -325,7 +325,7 @@ def lingua_tutor(request, token):
 def lingua_tutor_packet(request, token, packet_id):
     """One tutor packet: download handout + practice phrases (LGA-85)."""
     student = _resolve_student(token)
-    learner = _lingua_learner(student)
+    _lingua_learner(student)  # provisions on first entry; the return value is unused
     packet = lingua_services.tutor_packet_for(student.pk, packet_id)
     if packet is None:
         raise Http404("Packet not found.")

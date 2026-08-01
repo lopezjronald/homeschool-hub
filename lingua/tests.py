@@ -7247,8 +7247,12 @@ class NoSynthesisOnTheRequestPathTests(TestCase):
         self.assertEqual(offenders, [], f"D-16 violations: {offenders}")
 
     def test_only_management_commands_bake(self):
-        # The other half: if a NON-command module ever calls bake_*, the guard above
-        # only covers the two request modules, so pin the callers explicitly.
+        # The other half. The guard above greps portal.views / lingua.views own
+        # source, so it cannot see an INDIRECT reach: services.py is imported by the
+        # views and its functions run on every portal request, so a future
+        # services.ensure_audio() that lazily bakes would be the exact "one call in
+        # a view turns every page load into a Polly bill" case and slip past it.
+        # Hence the exemption is for the DEFINITIONS, not for the file.
         import pathlib
         import re as _re
         from django.conf import settings
@@ -7258,12 +7262,14 @@ class NoSynthesisOnTheRequestPathTests(TestCase):
             rel = py.relative_to(root).as_posix()
             if rel == "tests.py" or rel.startswith("spikes/"):
                 continue
-            text = py.read_text(encoding="utf-8", errors="replace")
-            if _re.search(r"\bbake_(audio_clip|story_audio)\s*\(", text):
+            body = "\n".join(
+                line for line in py.read_text(encoding="utf-8", errors="replace").splitlines()
+                if not line.lstrip().startswith("def ")
+            )
+            if _re.search(r"\bbake_(audio_clip|story_audio)\s*\(", body):
                 callers.add(rel)
-        # services.py DEFINES them; only the two commands may CALL them.
         self.assertEqual(
-            callers - {"services.py"},
+            callers,
             {"management/commands/clips_build.py",
              "management/commands/tts_build.py"},
             f"unexpected baker: {sorted(callers)}",
@@ -7290,14 +7296,52 @@ class DeletedChildLeavesNothingBehindTests(TestCase):
         self.assertTrue(TutorPacket.objects.filter(pk=other.pk).exists())
 
     def test_the_prune_command_sweeps_orphaned_packets_too(self):
+        # This command runs unattended on a schedule, so the negative cases matter
+        # more than the positive one: a broadened filter here wipes every child's
+        # homework with nobody watching.
+        from django.contrib.auth import get_user_model
         from django.core.management import call_command
         from lingua.models import TutorPacket
+        from students.models import Student
+
+        parent = get_user_model().objects.create_user("pr_p", "pr@example.com", "pw")
+        live = Student.objects.create(parent=parent, first_name="Ada")
+        Learner.create_for_host_student(live.pk, profiles.KIDS_OLDER)
         Learner.create_for_host_student(9992, profiles.KIDS_OLDER)
+
         TutorPacket.objects.create(title="Orphan", body="Hola.", host_student_id=9992)
-        # 9992 is not a real host Student, so the learner is an orphan.
+        kept = TutorPacket.objects.create(title="Live", body="Hola.",
+                                          host_student_id=live.pk)
+        shared = TutorPacket.objects.create(title="Shared", body="Hola.",
+                                            host_student_id=None)
+
+        # 9992 is not a real host Student, so only that learner is an orphan.
         call_command("lingua_prune_orphans", verbosity=0)
+
         self.assertFalse(Learner.objects.filter(host_student_id=9992).exists())
         self.assertFalse(TutorPacket.objects.filter(title="Orphan").exists())
+        self.assertTrue(Learner.objects.filter(host_student_id=live.pk).exists())
+        self.assertTrue(TutorPacket.objects.filter(pk=kept.pk).exists())
+        self.assertTrue(TutorPacket.objects.filter(pk=shared.pk).exists())
+
+    def test_the_purge_takes_the_uploaded_file_out_of_storage_too(self):
+        # A row delete never touches FileField storage, so the child's handout would
+        # otherwise sit in R2 forever with nothing left pointing at it.
+        from django.core.files.base import ContentFile
+        from lingua.models import TutorPacket
+
+        Learner.create_for_host_student(9994, profiles.KIDS_OLDER)
+        packet = TutorPacket.objects.create(title="Handout", body="Hola.",
+                                            host_student_id=9994)
+        packet.file.save("handout.txt", ContentFile(b"tarea"), save=True)
+        name = packet.file.name
+        self.assertTrue(packet.file.storage.exists(name))
+        storage = packet.file.storage
+
+        services.delete_learner_for_student(9994)
+
+        self.assertFalse(TutorPacket.objects.filter(pk=packet.pk).exists())
+        self.assertFalse(storage.exists(name))
 
     def test_a_dry_run_deletes_nothing(self):
         from django.core.management import call_command

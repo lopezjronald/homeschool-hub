@@ -83,7 +83,7 @@ python manage.py seed_family
 | Var | Purpose | Default |
 |---|---|---|
 | `SECRET_KEY` | Django secret | dev fallback |
-| `DEBUG` | debug mode. Fails closed — put `DEBUG=true` in your local `.env`, or the dev server redirects http→https and serves no tracebacks | `False` |
+| `DEBUG` | debug mode. Fails closed — put `DEBUG=true` in your local `.env`, or `ALLOWED_HOSTS` is empty and the dev server answers **400 Bad Request** on every page | `False` |
 | `DATABASE_URL` | Postgres (Heroku sets this) | SQLite locally |
 | `ANTHROPIC_API_KEY` | AI grading + writing coach | (AI features off if unset) |
 | `TUTOR_MODEL` | Claude model id | `claude-opus-4-8` |

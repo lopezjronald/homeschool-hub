@@ -8,6 +8,7 @@ from settings, so lingua never imports the adapter (or tutor) directly.
 from datetime import timedelta
 
 import json
+import logging
 import os
 import re
 import tempfile
@@ -32,6 +33,8 @@ from .models import (
 )
 from .ports import AIClient, ImageClient
 from .prompts import CRITIC_SYSTEM, STORY_SYSTEM
+
+logger = logging.getLogger(__name__)
 
 
 class BudgetExceeded(Exception):
@@ -68,8 +71,33 @@ def delete_learner_for_student(host_student_id):
     # TutorPacket carries host_student_id as a plain int too (D-03), so nothing
     # cascades it. Left behind it keeps the tutor's name, the child's homework text
     # and an R2 file forever — exactly the gap the inline-purge rule exists to close.
-    packets, _ = TutorPacket.objects.filter(host_student_id=host_student_id).delete()
-    return deleted + packets
+    return deleted + purge_tutor_packets([host_student_id])
+
+
+def purge_tutor_packets(host_student_ids):
+    """Delete tutor packets for the given host students, uploads included.
+
+    Django stopped deleting FileField storage on model delete in 1.3, and a
+    queryset delete() never touches storage at all — so a plain .delete() here
+    would drop the row and strand the child's uploaded handout in R2 with nothing
+    left pointing at it. For a deleted-child privacy purge that is worse than
+    leaving the row, so the files go first.
+
+    A NULL host_student_id means a packet SHARED with every child; it is never an
+    orphan, so it is excluded rather than left to SQL's `IN (NULL)` behaviour.
+    """
+    hsids = [h for h in host_student_ids if h is not None]
+    if not hsids:
+        return 0
+    packets = TutorPacket.objects.filter(host_student_id__in=hsids)
+    for packet in packets.exclude(file=""):
+        try:
+            packet.file.delete(save=False)
+        except Exception:  # noqa: BLE001 — a missing/unreachable object must not
+            # block the row purge; the row is the part that holds the child's data.
+            logger.warning("Could not delete tutor packet file %s", packet.file.name)
+    deleted, _ = packets.delete()
+    return deleted
 
 
 def rotate_themes(age_band, count=3):

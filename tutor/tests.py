@@ -784,16 +784,39 @@ class AssessmentDedupeMigrationTests(TestCase):
     """
 
     @staticmethod
-    def _keep_one():
+    def _mod():
         from importlib import import_module
-        mod = import_module("tutor.migrations.0018_one_assessment_per_work_entry")
-        return mod.keep_one
+        return import_module("tutor.migrations.0018_one_assessment_per_work_entry")
 
-    def _row(self, pk, status, age_days):
-        # Unsaved instances: keep_one only reads pk/status/created_at.
+    def _keep_one(self):
+        return self._mod().keep_one
+
+    def _row(self, pk, status, age_days, entry=1):
+        # Unsaved instances: the rule only reads pk/work_entry_id/status/created_at.
         return MasteryAssessment(
-            pk=pk, status=status, created_at=timezone.now() - timedelta(days=age_days),
+            pk=pk, status=status, work_entry_id=entry,
+            created_at=timezone.now() - timedelta(days=age_days),
         )
+
+    def test_only_the_losers_of_a_duplicated_entry_are_deleted(self):
+        # The selection is what destroys data, so cover it directly: the keeper must
+        # not be in the kill list, and a row that was never duplicated must not be
+        # swept up with them.
+        doomed_pks = self._mod().doomed_pks
+        keeper = self._row(1, MasteryAssessment.FINALIZED, age_days=9, entry=100)
+        rows = [
+            keeper,
+            self._row(2, MasteryAssessment.DRAFT, age_days=1, entry=100),
+            self._row(3, MasteryAssessment.DRAFT, age_days=0, entry=100),
+            self._row(4, MasteryAssessment.DRAFT, age_days=0, entry=200),  # not duped
+        ]
+        self.assertEqual(sorted(doomed_pks(rows)), [2, 3])
+
+    def test_nothing_is_deleted_when_every_entry_has_one(self):
+        doomed_pks = self._mod().doomed_pks
+        rows = [self._row(1, MasteryAssessment.DRAFT, age_days=0, entry=100),
+                self._row(2, MasteryAssessment.FINALIZED, age_days=3, entry=200)]
+        self.assertEqual(doomed_pks(rows), [])
 
     def test_a_finalized_assessment_survives_a_newer_draft(self):
         # The stamped level is what the parent decided and what the charter report

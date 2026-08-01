@@ -97,10 +97,15 @@ def _station_ctx(learner, kind):
     status = lingua_services.pathway_status(learner)
     row = next((r for r in status["steps"] if r["step"].kind == kind), None)
     if row is None:
-        return {"station_step_id": None, "station_done": False}
+        return {"station_step_id": None, "station_done": False, "station_auto": False}
+    done = row["status"] == lingua_services.PATH_COMPLETE
+    # A stop the app ticked ITSELF can't be untuck by clearing a checkmark that was
+    # never written — offering "undo" there is a control that visibly does nothing,
+    # which is the same class of bug as the Repaso stone this work deleted.
     return {
         "station_step_id": row["step"].pk,
-        "station_done": row["status"] == lingua_services.PATH_COMPLETE,
+        "station_done": done,
+        "station_auto": done and not row["checked"],
     }
 
 

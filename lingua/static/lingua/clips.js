@@ -15,22 +15,26 @@
   var queue = [];
   var queueIdx = 0;
   var live = null;
+  var playToken = 0;
 
   function liveRegion() {
     if (live) return live;
     live = document.createElement("p");
-    live.className = "lingua-clip-error";
+    live.className = "lingua-clip-toast";
     live.setAttribute("role", "status");
     live.setAttribute("aria-live", "polite");
-    live.hidden = true;
+    // Stays IN the DOM, always. Toggling `hidden` in the same tick as setting the
+    // text is the pattern screen readers reliably fail to announce; and appended
+    // plain to the end of <body> the message rendered far below the tapped button,
+    // so it was neither heard nor seen. Fixed toast: visible wherever she tapped.
     document.body.appendChild(live);
     return live;
   }
 
   function announce(msg) {
     var el = liveRegion();
-    el.textContent = msg;
-    el.hidden = !msg;
+    el.textContent = msg || "";
+    el.classList.toggle("is-shown", !!msg);
   }
 
   function clearPlaying() {
@@ -51,10 +55,18 @@
     announce("");
     playingBtn = btn || null;
     if (playingBtn) playingBtn.classList.add("lingua-clip-playing");
+    var token = ++playToken;
     audio.src = url;
     var p = audio.play();
     if (p && typeof p.catch === "function") {
-      p.catch(function () { failed(btn); });
+      p.catch(function () {
+        // A newer tap (or the next queue item) already reassigned src, which aborts
+        // this play() — that is not a failure, and flagging it red would show an
+        // error for a queue that recovered fine.
+        if (token !== playToken) return;
+        if (queue.length && queueIdx < queue.length) next();
+        else failed(btn);
+      });
     }
   }
 
@@ -65,12 +77,6 @@
     queueIdx = 0;
     audio.pause();
     start(url, btn);
-  }
-
-  function playQueue(urls, btns) {
-    queue = urls.slice();
-    queueIdx = 0;
-    next();
   }
 
   function next() {
@@ -93,6 +99,7 @@
   });
 
   audio.addEventListener("error", function () {
+    if (!audio.src) return;         // src cleared, not a real failure
     if (queue.length && queueIdx < queue.length) {
       next();                       // skip a broken clip mid play-all
     } else {

@@ -6,6 +6,7 @@ Repo convention: django.test.TestCase + setUpTestData, no pytest.
 Run: `python manage.py collectstatic --noinput && python manage.py test lingua`.
 """
 import ast
+import datetime
 import inspect
 import io
 import json
@@ -5827,3 +5828,217 @@ class CaminoDeadEndsRemovedTests(TestCase):
         ).content.decode()
         self.assertIn("Tap a stop to open it", html)
         self.assertNotIn("Abre una parada", html)
+
+
+class CaminoAutoTickScopingTests(TestCase):
+    """LGA-100 review H1: auto-tick ignored target_ref, so one L1 story marked BOTH
+    of Kaylin's story stops 'Hecho' — credit for reading she never did."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from django.core.management import call_command
+        call_command("seed_pathway", verbosity=0)
+        cls.l1 = Story.objects.create(title="Uno", body="Uno.", level="L1",
+                                      status=Story.APPROVED)
+        cls.l2 = Story.objects.create(title="Dos", body="Dos.", level="L2",
+                                      status=Story.APPROVED)
+
+    def setUp(self):
+        self.learner = Learner.create_for_host_student(9501, profiles.KIDS_OLDER)
+
+    def _by_ref(self):
+        from lingua.models import PathwayStep
+        return {
+            (r["step"].target_ref or ""): r["status"]
+            for r in services.pathway_status(self.learner)["steps"]
+            if r["step"].kind == PathwayStep.STORY_LEVEL
+        }
+
+    def test_reading_L1_does_not_complete_the_L2_stop(self):
+        from lingua.models import ReadingSession
+        ReadingSession.objects.create(learner=self.learner, story=self.l1,
+                                      words=1, seconds=20)
+        rows = self._by_ref()
+        self.assertEqual(rows.get("L1"), services.PATH_COMPLETE)
+        self.assertEqual(rows.get("L2"), services.PATH_AVAILABLE,
+                         "an L1 read falsely completed the L2 stop")
+
+    def test_reading_L2_completes_only_the_L2_stop(self):
+        from lingua.models import ReadingSession
+        ReadingSession.objects.create(learner=self.learner, story=self.l2,
+                                      words=1, seconds=20)
+        rows = self._by_ref()
+        self.assertEqual(rows.get("L2"), services.PATH_COMPLETE)
+        self.assertEqual(rows.get("L1"), services.PATH_AVAILABLE)
+
+    def test_a_story_stop_naming_one_story_needs_THAT_story(self):
+        from lingua.models import Pathway, PathwayStep, ReadingSession
+        pathway = Pathway.objects.get(slug="camino-older")
+        step = PathwayStep.objects.create(
+            pathway=pathway, order=80, title="Lee Dos",
+            kind=PathwayStep.STORY, target_ref=str(self.l2.pk),
+        )
+        ReadingSession.objects.create(learner=self.learner, story=self.l1,
+                                      words=1, seconds=20)
+        row = next(r for r in services.pathway_status(self.learner)["steps"]
+                   if r["step"].pk == step.pk)
+        self.assertEqual(row["status"], services.PATH_AVAILABLE,
+                         "reading a different story completed this one")
+
+        ReadingSession.objects.create(learner=self.learner, story=self.l2,
+                                      words=1, seconds=20)
+        row = next(r for r in services.pathway_status(self.learner)["steps"]
+                   if r["step"].pk == step.pk)
+        self.assertEqual(row["status"], services.PATH_COMPLETE)
+
+
+class CaminoStreakCountsRealWorkTests(TestCase):
+    """LGA-100 review H2: the streak read only checkmarks, but auto-tick writes none.
+    A child who read and listened every day scored 0 — the exact 'did the work, got
+    nothing' failure the streak exists to prevent."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from django.core.management import call_command
+        call_command("seed_pathway", verbosity=0)
+        cls.story = Story.objects.create(title="S", body="Uno.", level="L1",
+                                         status=Story.APPROVED)
+
+    def setUp(self):
+        self.learner = Learner.create_for_host_student(9502, profiles.KIDS_EARLY)
+
+    def _read_on(self, d):
+        from lingua.models import ReadingSession
+        rs = ReadingSession.objects.create(learner=self.learner, story=self.story,
+                                           words=1, seconds=20)
+        ReadingSession.objects.filter(pk=rs.pk).update(
+            created_at=timezone.make_aware(datetime.datetime.combine(d, datetime.time(9, 0)))
+        )
+
+    def test_reading_alone_builds_a_streak(self):
+        today = timezone.localdate()
+        for back in (2, 1, 0):
+            self._read_on(today - timedelta(days=back))
+        self.assertEqual(services.camino_streak(self.learner, on=today), 3)
+
+    def test_listening_alone_builds_a_streak(self):
+        from lingua.models import ListeningResource, ListeningSession
+        res = ListeningResource.objects.create(
+            title="C", url="https://e.com/v", age_band=profiles.KIDS_EARLY)
+        today = timezone.localdate()
+        for back in (1, 0):
+            ls = ListeningSession.objects.create(learner=self.learner, resource=res,
+                                                 minutes=10)
+            ListeningSession.objects.filter(pk=ls.pk).update(
+                created_at=timezone.make_aware(
+                    datetime.datetime.combine(today - timedelta(days=back),
+                                              datetime.time(9, 0)))
+            )
+        self.assertEqual(services.camino_streak(self.learner, on=today), 2)
+
+    def test_the_page_shows_the_streak_she_earned_by_reading(self):
+        # End to end: the number on the map comes from real work, not just boxes.
+        today = timezone.localdate()
+        for back in (1, 0):
+            self._read_on(today - timedelta(days=back))
+        self.assertEqual(services.pathway_status(self.learner)["streak"], 2)
+
+
+class CaminoStationAutoTickTests(TestCase):
+    """LGA-100 review M1: once a stop auto-ticks there is no checkmark to clear, so
+    an 'undo' button there is a control that visibly does nothing."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from django.core.management import call_command
+        from portal.tokens import make_portal_token
+        call_command("seed_pathway", verbosity=0)
+        cls.parent = User.objects.create_user("sa_parent", "sa@example.com", "pw")
+        cls.kid = Student.objects.create(parent=cls.parent, first_name="Vi",
+                                         grade_level="G03")
+        cls.token = make_portal_token(cls.kid)
+
+    def test_auto_ticked_station_shows_a_statement_not_a_dead_button(self):
+        from lingua.models import ListeningResource
+        from homeschool_hub.adapters import lingua_students
+        learner = lingua_students.learner_for(self.kid)
+        res = ListeningResource.objects.create(
+            title="C", url="https://e.com/v", age_band=profiles.KIDS_EARLY)
+        services.record_listening(learner, res, 10)
+
+        html = self.client.get(
+            reverse("portal:lingua_listen", kwargs={"token": self.token})
+        ).content.decode()
+        self.assertIn("portal-station-auto", html)
+        self.assertNotIn("portal-station-done-btn", html)
+
+    def test_self_reported_station_still_offers_undo(self):
+        from lingua.models import PathwayStep
+        from homeschool_hub.adapters import lingua_students
+        learner = lingua_students.learner_for(self.kid)
+        step = next(r["step"] for r in services.pathway_status(learner)["steps"]
+                    if r["step"].kind == PathwayStep.PHONICS)
+        services.set_pathway_checkmark(learner, step, True)
+        html = self.client.get(
+            reverse("portal:lingua_phonics", kwargs={"token": self.token})
+        ).content.decode()
+        self.assertIn('name="done" value="0"', html)
+        self.assertNotIn("portal-station-auto", html)
+
+
+class CaminoBackfillMigrationTests(TestCase):
+    """LGA-100 review: the RunPython that reconstructs real tick history had no test,
+    so deleting it entirely was invisible. It is the riskiest part of the deploy."""
+
+    def _run_backfill(self):
+        from importlib import import_module
+        from lingua.models import PathwayCheckmark
+        mod = import_module("lingua.migrations.0028_daily_camino_checkmark")
+
+        class _Apps:
+            def get_model(self, app_label, name):
+                return PathwayCheckmark
+
+        mod.backfill_on_date(_Apps(), None)
+
+    def _mark(self, created):
+        from django.core.management import call_command
+        from lingua.models import PathwayCheckmark, PathwayStep
+        call_command("seed_pathway", verbosity=0)
+        learner = Learner.create_for_host_student(9503, profiles.KIDS_EARLY)
+        step = PathwayStep.objects.first()
+        cm = PathwayCheckmark.objects.create(learner=learner, step=step)
+        # Simulate what AddField's default did: every pre-existing row stamped today.
+        PathwayCheckmark.objects.filter(pk=cm.pk).update(
+            created_at=created, on_date=timezone.localdate())
+        return cm
+
+    def test_backfill_dates_rows_from_created_at_not_deploy_day(self):
+        from lingua.models import PathwayCheckmark
+        five_days_ago = timezone.now() - timedelta(days=5)
+        cm = self._mark(five_days_ago)
+        self.assertEqual(PathwayCheckmark.objects.get(pk=cm.pk).on_date,
+                         timezone.localdate())      # the wrong value, pre-backfill
+
+        self._run_backfill()
+
+        self.assertEqual(
+            PathwayCheckmark.objects.get(pk=cm.pk).on_date,
+            timezone.localtime(five_days_ago).date(),
+            "backfill did not restore the real tick date",
+        )
+
+    def test_backfill_uses_LOCAL_dates_not_utc(self):
+        # An evening tick in Pacific is the NEXT day in UTC; dating it from the raw
+        # UTC value would silently move a whole day of history.
+        from lingua.models import PathwayCheckmark
+        local_evening = timezone.make_aware(
+            datetime.datetime.combine(
+                timezone.localdate() - timedelta(days=3), datetime.time(22, 30))
+        )
+        cm = self._mark(local_evening)
+        self._run_backfill()
+        self.assertEqual(
+            PathwayCheckmark.objects.get(pk=cm.pk).on_date,
+            (timezone.localdate() - timedelta(days=3)),
+        )

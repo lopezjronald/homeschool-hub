@@ -1637,28 +1637,55 @@ def _has_station_visit(learner, station_kind, target_ref=""):
 
 
 def _observed_today(learner, on):
-    """The step kinds this learner demonstrably did TODAY, from real activity.
+    """Everything the app can SEE this learner do today, fetched once.
 
-    Auto-tick what the app can SEE; leave the checkbox for what it can't. She should
-    never have to walk back to the map to record work the app already watched her do —
-    that gap is why the map read "0 done" while she was doing it. Saying the sounds
-    out loud, or working a paper packet, genuinely cannot be observed, so those stay
-    self-reported."""
-    kinds = set()
-    if learner.reading_sessions.filter(created_at__date=on).exists():
-        kinds.add(PathwayStep.STORY)
-        kinds.add(PathwayStep.STORY_LEVEL)
-    if ListeningSession.objects.filter(learner=learner, created_at__date=on).exists():
-        kinds.add(PathwayStep.LISTEN)
-    if getattr(learner.profile, "reviews_served_on", None) == on and \
-            getattr(learner.profile, "reviews_served_count", 0) > 0:
-        kinds.add(PathwayStep.REVIEW)
-    return kinds
+    Auto-tick what we can observe; leave the checkbox for what we can't. She should
+    never walk back to the map to record work the app already watched — that gap is
+    why the map read "0 done" while she was doing it. Saying the sounds out loud, or
+    working a paper packet, genuinely cannot be observed, so those stay self-reported.
+
+    Carries the story LEVELS and IDS, not just "she read something": a stop that names
+    L2 must not go green because she read an L1 story."""
+    reads = list(
+        learner.reading_sessions.filter(created_at__date=on)
+        .values_list("story_id", "story__level")
+    )
+    profile = getattr(learner, "profile", None)
+    return {
+        "story_ids": {sid for sid, _ in reads},
+        "levels": {lvl for _, lvl in reads if lvl},
+        "listened": ListeningSession.objects.filter(
+            learner=learner, created_at__date=on).exists(),
+        "reviewed": bool(
+            profile
+            and getattr(profile, "reviews_served_on", None) == on
+            and getattr(profile, "reviews_served_count", 0) > 0
+        ),
+    }
+
+
+def _step_observed(step, observed):
+    """Whether TODAY's observed activity satisfies this specific stop."""
+    if not observed:
+        return False
+    kind, ref = step.kind, (step.target_ref or "").strip()
+    if kind == PathwayStep.STORY_LEVEL:
+        # Scoped by level, or any read when the stop names no level.
+        return ref in observed["levels"] if ref else bool(observed["levels"])
+    if kind == PathwayStep.STORY:
+        if ref.isdigit():
+            return int(ref) in observed["story_ids"]
+        return bool(observed["story_ids"])
+    if kind == PathwayStep.LISTEN:
+        return observed["listened"]
+    if kind == PathwayStep.REVIEW:
+        return observed["reviewed"]
+    return False
 
 
 def _step_complete(learner, step, *, checked_ids=None, observed=None):
     """Done TODAY — either she ticked it, or the app watched her do it."""
-    if observed and step.kind in observed:
+    if _step_observed(step, observed):
         return True
     if checked_ids is not None:
         return step.pk in checked_ids
@@ -1677,20 +1704,36 @@ def set_pathway_checkmark(learner, step, done, *, on=None):
     return False
 
 
+def camino_active_days(learner):
+    """Every local date this learner did SOMETHING on the Camino.
+
+    Counts observed work — reading and listening — as well as her checkboxes.
+    Counting only checkboxes made the streak nearly unreachable: auto-ticking writes
+    no checkmark row, and for the younger band the only self-report stop is the
+    optional "Los sonidos", so a child who read and listened every day scored zero.
+    That is the exact "did the work, got nothing" failure the streak exists to prevent.
+
+    ``.dates()`` truncates in the active timezone, the same one ``localdate()`` and the
+    ``created_at__date`` lookups use, so a story read at 8pm counts for that day."""
+    days = set(learner.pathway_checkmarks.values_list("on_date", flat=True))
+    days.update(learner.reading_sessions.dates("created_at", "day"))
+    days.update(
+        ListeningSession.objects.filter(learner=learner).dates("created_at", "day")
+    )
+    return days
+
+
 def camino_streak(learner, *, on=None):
-    """Consecutive days up to today with at least one Camino stop done.
+    """Consecutive days up to today on which she did something.
 
     The counterweight to the daily reset. A reset on its own is a treadmill — she does
     the work and wakes up to "0 of 3" — and the research is explicit about not making
     a sensitive child feel behind. Today's stops reset; the journey does not.
 
-    Yesterday still counts as an unbroken streak when today hasn't started, so opening
-    the app in the morning never shows the streak already lost."""
+    Yesterday still counts as unbroken when today hasn't started, so opening the app
+    in the morning never shows the streak already lost."""
     on = on or timezone.localdate()
-    days = set(
-        learner.pathway_checkmarks.filter(on_date__lte=on)
-        .values_list("on_date", flat=True)
-    )
+    days = {d for d in camino_active_days(learner) if d <= on}
     if not days:
         return 0
     cursor = on if on in days else on - timedelta(days=1)

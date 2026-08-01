@@ -1187,3 +1187,21 @@ button.portal-subject-card {
   display: block; margin-top: .5rem; font-size: .95rem; font-weight: 700;
   color: #B3261E;
 }
+
+/* Audio failure must be SEEN as well as announced. Appended to the end of <body>
+   with no positioning, the message rendered far below whatever the child tapped. */
+.lingua-clip-toast {
+  position: fixed; left: 50%; bottom: 1.1rem; transform: translateX(-50%);
+  max-width: 92vw; margin: 0; padding: .7rem 1.1rem;
+  border-radius: 999px; background: #B3261E; color: #fff;
+  font-size: 1rem; font-weight: 700; text-align: center;
+  box-shadow: 0 6px 18px rgba(0,0,0,.25); z-index: 50;
+  opacity: 0; visibility: hidden; transition: opacity .15s ease;
+}
+.lingua-clip-toast.is-shown { opacity: 1; visibility: visible; }
+
+.portal-station-auto {
+  margin: 1.6rem 0 .5rem; padding: .7rem 1rem; border-radius: 999px;
+  background: #E7F3EC; color: #1E7A50; font-size: 1.1rem; font-weight: 800;
+  text-align: center;
+}

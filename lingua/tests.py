@@ -6210,11 +6210,62 @@ class SessionErrorTaggingTests(TestCase):
         self.assertIn("Correct indirectly", older)
         self.assertNotIn("Correct indirectly", young)
 
-    def test_marking_panel_never_prints(self):
-        # The sheet goes to the child; the error taxonomy is the parent's.
+    def test_the_marking_panel_sits_inside_the_no_print_wrapper(self):
+        # The sheet goes to the child; the error taxonomy is the parent's. Assert the
+        # STRUCTURE, not a CSS substring — the old version passed whether or not the
+        # rule was inside @media print, and read a file relative to the CWD.
         html = self.client.get(
             reverse("lingua:session") + "?for=%d" % self.vio.pk).content.decode()
         self.assertIn("ses-marking", html)
-        import io as _io, pathlib
-        css = pathlib.Path("static/css/aurora-scholars.css").read_text(encoding="utf-8")
-        self.assertIn(".ses-marking { display: none !important; }", css)
+        before = html.split("ses-marking")[0]
+        self.assertIn('class="no-print"', before)
+        self.assertLess(before.rindex('class="no-print"'), len(before))
+        # ...and above the printable sheet, which must stay outside that wrapper.
+        self.assertLess(html.index("ses-marking"), html.index("ses-sheet")
+                        if "ses-sheet" in html else len(html))
+
+    def test_a_view_only_member_sees_the_counts_but_no_tag_buttons(self):
+        # Rendering a control that 404s on tap is the same "looks interactive, does
+        # nothing" bug that has bitten this app twice. Also pins the write guard:
+        # deleting can_edit_family_or_global from the view leaves the POST open.
+        from core.models import FamilyMembership
+        from lingua.models import WritingError
+        self._post()
+        teacher = User.objects.create_user("tx_teach", "txt@example.com", "pw")
+        FamilyMembership.objects.create(user=teacher, family=self.family, role="teacher")
+        self.client.force_login(teacher)
+
+        html = self.client.get(
+            reverse("lingua:session") + "?for=%d" % self.vio.pk).content.decode()
+        self.assertIn("Top mistakes this month", html)     # may READ
+        self.assertNotIn("ses-tag-btn", html)              # but not tag
+
+        before = WritingError.objects.count()
+        r = self.client.post(reverse("lingua:session_log_error"), {
+            "child": str(self.vio.pk), "category": WritingError.ACCENT})
+        self.assertEqual(r.status_code, 404)
+        self.assertEqual(WritingError.objects.count(), before)
+
+    def test_the_buttons_are_labelled_with_bare_category_names(self):
+        # They were rendered through |cut:"—"|truncatewords:2, which produced
+        # "Spelling b/v, …" on six of the eight. These buttons ARE the interaction.
+        html = self.client.get(
+            reverse("lingua:session") + "?for=%d" % self.vio.pk).content.decode()
+        for name in ("Spelling", "Accents", "Agreement", "Verbs", "Mechanics"):
+            self.assertIn(">%s</button>" % name, html)
+        self.assertNotIn("b/v, …", html)
+
+    def test_overlong_text_is_truncated_rather_than_500ing(self):
+        # Postgres enforces varchar(120); SQLite does not, so without the slice this
+        # passes in tests and DataErrors in prod on a paste.
+        from lingua.models import WritingError
+        self._post(wrote="x" * 400, expected="y" * 400)
+        e = WritingError.objects.latest("id")
+        self.assertEqual(len(e.wrote), 120)
+        self.assertEqual(len(e.expected), 120)
+
+    def test_errors_are_dated_today_in_local_time(self):
+        from lingua.models import WritingError
+        self._post()
+        self.assertEqual(WritingError.objects.latest("id").on_date,
+                         timezone.localdate())

@@ -81,6 +81,7 @@
           {% endif %}
         </p>
 
+        {% if can_tag %}
         <form method="post" action="{% url 'lingua:session_log_error' %}" class="ses-tag">
           {% csrf_token %}
           <input type="hidden" name="child" value="{{ child.pk }}">
@@ -99,10 +100,11 @@
           <span class="ses-tag-cats">
             {% for c in error_categories %}
               <button type="submit" name="category" value="{{ c.value }}"
-                      class="ses-tag-btn" title="{{ c.label }}">{{ c.label|cut:"—"|truncatewords:2 }}</button>
+                      class="ses-tag-btn" title="{{ c.label }}">{{ c.short }}</button>
             {% endfor %}
           </span>
         </form>
+        {% endif %}
 
         {% if top_errors %}
           <h3 class="ses-cat">Top mistakes this month</h3>

@@ -520,6 +520,8 @@ def session_kit(request):
 
     return render(request, "lingua/session.html", {
         "subnav": "session",
+        # A viewer (teacher/grandparent) may READ the top-3, but tagging is a write.
+        "can_tag": bool(child and can_edit_family_or_global(request.user, family)),
         "children": children, "child": child, "multi_child": len(children) > 1,
         "no_family": family is None,
         "groups": services.classroom_phrases_with_audio(),
@@ -529,7 +531,12 @@ def session_kit(request):
         # self-corrects) — Kang & Han (2015): correction works either way, so match it
         # to the child and correct selectively.
         "error_categories": [
-            {"value": c, "label": dict(WritingError.CATEGORY_CHOICES)[c]}
+            {
+                "value": c,
+                "label": dict(WritingError.CATEGORY_CHOICES)[c],
+                # The button gets the bare name; the examples live in the tooltip.
+                "short": dict(WritingError.CATEGORY_CHOICES)[c].split("—")[0].strip(),
+            }
             for c in WritingError.CATEGORY_ORDER
         ],
         "top_errors": services.top_error_categories(learner) if learner else [],

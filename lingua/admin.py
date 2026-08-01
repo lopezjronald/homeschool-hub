@@ -6,7 +6,7 @@ from .models import (
     LearnerProfile, ListeningResource, ListeningSession, MilestoneAward, Pathway,
     PathwayCheckmark, PathwayStep, PhonicsRule, ReadingSession, ReviewItem,
     FreeWrite, JournalEntry,
-    StationVisit, Story, StoryAudio, StoryImage, Theme, TutorPacket,
+    Story, StoryAudio, StoryImage, Theme, TutorPacket,
     WritingError,
 )
 
@@ -119,13 +119,6 @@ class PathwayStepAdmin(admin.ModelAdmin):
     list_display = ("pathway", "order", "title", "kind", "target_ref", "optional")
     list_filter = ("kind", "optional", "pathway")
     search_fields = ("title", "target_ref")
-
-
-@admin.register(StationVisit)
-class StationVisitAdmin(admin.ModelAdmin):
-    list_display = ("learner", "station_kind", "target_ref", "created_at")
-    list_filter = ("station_kind",)
-    search_fields = ("target_ref",)
 
 
 @admin.register(PathwayCheckmark)

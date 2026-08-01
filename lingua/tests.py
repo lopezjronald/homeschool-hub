@@ -33,7 +33,7 @@ from .models import (
     AiUsage, AlphabetTile, AudioClip, AuditEvent, BookLogEntry, ComprehensionCheck,
     KnownWord, Learner, LearnerProfile, LibraryBook, ListeningResource,
     ListeningSession, MilestoneAward, Pathway, PathwayCheckmark, PathwayStep,
-    PhonicsRule, ReadingSession, ReviewItem, StationVisit, Story, StoryAudio,
+    PhonicsRule, ReadingSession, ReviewItem, Story, StoryAudio,
     StoryImage, StoryRecording, Theme, TutorPacket,
 )
 from .ports import AIClient, AIResult, ImageClient
@@ -4667,7 +4667,8 @@ class PathwayStatusTests(TestCase):
     def test_all_visible_steps_are_open_never_locked(self):
         status = services.pathway_status(self.early)
         self.assertTrue(status["steps"])
-        self.assertTrue(all(r["status"] != services.PATH_LOCKED for r in status["steps"]))
+        self.assertTrue(all(r["status"] == services.PATH_AVAILABLE
+                            for r in status["steps"]))
         listen = next(r for r in status["steps"] if r["step"].kind == PathwayStep.LISTEN)
         self.assertEqual(listen["status"], services.PATH_AVAILABLE)
 
@@ -4715,10 +4716,11 @@ class PathwayStatusTests(TestCase):
         )
         self.assertEqual(l1["status"], services.PATH_COMPLETE)
 
-    def test_phonics_visit_alone_does_not_complete_map_step(self):
+    def test_phonics_stays_self_reported(self):
         # The other half of the rule: we cannot observe whether she SAID the sounds
-        # out loud, so opening the page proves nothing and this one stays self-reported.
-        services.record_station_visit(self.early, PathwayStep.PHONICS)
+        # out loud, so OPENING the page proves nothing and this one stays
+        # self-reported. (Opening used to write a StationVisit row; nothing ever read
+        # it, so the row is gone and the page visit is simply not evidence.)
         phonics = next(
             r for r in services.pathway_status(self.early)["steps"]
             if r["step"].kind == PathwayStep.PHONICS
@@ -7220,3 +7222,104 @@ class OlderBandSoundsRouteTests(TestCase):
         second = services.phonics_focus(learner, band=profiles.KIDS_OLDER).pattern
         self.assertNotEqual(first, second)
         self.assertEqual(second, rules[1].pattern)
+
+
+class NoSynthesisOnTheRequestPathTests(TestCase):
+    """LGA-99: D-16 says audio is baked by management commands, never at request
+    time. It holds today, but nothing ENFORCED it — unlike D-04, which is AST-guarded.
+    A single import in a view would make every page load a Polly call and a bill."""
+
+    REQUEST_MODULES = ["portal.views", "lingua.views"]
+
+    def test_no_request_module_reaches_the_tts_layer(self):
+        import importlib
+        import inspect
+        offenders = []
+        for name in self.REQUEST_MODULES:
+            src = inspect.getsource(importlib.import_module(name))
+            roots = _import_roots(src)
+            if "boto3" in roots:
+                offenders.append(f"{name} imports boto3")
+            for marker in ("synthesize_clip", "synthesize_story", "bake_audio_clip",
+                           "bake_story_audio"):
+                if marker in src:
+                    offenders.append(f"{name} references {marker}")
+        self.assertEqual(offenders, [], f"D-16 violations: {offenders}")
+
+    def test_only_management_commands_bake(self):
+        # The other half: if a NON-command module ever calls bake_*, the guard above
+        # only covers the two request modules, so pin the callers explicitly.
+        import pathlib
+        import re as _re
+        from django.conf import settings
+        root = pathlib.Path(settings.BASE_DIR) / "lingua"
+        callers = set()
+        for py in root.rglob("*.py"):
+            rel = py.relative_to(root).as_posix()
+            if rel == "tests.py" or rel.startswith("spikes/"):
+                continue
+            text = py.read_text(encoding="utf-8", errors="replace")
+            if _re.search(r"\bbake_(audio_clip|story_audio)\s*\(", text):
+                callers.add(rel)
+        # services.py DEFINES them; only the two commands may CALL them.
+        self.assertEqual(
+            callers - {"services.py"},
+            {"management/commands/clips_build.py",
+             "management/commands/tts_build.py"},
+            f"unexpected baker: {sorted(callers)}",
+        )
+
+
+class DeletedChildLeavesNothingBehindTests(TestCase):
+    """LGA-99 / D-03: nothing cascades from a host Student into lingua, so every
+    model carrying a bare host_student_id has to be purged explicitly."""
+
+    def test_deleting_a_learner_takes_their_tutor_packets(self):
+        from lingua.models import TutorPacket
+        learner = Learner.create_for_host_student(9990, profiles.KIDS_OLDER)
+        TutorPacket.objects.create(title="Hers", body="Hola.", host_student_id=9990)
+        shared = TutorPacket.objects.create(title="Shared", body="Hola.",
+                                            host_student_id=None)
+        other = TutorPacket.objects.create(title="His", body="Hola.",
+                                           host_student_id=9991)
+
+        services.delete_learner_for_student(9990)
+
+        self.assertFalse(TutorPacket.objects.filter(title="Hers").exists())
+        self.assertTrue(TutorPacket.objects.filter(pk=shared.pk).exists())
+        self.assertTrue(TutorPacket.objects.filter(pk=other.pk).exists())
+
+    def test_the_prune_command_sweeps_orphaned_packets_too(self):
+        from django.core.management import call_command
+        from lingua.models import TutorPacket
+        Learner.create_for_host_student(9992, profiles.KIDS_OLDER)
+        TutorPacket.objects.create(title="Orphan", body="Hola.", host_student_id=9992)
+        # 9992 is not a real host Student, so the learner is an orphan.
+        call_command("lingua_prune_orphans", verbosity=0)
+        self.assertFalse(Learner.objects.filter(host_student_id=9992).exists())
+        self.assertFalse(TutorPacket.objects.filter(title="Orphan").exists())
+
+    def test_a_dry_run_deletes_nothing(self):
+        from django.core.management import call_command
+        from lingua.models import TutorPacket
+        Learner.create_for_host_student(9993, profiles.KIDS_OLDER)
+        TutorPacket.objects.create(title="Safe", body="Hola.", host_student_id=9993)
+        call_command("lingua_prune_orphans", "--dry-run", verbosity=0)
+        self.assertTrue(Learner.objects.filter(host_student_id=9993).exists())
+        self.assertTrue(TutorPacket.objects.filter(title="Safe").exists())
+
+
+class NoDeadCaminoCodeTests(TestCase):
+    """LGA-99: StationVisit was written by three GET handlers and read by nothing,
+    and PATH_LOCKED named a state the map can never produce."""
+
+    def test_the_locked_state_is_gone(self):
+        self.assertFalse(hasattr(services, "PATH_LOCKED"))
+
+    def test_the_write_only_visit_model_is_gone(self):
+        from django.apps import apps
+        with self.assertRaises(LookupError):
+            apps.get_model("lingua", "StationVisit")
+        for name in ("record_station_visit", "_has_station_visit",
+                     "_stories_read_at_level"):
+            self.assertFalse(hasattr(services, name), f"{name} survived")

@@ -26,7 +26,7 @@ from .models import (
     AiUsage, AlphabetTile, AudioClip, AuditEvent, BookLogEntry, ClassroomPhrase,
     ComprehensionCheck, KnownWord, Learner, LibraryBook, ListeningResource,
     ListeningSession, MilestoneAward, Pathway, PathwayCheckmark, PathwayStep,
-    PhonicsRule, ReadingSession, ReviewItem, StationVisit, Story, StoryAudio,
+    PhonicsRule, ReadingSession, ReviewItem, Story, StoryAudio,
     FreeWrite, JournalEntry,
     StoryImage, StoryRecording, Theme, TutorPacket, WritingError,
 )
@@ -65,7 +65,11 @@ def delete_learner_for_student(host_student_id):
     backstop for any inline call that didn't run. Returns the rows-deleted count.
     """
     deleted, _ = Learner.objects.filter(host_student_id=host_student_id).delete()
-    return deleted
+    # TutorPacket carries host_student_id as a plain int too (D-03), so nothing
+    # cascades it. Left behind it keeps the tutor's name, the child's homework text
+    # and an R2 file forever — exactly the gap the inline-purge rule exists to close.
+    packets, _ = TutorPacket.objects.filter(host_student_id=host_student_id).delete()
+    return deleted + packets
 
 
 def rotate_themes(age_band, count=3):
@@ -1798,7 +1802,9 @@ def create_story_draft(*, theme, level, ai_client=None):
 
 # --- Camino pathway overlay (LGA-88) ---------------------------------------
 
-PATH_LOCKED, PATH_AVAILABLE, PATH_COMPLETE = "locked", "available", "complete"
+# No PATH_LOCKED: the Camino deliberately never locks a stop (LGA-93), so a
+# "locked" constant names a state nothing can produce.
+PATH_AVAILABLE, PATH_COMPLETE = "available", "complete"
 
 
 def pathway_for(learner):
@@ -1811,30 +1817,6 @@ def pathway_for(learner):
         .order_by("order", "id")
         .first()
     )
-
-
-def _stories_read_at_level(learner, level):
-    """Distinct approved-story pks at ``level`` the learner has read at least once."""
-    return set(
-        learner.reading_sessions.filter(story__level=level, story__isnull=False)
-        .values_list("story_id", flat=True)
-        .distinct()
-    )
-
-
-def record_station_visit(learner, station_kind, target_ref=""):
-    """Idempotent Camino station open (LGA-90). Returns (StationVisit, created)."""
-    return StationVisit.objects.get_or_create(
-        learner=learner,
-        station_kind=station_kind,
-        target_ref=(target_ref or "").strip(),
-    )
-
-
-def _has_station_visit(learner, station_kind, target_ref=""):
-    return learner.station_visits.filter(
-        station_kind=station_kind, target_ref=(target_ref or "").strip(),
-    ).exists()
 
 
 # A PathwayStep target_ref of "@level" means "wherever she is now" rather than a

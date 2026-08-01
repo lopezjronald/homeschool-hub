@@ -1168,33 +1168,6 @@ class PathwayStep(models.Model):
 
     def __str__(self):
         return f"PathwayStep<{self.pathway_id}:{self.order} {self.kind}>"
-
-
-class StationVisit(models.Model):
-    """Kid opened a Camino station (LGA-90). Honest completion signal for stations
-    that don't have their own session table yet (phonics, tutor). Content-only:
-    learner FK + opaque station kind/ref — no host FKs (D-03)."""
-
-    learner = models.ForeignKey(
-        Learner, on_delete=models.CASCADE, related_name="station_visits",
-    )
-    station_kind = models.CharField(max_length=16, help_text="Matches PathwayStep.kind.")
-    target_ref = models.CharField(max_length=128, blank=True, default="")
-    created_at = models.DateTimeField(auto_now_add=True)
-
-    class Meta:
-        constraints = [
-            models.UniqueConstraint(
-                fields=["learner", "station_kind", "target_ref"],
-                name="uniq_station_visit",
-            ),
-        ]
-        indexes = [models.Index(fields=["learner", "station_kind"])]
-
-    def __str__(self):
-        return f"StationVisit<{self.learner_id} {self.station_kind}:{self.target_ref}>"
-
-
 class PathwayCheckmark(models.Model):
     """Kid self-report that a Camino map stop is done ON A GIVEN DAY (LGA-93/100).
 

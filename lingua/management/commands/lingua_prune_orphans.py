@@ -9,7 +9,7 @@ outside the view, a bulk delete). Idempotent; safe to run on Heroku Scheduler.
 from django.core.management.base import BaseCommand
 
 from lingua.integrations import directory
-from lingua.models import Learner
+from lingua.models import Learner, TutorPacket
 
 
 class Command(BaseCommand):
@@ -37,7 +37,13 @@ class Command(BaseCommand):
                 f"[dry-run] would delete {len(orphan_pks)} orphaned learner(s)."
             )
             return
+        orphan_hsids = [hsid for _, hsid in learners if hsid not in existing]
         deleted, _ = Learner.objects.filter(pk__in=orphan_pks).delete()
+        # Sweep the other model that carries a bare host_student_id (D-03): a packet
+        # for a deleted child is private homework nothing will ever clean up.
+        packets, _ = TutorPacket.objects.filter(
+            host_student_id__in=orphan_hsids).delete()
         self.stdout.write(
-            f"Deleted {deleted} row(s) for {len(orphan_pks)} orphaned learner(s)."
+            f"Deleted {deleted} row(s) for {len(orphan_pks)} orphaned learner(s)"
+            f"{f' and {packets} orphaned tutor packet row(s)' if packets else ''}."
         )

@@ -84,11 +84,11 @@ Two trades, in order. The stumbling block is almost never the arithmetic — it'
 
 ## Why this one is genuinely harder
 
-Everything else in Chapter 3 is a single local move. This is the first problem where a child has to *hold a plan across two steps* — go get a hundred, break it, come back, break again. Expect it to take longer than the lessons on either side of it, and expect fluency to lag understanding by a while. That's normal here.
+Every other subtraction in this chapter is a single local move. This one needs a *plan held across two steps* — go get a hundred, break it, come back, break again. (She has met two-step thinking before, in Chapter 2's word problems, but this is the first time it lands inside the arithmetic itself.) Expect it to take longer than the lessons on either side of it, and expect fluency to lag understanding by a while. That's normal here.
 
 ## The classic mix-ups
 
-1. **Borrowing from the zero anyway** — crossing out the 0 and writing 9 with no idea where the 9 came from. It gives the right answer often enough to survive, and then collapses on 5,004 - 236. If she can't say *where the 9 came from*, she's pattern-matching.
+1. **Borrowing from the zero anyway** — crossing out the 0 and writing 9 with no idea where the 9 came from. It gives the right answer often enough to survive unnoticed. The test isn't whether she gets 264 — it's whether she can say *where the 9 came from*. If she can't, she's pattern-matching, and it will fail her the first time the zeros aren't where she expects.
 2. **Only trading once** — turning 500 into 4 hundreds, 10 tens, 0 ones and then subtracting 0 - 6 anyway.
 3. **Losing a hundred** — forgetting the hundreds column dropped from 5 to 4.
 

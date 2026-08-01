@@ -84,9 +84,9 @@ PANELS = [
                  "with small sparks; QUAXLY watches at the lower-right. Keep the entire upper third of the "
                  "frame as open, empty sky.",
         "refs": CAST,
-        "caption": "STEP 1 — add what we SOLD:  175 + 138 = 313   (5 + 8 = 13 — bundle ten, carry one!)",
+        "caption": "STEP 1 — add what we SOLD:  175 + 138 = 313   (5 + 8 = 13, carry a ten — then 7 + 3 + 1 = 11, carry a hundred!)",
         "bubbles": [
-            {"speaker": "Pawmi", "kind": "speech", "x": 32, "y": 13, "text": "Thirteen ones — bundle ten, carry one! I remember!"},
+            {"speaker": "Pawmi", "kind": "speech", "x": 32, "y": 13, "text": "Two carries! Bundle ten, carry one — twice! I remember!"},
         ],
     },
     {

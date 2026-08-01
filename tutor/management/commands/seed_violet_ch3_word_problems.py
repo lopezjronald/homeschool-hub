@@ -43,9 +43,9 @@ CAPTION: Two parts we know. One part we don't. That's TWO steps.
 SPRIGATITO: We can't take away the leftover — we don't know it yet!
 
 PANEL 5 — BIG. The two sold sections slide together into one combined block.
-▷ STEP 1:  175 + 138 = 313   (regroup: 5 + 8 = 13!)
+▷ STEP 1:  175 + 138 = 313   (5 + 8 = 13, carry a ten — then 7 + 3 + 1 = 11, carry a hundred!)
 CAPTION: First, add what we SOLD. That's one number now.
-PAWMI (proud): Thirteen ones — bundle ten, carry one! I remember!
+PAWMI (proud): Two carries! Bundle ten, carry one — twice! I remember!
 
 〈 PAGE 3 — STEP 2: TAKE IT AWAY 〉
 
@@ -71,7 +71,7 @@ STUDENT_INTRO = (
     "middle number first. The trick is to DRAW it before you decide anything: one "
     "long bar for the whole, cut into the parts. Then you can see which step you're "
     "able to do first. Watch the friends work out how many stickers are left after "
-    "two days of selling (450, 175, 138) — and use everything from this chapter to "
+    "a day of selling (450, 175, 138) — and use everything from this chapter to "
     "do it."
 )
 
@@ -81,9 +81,9 @@ This lesson is the chapter's payoff. It uses the regrouping from L1-L3 and the e
 
 **450 stickers. 175 sold in the morning, 138 in the afternoon. How many left?**
 
-- **Step 1 (combine the parts we know):** 175 + 138 = **313** — needs regrouping in the ones.
-- **Step 2 (take that from the whole):** 450 - 313 = **137** — needs regrouping across a zero.
-- **Check:** about 450 - about 300 ≈ 150. 137 is right around there. ✓
+- **Step 1 (combine the parts we know):** 175 + 138 = **313** — regroups **twice**: 5 + 8 = 13 carries a ten, then 7 + 3 + 1 = 11 carries a hundred. That second carry is the one that gets dropped.
+- **Step 2 (take that from the whole):** 450 - 313 = **137** — one ordinary regroup: 0 - 3 won't go, so open a ten. (Not the across-zeros case from Lesson 3 — the tens digit here is 5, so there *is* something to borrow.)
+- **Check:** 450 is already a round number, so leave it and round 313 to 300: about 450 - 300 ≈ 150. 137 is right around there. ✓ (Rounding 450 up to 500 as well would give 200 — still enough to catch a wildly wrong answer, but a looser check. Worth saying out loud that you *chose* not to round it; that judgement is exactly what Lesson 5 was about.)
 
 ## Why bar models, again
 

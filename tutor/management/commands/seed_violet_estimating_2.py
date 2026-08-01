@@ -90,7 +90,7 @@ Worth naming out loud: 389 is 11 away from 400, so rounding it up throws the est
 
 ## The classic mix-ups
 
-- **Rounding both numbers the same direction and expecting the errors to cancel.** In subtraction they don't cancel — they *add up*. 812 rounds down (−12) and 389 rounds up (+11), and both pushes make the difference smaller, which is why 400 undershoots 423 by 23.
+- **Expecting the two rounding errors to cancel.** They cancel when both numbers move the *same* way and add up when they move opposite ways. Here 812 rounds down (−12) and 389 rounds up (+11) — opposite ways — so both pushes shrink the difference and the errors add: 400 undershoots 423 by 23. (In Lesson 4 they happened to move opposite ways too, +4 and −5, and for a *sum* that's the cancelling case — which is why 700 sat right next to 701.)
 - **Thinking the closer estimate is the "real" one.** Both are estimates. 420 isn't correct either.
 - **Estimating after computing** — same trap as Part 1, and it still can't check anything.
 

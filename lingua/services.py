@@ -906,9 +906,17 @@ def mark_nudge_shown(learner):
     profile.save(update_fields=["last_nudge_reading_count", "updated_at"])
 
 
-def phonics_rules():
-    """The active Spanish phonics rules for the mini-lesson (F-04, LGA-64), ordered."""
-    return list(PhonicsRule.objects.filter(active=True))
+def phonics_rules(band=None):
+    """The active Spanish phonics rules for a band (F-04, LGA-64/98), ordered.
+
+    Rules with a blank ``age_band`` are universal; a rule that names a band is shown
+    only to that band. Without this the accent rules — which are a YEAR-LONG unit for
+    the 12-year-old — landed on the 9-year-old's sounds card, which is the exact
+    inverse of the intent."""
+    qs = PhonicsRule.objects.filter(active=True)
+    if band:
+        qs = qs.filter(Q(age_band="") | Q(age_band=band))
+    return list(qs)
 
 
 def phonics_example_words(example):
@@ -937,13 +945,13 @@ def _clip_lookup(texts, *, voice=None, engine=None, provider="polly"):
     return out
 
 
-def phonics_rules_with_audio(*, voice=None, engine=None):
+def phonics_rules_with_audio(*, band=None, voice=None, engine=None):
     """Phonics rules with per-word tap targets + optional audio URLs (LGA-84).
 
     Each rule becomes ``{rule, words: [{text, audio_url|None}]}``. Missing clips
     degrade to plain text (no dead buttons).
     """
-    rules = phonics_rules()
+    rules = phonics_rules(band)
     all_words = []
     for rule in rules:
         all_words.extend(phonics_example_words(rule.example))
@@ -1295,6 +1303,10 @@ def remediation_focus(learner, *, since=None, days=30):
 # free-write" typo can't distort the chart forever.
 FREEWRITE_MINUTES = [3, 5, 8, 10]
 MAX_FREEWRITE_MINUTES = 30
+# Postgres caps PositiveIntegerField at 2**31-1 and SQLite does not, so an
+# unclamped paste is a prod-only 500 that the test suite structurally cannot catch.
+# 50k words in 30 minutes is already absurd; anything above it is a typo.
+MAX_FREEWRITE_WORDS = 50_000
 
 
 def count_words(text):
@@ -1314,12 +1326,14 @@ def log_free_write(learner, *, minutes=5, text="", words=None, prompt="", on=Non
     except (TypeError, ValueError):
         minutes = 5
     if text and text.strip():
-        n = count_words(text)
+        n = min(count_words(text), MAX_FREEWRITE_WORDS)
     else:
         try:
-            n = max(0, int(words or 0))
+            n = max(0, min(int(words or 0), MAX_FREEWRITE_WORDS))
         except (TypeError, ValueError):
             n = 0
+    if not n:
+        return None          # nothing written — don't bank a 0-word row
     return FreeWrite.objects.create(
         learner=learner, minutes=minutes, words=n,
         text=(text or "")[:20000], prompt=(prompt or "")[:200],
@@ -1348,11 +1362,19 @@ def free_write_series(learner, *, limit=12):
 
 
 def _next_freewrite_minutes(rows):
-    """Nudge the timer up the ladder once she's comfortable, never down."""
+    """Nudge the timer up the ladder once she's settled — never down, never skipping.
+
+    Uses a HIGH-WATER MARK, not the latest entry: one short day would otherwise drag
+    the suggestion back down, and an off-ladder value (7) would suggest 8 and skip 5.
+    Always snapped to the ladder so a hand-edited POST can't leave it off-rung."""
     if not rows:
         return FREEWRITE_MINUTES[0]
-    current = rows[-1].minutes
-    if len(rows) >= 3 and all(r.minutes >= current for r in rows[-3:]):
+    high = max(r.minutes for r in rows)
+    # Snap down to the nearest rung she has actually reached.
+    reached = [m for m in FREEWRITE_MINUTES if m <= high] or [FREEWRITE_MINUTES[0]]
+    current = reached[-1]
+    settled = [r for r in rows if r.minutes >= current]
+    if len(settled) >= 3:
         later = [m for m in FREEWRITE_MINUTES if m > current]
         if later:
             return later[0]
@@ -1386,7 +1408,10 @@ def reply_to_journal(learner, entry_id, reply):
 def journal_thread(learner, *, limit=20):
     """Newest-first journal turns, plus how many are still waiting on the parent."""
     rows = list(learner.journal_entries.all()[:limit])
-    return {"rows": rows, "awaiting": sum(1 for r in rows if r.awaiting_reply)}
+    # Counted over ALL entries, not the display slice — "3 waiting" must not silently
+    # become "20 waiting" just because the page shows 20.
+    awaiting = learner.journal_entries.filter(reply="").count()
+    return {"rows": rows, "awaiting": awaiting}
 
 
 def record_listening(learner, resource, minutes):

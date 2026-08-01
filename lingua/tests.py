@@ -6302,13 +6302,18 @@ class FreeWriteTests(TestCase):
         self.assertEqual(fw.words, 3)
 
     def test_minutes_are_clamped_so_one_typo_cannot_distort_the_chart(self):
-        self.assertEqual(services.log_free_write(self.learner, minutes=600).minutes, 30)
-        self.assertEqual(services.log_free_write(self.learner, minutes=0).minutes, 1)
-        self.assertEqual(services.log_free_write(self.learner, minutes="junk").minutes, 5)
+        self.assertEqual(
+            services.log_free_write(self.learner, minutes=600, words=10).minutes, 30)
+        self.assertEqual(
+            services.log_free_write(self.learner, minutes=0, words=10).minutes, 1)
+        self.assertEqual(
+            services.log_free_write(self.learner, minutes="junk", words=10).minutes, 5)
 
-    def test_a_junk_word_count_becomes_zero_not_an_exception(self):
-        self.assertEqual(services.log_free_write(self.learner, words="lots").words, 0)
-        self.assertEqual(services.log_free_write(self.learner, words=-5).words, 0)
+    def test_a_junk_word_count_banks_nothing_rather_than_raising(self):
+        # Junk parses to zero, and a zero-word entry is refused outright — otherwise a
+        # fat-fingered submit lands a permanent 0 on her chart with no way to delete it.
+        self.assertIsNone(services.log_free_write(self.learner, words="lots"))
+        self.assertIsNone(services.log_free_write(self.learner, words=-5))
 
     def test_words_per_minute(self):
         fw = services.log_free_write(self.learner, minutes=5, words=60)
@@ -6328,7 +6333,7 @@ class FreeWriteTests(TestCase):
         bars = services.free_write_series(self.learner)["bars"]
         self.assertEqual([b["pct"] for b in bars], [50, 100])
 
-    def test_an_empty_series_does_not_divide_by_zero(self):
+    def test_an_empty_series_returns_a_usable_shape(self):
         series = services.free_write_series(self.learner)
         self.assertEqual(series["bars"], [])
         self.assertEqual(series["best"], 0)
@@ -6532,3 +6537,203 @@ class AccentRuleSeedTests(TestCase):
         call_command("seed_accent_rules", verbosity=0)
         rule = PhonicsRule.objects.get(pattern="esdrujulas")
         self.assertIn("ALWAYS", rule.tip)
+
+
+class FreeWriteReviewFixTests(TestCase):
+    """LGA-98 review: a Postgres-only overflow, a ladder that dropped, an awaiting
+    count capped by the page size, and a junk 0-word row with no delete path."""
+
+    def setUp(self):
+        self.learner = Learner.create_for_host_student(9801, profiles.KIDS_OLDER)
+
+    def test_an_absurd_word_count_is_capped_not_stored_raw(self):
+        # PositiveIntegerField is Postgres `integer` (max 2**31-1); SQLite ignores the
+        # range, so an unclamped paste is a prod-only 500 no test could otherwise see.
+        fw = services.log_free_write(self.learner, words="99999999999")
+        self.assertLessEqual(fw.words, services.MAX_FREEWRITE_WORDS)
+        self.assertLess(fw.words, 2_147_483_647)
+
+    def test_a_giant_paste_is_capped_too(self):
+        fw = services.log_free_write(self.learner, text="palabra " * 80_000)
+        self.assertLessEqual(fw.words, services.MAX_FREEWRITE_WORDS)
+
+    def test_an_empty_submit_banks_nothing(self):
+        from lingua.models import FreeWrite
+        self.assertIsNone(services.log_free_write(self.learner, minutes=5))
+        self.assertIsNone(services.log_free_write(self.learner, minutes=5, text="   "))
+        self.assertIsNone(services.log_free_write(self.learner, minutes=5, words=0))
+        self.assertEqual(FreeWrite.objects.count(), 0)
+
+    def test_the_ladder_never_drops_after_one_short_day(self):
+        for _ in range(3):
+            services.log_free_write(self.learner, minutes=10, words=100)
+        self.assertEqual(services.free_write_series(self.learner)["next_minutes"], 10)
+        services.log_free_write(self.learner, minutes=5, words=40)   # one short day
+        self.assertEqual(services.free_write_series(self.learner)["next_minutes"], 10,
+                         "one short session dragged the ladder back down")
+
+    def test_an_off_ladder_value_still_lands_on_a_rung(self):
+        # A hand-edited POST could store 6, which is on no rung. Three 6-minute writes
+        # mean she is comfortably past 5, so 8 is the right next step — the thing that
+        # must never happen is a suggestion that is itself off-ladder.
+        for _ in range(3):
+            services.log_free_write(self.learner, minutes=6, words=50)
+        nxt = services.free_write_series(self.learner)["next_minutes"]
+        self.assertIn(nxt, services.FREEWRITE_MINUTES)
+        self.assertEqual(nxt, 8)
+
+    def test_a_single_off_ladder_write_does_not_promote(self):
+        services.log_free_write(self.learner, minutes=6, words=50)
+        self.assertEqual(services.free_write_series(self.learner)["next_minutes"], 5)
+
+    def test_the_awaiting_count_is_not_capped_by_the_page_size(self):
+        for i in range(25):
+            services.log_journal_entry(self.learner, f"Entrada {i}")
+        self.assertEqual(services.journal_thread(self.learner)["awaiting"], 25)
+        self.assertEqual(len(services.journal_thread(self.learner)["rows"]), 20)
+
+    def test_the_chart_shows_the_NEWEST_entries_not_the_oldest(self):
+        for n in range(1, 16):
+            services.log_free_write(self.learner, words=n)
+        words = [r.words for r in services.free_write_series(self.learner)["rows"]]
+        self.assertEqual(words[-1], 15)
+        self.assertNotIn(1, words)
+
+    def test_best_is_the_maximum_not_the_latest(self):
+        services.log_free_write(self.learner, words=100)
+        services.log_free_write(self.learner, words=20)
+        self.assertEqual(services.free_write_series(self.learner)["best"], 100)
+
+    def test_an_all_zero_series_cannot_divide_by_zero(self):
+        # The old test only covered the EMPTY list, so the comprehension never ran and
+        # the guard it was named for was never executed.
+        from lingua.models import FreeWrite
+        for _ in range(3):
+            FreeWrite.objects.create(learner=self.learner, minutes=5, words=0)
+        series = services.free_write_series(self.learner)
+        self.assertEqual([b["pct"] for b in series["bars"]], [0, 0, 0])
+
+    def test_words_per_minute_keeps_one_decimal(self):
+        fw = services.log_free_write(self.learner, minutes=3, words=50)
+        self.assertEqual(fw.words_per_minute, 16.7)
+
+    def test_journal_text_is_escaped_not_rendered_as_html(self):
+        e = services.log_journal_entry(self.learner, "<script>alert('x')</script>")
+        self.assertIn("<script>", e.entry)          # stored verbatim
+        # ...and escaped on the way out — see the view test for the rendered page.
+
+
+class PhonicsBandGateTests(TestCase):
+    """LGA-98 review H2: the accent rules are a YEAR-LONG unit for the 12-year-old, but
+    phonics_rules() had no band filter and the phonics page is linked only from the
+    9-year-old's plan — so seeding them put them on the wrong child and gave the right
+    one nothing."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from django.core.management import call_command
+        call_command("seed_phonics", verbosity=0)
+        call_command("seed_accent_rules", verbosity=0)
+
+    def test_accent_rules_are_stamped_for_the_older_band(self):
+        from lingua.models import PhonicsRule
+        for pattern in ("agudas", "llanas", "esdrujulas", "diacritica", "hiato"):
+            self.assertEqual(
+                PhonicsRule.objects.get(pattern=pattern).age_band,
+                profiles.KIDS_OLDER,
+                f"{pattern} would show on the younger child's sounds card",
+            )
+
+    def test_the_younger_band_does_not_get_the_accent_unit(self):
+        titles = [r.title for r in services.phonics_rules(profiles.KIDS_EARLY)]
+        self.assertIn("La ñ", titles)               # base sounds: yes
+        self.assertNotIn("Esdrújulas", titles)      # year-long accent unit: no
+        self.assertNotIn("Tilde diacrítica", titles)
+
+    def test_the_older_band_gets_base_sounds_AND_accents(self):
+        titles = [r.title for r in services.phonics_rules(profiles.KIDS_OLDER)]
+        self.assertIn("La ñ", titles)
+        self.assertIn("Esdrújulas", titles)
+
+    def test_no_band_asked_for_means_everything(self):
+        self.assertEqual(len(services.phonics_rules()),
+                         len(services.phonics_rules(profiles.KIDS_OLDER)))
+
+    def test_the_kid_phonics_page_is_band_filtered(self):
+        from portal.tokens import make_portal_token
+        parent = User.objects.create_user("pb_parent", "pb@example.com", "pw")
+        vio = Student.objects.create(parent=parent, first_name="Vi", grade_level="G03")
+        html = self.client.get(
+            reverse("portal:lingua_phonics", kwargs={"token": make_portal_token(vio)})
+        ).content.decode()
+        self.assertIn("La ñ", html)
+        self.assertNotIn("Esdrújulas", html)
+
+    def test_pre_2010_forms_are_absent_from_titles_too(self):
+        # The earlier version of this check only joined tip + example, so a stale form
+        # in a title slipped through.
+        from lingua.models import PhonicsRule
+        blob = " ".join(
+            list(PhonicsRule.objects.values_list("title", flat=True))
+            + list(PhonicsRule.objects.values_list("tip", flat=True))
+            + list(PhonicsRule.objects.values_list("example", flat=True))
+        )
+        for stale in ("sólo", "éste", "ése", "aquél"):
+            self.assertNotIn(stale, blob)
+
+
+class WritingPageReviewFixTests(TestCase):
+    """The accent rules must reach the child they were seeded for, and the page must
+    escape what she wrote."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from core.models import Family, FamilyMembership
+        from django.core.management import call_command
+        call_command("seed_accent_rules", verbosity=0)
+        cls.parent = User.objects.create_user("wf_parent", "wf@example.com", "pw")
+        cls.family = Family.objects.create(name="Wf Fam")
+        FamilyMembership.objects.create(user=cls.parent, family=cls.family, role="parent")
+        cls.kaylin = Student.objects.create(
+            parent=cls.parent, first_name="Kaylin", family=cls.family, grade_level="G07",
+            date_of_birth=date(timezone.localdate().year - 12, 5, 1))
+        cls.violet = Student.objects.create(
+            parent=cls.parent, first_name="Violet", family=cls.family, grade_level="G03",
+            date_of_birth=date(timezone.localdate().year - 9, 5, 1))
+
+    def setUp(self):
+        self.client.force_login(self.parent)
+
+    def _page(self, child):
+        return self.client.get(
+            reverse("lingua:writing") + "?for=%d" % child.pk).content.decode()
+
+    def test_the_older_child_sees_the_accent_rules(self):
+        html = self._page(self.kaylin)
+        self.assertIn("Esdrújulas", html)
+        self.assertIn("Tilde diacrítica", html)
+
+    def test_the_younger_child_does_not(self):
+        self.assertNotIn("Esdrújulas", self._page(self.violet))
+
+    def test_journal_text_is_escaped_on_the_page(self):
+        self.client.post(reverse("lingua:writing_journal"), {
+            "child": str(self.kaylin.pk), "entry": "<script>alert('x')</script>"})
+        html = self._page(self.kaylin)
+        self.assertNotIn("<script>alert", html)
+        self.assertIn("&lt;script&gt;", html)
+
+    def test_her_last_free_write_can_be_read_back(self):
+        self.client.post(reverse("lingua:writing_free_write"), {
+            "child": str(self.kaylin.pk), "minutes": "5",
+            "text": "Hoy fui al parque con mi hermana."})
+        html = self._page(self.kaylin)
+        self.assertIn("Read her last free-write", html)
+        self.assertIn("Hoy fui al parque", html)
+
+    def test_an_empty_free_write_submit_is_not_celebrated(self):
+        from lingua.models import FreeWrite
+        r = self.client.post(reverse("lingua:writing_free_write"), {
+            "child": str(self.kaylin.pk), "minutes": "5"}, follow=True)
+        self.assertEqual(FreeWrite.objects.count(), 0)
+        self.assertNotIn("0 words in 5 min", r.content.decode())

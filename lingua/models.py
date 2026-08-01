@@ -206,6 +206,11 @@ class PhonicsRule(models.Model):
     title = models.CharField(max_length=80)
     tip = models.CharField(max_length=240)
     example = models.CharField(max_length=120, help_text="Practice words for decoding.")
+    age_band = models.CharField(
+        max_length=16, blank=True, choices=profiles.TRACK_CHOICES,
+        help_text="Blank = every band. The accent rules are for the older band only; "
+                  "without this they land on the youngest child's sounds page.",
+    )
     order = models.IntegerField(default=0)
     active = models.BooleanField(default=True)
 

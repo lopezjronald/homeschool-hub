@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load static %}
 {% block title %}Writing · Lingua{% endblock %}
 {% block content %}
 <div class="container py-4 wri">
@@ -50,6 +51,12 @@
         <p class="wri-best">Best so far: <strong>{{ series.best }} words</strong>{% if series.latest %} ·
           last one {{ series.latest.words }} in {{ series.latest.minutes }} min
           ({{ series.latest.words_per_minute }}/min){% endif %}</p>
+        {% if series.latest.text %}
+          <details class="wri-last">
+            <summary>Read her last free-write</summary>
+            <p class="wri-said">{{ series.latest.text|linebreaksbr }}</p>
+          </details>
+        {% endif %}
       {% else %}
         <p class="text-muted small">No free-writes yet. Start at {{ series.next_minutes|default:3 }} minutes.</p>
       {% endif %}
@@ -75,6 +82,32 @@
         </form>
       {% endif %}
     </section>
+
+    {# ---- Accent rules: the year-long unit for the older band ---- #}
+    {% if accent_rules %}
+      <section class="wri-block" data-lingua-clips>
+        <h2 class="ses-h2">Accents</h2>
+        <p class="wri-why">The 2010 RAE rules, a class at a time. Tap a word to hear where
+          the stress falls.</p>
+        {% for item in accent_rules %}
+          <div class="wri-rule">
+            <h3 class="wri-rule-title">{{ item.rule.title }}</h3>
+            <p class="wri-rule-tip">{{ item.rule.tip }}</p>
+            <div class="wri-rule-words">
+              {% for w in item.words %}
+                {% if w.audio_url %}
+                  <button type="button" class="btn btn-outline-primary btn-sm lingua-clip-btn"
+                          data-audio-url="{{ w.audio_url }}"
+                          style="min-height:44px;">{{ w.text }}</button>
+                {% else %}
+                  <span class="wri-rule-word">{{ w.text }}</span>
+                {% endif %}
+              {% endfor %}
+            </div>
+          </div>
+        {% endfor %}
+      </section>
+    {% endif %}
 
     {# ---- Dialogue journal: meaning, never correction ---- #}
     <section class="wri-block">
@@ -122,4 +155,8 @@
     </section>
   {% endif %}
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'lingua/clips.js' %}"></script>
 {% endblock %}

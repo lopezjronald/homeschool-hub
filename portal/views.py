@@ -283,7 +283,8 @@ def lingua_phonics(request, token):
     return render(request, "portal/lingua_phonics.html", {
         **_station_ctx(learner, PathwayStep.PHONICS),
         "student": student, "token": token,
-        "rules": lingua_services.phonics_rules_with_audio(),
+        "rules": lingua_services.phonics_rules_with_audio(
+            band=learner.profile.track_profile),
     })
 
 

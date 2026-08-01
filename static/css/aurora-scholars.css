@@ -831,3 +831,13 @@ a:focus-visible > .hub-tile {
   text-transform: uppercase; color: var(--ss-green-700); margin-right: .4rem; }
 .wri-replyform { display: flex; flex-direction: column; gap: .4rem; align-items: flex-start; }
 @media (max-width: 575px) { .wri-num { width: 100%; } }
+.wri-rule { border-top: 1px solid var(--ss-cloud); padding: .7rem 0 .3rem; }
+.wri-rule-title { font-size: 1rem; font-weight: 700; margin: 0 0 .15rem;
+  color: var(--ss-forest); }
+.wri-rule-tip { font-size: .92rem; line-height: 1.55; margin: 0 0 .5rem; }
+.wri-rule-words { display: flex; flex-wrap: wrap; gap: .35rem; align-items: center; }
+.wri-rule-word { padding: .3rem .5rem; font-size: .95rem; }
+.wri-last { margin: 0 0 .9rem; font-size: .92rem; }
+.wri-last > summary { cursor: pointer; color: var(--ss-green-700); }
+/* A single free-write must not render as one full-width slab. */
+.wri-bar { max-width: 72px; }

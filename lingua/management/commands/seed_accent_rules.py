@@ -9,13 +9,16 @@ pre-2010 rules would have her correcting things that are now correct.
 
 Spread across the year for the 12-year-old. The 9-year-old gets only stressed-syllable
 awareness plus the top diacritics (tú/tu, él/el, sí/si) — the research is explicit that
-explicit metalanguage should stay light at that age.
+explicit metalanguage should stay light at that age. That split is ENFORCED: every rule
+here is stamped KIDS_OLDER, because `phonics_rules()` had no band filter and these
+would otherwise have landed on the younger child's sounds card.
 
     python manage.py seed_accent_rules
     python manage.py clips_build --phonics    # then bake the example words
 """
 from django.core.management.base import BaseCommand
 
+from lingua import profiles
 from lingua.models import PhonicsRule
 
 # (pattern, title, tip, example practice words)
@@ -48,6 +51,7 @@ class Command(BaseCommand):
             _, was_created = PhonicsRule.objects.get_or_create(
                 pattern=pattern,
                 defaults={"title": title, "tip": tip, "example": example,
+                          "age_band": profiles.KIDS_OLDER,
                           "order": 100 + offset},
             )
             created += was_created

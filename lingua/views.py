@@ -595,6 +595,12 @@ def writing_track(request):
         "series": services.free_write_series(learner) if learner else None,
         "journal": services.journal_thread(learner) if learner else None,
         "minutes_options": services.FREEWRITE_MINUTES,
+        # The accent rules are seeded for the older band; without surfacing them here
+        # they would be seeded for nobody to see — the phonics page is linked only
+        # from the younger band's plan.
+        "accent_rules": services.phonics_rules_with_audio(
+            band=getattr(getattr(learner, "profile", None), "track_profile", "")
+        ) if learner else [],
     })
 
 
@@ -611,7 +617,10 @@ def writing_free_write(request):
         words=request.POST.get("words"),
         prompt=request.POST.get("prompt", ""),
     )
-    messages.success(request, f"{fw.words} words in {fw.minutes} min. 🎉")
+    if fw is None:
+        messages.info(request, "Paste what she wrote, or type the word count.")
+    else:
+        messages.success(request, f"{fw.words} words in {fw.minutes} min. 🎉")
     return redirect(f"{reverse('lingua:writing')}?for={child['pk']}")
 
 

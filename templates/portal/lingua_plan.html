@@ -68,7 +68,7 @@
     </a>
     {# Both bands now: the younger gets the base sounds, the older those plus the accent rules. Gating this to KIDS_EARLY left her accent unit unreachable. Keep to ONE line or the tail leaks onto the page (LGA-83). #}
     <a href="{% url 'portal:lingua_phonics' token=token %}" class="portal-camino-stone">
-      <span class="portal-camino-stone-emoji">{% if band == 'KIDS_EARLY' %}🔤{% else %}´{% endif %}</span>
+      <span class="portal-camino-stone-emoji">{% if band == 'KIDS_EARLY' %}🔤{% else %}🎯{% endif %}</span>
       <span class="portal-camino-stone-label">{% if band == 'KIDS_EARLY' %}Sonidos{% else %}Acentos{% endif %}</span>
     </a>
     <a href="{% url 'portal:lingua_listen' token=token %}" class="portal-camino-stone">

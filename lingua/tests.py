@@ -2668,11 +2668,11 @@ class PhonicsTests(TestCase):
         self.assertIn("lingua-clip-btn", html)
         self.assertIn("data-play-all", html)
 
-    def test_plan_shows_phonics_only_for_kids_early(self):
+    def test_both_bands_get_a_sounds_stone_with_their_own_label(self):
         early = self.client.get(reverse("portal:lingua_plan", kwargs={"token": self.early_token})).content.decode()
         older = self.client.get(reverse("portal:lingua_plan", kwargs={"token": self.older_token})).content.decode()
         self.assertIn("Sonidos", early)     # phonics trail stone for the youngest band
-        self.assertNotIn(">Sonidos<", older)  # not for older kids
+        self.assertNotIn(">Sonidos<", older)   # hers reads "Acentos"  # not for older kids
         self.assertIn("Hoy", early)
         self.assertIn("Mapa", early)
         self.assertIn("Sigue explorando", early)
@@ -7008,36 +7008,38 @@ class PhonicsFocusTests(TestCase):
 
 
 class PronunciationOverrideTests(TestCase):
-    """LGA-101: a phonics word exists to demonstrate ONE sound. The owner reported
-    "llama" coming out closer to a plain /l/ than the yeísmo /ʝ/ the card teaches — a
-    phonics example that mispronounces its own sound is worse than no audio."""
+    """LGA-101: Polly's es-MX is good, so overrides are for the few texts it gets
+    WRONG. Measured with viseme speech marks: the ll TILE ("elle") comes out
+    e-t — alveolar /l/ — while the ll WORDS ("llama" -> J-a-p-a) are already
+    correct. Overriding the words changed nothing; overriding the tile is the fix."""
 
-    def test_the_ll_words_all_carry_an_explicit_pronunciation(self):
+    def test_the_ll_letter_name_is_overridden(self):
         from lingua import pronunciation
-        for word in ("llama", "pollo", "calle", "lluvia"):
-            ipa = pronunciation.ipa_for(word)
-            self.assertIsNotNone(ipa, f"{word} has no IPA override")
-            self.assertIn("ʝ", ipa, f"{word} is not transcribed with the yeísmo sound")
-            self.assertNotIn("l", ipa.replace("ʝ", ""),
-                             f"{word} still transcribes an /l/")
+        ipa = pronunciation.ipa_for("elle")
+        self.assertIsNotNone(ipa)
+        self.assertIn("ʝ", ipa, "the ll letter name is not transcribed as palatal")
 
-    def test_seseo_not_castilian_lisp(self):
-        # es-MX (D-02): z and soft c are /s/, never /θ/.
+    def test_words_polly_already_says_correctly_are_left_alone(self):
+        # Measured byte-identical with and without an override, so an entry here
+        # would churn the content hash and re-bake for no audible change.
         from lingua import pronunciation
-        for word, ipa in pronunciation.IPA.items():
-            self.assertNotIn("θ", ipa, f"{word} uses the Castilian /θ/")
+        for word in ("llama", "pollo", "calle", "lluvia", "perro", "mesa", "hoy"):
+            self.assertIsNone(pronunciation.ipa_for(word),
+                              f"{word} has a no-op override")
 
-    def test_rr_is_the_trill_and_not_the_tap(self):
+    def test_no_override_uses_a_symbol_outside_pollys_es_MX_table(self):
+        # Polly silently IGNORES symbols it doesn't know rather than erroring, so a
+        # stray one degrades the word instead of failing loudly. "oi̯" did exactly
+        # that: the combining breve was dropped and "hoy" became two syllables.
         from lingua import pronunciation
-        for word in ("perro", "carro", "gorra", "tierra"):
-            self.assertNotIn("ɾ", pronunciation.ipa_for(word),
-                             f"{word} transcribes the tap, not the trill")
-
-    def test_a_word_with_no_override_is_left_to_polly(self):
-        from lingua import pronunciation
-        self.assertIsNone(pronunciation.ipa_for("mesa"))
-        self.assertIsNone(pronunciation.ipa_for(""))
-        self.assertIsNone(pronunciation.ipa_for(None))
+        allowed_marks = {"ˈ", "ˌ", "."}
+        for text, ipa in pronunciation.IPA.items():
+            for ch in ipa:
+                self.assertFalse(
+                    ch in "̯̃͡" or (not ch.isalpha() and ch not in allowed_marks),
+                    f"{text!r} uses {ch!r} (U+{ord(ch):04X}), outside Polly's es-MX table",
+                )
+            self.assertNotIn("θ", ipa, f"{text} uses the Castilian /θ/, not es-MX seseo")
 
     def test_an_override_is_sent_as_ssml_phoneme(self):
         from lingua import audio
@@ -7048,7 +7050,7 @@ class PronunciationOverrideTests(TestCase):
                 seen.update(kw)
                 return {"AudioStream": io.BytesIO(b"mp3")}
 
-        audio.synthesize_clip("llama", client=_Polly())
+        audio.synthesize_clip("elle", client=_Polly())
         self.assertEqual(seen["TextType"], "ssml")
         self.assertIn('<phoneme alphabet="ipa"', seen["Text"])
         self.assertIn("ʝ", seen["Text"])
@@ -7062,11 +7064,11 @@ class PronunciationOverrideTests(TestCase):
                 seen.update(kw)
                 return {"AudioStream": io.BytesIO(b"mp3")}
 
-        audio.synthesize_clip("mesa", client=_Polly())
+        audio.synthesize_clip("llama", client=_Polly())
         self.assertEqual(seen["TextType"], "text")
-        self.assertEqual(seen["Text"], "mesa")
+        self.assertEqual(seen["Text"], "llama")
 
-    def test_ssml_special_characters_cannot_break_the_markup(self):
+    def test_a_quote_in_an_ipa_cannot_break_out_of_the_attribute(self):
         from lingua import audio, pronunciation
         seen = {}
 
@@ -7075,26 +7077,37 @@ class PronunciationOverrideTests(TestCase):
                 seen.update(kw)
                 return {"AudioStream": io.BytesIO(b"mp3")}
 
-        with mock.patch.dict(pronunciation.IPA, {"a<b&c": "ˈa"}, clear=False):
-            audio.synthesize_clip("a<b&c", client=_Polly())
-        self.assertNotIn("<b&c", seen["Text"])
-        self.assertIn("&lt;", seen["Text"])
+        with mock.patch.dict(pronunciation.IPA,
+                             {"x": 'a"><prosody rate="x-slow">'}, clear=False):
+            audio.synthesize_clip("x", client=_Polly())
+        self.assertNotIn("<prosody", seen["Text"])
 
-    def test_changing_a_pronunciation_re_bakes_only_that_clip(self):
-        # The content hash is over the text, so without folding the IPA in, editing a
-        # transcription would leave the old (wrong-sounding) mp3 in place forever.
-        from lingua import assets, pronunciation
-        base = assets.content_hash("mesa", provider="polly", voice="Mia", engine="neural")
-        with_ipa = assets.content_hash(
-            f"llama [ipa:{pronunciation.ipa_for('llama')}]",
-            provider="polly", voice="Mia", engine="neural")
-        plain_llama = assets.content_hash("llama", provider="polly", voice="Mia",
-                                          engine="neural")
-        self.assertNotEqual(with_ipa, plain_llama)   # override changes the key
-        # ...and a word with no override keeps the key it already has on prod.
+    def test_changing_a_pronunciation_re_bakes_THROUGH_bake_audio_clip(self):
+        # Exercise the real path: the previous version recomputed the hash by hand,
+        # which asserted nothing about whether bake_audio_clip folds the IPA in.
+        from lingua import pronunciation
+        from lingua.models import AudioClip
+
+        class _Polly:
+            def synthesize_speech(self, **kw):
+                return {"AudioStream": io.BytesIO(b"mp3")}
+
+        with mock.patch.object(lingua_storage, "save_audio"):
+            services.bake_audio_clip("elle", client=_Polly())
+            first = AudioClip.objects.get(text="elle").content_hash
+            with mock.patch.dict(pronunciation.IPA, {"elle": "ˈe.ʝo"}, clear=False):
+                services.bake_audio_clip("elle", client=_Polly())
+                second = AudioClip.objects.get(text="elle").content_hash
+        self.assertNotEqual(first, second,
+                            "editing the IPA did not invalidate the baked clip")
+
+    def test_a_word_with_no_override_keeps_the_key_it_already_has(self):
+        # The 131 clips on prod must not churn just because this mechanism exists.
+        from lingua import assets
         self.assertEqual(
-            base,
-            assets.content_hash("mesa", provider="polly", voice="Mia", engine="neural"))
+            assets.content_hash("mesa", provider="polly", voice="Mia", engine="neural"),
+            assets.content_hash("mesa", provider="polly", voice="Mia", engine="neural"),
+        )
 
 
 class AccentedVowelSoundsTests(TestCase):
@@ -7107,7 +7120,7 @@ class AccentedVowelSoundsTests(TestCase):
 
     def test_accented_vowels_are_taught_as_the_same_sounds(self):
         from lingua.models import PhonicsRule
-        rule = PhonicsRule.objects.get(pattern="vowels-accent")
+        rule = PhonicsRule.objects.get(pattern="acentuadas")
         self.assertIn("SAME", rule.tip)
         for w in ("papá", "bebé", "aquí", "avión", "menú"):
             self.assertIn(w, rule.example)
@@ -7176,6 +7189,22 @@ class OlderBandSoundsRouteTests(TestCase):
         kinds = [r["step"].kind for r in services.pathway_status(learner)["steps"]]
         self.assertIn(PathwayStep.PHONICS, kinds)
 
+    def test_her_focus_STARTS_on_an_accent_rule_not_a_base_sound(self):
+        # The stone says "Acentos". Cycling all 15 rules meant ten ticked days before
+        # the focus reached one, so the stone promised something it wasn't showing.
+        from homeschool_hub.adapters import lingua_students
+        learner = lingua_students.learner_for(self.kaylin)
+        focus = services.phonics_focus(learner, band=profiles.KIDS_OLDER)
+        self.assertEqual(focus.age_band, profiles.KIDS_OLDER)
+        self.assertIn(focus.pattern,
+                      {"agudas", "llanas", "esdrujulas", "diacritica", "hiato"})
+
+    def test_the_younger_bands_focus_still_covers_the_base_sounds(self):
+        from homeschool_hub.adapters import lingua_students
+        learner = lingua_students.learner_for(self.violet)
+        focus = services.phonics_focus(learner, band=profiles.KIDS_EARLY)
+        self.assertEqual(focus.age_band, "")
+
     def test_her_focus_advances_through_the_accent_rules(self):
         # Previously she had no phonics step, so the focus could never move off rule 1.
         from homeschool_hub.adapters import lingua_students
@@ -7183,7 +7212,8 @@ class OlderBandSoundsRouteTests(TestCase):
         learner = lingua_students.learner_for(self.kaylin)
         step = next(r["step"] for r in services.pathway_status(learner)["steps"]
                     if r["step"].kind == PathwayStep.PHONICS)
-        rules = services.phonics_rules(profiles.KIDS_OLDER)
+        rules = [r for r in services.phonics_rules(profiles.KIDS_OLDER)
+                 if r.age_band == profiles.KIDS_OLDER]
         first = services.phonics_focus(learner, band=profiles.KIDS_OLDER).pattern
         services.set_pathway_checkmark(
             learner, step, True, on=timezone.localdate() - timedelta(days=1))

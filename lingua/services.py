@@ -1864,6 +1864,12 @@ def phonics_focus(learner, *, band=None, rules=None):
     rules = rules if rules is not None else phonics_rules(band)
     if not rules:
         return None
+    # Prefer the rules written FOR this band. Kaylin's stone says "Acentos", but
+    # cycling all 15 rules meant ten ticked days before the focus reached an accent
+    # rule at all — the stone would have been promising something it wasn't showing.
+    own = [r for r in rules if r.age_band == band]
+    if own:
+        rules = own
     done = (
         learner.pathway_checkmarks
         .filter(step__kind=PathwayStep.PHONICS, on_date__lt=timezone.localdate())

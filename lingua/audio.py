@@ -23,7 +23,7 @@ import re
 
 from django.conf import settings
 
-from xml.sax.saxutils import escape
+from xml.sax.saxutils import escape, quoteattr
 
 from . import pronunciation, safety
 
@@ -187,8 +187,10 @@ def synthesize_clip(text, *, voice=None, engine=None, client=None):
     # was coming out closer to a plain /l/ than the yeísmo /ʝ/ the card teaches.
     ipa = pronunciation.ipa_for(text)
     if ipa:
-        body = (f'<speak><phoneme alphabet="ipa" ph="{escape(ipa)}">'
-                f'{escape(text)}</phoneme></speak>')
+        # quoteattr, not escape: escape() leaves a double quote untouched, which
+        # would break out of the ph="..." attribute.
+        body = (f"<speak><phoneme alphabet=\"ipa\" ph={quoteattr(ipa)}>"
+                f"{escape(text)}</phoneme></speak>")
         text_type = "ssml"
     else:
         body, text_type = text, "text"

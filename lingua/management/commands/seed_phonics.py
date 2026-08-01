@@ -23,7 +23,7 @@ RULES = [
     # The accented vowels are their own thing to RECOGNISE before any rule about when
     # to write them: they are the same five sounds, just louder. Without this a child
     # meets á for the first time inside a word and reads it as a new letter.
-    ("vowels-accent", "Las vocales con acento",
+    ("acentuadas", "Las vocales con acento",
      "á é í ó ú are the SAME sounds as a e i o u — you just say that part louder.",
      "papá · bebé · aquí · avión · menú"),
     ("dieresis", "La ü",

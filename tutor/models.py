@@ -66,6 +66,17 @@ class MasteryAssessment(models.Model):
 
     class Meta:
         ordering = ["-created_at"]
+        constraints = [
+            # One assessment per piece of work. This was enforced only by a row lock
+            # taken on the shared WorkLogEntry during grading, which does not cover a
+            # management command, a shell fix-up, or a future caller that forgets it —
+            # and prod had already accumulated a work entry with THREE assessments.
+            # A duplicate shows the parent two mastery levels for one piece of work
+            # and double-counts it in the charter report's distribution and trends.
+            models.UniqueConstraint(
+                fields=["work_entry"], name="unique_assessment_per_work_entry",
+            ),
+        ]
 
     def __str__(self):
         return f"Assessment of {self.work_entry} ({self.get_status_display()})"

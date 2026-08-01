@@ -1,4 +1,5 @@
 import json
+from datetime import timedelta
 from io import StringIO
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -6,6 +7,7 @@ from unittest.mock import patch
 from django.contrib.auth import get_user_model
 from django.core.management import call_command
 from django.test import TestCase, override_settings
+from django.utils import timezone
 from django.urls import reverse
 
 from core.models import Family, FamilyMembership
@@ -726,3 +728,124 @@ class SubmissionNotifyTests(TestCase):
             grading.auto_grade_sheet(sheet)
         self.assertEqual(len(mail.outbox), 1)
         self.assertEqual(mail.outbox[0].to, ["np@e.com"])
+
+
+class OneAssessmentPerWorkEntryTests(TestCase):
+    """HH-144: the one-assessment-per-entry rule was enforced only by an application
+    row lock, and prod had already accumulated an entry with THREE assessments."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from students.models import Student
+        from worklog.models import WorkLogEntry
+        User = get_user_model()
+        cls.parent = User.objects.create_user("oa_parent", "oa@example.com", "pw")
+        cls.kid = Student.objects.create(parent=cls.parent, first_name="Nia")
+        cls.entry = WorkLogEntry.objects.create(
+            parent=cls.parent, child=cls.kid, date=timezone.localdate(),
+            subject="Math", description="p.40",
+        )
+
+    def _make(self, entry=None, **kw):
+        from tutor.models import MasteryAssessment
+        return MasteryAssessment.objects.create(
+            work_entry=entry or self.entry, rubric="r", answers="a", **kw)
+
+    def test_a_second_assessment_is_refused_by_the_database(self):
+        from django.db import IntegrityError, transaction
+        from tutor.models import MasteryAssessment
+        self._make()
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                self._make()
+        self.assertEqual(MasteryAssessment.objects.count(), 1)
+
+    def test_a_different_entry_is_unaffected(self):
+        from tutor.models import MasteryAssessment
+        from worklog.models import WorkLogEntry
+        other = WorkLogEntry.objects.create(
+            parent=self.parent, child=self.kid, date=timezone.localdate(),
+            subject="Reading", description="ch.2",
+        )
+        self._make()
+        self._make(entry=other)
+        self.assertEqual(MasteryAssessment.objects.count(), 2)
+
+
+class AssessmentDedupeMigrationTests(TestCase):
+    """The migration has to dedupe BEFORE adding the constraint, or the release
+    aborts on prod — which already holds a work entry with three assessments.
+
+    The keep rule is exercised directly rather than through the ORM: once the
+    constraint stands there is no way to build a duplicate to feed it (that is the
+    whole point), and on SQLite the constraint is an inline table constraint that
+    every schema rebuild re-applies from the model. keep_one() sorts its own input
+    precisely so it can be tested this way.
+    """
+
+    @staticmethod
+    def _keep_one():
+        from importlib import import_module
+        mod = import_module("tutor.migrations.0018_one_assessment_per_work_entry")
+        return mod.keep_one
+
+    def _row(self, pk, status, age_days):
+        # Unsaved instances: keep_one only reads pk/status/created_at.
+        return MasteryAssessment(
+            pk=pk, status=status, created_at=timezone.now() - timedelta(days=age_days),
+        )
+
+    def test_a_finalized_assessment_survives_a_newer_draft(self):
+        # The stamped level is what the parent decided and what the charter report
+        # counts, so keeping the most recent row would erase the wrong one.
+        keep_one = self._keep_one()
+        old_final = self._row(1, MasteryAssessment.FINALIZED, age_days=9)
+        rows = [self._row(2, MasteryAssessment.DRAFT, age_days=1),
+                old_final,
+                self._row(3, MasteryAssessment.DRAFT, age_days=0)]
+        self.assertEqual(keep_one(rows).pk, old_final.pk)
+
+    def test_the_newest_wins_when_none_is_finalized(self):
+        keep_one = self._keep_one()
+        newest = self._row(2, MasteryAssessment.DRAFT, age_days=1)
+        rows = [self._row(1, MasteryAssessment.DRAFT, age_days=4),
+                newest,
+                self._row(3, MasteryAssessment.DRAFT, age_days=7)]
+        self.assertEqual(keep_one(rows).pk, newest.pk)
+
+    def test_the_newest_wins_among_several_finalized(self):
+        keep_one = self._keep_one()
+        newer_final = self._row(1, MasteryAssessment.FINALIZED, age_days=1)
+        rows = [self._row(2, MasteryAssessment.FINALIZED, age_days=6), newer_final]
+        self.assertEqual(keep_one(rows).pk, newer_final.pk)
+
+    def test_recency_is_by_timestamp_not_row_id(self):
+        # A backfilled or re-imported row gets a high pk with an old created_at;
+        # ranking on pk would then keep stale work.
+        keep_one = self._keep_one()
+        rows = [self._row(99, MasteryAssessment.DRAFT, age_days=30),
+                self._row(2, MasteryAssessment.DRAFT, age_days=1)]
+        self.assertEqual(keep_one(rows).pk, 2)
+
+    def test_the_dedupe_is_a_no_op_when_there_are_no_duplicates(self):
+        from importlib import import_module
+        from students.models import Student
+        from worklog.models import WorkLogEntry
+        User = get_user_model()
+        parent = User.objects.create_user("dd_parent", "dd@example.com", "pw")
+        kid = Student.objects.create(parent=parent, first_name="Nia")
+        entry = WorkLogEntry.objects.create(
+            parent=parent, child=kid, date=timezone.localdate(),
+            subject="Math", description="p.40",
+        )
+        only = MasteryAssessment.objects.create(
+            work_entry=entry, rubric="r", answers="a")
+
+        class _Apps:
+            def get_model(self, app_label, name):
+                return MasteryAssessment
+
+        mod = import_module("tutor.migrations.0018_one_assessment_per_work_entry")
+        mod.drop_duplicate_assessments(_Apps(), None)
+
+        self.assertEqual([a.pk for a in MasteryAssessment.objects.all()], [only.pk])

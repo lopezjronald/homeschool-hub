@@ -20,10 +20,10 @@ from django.db.models import Count, Max, Q
 from core.permissions import can_edit_family, can_edit_family_or_global, user_can_edit
 from core.utils import get_selected_family
 
-from . import cognates, illustrate, services, storage
+from . import cognates, illustrate, profiles, services, storage
 from .csp import LINGUA_CSP
 from .integrations import directory
-from .models import BookLogEntry, Learner, LibraryBook, Story
+from .models import BookLogEntry, Learner, LibraryBook, Story, WritingError
 
 
 @login_required
@@ -524,12 +524,57 @@ def session_kit(request):
         "no_family": family is None,
         "groups": services.classroom_phrases_with_audio(),
         "sheet": sheet,
+        # LGA-95: what she keeps getting wrong, and what to correct HOW. Direct for
+        # the younger child (supply the form), indirect for the older (underline, she
+        # self-corrects) — Kang & Han (2015): correction works either way, so match it
+        # to the child and correct selectively.
+        "error_categories": [
+            {"value": c, "label": dict(WritingError.CATEGORY_CHOICES)[c]}
+            for c in WritingError.CATEGORY_ORDER
+        ],
+        "top_errors": services.top_error_categories(learner) if learner else [],
+        "focus": services.remediation_focus(learner) if learner else None,
+        "correction_mode": (
+            "indirect" if getattr(getattr(learner, "profile", None), "track_profile", "")
+            == profiles.KIDS_OLDER else "direct"
+        ),
         # getattr twice: a Learner without a LearnerProfile would otherwise 500 here,
         # and session_sheet already defends against exactly that case.
         "band_label": getattr(
             getattr(learner, "profile", None), "get_track_profile_display", lambda: ""
         )(),
     })
+
+
+@login_required
+@require_POST
+def session_log_error(request):
+    """Tag one mistake while marking her paper (LGA-95).
+
+    Two taps, not a form — the parent is mid-session with a pencil in hand. The child
+    is resolved INSIDE the selected family's queryset, never trusted from the POST."""
+    family = get_selected_family(request)
+    if family is None or not can_edit_family_or_global(request.user, family):
+        raise Http404
+    child = directory.child_in_family(_int_or_none(request.POST.get("child")), family.pk)
+    if child is None:
+        raise Http404
+
+    learner = services.learner_for_child(child)
+    entry = services.log_writing_error(
+        learner,
+        request.POST.get("category", ""),
+        source=request.POST.get("source", ""),
+        wrote=request.POST.get("wrote", ""),
+        expected=request.POST.get("expected", ""),
+    )
+    if entry is None:
+        messages.info(request, "Pick what kind of mistake it was.")
+    else:
+        messages.success(
+            request,
+            f"Noted for {child['first_name']}: {entry.get_category_display().split('—')[0].strip()}.")
+    return redirect(f"{reverse('lingua:session')}?for={child['pk']}")
 
 
 @login_required

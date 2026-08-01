@@ -6042,3 +6042,179 @@ class CaminoBackfillMigrationTests(TestCase):
             PathwayCheckmark.objects.get(pk=cm.pk).on_date,
             (timezone.localdate() - timedelta(days=3)),
         )
+
+
+class WritingErrorTaxonomyTests(TestCase):
+    """LGA-95: the research asks for exactly this — frequency per category per learner,
+    so the app can target remediation and show the parent a 'top 3 this month'."""
+
+    def setUp(self):
+        self.learner = Learner.create_for_host_student(9601, profiles.KIDS_EARLY)
+
+    def _log(self, cat, n=1, on=None):
+        from lingua.models import WritingError
+        for _ in range(n):
+            services.log_writing_error(self.learner, cat, on=on)
+
+    def test_all_eight_research_categories_exist(self):
+        from lingua.models import WritingError
+        self.assertEqual(len(WritingError.CATEGORY_CHOICES), 8)
+        self.assertEqual(
+            set(WritingError.CATEGORY_ORDER),
+            {c for c, _ in WritingError.CATEGORY_CHOICES},
+            "CATEGORY_ORDER and CATEGORY_CHOICES disagree",
+        )
+
+    def test_an_unknown_category_is_refused_not_stored(self):
+        # A typo in a caller must not pollute the counts that drive remediation.
+        from lingua.models import WritingError
+        self.assertIsNone(services.log_writing_error(self.learner, "spelling"))
+        self.assertEqual(WritingError.objects.count(), 0)
+
+    def test_an_unknown_source_falls_back_rather_than_rejecting_the_error(self):
+        from lingua.models import WritingError
+        e = services.log_writing_error(self.learner, WritingError.ACCENT, source="junk")
+        self.assertIsNotNone(e)
+        self.assertEqual(e.source, WritingError.DICTADO)
+
+    def test_top_three_are_ordered_by_frequency(self):
+        from lingua.models import WritingError
+        self._log(WritingError.ORTHOGRAPHIC, 5)
+        self._log(WritingError.ACCENT, 3)
+        self._log(WritingError.VERB, 1)
+        self._log(WritingError.MECHANICS, 4)
+        top = services.top_error_categories(self.learner)
+        self.assertEqual([t["category"] for t in top],
+                         [WritingError.ORTHOGRAPHIC, WritingError.MECHANICS,
+                          WritingError.ACCENT])
+        self.assertEqual(top[0]["count"], 5)
+
+    def test_ties_break_stably_by_the_taxonomy_order(self):
+        # A "top 3" that wobbles between page loads is untrustworthy.
+        from lingua.models import WritingError
+        self._log(WritingError.MECHANICS, 2)
+        self._log(WritingError.ORTHOGRAPHIC, 2)
+        first = [t["category"] for t in services.top_error_categories(self.learner)]
+        for _ in range(4):
+            self.assertEqual(
+                [t["category"] for t in services.top_error_categories(self.learner)],
+                first,
+            )
+        # ORTHOGRAPHIC is earlier in CATEGORY_ORDER, so it wins the tie.
+        self.assertEqual(first[0], WritingError.ORTHOGRAPHIC)
+
+    def test_old_errors_fall_out_of_the_window(self):
+        from lingua.models import WritingError
+        self._log(WritingError.VERB, 3, on=timezone.localdate() - timedelta(days=90))
+        self._log(WritingError.ACCENT, 1)
+        top = services.top_error_categories(self.learner)
+        self.assertEqual([t["category"] for t in top], [WritingError.ACCENT])
+
+    def test_counts_are_per_learner(self):
+        from lingua.models import WritingError
+        other = Learner.create_for_host_student(9602, profiles.KIDS_EARLY)
+        self._log(WritingError.ORTHOGRAPHIC, 4)
+        self.assertEqual(services.top_error_categories(other), [])
+
+    def test_remediation_focus_names_the_contrasts_to_drill(self):
+        from lingua.models import WritingError
+        self._log(WritingError.ORTHOGRAPHIC, 2)
+        focus = services.remediation_focus(self.learner)
+        self.assertEqual(focus["category"], WritingError.ORTHOGRAPHIC)
+        # These are the ones a Mexican-Spanish learner genuinely cannot HEAR
+        # (seseo + yeísmo), which is why they need explicit drilling.
+        self.assertIn("c/s/z", focus["patterns"])
+        self.assertIn("ll/y", focus["patterns"])
+        self.assertIn("b/v", focus["patterns"])
+
+    def test_no_errors_means_no_invented_weakness(self):
+        self.assertIsNone(services.remediation_focus(self.learner))
+
+
+class SessionErrorTaggingTests(TestCase):
+    """LGA-95: tagging happens mid-session with a pencil in hand — two taps, and it
+    must be family-scoped like every other write."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from core.models import Family, FamilyMembership
+        cls.parent = User.objects.create_user("tx_parent", "tx@example.com", "pw")
+        cls.family = Family.objects.create(name="Tx Fam")
+        FamilyMembership.objects.create(user=cls.parent, family=cls.family, role="parent")
+        cls.vio = Student.objects.create(parent=cls.parent, first_name="Violet",
+                                         family=cls.family, grade_level="G03")
+        other = User.objects.create_user("tx_other", "txo@example.com", "pw")
+        cls.other_family = Family.objects.create(name="Other Tx")
+        FamilyMembership.objects.create(user=other, family=cls.other_family, role="parent")
+        cls.outsider = Student.objects.create(parent=other, first_name="Zzz",
+                                              family=cls.other_family, grade_level="G05")
+
+    def setUp(self):
+        self.client.force_login(self.parent)
+
+    def _post(self, **extra):
+        from lingua.models import WritingError
+        data = {"child": str(self.vio.pk), "category": WritingError.ORTHOGRAPHIC,
+                "source": "dictado", "wrote": "vaca", "expected": "baca"}
+        data.update(extra)
+        return self.client.post(reverse("lingua:session_log_error"), data)
+
+    def test_get_is_rejected(self):
+        self.assertEqual(
+            self.client.get(reverse("lingua:session_log_error")).status_code, 405)
+
+    def test_tagging_stores_the_error_against_the_right_child(self):
+        from lingua.models import WritingError
+        r = self._post()
+        self.assertEqual(r.status_code, 302)
+        e = WritingError.objects.get()
+        self.assertEqual(e.learner.host_student_id, self.vio.pk)
+        self.assertEqual(e.category, WritingError.ORTHOGRAPHIC)
+        self.assertEqual(e.wrote, "vaca")
+
+    def test_cannot_tag_against_another_familys_child(self):
+        from lingua.models import WritingError
+        r = self._post(child=str(self.outsider.pk))
+        self.assertEqual(r.status_code, 404)
+        self.assertFalse(WritingError.objects.exists())
+
+    def test_a_bad_category_stores_nothing(self):
+        from lingua.models import WritingError
+        r = self._post(category="nonsense")
+        self.assertEqual(r.status_code, 302)
+        self.assertFalse(WritingError.objects.exists())
+
+    def test_the_session_page_shows_the_top_three_and_the_focus(self):
+        from lingua.models import WritingError
+        for _ in range(3):
+            self._post()
+        self._post(category=WritingError.ACCENT)
+        html = self.client.get(
+            reverse("lingua:session") + "?for=%d" % self.vio.pk).content.decode()
+        self.assertIn("Top mistakes this month", html)
+        self.assertIn("Work on this", html)
+        self.assertIn("c/s/z", html)          # the drill patterns for her top category
+
+    def test_correction_mode_follows_the_child_not_a_hardcode(self):
+        # Direct for the younger child (supply the form), indirect for the older
+        # (underline, she self-corrects) — Kang & Han (2015).
+        kaylin = Student.objects.create(
+            parent=self.parent, first_name="Kaylin", family=self.family,
+            grade_level="G07", date_of_birth=date(timezone.localdate().year - 12, 5, 1),
+        )
+        young = self.client.get(
+            reverse("lingua:session") + "?for=%d" % self.vio.pk).content.decode()
+        older = self.client.get(
+            reverse("lingua:session") + "?for=%d" % kaylin.pk).content.decode()
+        self.assertIn("Correct directly", young)
+        self.assertIn("Correct indirectly", older)
+        self.assertNotIn("Correct indirectly", young)
+
+    def test_marking_panel_never_prints(self):
+        # The sheet goes to the child; the error taxonomy is the parent's.
+        html = self.client.get(
+            reverse("lingua:session") + "?for=%d" % self.vio.pk).content.decode()
+        self.assertIn("ses-marking", html)
+        import io as _io, pathlib
+        css = pathlib.Path("static/css/aurora-scholars.css").read_text(encoding="utf-8")
+        self.assertIn(".ses-marking { display: none !important; }", css)

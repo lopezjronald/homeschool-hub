@@ -56,6 +56,68 @@
       <strong>You're the facilitator, not the expert.</strong> You do not need to be fluent for this to work — you need the routine to happen, in Spanish, most days. Tap any phrase to hear it, then say it yourself.
     </div>
 
+    {% if child %}
+      <section class="ses-marking">
+        <h2 class="ses-h2">Marking her writing</h2>
+
+        {% if focus %}
+          <p class="ses-focus">
+            <strong>Work on this:</strong> {{ focus.label }}
+            <span class="ses-focus-n">({{ focus.count }} this month)</span>
+            {% if focus.patterns %}
+              <span class="ses-focus-drill">Drill: {{ focus.patterns|join:" · " }}</span>
+            {% endif %}
+          </p>
+        {% endif %}
+
+        <p class="ses-mode">
+          {% if correction_mode == 'indirect' %}
+            <strong>Correct indirectly.</strong> Underline the mistake and let her find it —
+            she's old enough to self-correct, and it sticks better than being told.
+          {% else %}
+            <strong>Correct directly.</strong> Show her the right form and move on. Keep it
+            light and pick <em>one</em> thing per session — correcting everything is how a
+            9-year-old stops wanting to write.
+          {% endif %}
+        </p>
+
+        <form method="post" action="{% url 'lingua:session_log_error' %}" class="ses-tag">
+          {% csrf_token %}
+          <input type="hidden" name="child" value="{{ child.pk }}">
+          <label class="visually-hidden" for="tag-source">Where</label>
+          <select id="tag-source" name="source" class="ses-tag-src">
+            <option value="dictado">Dictado</option>
+            <option value="copia">Copia</option>
+            <option value="freewrite">Free write</option>
+            <option value="journal">Journal</option>
+            <option value="other">Other</option>
+          </select>
+          <input type="text" name="wrote" maxlength="120" placeholder="she wrote…"
+                 class="ses-tag-text" aria-label="What she wrote">
+          <input type="text" name="expected" maxlength="120" placeholder="should be…"
+                 class="ses-tag-text" aria-label="What it should be">
+          <span class="ses-tag-cats">
+            {% for c in error_categories %}
+              <button type="submit" name="category" value="{{ c.value }}"
+                      class="ses-tag-btn" title="{{ c.label }}">{{ c.label|cut:"—"|truncatewords:2 }}</button>
+            {% endfor %}
+          </span>
+        </form>
+
+        {% if top_errors %}
+          <h3 class="ses-cat">Top mistakes this month</h3>
+          <ol class="ses-top">
+            {% for e in top_errors %}
+              <li><span class="ses-top-n">{{ e.count }}×</span> {{ e.label }}</li>
+            {% endfor %}
+          </ol>
+        {% else %}
+          <p class="text-muted small mb-0">Nothing tagged yet — tag a mistake above and
+            the sheet starts targeting it.</p>
+        {% endif %}
+      </section>
+    {% endif %}
+
     {% if groups %}
       <h2 class="ses-h2">Say it in Spanish</h2>
       <div data-lingua-clips>

@@ -6,6 +6,7 @@ from .models import (
     LearnerProfile, ListeningResource, ListeningSession, MilestoneAward, Pathway,
     PathwayCheckmark, PathwayStep, PhonicsRule, ReadingSession, ReviewItem,
     StationVisit, Story, StoryAudio, StoryImage, Theme, TutorPacket,
+    WritingError,
 )
 
 
@@ -33,6 +34,17 @@ class ThemeAdmin(admin.ModelAdmin):
 class PhonicsRuleAdmin(admin.ModelAdmin):
     list_display = ("pattern", "title", "order", "active")
     list_filter = ("active",)
+
+
+@admin.register(WritingError)
+class WritingErrorAdmin(admin.ModelAdmin):
+    """Tagged mistakes drive the next sheet's targeting, so a mis-tag is worth being
+    able to fix here rather than living in the counts forever."""
+
+    list_display = ("learner", "category", "source", "wrote", "expected", "on_date")
+    list_filter = ("category", "source", "on_date")
+    search_fields = ("wrote", "expected")
+    date_hierarchy = "on_date"
 
 
 @admin.register(ClassroomPhrase)

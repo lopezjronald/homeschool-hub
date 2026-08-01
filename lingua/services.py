@@ -27,7 +27,7 @@ from .models import (
     ComprehensionCheck, KnownWord, Learner, LibraryBook, ListeningResource,
     ListeningSession, MilestoneAward, Pathway, PathwayCheckmark, PathwayStep,
     PhonicsRule, ReadingSession, ReviewItem, StationVisit, Story, StoryAudio,
-    StoryImage, StoryRecording, Theme, TutorPacket,
+    StoryImage, StoryRecording, Theme, TutorPacket, WritingError,
 )
 from .ports import AIClient, ImageClient
 from .prompts import CRITIC_SYSTEM, STORY_SYSTEM
@@ -1218,6 +1218,74 @@ def session_sheet(learner, *, story=None, on=None):
                 break
         dictado = words
     return {"story": story, "copia": copia, "dictado": dictado, "shape": shape}
+
+
+# --- Writing-error taxonomy (LGA-95) -----------------------------------------
+
+
+def log_writing_error(learner, category, *, source=None, wrote="", expected="", on=None):
+    """Tag one mistake while marking her paper. Returns the row, or None if the
+    category isn't real — a typo in a caller must not silently pollute the counts
+    that drive remediation."""
+    valid = {c for c, _ in WritingError.CATEGORY_CHOICES}
+    if category not in valid:
+        return None
+    sources = {s for s, _ in WritingError.SOURCE_CHOICES}
+    return WritingError.objects.create(
+        learner=learner,
+        category=category,
+        source=source if source in sources else WritingError.DICTADO,
+        wrote=(wrote or "")[:120],
+        expected=(expected or "")[:120],
+        on_date=on or timezone.localdate(),
+    )
+
+
+def top_error_categories(learner, *, since=None, days=30, limit=3):
+    """The research's "top 3 error types this month", for the parent.
+
+    Ties break by the taxonomy's own order rather than arbitrarily, so the list is
+    stable between page loads — a wobbling "top 3" would be untrustworthy."""
+    since = since or (timezone.localdate() - timedelta(days=days))
+    counts = (
+        WritingError.objects.filter(learner=learner, on_date__gte=since)
+        .values("category")
+        .annotate(n=Count("id"))
+    )
+    labels = dict(WritingError.CATEGORY_CHOICES)
+    rank = {c: i for i, c in enumerate(WritingError.CATEGORY_ORDER)}
+    rows = [
+        {"category": c["category"], "label": labels.get(c["category"], c["category"]),
+         "count": c["n"]}
+        for c in counts
+    ]
+    rows.sort(key=lambda r: (-r["count"], rank.get(r["category"], 99)))
+    return rows[:limit]
+
+
+# Which orthographic contrasts each category wants drilled. Only the ones a
+# Mexican-Spanish learner genuinely cannot hear (seseo + yeísmo) plus the accent
+# rules — a drill for something she can already hear is wasted practice.
+ERROR_DRILL_PATTERNS = {
+    WritingError.ORTHOGRAPHIC: ["b/v", "c/s/z", "g/j", "ll/y", "h muda", "r/rr"],
+    WritingError.ACCENT: ["tilde", "diacrítica", "hiato"],
+}
+
+
+def remediation_focus(learner, *, since=None, days=30):
+    """What the next sheet should target: her top category, plus the specific
+    contrasts to drill for it. Returns None when there's nothing logged yet — the
+    caller falls back to level-scaled material rather than inventing a weakness."""
+    top = top_error_categories(learner, since=since, days=days, limit=1)
+    if not top:
+        return None
+    cat = top[0]["category"]
+    return {
+        "category": cat,
+        "label": top[0]["label"],
+        "count": top[0]["count"],
+        "patterns": ERROR_DRILL_PATTERNS.get(cat, []),
+    }
 
 
 def record_listening(learner, resource, minutes):

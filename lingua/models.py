@@ -257,6 +257,78 @@ class ClassroomPhrase(models.Model):
         return f"ClassroomPhrase<{self.text}>"
 
 
+class WritingError(models.Model):
+    """One mistake the parent tagged while marking a child's writing (LGA-95).
+
+    The research asks for exactly this: track frequency per category per learner so
+    the app can generate targeted remediation and show the parent a "top 3 error types
+    this month". Without it, dictado is just random sentences.
+
+    The categories are the research's taxonomy verbatim. Category 1 is the one that
+    matters most for these girls: Spanish is nearly one-to-one for READING but not for
+    WRITING, and under Mexican Spanish's seseo and yeísmo, casa/caza, b/v and ll/y are
+    homophones — so those spellings can only be learned explicitly. Reading fluency
+    WILL outrun spelling accuracy, and this is where that shows up.
+
+    Learner-scoped and lingua-internal (D-03): no FK to any host model."""
+
+    ORTHOGRAPHIC = "orthographic"
+    ACCENT = "accent"
+    AGREEMENT = "agreement"
+    VERB = "verb"
+    SYNTAX = "syntax"
+    LEXICAL = "lexical"
+    INTERFERENCE = "interference"
+    MECHANICS = "mechanics"
+    CATEGORY_CHOICES = [
+        (ORTHOGRAPHIC, "Spelling — b/v, c/s/z, g/j, ll/y, h muda, r/rr, qu/c/k, x"),
+        (ACCENT, "Accents — missing or misplaced tilde, diacrítica, hiato"),
+        (AGREEMENT, "Agreement — gender, number, article/noun/adjective"),
+        (VERB, "Verbs — tense, mood, person, ser/estar"),
+        (SYNTAX, "Sentence shape — word order, adjective place, personal 'a', por/para"),
+        (LEXICAL, "Wrong word — including false cognates"),
+        (INTERFERENCE, "English creeping in — calques, code-switching"),
+        (MECHANICS, "Mechanics — ¿¡, capitals, dialogue raya, punctuation"),
+    ]
+    # Order shown to the parent while marking: the ones these girls will actually hit
+    # first, not alphabetical.
+    CATEGORY_ORDER = [
+        ORTHOGRAPHIC, ACCENT, AGREEMENT, VERB, MECHANICS, LEXICAL, SYNTAX, INTERFERENCE,
+    ]
+
+    DICTADO = "dictado"
+    COPIA = "copia"
+    FREEWRITE = "freewrite"
+    JOURNAL = "journal"
+    OTHER = "other"
+    SOURCE_CHOICES = [
+        (DICTADO, "Dictado"),
+        (COPIA, "Copia"),
+        (FREEWRITE, "Free write"),
+        (JOURNAL, "Journal"),
+        (OTHER, "Other"),
+    ]
+
+    learner = models.ForeignKey(
+        Learner, on_delete=models.CASCADE, related_name="writing_errors",
+    )
+    category = models.CharField(max_length=16, choices=CATEGORY_CHOICES, db_index=True)
+    source = models.CharField(max_length=16, choices=SOURCE_CHOICES, default=DICTADO)
+    wrote = models.CharField(
+        max_length=120, blank=True, help_text="What she actually wrote (optional).")
+    expected = models.CharField(
+        max_length=120, blank=True, help_text="What it should have been (optional).")
+    on_date = models.DateField(default=timezone.localdate, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-on_date", "-id"]
+        indexes = [models.Index(fields=["learner", "on_date"])]
+
+    def __str__(self):
+        return f"WritingError<learner={self.learner_id} {self.category} {self.on_date}>"
+
+
 class Theme(models.Model):
     """A content theme for the age-banded rotation (D-51, N-01). The daily plan
     draws a learner's next-story choices from active themes matching their band."""

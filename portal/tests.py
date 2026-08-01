@@ -367,7 +367,6 @@ class MarkupTests(TestCase):
         # bank. Seeded as separate questions, the four ANSWER CHOICES became four
         # questions of their own, each with its own empty answer box, and the four
         # sentence types had nothing to choose from.
-        import json
         call_command("seed_eiw_violet", "--for-user", "mup", stdout=StringIO())
         qs = QuestionSet.objects.get(
             lesson__number=7, title__endswith="Match them up")
@@ -390,6 +389,14 @@ class MarkupTests(TestCase):
             sorted(data["words"]),
             sorted(d["word"] for d in data["definitions"]),
         )
+        # ...and the pool keeps the workbook's printed A-D order, so a child
+        # working alongside the book sees the same four choices in the same order.
+        self.assertEqual(data["words"], [
+            "Question Mark (?)",                    # A
+            "Period (.) OR Exclamation Point (!)",  # B
+            "Period (.)",                           # C
+            "Exclamation Point (!)",                # D
+        ])
 
     def test_no_eiw_question_is_really_an_answer_choice(self):
         # The general shape of the Lesson 7 bug: a lettered option from an answer
@@ -403,28 +410,83 @@ class MarkupTests(TestCase):
         ]
         self.assertEqual(offenders, [], f"answer choices seeded as questions: {offenders}")
 
-    def test_retitled_exercise_does_not_leave_the_old_set_behind(self):
-        # Sets are keyed on title, so renaming an exercise would otherwise leave the
-        # superseded one beside the new one — and the superseded one is the broken one.
-        call_command("seed_eiw_violet", "--for-user", "mup", stdout=StringIO())
-        self.assertFalse(
-            QuestionSet.objects.filter(
-                lesson__number=7, title__endswith="Choose the answer").exists()
-        )
+    def _lesson7(self):
+        return QuestionSet.objects.filter(lesson__number=7).first().lesson
 
-    def test_a_stale_set_with_saved_answers_is_kept(self):
-        # ...but never at the cost of a child's work.
-        call_command("seed_eiw_violet", "--for-user", "mup", stdout=StringIO())
-        lesson7 = QuestionSet.objects.filter(lesson__number=7).first()
-        keeper = QuestionSet.objects.create(
-            lesson=lesson7.lesson, title="Lesson 7 · Retired exercise",
-            family=lesson7.family, intro="x", rubric="x",
+    def _superseded_set(self, **sheet_kwargs):
+        """A set this seeder no longer produces, optionally with a sheet on it."""
+        lesson = self._lesson7()
+        old = QuestionSet.objects.create(
+            lesson=lesson, family=self.family, status=QuestionSet.APPROVED,
+            title="Lesson 7 · Types of Sentences and Punctuation Marks — Choose the answer",
+            intro="i", rubric="r",
         )
-        ResponseSheet.objects.create(
-            question_set=keeper, child=self.violet, answers={"1": "her work"},
+        for i, item in enumerate(
+            ["______ Declarative", "______ Interrogative", "______ Exclamatory",
+             "______ Imperative", "A. Question Mark (?)",
+             "B. Period (.) OR Exclamation Point (!)", "C. Period (.)",
+             "D. Exclamation Point (!)"], start=1,
+        ):
+            Question.objects.create(
+                question_set=old, order=i, category="grammar",
+                response_type=Question.TYPE_TEXT, prompt=item,
+            )
+        if sheet_kwargs is not None:
+            ResponseSheet.objects.create(
+                question_set=old, child=self.violet, **sheet_kwargs)
+        return old
+
+    def test_the_superseded_broken_set_is_actually_removed(self):
+        # Sets are keyed on title, so retitling leaves the superseded one beside
+        # the new one — and the superseded one is the BROKEN one. Recreate the
+        # real prod state (8 text questions + an untouched draft sheet) and prove
+        # the seeder removes it, rather than asserting the absence of something a
+        # fresh test DB never created.
+        call_command("seed_eiw_violet", "--for-user", "mup", stdout=StringIO())
+        old = self._superseded_set(answers={})
+
+        call_command("seed_eiw_violet", "--for-user", "mup", stdout=StringIO())
+
+        self.assertFalse(QuestionSet.objects.filter(pk=old.pk).exists())
+        self.assertTrue(QuestionSet.objects.filter(
+            lesson__number=7, title__endswith="Match them up").exists())
+
+    def test_a_superseded_set_with_saved_answers_is_kept(self):
+        call_command("seed_eiw_violet", "--for-user", "mup", stdout=StringIO())
+        old = self._superseded_set(answers={"1": "her work"})
+        call_command("seed_eiw_violet", "--for-user", "mup", stdout=StringIO())
+        self.assertTrue(QuestionSet.objects.filter(pk=old.pk).exists())
+
+    def test_a_superseded_set_that_was_SUBMITTED_is_kept_even_if_blank(self):
+        # The dangerous case: four of the broken set's eight questions were
+        # unanswerable answer-choices, so a blank submit is exactly what a child
+        # does with it. Lesson completion counts submitted sheets, so deleting one
+        # rolls the lesson back to not-done and moves "What's Next" backwards.
+        call_command("seed_eiw_violet", "--for-user", "mup", stdout=StringIO())
+        old = self._superseded_set(answers={}, status=ResponseSheet.SUBMITTED)
+        call_command("seed_eiw_violet", "--for-user", "mup", stdout=StringIO())
+        self.assertTrue(QuestionSet.objects.filter(pk=old.pk).exists())
+
+    def test_a_teacher_discussion_set_is_never_swept_up(self):
+        # Discussion sets are excluded from the child's portal, so they can never
+        # have a ResponseSheet to protect them — an unscoped sweep would delete
+        # them on every single run.
+        call_command("seed_eiw_violet", "--for-user", "mup", stdout=StringIO())
+        keeper = QuestionSet.objects.create(
+            lesson=self._lesson7(), family=self.family,
+            title="Lesson 7 · Literary Toolbox", intro="i", rubric="r",
+            mode=QuestionSet.MODE_DISCUSSION,
         )
         call_command("seed_eiw_violet", "--for-user", "mup", stdout=StringIO())
         self.assertTrue(QuestionSet.objects.filter(pk=keeper.pk).exists())
+
+    def test_dry_run_reports_the_removal_without_doing_it(self):
+        call_command("seed_eiw_violet", "--for-user", "mup", stdout=StringIO())
+        old = self._superseded_set(answers={})
+        out = StringIO()
+        call_command("seed_eiw_violet", "--for-user", "mup", "--dry-run", stdout=out)
+        self.assertIn("Removed superseded set", out.getvalue())
+        self.assertTrue(QuestionSet.objects.filter(pk=old.pk).exists())
 
     def test_eiw_seed_builds_write_markup_forms(self):
         # "Write sentences… circle/underline X" exercises become write-then-markup

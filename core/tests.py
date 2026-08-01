@@ -1612,3 +1612,25 @@ class InviteFamilySelectionTests(TestCase):
         )
         self.assertEqual(resp.status_code, 404)
         self.assertFalse(Invitation.objects.filter(email="x@e.com").exists())
+
+
+class TestEnvironmentDetectionTests(TestCase):
+    """settings.TESTING decides the password hasher, whether grading runs inline,
+    whether the API key is blanked, and (since HH-143) SECURE_SSL_REDIRECT.
+
+    If the detector ever stops matching, none of that fails — the suite just gets
+    slower, starts racing SQLite on daemon threads, and a developer whose .env
+    carries an ANTHROPIC_API_KEY starts making live billed calls from `manage.py
+    test`. So assert it directly; nothing else in 1200-odd tests does."""
+
+    def test_the_runner_is_detected(self):
+        from django.conf import settings
+        self.assertTrue(
+            settings.TESTING,
+            "settings.TESTING is False under the test runner: the MD5 hasher, "
+            "inline grading and the ANTHROPIC_API_KEY blanking are all off.",
+        )
+
+    def test_the_api_key_is_blanked_so_the_suite_cannot_bill(self):
+        from django.conf import settings
+        self.assertEqual(settings.ANTHROPIC_API_KEY, "")

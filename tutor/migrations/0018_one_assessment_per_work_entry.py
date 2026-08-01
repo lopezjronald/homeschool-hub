@@ -59,12 +59,17 @@ def drop_duplicate_assessments(apps, schema_editor):
     # This runs once, unattended, against irreplaceable data, and a FINALIZED row
     # is a level a parent stamped. RunPython cannot bring them back, so put what
     # they were in the release log — that is the only record anyone will have.
+    # "will delete", not "deleted": this prints inside the migration's transaction,
+    # so a failure in AddConstraint below rolls the delete back after the fact.
+    # The surviving pk is logged alongside so the log can be read on its own.
+    keepers = {r.work_entry_id: r.pk for r in rows if r.pk not in doomed}
     for r in rows:
         if r.pk in doomed:
             print(
-                f"HH-144 deleting duplicate assessment pk={r.pk} "
+                f"HH-144 will delete duplicate assessment pk={r.pk} "
                 f"work_entry={r.work_entry_id} status={r.status} "
-                f"final_level={r.final_level!r} created={r.created_at.isoformat()}"
+                f"final_level={r.final_level!r} created={r.created_at.isoformat()} "
+                f"(keeping pk={keepers.get(r.work_entry_id)})"
             )
     Assessment.objects.filter(pk__in=doomed).delete()
 

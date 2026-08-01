@@ -7253,21 +7253,33 @@ class NoSynthesisOnTheRequestPathTests(TestCase):
         # services.ensure_audio() that lazily bakes would be the exact "one call in
         # a view turns every page load into a Polly bill" case and slip past it.
         # Hence the exemption is for the DEFINITIONS, not for the file.
+        # Walk the AST rather than the text: a line-based filter cannot tell
+        # `def bake_audio_clip(...)` from `def ensure_audio(s): return
+        # bake_story_audio(s)` — a one-liner whose line also starts with `def` —
+        # and that one-liner is precisely the violation this test exists to catch.
+        import ast
         import pathlib
-        import re as _re
         from django.conf import settings
+        baked = {"bake_audio_clip", "bake_story_audio"}
         root = pathlib.Path(settings.BASE_DIR) / "lingua"
         callers = set()
         for py in root.rglob("*.py"):
             rel = py.relative_to(root).as_posix()
             if rel == "tests.py" or rel.startswith("spikes/"):
                 continue
-            body = "\n".join(
-                line for line in py.read_text(encoding="utf-8", errors="replace").splitlines()
-                if not line.lstrip().startswith("def ")
-            )
-            if _re.search(r"\bbake_(audio_clip|story_audio)\s*\(", body):
-                callers.add(rel)
+            tree = ast.parse(py.read_text(encoding="utf-8", errors="replace"))
+            for node in ast.walk(tree):
+                if not isinstance(node, ast.Call):
+                    continue
+                fn = node.func
+                name = getattr(fn, "id", None) or getattr(fn, "attr", None)
+                if name in baked:
+                    callers.add(rel)
+                # getattr(services, "bake_story_audio")() would dodge the check above.
+                if name == "getattr" and any(
+                    isinstance(a, ast.Constant) and a.value in baked for a in node.args
+                ):
+                    callers.add(rel)
         self.assertEqual(
             callers,
             {"management/commands/clips_build.py",
@@ -7276,9 +7288,14 @@ class NoSynthesisOnTheRequestPathTests(TestCase):
         )
 
 
+@override_settings(STORAGES=_INMEM_STORAGES)
 class DeletedChildLeavesNothingBehindTests(TestCase):
     """LGA-99 / D-03: nothing cascades from a host Student into lingua, so every
-    model carrying a bare host_student_id has to be purged explicitly."""
+    model carrying a bare host_student_id has to be purged explicitly.
+
+    In-memory storage is not optional here: this class writes a real upload, and
+    the default store is S3 whenever USE_R2 is set — so without the override the
+    suite would create and delete objects in the live bucket."""
 
     def test_deleting_a_learner_takes_their_tutor_packets(self):
         from lingua.models import TutorPacket
@@ -7342,6 +7359,39 @@ class DeletedChildLeavesNothingBehindTests(TestCase):
 
         self.assertFalse(TutorPacket.objects.filter(pk=packet.pk).exists())
         self.assertFalse(storage.exists(name))
+
+    def test_a_storage_failure_is_counted_not_swallowed(self):
+        # A token missing s3:DeleteObject fails on EVERY packet, and the row is gone
+        # by then, so nothing points at the object any more. Reporting plain success
+        # would make a permanent, systematic leak look like a clean purge.
+        from unittest.mock import patch
+        from django.core.files.base import ContentFile
+        from lingua.models import TutorPacket
+
+        Learner.create_for_host_student(9995, profiles.KIDS_OLDER)
+        packet = TutorPacket.objects.create(title="Handout", body="Hola.",
+                                            host_student_id=9995)
+        packet.file.save("handout.txt", ContentFile(b"tarea"), save=True)
+
+        with patch("django.core.files.storage.InMemoryStorage.delete",
+                   side_effect=PermissionError("R2 403 AccessDenied")):
+            deleted, stranded = services.purge_tutor_packets([9995])
+
+        self.assertEqual(deleted, 1)      # the row still goes — it holds the data
+        self.assertEqual(stranded, 1)     # ...but the caller is told the file did not
+        self.assertFalse(TutorPacket.objects.filter(pk=packet.pk).exists())
+
+    def test_the_prune_command_reports_stranded_files_on_stderr(self):
+        from io import StringIO
+        from unittest.mock import patch
+        from django.core.management import call_command
+
+        with patch("lingua.services.purge_tutor_packets", return_value=(2, 2)):
+            err = StringIO()
+            Learner.create_for_host_student(9996, profiles.KIDS_OLDER)
+            call_command("lingua_prune_orphans", stderr=err, verbosity=0)
+
+        self.assertIn("could NOT be removed", err.getvalue())
 
     def test_a_dry_run_deletes_nothing(self):
         from django.core.management import call_command

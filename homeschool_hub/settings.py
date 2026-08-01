@@ -220,7 +220,12 @@ AUTH_PASSWORD_VALIDATORS = [
 # `manage.py createsuperuser --username test`, which then writes an MD5 password
 # hash the web dyno cannot verify — that account can never log in, with nothing
 # to explain why. It now also decides a security default (SECURE_SSL_REDIRECT).
-TESTING = (len(sys.argv) > 1 and sys.argv[1] == "test") or "PYTEST_CURRENT_TEST" in os.environ
+#
+# Deliberately NOT keyed off PYTEST_CURRENT_TEST: pytest sets that per-test, long
+# after settings import, so it would be dead here — while still being live in
+# every other process, where one env var of that name would silently turn off the
+# HTTPS redirect and make every password an unsalted MD5.
+TESTING = len(sys.argv) > 1 and sys.argv[1] == "test"
 if TESTING:
     PASSWORD_HASHERS = ["django.contrib.auth.hashers.MD5PasswordHasher"]
     # Grade inline (no daemon thread) under the test runner: a background grade

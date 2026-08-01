@@ -71,7 +71,8 @@ def delete_learner_for_student(host_student_id):
     # TutorPacket carries host_student_id as a plain int too (D-03), so nothing
     # cascades it. Left behind it keeps the tutor's name, the child's homework text
     # and an R2 file forever — exactly the gap the inline-purge rule exists to close.
-    return deleted + purge_tutor_packets([host_student_id])
+    packets, _stranded = purge_tutor_packets([host_student_id])
+    return deleted + packets
 
 
 def purge_tutor_packets(host_student_ids):
@@ -85,19 +86,30 @@ def purge_tutor_packets(host_student_ids):
 
     A NULL host_student_id means a packet SHARED with every child; it is never an
     orphan, so it is excluded rather than left to SQL's `IN (NULL)` behaviour.
+
+    Returns (rows_deleted, files_left_behind). The second number matters: once the
+    row is gone nothing points at the object any more, so a storage failure here is
+    permanent. A missing key is a harmless no-op, but a token without
+    s3:DeleteObject fails EVERY time and looks exactly the same from one call —
+    hence the count, so the caller can say so out loud rather than report success.
     """
     hsids = [h for h in host_student_ids if h is not None]
     if not hsids:
-        return 0
+        return 0, 0
     packets = TutorPacket.objects.filter(host_student_id__in=hsids)
+    stranded = 0
     for packet in packets.exclude(file=""):
         try:
             packet.file.delete(save=False)
         except Exception:  # noqa: BLE001 — a missing/unreachable object must not
             # block the row purge; the row is the part that holds the child's data.
-            logger.warning("Could not delete tutor packet file %s", packet.file.name)
+            stranded += 1
+            logger.exception(
+                "Could not delete tutor packet file: packet=%s host_student=%s file=%s",
+                packet.pk, packet.host_student_id, packet.file.name,
+            )
     deleted, _ = packets.delete()
-    return deleted
+    return deleted, stranded
 
 
 def rotate_themes(age_band, count=3):

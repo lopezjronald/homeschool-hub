@@ -791,3 +791,43 @@ a:focus-visible > .hub-tile {
 .ses-top { margin: .3rem 0 0; padding-left: 1.2rem; font-size: .93rem; }
 .ses-top-n { font-weight: 800; color: var(--ss-amber-700); }
 @media print { .ses-marking { display: none !important; } }
+
+/* ===== Kaylin's writing track — free-writes + journal (LGA-98) =========== */
+.wri { max-width: 900px; }
+.wri-block { background: var(--ss-paper); border: 1px solid var(--ss-line);
+  border-radius: var(--ss-r-md); padding: 1rem 1.15rem; margin-bottom: 1.2rem; }
+.wri-why { font-size: .92rem; line-height: 1.6; color: var(--ss-muted);
+  margin: 0 0 .9rem; max-width: 72ch; }
+.wri-why strong { color: var(--ss-ink); }
+
+/* Pure-CSS bar chart — no JS, no chart library. A rising line is the point. */
+.wri-chart { display: flex; align-items: flex-end; gap: .35rem; height: 120px;
+  padding: .4rem .2rem 0; border-bottom: 2px solid var(--ss-line); margin-bottom: .5rem; }
+.wri-bar { flex: 1 1 0; min-width: 12px; min-height: 4px; position: relative;
+  background: var(--ss-green); border-radius: 4px 4px 0 0; }
+.wri-bar-n { position: absolute; top: -1.15rem; left: 50%; transform: translateX(-50%);
+  font-size: .72rem; font-weight: 700; color: var(--ss-green-700); }
+.wri-best { font-size: .92rem; color: var(--ss-muted); margin: 0 0 .9rem; }
+.wri-best strong { color: var(--ss-green-700); }
+
+.wri-form { display: flex; flex-direction: column; gap: .5rem; align-items: flex-start; }
+.wri-row { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
+.wri-row label { font-size: .88rem; font-weight: 600; }
+.wri-label { font-size: .88rem; font-weight: 600; }
+.wri-form select, .wri-num, .wri-text {
+  font: inherit; padding: .4rem .6rem; min-height: 40px;
+  border-radius: var(--ss-r-sm); border: 1.5px solid var(--ss-line); background: #fff;
+}
+.wri-num { width: 7rem; }
+.wri-text { width: 100%; min-height: 5rem; }
+.wri-awaiting { font-size: .9rem; font-weight: 700; color: var(--ss-amber-700);
+  margin: .8rem 0 .4rem; }
+.wri-turn { border-top: 1px solid var(--ss-cloud); padding: .8rem 0 .2rem; }
+.wri-turn-meta { font-size: .78rem; color: var(--ss-muted); margin: 0 0 .2rem; }
+.wri-said { margin: 0 0 .5rem; font-size: 1rem; line-height: 1.6; }
+.wri-reply { margin: 0; padding: .55rem .8rem; background: var(--ss-green-tint);
+  border-radius: var(--ss-r-sm); font-size: .95rem; line-height: 1.55; }
+.wri-reply-tag { font-size: .72rem; font-weight: 800; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--ss-green-700); margin-right: .4rem; }
+.wri-replyform { display: flex; flex-direction: column; gap: .4rem; align-items: flex-start; }
+@media (max-width: 575px) { .wri-num { width: 100%; } }

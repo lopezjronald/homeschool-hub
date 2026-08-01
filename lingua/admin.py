@@ -5,6 +5,7 @@ from .models import (
     KnownWord, Learner,
     LearnerProfile, ListeningResource, ListeningSession, MilestoneAward, Pathway,
     PathwayCheckmark, PathwayStep, PhonicsRule, ReadingSession, ReviewItem,
+    FreeWrite, JournalEntry,
     StationVisit, Story, StoryAudio, StoryImage, Theme, TutorPacket,
     WritingError,
 )
@@ -34,6 +35,20 @@ class ThemeAdmin(admin.ModelAdmin):
 class PhonicsRuleAdmin(admin.ModelAdmin):
     list_display = ("pattern", "title", "order", "active")
     list_filter = ("active",)
+
+
+@admin.register(FreeWrite)
+class FreeWriteAdmin(admin.ModelAdmin):
+    list_display = ("learner", "on_date", "minutes", "words", "words_per_minute")
+    list_filter = ("on_date", "minutes")
+    date_hierarchy = "on_date"
+
+
+@admin.register(JournalEntry)
+class JournalEntryAdmin(admin.ModelAdmin):
+    list_display = ("learner", "on_date", "awaiting_reply")
+    list_filter = ("on_date",)
+    search_fields = ("entry", "reply")
 
 
 @admin.register(WritingError)

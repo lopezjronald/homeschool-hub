@@ -553,6 +553,89 @@ def session_kit(request):
     })
 
 
+def _writing_child(request, source):
+    """Resolve the child for a writing write, scoped to the selected family.
+
+    ``source`` is request.POST or request.GET. Raises Http404 rather than returning
+    None so every caller fails closed."""
+    family = get_selected_family(request)
+    if family is None or not can_edit_family_or_global(request.user, family):
+        raise Http404
+    child = directory.child_in_family(_int_or_none(source.get("child")), family.pk)
+    if child is None:
+        raise Http404
+    return child
+
+
+@login_required
+def writing_track(request):
+    """Kaylin's semi-independent track (LGA-98): timed free-writes charted by word
+    count, and a dialogue journal.
+
+    The two halves work on opposite principles and the page has to keep them apart.
+    A free-write is a FLUENCY exercise — the count is the score and correcting it
+    defeats it. The journal is a MEANING exchange — the parent replies to what she
+    said, which is what lowers the affective filter. Mistakes worth tracking go to
+    the error taxonomy, deliberately not to either of these.
+    """
+    family = get_selected_family(request)
+    children = directory.family_children(getattr(family, "pk", None))
+
+    child = None
+    if children:
+        want = _int_or_none(request.GET.get("for"))
+        child = next((c for c in children if c["pk"] == want), children[0])
+
+    learner = services.learner_for_child(child) if child else None
+    return render(request, "lingua/writing.html", {
+        "subnav": "writing",
+        "children": children, "child": child, "multi_child": len(children) > 1,
+        "no_family": family is None,
+        "can_write": bool(child and can_edit_family_or_global(request.user, family)),
+        "series": services.free_write_series(learner) if learner else None,
+        "journal": services.journal_thread(learner) if learner else None,
+        "minutes_options": services.FREEWRITE_MINUTES,
+    })
+
+
+@login_required
+@require_POST
+def writing_free_write(request):
+    """Record a timed free-write — typed, or 'she wrote it on paper, N words'."""
+    child = _writing_child(request, request.POST)
+    learner = services.learner_for_child(child)
+    fw = services.log_free_write(
+        learner,
+        minutes=request.POST.get("minutes", 5),
+        text=request.POST.get("text", ""),
+        words=request.POST.get("words"),
+        prompt=request.POST.get("prompt", ""),
+    )
+    messages.success(request, f"{fw.words} words in {fw.minutes} min. 🎉")
+    return redirect(f"{reverse('lingua:writing')}?for={child['pk']}")
+
+
+@login_required
+@require_POST
+def writing_journal(request):
+    """Add a journal turn, or reply to one. Replying answers the MEANING."""
+    child = _writing_child(request, request.POST)
+    learner = services.learner_for_child(child)
+    reply_to = _int_or_none(request.POST.get("reply_to"))
+    if reply_to:
+        if services.reply_to_journal(learner, reply_to, request.POST.get("reply", "")):
+            messages.success(request, "Replied.")
+        else:
+            messages.info(request, "Nothing to reply to.")
+    elif services.log_journal_entry(
+            learner, request.POST.get("entry", ""),
+            prompt=request.POST.get("prompt", "")):
+        messages.success(request, "Journal entry saved.")
+    else:
+        messages.info(request, "Write something first.")
+    return redirect(f"{reverse('lingua:writing')}?for={child['pk']}")
+
+
 @login_required
 @require_POST
 def session_log_error(request):
@@ -560,13 +643,7 @@ def session_log_error(request):
 
     Two taps, not a form — the parent is mid-session with a pencil in hand. The child
     is resolved INSIDE the selected family's queryset, never trusted from the POST."""
-    family = get_selected_family(request)
-    if family is None or not can_edit_family_or_global(request.user, family):
-        raise Http404
-    child = directory.child_in_family(_int_or_none(request.POST.get("child")), family.pk)
-    if child is None:
-        raise Http404
-
+    child = _writing_child(request, request.POST)
     learner = services.learner_for_child(child)
     entry = services.log_writing_error(
         learner,

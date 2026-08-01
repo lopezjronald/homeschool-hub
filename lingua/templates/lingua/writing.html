@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+{% block title %}Writing · Lingua{% endblock %}
+{% block content %}
+<div class="container py-4 wri">
+
+  {% include "lingua/_lingua_subnav.html" with active='writing' %}
+
+  <h1 class="h4 mb-1">Writing</h1>
+  <p class="text-muted mb-3">Timed free-writes and a dialogue journal — the semi-independent half of the week.</p>
+
+  {% if child %}
+    <div class="ses-who">
+      <span class="ses-who-label">Writing for</span>
+      {% if multi_child %}
+        <form method="get" class="ses-who-btns">
+          {% for c in children %}
+            <button type="submit" name="for" value="{{ c.pk }}"
+                    class="ses-who-btn{% if c.pk == child.pk %} is-active{% endif %}"
+                    {% if c.pk == child.pk %}aria-current="true"{% endif %}>{{ c.first_name }}</button>
+          {% endfor %}
+        </form>
+      {% else %}
+        <strong>{{ child.first_name }}</strong>
+      {% endif %}
+    </div>
+  {% elif no_family %}
+    <p class="alert alert-info py-2 small">Add a family with children to use this.</p>
+  {% else %}
+    <p class="alert alert-info py-2 small">Add a child under <a href="{% url 'students:student_list' %}">My Children</a> first.</p>
+  {% endif %}
+
+  {% if child %}
+    {# ---- Timed free-write: fluency, scored by word count ---- #}
+    <section class="wri-block">
+      <h2 class="ses-h2">Timed free-write</h2>
+      <p class="wri-why">Write as much as you can before the timer stops. <strong>The word count is
+        the score</strong> — this measures fluency, not correctness, so don't correct it. Mistakes
+        worth working on go on the <a href="{% url 'lingua:session' %}?for={{ child.pk }}">session page</a>.</p>
+
+      {% if series.bars %}
+        <div class="wri-chart" role="img"
+             aria-label="Word counts: {% for b in series.bars %}{{ b.row.words }}{% if not forloop.last %}, {% endif %}{% endfor %}">
+          {% for b in series.bars %}
+            <span class="wri-bar" style="height: {{ b.pct }}%"
+                  title="{{ b.row.on_date|date:'M j' }} — {{ b.row.words }} words in {{ b.row.minutes }} min">
+              <span class="wri-bar-n">{{ b.row.words }}</span>
+            </span>
+          {% endfor %}
+        </div>
+        <p class="wri-best">Best so far: <strong>{{ series.best }} words</strong>{% if series.latest %} ·
+          last one {{ series.latest.words }} in {{ series.latest.minutes }} min
+          ({{ series.latest.words_per_minute }}/min){% endif %}</p>
+      {% else %}
+        <p class="text-muted small">No free-writes yet. Start at {{ series.next_minutes|default:3 }} minutes.</p>
+      {% endif %}
+
+      {% if can_write %}
+        <form method="post" action="{% url 'lingua:writing_free_write' %}" class="wri-form">
+          {% csrf_token %}
+          <input type="hidden" name="child" value="{{ child.pk }}">
+          <div class="wri-row">
+            <label for="fw-min">Minutes</label>
+            <select id="fw-min" name="minutes">
+              {% for m in minutes_options %}
+                <option value="{{ m }}"{% if m == series.next_minutes %} selected{% endif %}>{{ m }}</option>
+              {% endfor %}
+            </select>
+            <label for="fw-words">Words <span class="text-muted">(if she wrote on paper)</span></label>
+            <input type="number" id="fw-words" name="words" min="0" max="5000" class="wri-num">
+          </div>
+          <label for="fw-text" class="wri-label">Or paste what she typed — the count is worked out for you</label>
+          <textarea id="fw-text" name="text" rows="4" class="wri-text"
+                    placeholder="Escribe aquí…"></textarea>
+          <button type="submit" class="btn btn-primary">Save this free-write</button>
+        </form>
+      {% endif %}
+    </section>
+
+    {# ---- Dialogue journal: meaning, never correction ---- #}
+    <section class="wri-block">
+      <h2 class="ses-h2">Dialogue journal</h2>
+      <p class="wri-why">She writes; you write back <strong>about what she said</strong>, not about how
+        she said it. Replying to the meaning is the whole mechanism — a reply that corrects her
+        spelling turns this into more marking and she stops writing freely.</p>
+
+      {% if can_write %}
+        <form method="post" action="{% url 'lingua:writing_journal' %}" class="wri-form">
+          {% csrf_token %}
+          <input type="hidden" name="child" value="{{ child.pk }}">
+          <label for="jr-entry" class="wri-label">Her entry</label>
+          <textarea id="jr-entry" name="entry" rows="3" class="wri-text"
+                    placeholder="Hoy fui a…"></textarea>
+          <button type="submit" class="btn btn-outline-primary">Add entry</button>
+        </form>
+      {% endif %}
+
+      {% if journal.awaiting %}
+        <p class="wri-awaiting">{{ journal.awaiting }} waiting for your reply.</p>
+      {% endif %}
+
+      {% for e in journal.rows %}
+        <article class="wri-turn">
+          <p class="wri-turn-meta">{{ e.on_date|date:"M j, Y" }}</p>
+          <p class="wri-said">{{ e.entry|linebreaksbr }}</p>
+          {% if e.reply %}
+            <p class="wri-reply"><span class="wri-reply-tag">You</span> {{ e.reply|linebreaksbr }}</p>
+          {% elif can_write %}
+            <form method="post" action="{% url 'lingua:writing_journal' %}" class="wri-replyform">
+              {% csrf_token %}
+              <input type="hidden" name="child" value="{{ child.pk }}">
+              <input type="hidden" name="reply_to" value="{{ e.pk }}">
+              <label class="visually-hidden" for="reply-{{ e.pk }}">Reply to this entry</label>
+              <textarea id="reply-{{ e.pk }}" name="reply" rows="2" class="wri-text"
+                        placeholder="Respond to what she said…"></textarea>
+              <button type="submit" class="btn btn-sm btn-outline-primary">Reply</button>
+            </form>
+          {% endif %}
+        </article>
+      {% empty %}
+        <p class="text-muted small mb-0">No journal entries yet.</p>
+      {% endfor %}
+    </section>
+  {% endif %}
+</div>
+{% endblock %}

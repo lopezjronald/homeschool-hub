@@ -6269,3 +6269,266 @@ class SessionErrorTaggingTests(TestCase):
         self._post()
         self.assertEqual(WritingError.objects.latest("id").on_date,
                          timezone.localdate())
+
+
+class FreeWriteTests(TestCase):
+    """LGA-98: the TPRS fluency routine — write for N minutes, count the words, chart
+    it. The count is the score; this measures fluency, not correctness."""
+
+    def setUp(self):
+        self.learner = Learner.create_for_host_student(9701, profiles.KIDS_OLDER)
+
+    def test_word_count_is_derived_from_typed_text(self):
+        fw = services.log_free_write(self.learner, minutes=5,
+                                     text="Hoy fui al parque con mi hermana.")
+        self.assertEqual(fw.words, 7)
+
+    def test_accents_and_enye_count_as_words_and_digits_do_not(self):
+        # "3" and "2026" are not words; inflating the score would make the chart lie.
+        fw = services.log_free_write(
+            self.learner, text="La niña comió 3 manzanas pequeñas en 2026")
+        self.assertEqual(fw.words, 6)
+
+    def test_paper_case_takes_the_count_directly(self):
+        # Handwriting beats typing for orthographic memory, so "she wrote it on paper,
+        # here are 87 words" is a first-class case, not a degraded one.
+        fw = services.log_free_write(self.learner, minutes=8, words=87)
+        self.assertEqual(fw.words, 87)
+        self.assertEqual(fw.text, "")
+
+    def test_typed_text_wins_over_a_supplied_count(self):
+        # Otherwise a stale number in the box scores a typed entry wrong.
+        fw = services.log_free_write(self.learner, text="una dos tres", words=999)
+        self.assertEqual(fw.words, 3)
+
+    def test_minutes_are_clamped_so_one_typo_cannot_distort_the_chart(self):
+        self.assertEqual(services.log_free_write(self.learner, minutes=600).minutes, 30)
+        self.assertEqual(services.log_free_write(self.learner, minutes=0).minutes, 1)
+        self.assertEqual(services.log_free_write(self.learner, minutes="junk").minutes, 5)
+
+    def test_a_junk_word_count_becomes_zero_not_an_exception(self):
+        self.assertEqual(services.log_free_write(self.learner, words="lots").words, 0)
+        self.assertEqual(services.log_free_write(self.learner, words=-5).words, 0)
+
+    def test_words_per_minute(self):
+        fw = services.log_free_write(self.learner, minutes=5, words=60)
+        self.assertEqual(fw.words_per_minute, 12.0)
+
+    def test_series_is_oldest_first_for_the_chart(self):
+        for n in (10, 20, 30):
+            services.log_free_write(self.learner, words=n)
+        series = services.free_write_series(self.learner)
+        self.assertEqual([r.words for r in series["rows"]], [10, 20, 30])
+        self.assertEqual(series["best"], 30)
+        self.assertEqual(series["latest"].words, 30)
+
+    def test_bar_heights_are_relative_to_her_own_best(self):
+        for n in (5, 10):
+            services.log_free_write(self.learner, words=n)
+        bars = services.free_write_series(self.learner)["bars"]
+        self.assertEqual([b["pct"] for b in bars], [50, 100])
+
+    def test_an_empty_series_does_not_divide_by_zero(self):
+        series = services.free_write_series(self.learner)
+        self.assertEqual(series["bars"], [])
+        self.assertEqual(series["best"], 0)
+        self.assertIsNone(series["latest"])
+        self.assertEqual(series["next_minutes"], 3)   # the research's starting point
+
+    def test_the_timer_climbs_the_ladder_but_never_drops(self):
+        for _ in range(3):
+            services.log_free_write(self.learner, minutes=3, words=20)
+        self.assertEqual(services.free_write_series(self.learner)["next_minutes"], 5)
+
+    def test_the_timer_holds_until_she_is_settled_at_a_length(self):
+        services.log_free_write(self.learner, minutes=3, words=20)
+        self.assertEqual(services.free_write_series(self.learner)["next_minutes"], 3)
+
+    def test_series_is_per_learner(self):
+        other = Learner.create_for_host_student(9702, profiles.KIDS_OLDER)
+        services.log_free_write(self.learner, words=50)
+        self.assertEqual(services.free_write_series(other)["rows"], [])
+
+
+class DialogueJournalTests(TestCase):
+    """LGA-98: she writes, the parent replies to the MEANING. A reply that corrects
+    her spelling turns the journal into more marking and kills it."""
+
+    def setUp(self):
+        self.learner = Learner.create_for_host_student(9703, profiles.KIDS_OLDER)
+
+    def test_an_entry_starts_awaiting_a_reply(self):
+        e = services.log_journal_entry(self.learner, "Hoy fui al parque.")
+        self.assertTrue(e.awaiting_reply)
+        self.assertEqual(services.journal_thread(self.learner)["awaiting"], 1)
+
+    def test_replying_clears_the_awaiting_count_and_stamps_the_time(self):
+        e = services.log_journal_entry(self.learner, "Hoy fui al parque.")
+        services.reply_to_journal(self.learner, e.pk, "¡Qué divertido! ¿Con quién fuiste?")
+        e.refresh_from_db()
+        self.assertFalse(e.awaiting_reply)
+        self.assertIsNotNone(e.replied_at)
+        self.assertEqual(services.journal_thread(self.learner)["awaiting"], 0)
+
+    def test_an_empty_entry_is_not_stored(self):
+        from lingua.models import JournalEntry
+        self.assertIsNone(services.log_journal_entry(self.learner, "   "))
+        self.assertIsNone(services.log_journal_entry(self.learner, ""))
+        self.assertEqual(JournalEntry.objects.count(), 0)
+
+    def test_an_empty_reply_does_not_mark_it_answered(self):
+        e = services.log_journal_entry(self.learner, "Hola.")
+        self.assertIsNone(services.reply_to_journal(self.learner, e.pk, "  "))
+        e.refresh_from_db()
+        self.assertTrue(e.awaiting_reply)
+
+    def test_cannot_reply_to_another_learners_entry(self):
+        other = Learner.create_for_host_student(9704, profiles.KIDS_OLDER)
+        e = services.log_journal_entry(other, "Secreto.")
+        self.assertIsNone(services.reply_to_journal(self.learner, e.pk, "Hola"))
+        e.refresh_from_db()
+        self.assertTrue(e.awaiting_reply)
+
+    def test_the_model_has_no_correction_field(self):
+        # Structural guard on the pedagogy: the journal is a meaning exchange, and
+        # adding a "corrections" field here is how it quietly becomes marking.
+        from lingua.models import JournalEntry
+        names = {f.name for f in JournalEntry._meta.get_fields()}
+        for banned in ("correction", "corrections", "errors", "score", "grade"):
+            self.assertNotIn(banned, names)
+
+
+class WritingTrackViewTests(TestCase):
+    """LGA-98: the page. Family-scoped like every other write, and viewers may read
+    but not write."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from core.models import Family, FamilyMembership
+        cls.parent = User.objects.create_user("wr_parent", "wr@example.com", "pw")
+        cls.family = Family.objects.create(name="Wr Fam")
+        FamilyMembership.objects.create(user=cls.parent, family=cls.family, role="parent")
+        cls.kaylin = Student.objects.create(
+            parent=cls.parent, first_name="Kaylin", family=cls.family, grade_level="G07",
+            date_of_birth=date(timezone.localdate().year - 12, 5, 1),
+        )
+        other = User.objects.create_user("wr_other", "wro@example.com", "pw")
+        cls.other_family = Family.objects.create(name="Other Wr")
+        FamilyMembership.objects.create(user=other, family=cls.other_family, role="parent")
+        cls.outsider = Student.objects.create(
+            parent=other, first_name="Zzz", family=cls.other_family, grade_level="G05")
+
+    def setUp(self):
+        self.client.force_login(self.parent)
+
+    def test_requires_login(self):
+        self.client.logout()
+        self.assertIn(self.client.get(reverse("lingua:writing")).status_code, (301, 302))
+
+    def test_page_renders_both_halves(self):
+        html = self.client.get(
+            reverse("lingua:writing") + "?for=%d" % self.kaylin.pk).content.decode()
+        self.assertIn("Timed free-write", html)
+        self.assertIn("Dialogue journal", html)
+        self.assertNotIn("#}", html)
+
+    def test_logging_a_free_write_shows_up_on_the_chart(self):
+        r = self.client.post(reverse("lingua:writing_free_write"), {
+            "child": str(self.kaylin.pk), "minutes": "5",
+            "text": "Hoy fui al parque con mi hermana."})
+        self.assertEqual(r.status_code, 302)
+        html = self.client.get(
+            reverse("lingua:writing") + "?for=%d" % self.kaylin.pk).content.decode()
+        self.assertIn("wri-bar", html)
+        self.assertIn("Best so far", html)
+
+    def test_cannot_write_against_another_familys_child(self):
+        from lingua.models import FreeWrite, JournalEntry
+        r = self.client.post(reverse("lingua:writing_free_write"), {
+            "child": str(self.outsider.pk), "words": "50"})
+        self.assertEqual(r.status_code, 404)
+        self.assertFalse(FreeWrite.objects.exists())
+        r = self.client.post(reverse("lingua:writing_journal"), {
+            "child": str(self.outsider.pk), "entry": "Hola"})
+        self.assertEqual(r.status_code, 404)
+        self.assertFalse(JournalEntry.objects.exists())
+
+    def test_a_view_only_member_reads_but_gets_no_forms(self):
+        from core.models import FamilyMembership
+        from lingua.models import FreeWrite
+        services.log_free_write(
+            services.learner_for_child({"pk": self.kaylin.pk, "date_of_birth": None}),
+            words=40)
+        teacher = User.objects.create_user("wr_teach", "wrt@example.com", "pw")
+        FamilyMembership.objects.create(user=teacher, family=self.family, role="teacher")
+        self.client.force_login(teacher)
+
+        html = self.client.get(
+            reverse("lingua:writing") + "?for=%d" % self.kaylin.pk).content.decode()
+        self.assertIn("Best so far", html)              # may read the chart
+        self.assertNotIn("wri-form", html)              # but not write
+
+        before = FreeWrite.objects.count()
+        r = self.client.post(reverse("lingua:writing_free_write"), {
+            "child": str(self.kaylin.pk), "words": "99"})
+        self.assertEqual(r.status_code, 404)
+        self.assertEqual(FreeWrite.objects.count(), before)
+
+    def test_get_is_rejected_on_the_write_endpoints(self):
+        self.assertEqual(
+            self.client.get(reverse("lingua:writing_free_write")).status_code, 405)
+        self.assertEqual(
+            self.client.get(reverse("lingua:writing_journal")).status_code, 405)
+
+    def test_journal_reply_flow_end_to_end(self):
+        from lingua.models import JournalEntry
+        self.client.post(reverse("lingua:writing_journal"), {
+            "child": str(self.kaylin.pk), "entry": "Hoy fui al parque."})
+        e = JournalEntry.objects.get()
+        self.client.post(reverse("lingua:writing_journal"), {
+            "child": str(self.kaylin.pk), "reply_to": str(e.pk),
+            "reply": "¿Con quién fuiste?"})
+        e.refresh_from_db()
+        self.assertFalse(e.awaiting_reply)
+        html = self.client.get(
+            reverse("lingua:writing") + "?for=%d" % self.kaylin.pk).content.decode()
+        self.assertIn("¿Con quién fuiste?", html)
+
+
+class AccentRuleSeedTests(TestCase):
+    """LGA-98: the full accent rules, per the 2010 RAE Ortografía."""
+
+    def test_seed_adds_the_five_rule_classes(self):
+        from django.core.management import call_command
+        from lingua.models import PhonicsRule
+        call_command("seed_accent_rules", verbosity=0)
+        patterns = set(PhonicsRule.objects.values_list("pattern", flat=True))
+        for p in ("agudas", "llanas", "esdrujulas", "diacritica", "hiato"):
+            self.assertIn(p, patterns)
+
+    def test_seed_is_idempotent(self):
+        from django.core.management import call_command
+        from lingua.models import PhonicsRule
+        call_command("seed_accent_rules", verbosity=0)
+        first = PhonicsRule.objects.count()
+        call_command("seed_accent_rules", verbosity=0)
+        self.assertEqual(PhonicsRule.objects.count(), first)
+
+    def test_it_does_not_teach_the_pre_2010_rules(self):
+        # The 2010 Ortografía removed the tilde from adverbial "solo" and from
+        # demonstratives. Teaching those has her "correcting" what is now correct.
+        from django.core.management import call_command
+        from lingua.models import PhonicsRule
+        call_command("seed_accent_rules", verbosity=0)
+        text = " ".join(
+            PhonicsRule.objects.values_list("tip", flat=True)
+        ) + " " + " ".join(PhonicsRule.objects.values_list("example", flat=True))
+        for stale in ("sólo", "éste", "ése", "aquél"):
+            self.assertNotIn(stale, text)
+
+    def test_esdrujulas_are_taught_as_always_accented(self):
+        from django.core.management import call_command
+        from lingua.models import PhonicsRule
+        call_command("seed_accent_rules", verbosity=0)
+        rule = PhonicsRule.objects.get(pattern="esdrujulas")
+        self.assertIn("ALWAYS", rule.tip)

@@ -27,6 +27,7 @@ from .models import (
     ComprehensionCheck, KnownWord, Learner, LibraryBook, ListeningResource,
     ListeningSession, MilestoneAward, Pathway, PathwayCheckmark, PathwayStep,
     PhonicsRule, ReadingSession, ReviewItem, StationVisit, Story, StoryAudio,
+    FreeWrite, JournalEntry,
     StoryImage, StoryRecording, Theme, TutorPacket, WritingError,
 )
 from .ports import AIClient, ImageClient
@@ -1286,6 +1287,106 @@ def remediation_focus(learner, *, since=None, days=30):
         "count": top[0]["count"],
         "patterns": ERROR_DRILL_PATTERNS.get(cat, []),
     }
+
+
+# --- Kaylin's independent track (LGA-98) --------------------------------------
+
+# The research's ladder: start at 3 minutes and build. Capped so a "60 minute
+# free-write" typo can't distort the chart forever.
+FREEWRITE_MINUTES = [3, 5, 8, 10]
+MAX_FREEWRITE_MINUTES = 30
+
+
+def count_words(text):
+    """Words in a free-write. Accent- and ñ-safe, and digits don't inflate the score."""
+    return len(re.findall(r"[^\W\d_]+", text or "", flags=re.UNICODE))
+
+
+def log_free_write(learner, *, minutes=5, text="", words=None, prompt="", on=None):
+    """Record a timed free-write. Word count is the score.
+
+    ``words`` may be given directly for the paper case — she writes by hand and the
+    parent types the count, which the research actively prefers for orthographic
+    memory. When text IS supplied the count is derived, so a typed entry can't be
+    scored wrong."""
+    try:
+        minutes = max(1, min(int(minutes), MAX_FREEWRITE_MINUTES))
+    except (TypeError, ValueError):
+        minutes = 5
+    if text and text.strip():
+        n = count_words(text)
+    else:
+        try:
+            n = max(0, int(words or 0))
+        except (TypeError, ValueError):
+            n = 0
+    return FreeWrite.objects.create(
+        learner=learner, minutes=minutes, words=n,
+        text=(text or "")[:20000], prompt=(prompt or "")[:200],
+        on_date=on or timezone.localdate(),
+    )
+
+
+def free_write_series(learner, *, limit=12):
+    """Her free-writes oldest-first, for the chart. A rising line is the most
+    motivating artifact we can hand a 12-year-old, and it measures fluency rather
+    than correctness."""
+    rows = list(learner.free_writes.all()[:limit])
+    rows.reverse()
+    best = max((r.words for r in rows), default=0)
+    return {
+        "rows": rows,
+        "best": best,
+        "latest": rows[-1] if rows else None,
+        # Percentage heights for a pure-CSS bar chart — no JS, no chart library.
+        "bars": [
+            {"row": r, "pct": round(r.words / best * 100) if best else 0}
+            for r in rows
+        ],
+        "next_minutes": _next_freewrite_minutes(rows),
+    }
+
+
+def _next_freewrite_minutes(rows):
+    """Nudge the timer up the ladder once she's comfortable, never down."""
+    if not rows:
+        return FREEWRITE_MINUTES[0]
+    current = rows[-1].minutes
+    if len(rows) >= 3 and all(r.minutes >= current for r in rows[-3:]):
+        later = [m for m in FREEWRITE_MINUTES if m > current]
+        if later:
+            return later[0]
+    return current
+
+
+def log_journal_entry(learner, entry, *, prompt="", on=None):
+    """She writes a dialogue-journal turn."""
+    entry = (entry or "").strip()
+    if not entry:
+        return None
+    return JournalEntry.objects.create(
+        learner=learner, entry=entry[:20000], prompt=(prompt or "")[:200],
+        on_date=on or timezone.localdate(),
+    )
+
+
+def reply_to_journal(learner, entry_id, reply):
+    """The parent replies — to the MEANING, not the errors. Scoped to this learner's
+    own entries so a stray id can't answer another child's journal."""
+    reply = (reply or "").strip()
+    obj = learner.journal_entries.filter(pk=entry_id).first()
+    if obj is None or not reply:
+        return None
+    obj.reply = reply[:20000]
+    obj.replied_at = timezone.now()
+    obj.save(update_fields=["reply", "replied_at"])
+    return obj
+
+
+def journal_thread(learner, *, limit=20):
+    """Newest-first journal turns, plus how many are still waiting on the parent."""
+    rows = list(learner.journal_entries.all()[:limit])
+    return {"rows": rows, "awaiting": sum(1 for r in rows if r.awaiting_reply)}
 
 
 def record_listening(learner, resource, minutes):

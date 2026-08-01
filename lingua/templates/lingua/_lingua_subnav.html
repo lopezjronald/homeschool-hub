@@ -11,6 +11,11 @@
        href="{% url 'lingua:session' %}">La sesión</a>
   </li>
   <li class="nav-item">
+    <a class="nav-link{% if active == 'writing' %} active{% endif %}"
+       {% if active == 'writing' %}aria-current="page"{% endif %}
+       href="{% url 'lingua:writing' %}">Writing</a>
+  </li>
+  <li class="nav-item">
     <a class="nav-link{% if active == 'library' %} active{% endif %}"
        {% if active == 'library' %}aria-current="page"{% endif %}
        href="{% url 'lingua:library_list' %}">Spanish books</a>

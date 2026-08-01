@@ -329,6 +329,70 @@ class WritingError(models.Model):
         return f"WritingError<learner={self.learner_id} {self.category} {self.on_date}>"
 
 
+class FreeWrite(models.Model):
+    """One timed free-write, scored by WORD COUNT (LGA-98).
+
+    The TPRS fluency routine (Blaine Ray, Ben Slavic, Martina Bex): write as much as
+    you can for N minutes, count the words, chart it. The count is the score — this
+    measures FLUENCY, not correctness, which is the whole point. Correcting a fluency
+    exercise defeats it.
+
+    ``text`` is optional on purpose: the research is emphatic that handwriting beats
+    typing for orthographic memory, so "she wrote it on paper, here are 87 words" is a
+    first-class case, not a degraded one."""
+
+    learner = models.ForeignKey(
+        Learner, on_delete=models.CASCADE, related_name="free_writes",
+    )
+    minutes = models.PositiveIntegerField(default=5)
+    words = models.PositiveIntegerField(default=0)
+    text = models.TextField(blank=True, help_text="Optional — blank when she wrote on paper.")
+    prompt = models.CharField(max_length=200, blank=True)
+    on_date = models.DateField(default=timezone.localdate, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-on_date", "-id"]
+        indexes = [models.Index(fields=["learner", "on_date"])]
+
+    def __str__(self):
+        return f"FreeWrite<learner={self.learner_id} {self.words}w {self.on_date}>"
+
+    @property
+    def words_per_minute(self):
+        return round(self.words / self.minutes, 1) if self.minutes else 0
+
+
+class JournalEntry(models.Model):
+    """A dialogue-journal turn: she writes, the parent writes back (LGA-98).
+
+    The mechanism is that the parent responds to MEANING, not error. That is what
+    lowers the affective filter and builds fluency — a reply that corrects her spelling
+    turns the journal into another marking exercise and kills it. There is deliberately
+    no correction field here; mistakes worth tracking go to WritingError instead."""
+
+    learner = models.ForeignKey(
+        Learner, on_delete=models.CASCADE, related_name="journal_entries",
+    )
+    prompt = models.CharField(max_length=200, blank=True)
+    entry = models.TextField(help_text="What she wrote.")
+    reply = models.TextField(blank=True, help_text="The parent's reply — to the MEANING.")
+    on_date = models.DateField(default=timezone.localdate, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    replied_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-on_date", "-id"]
+        indexes = [models.Index(fields=["learner", "on_date"])]
+
+    def __str__(self):
+        return f"JournalEntry<learner={self.learner_id} {self.on_date}>"
+
+    @property
+    def awaiting_reply(self):
+        return not self.reply.strip()
+
+
 class Theme(models.Model):
     """A content theme for the age-banded rotation (D-51, N-01). The daily plan
     draws a learner's next-story choices from active themes matching their band."""

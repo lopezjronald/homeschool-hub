@@ -12,6 +12,10 @@ urlpatterns = [
     # "La sesión": the parent-led session kit — routine + phrases + printable sheet.
     path("session/", views.session_kit, name="session"),
     path("session/error/", views.session_log_error, name="session_log_error"),
+    # Kaylin's semi-independent track: timed free-writes + dialogue journal (LGA-98)
+    path("writing/", views.writing_track, name="writing"),
+    path("writing/free-write/", views.writing_free_write, name="writing_free_write"),
+    path("writing/journal/", views.writing_journal, name="writing_journal"),
     path("library/", views.library_list, name="library_list"),
     path("library/mark-read/", views.library_mark_read, name="mark_read"),
     # The parent reading log lives in the Work Log now; keep the name so stale

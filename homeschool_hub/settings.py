@@ -91,8 +91,11 @@ def _env_float(name: str, default: float) -> float:
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = os.getenv("SECRET_KEY", "unsafe-secret-for-dev-only")
 
-# DEBUG: Default True for local dev (when env var not set), explicitly set False in production
-DEBUG = _env_bool("DEBUG", default=True)
+# Fail CLOSED. Prod sets DEBUG=false explicitly, but any NEW environment that
+# forgets it (review app, restored dyno, rebuilt account) would otherwise serve
+# full tracebacks — settings, local variables and query contents — to anyone
+# who triggers an error. Local dev opts in via .env.
+DEBUG = _env_bool("DEBUG", default=False)
 
 # ALLOWED_HOSTS: Comma-separated list of hostnames
 # Local dev default: localhost only. Production: set to exact hostname(s).
@@ -213,7 +216,8 @@ AUTH_PASSWORD_VALIDATORS = [
 # `manage.py test`. Django hashes a password on nearly every user-creating test,
 # and the default PBKDF2 hasher dominates runtime. This is auto-detected from
 # argv, so no separate settings module or test runner flag is needed.
-if "test" in sys.argv:
+TESTING = "test" in sys.argv
+if TESTING:
     PASSWORD_HASHERS = ["django.contrib.auth.hashers.MD5PasswordHasher"]
     # Grade inline (no daemon thread) under the test runner: a background grade
     # thread races the test's own transaction on SQLite ("table is locked") and
@@ -411,8 +415,9 @@ MANGA_REFERENCE_KEY = os.getenv("MANGA_REFERENCE_KEY", "image_input")
 # ---------------------------------------------------------------------------
 # Security Settings (env-driven, safe defaults)
 # ---------------------------------------------------------------------------
-# In production (DEBUG=False), these default to strict/secure values.
-# In development (DEBUG=True), they default to permissive values for localhost.
+# These default to strict/secure values. DEBUG now fails closed, so an
+# environment that says nothing gets the production posture; a developer opts
+# down to the permissive localhost values with DEBUG=true in their .env.
 #
 # Heroku deployment: Set these env vars in Heroku config:
 #   DEBUG=false
@@ -426,7 +431,10 @@ MANGA_REFERENCE_KEY = os.getenv("MANGA_REFERENCE_KEY", "image_input")
 # ---------------------------------------------------------------------------
 
 # SSL/HTTPS redirect (default: False in dev, True in prod)
-SECURE_SSL_REDIRECT = _env_bool("SECURE_SSL_REDIRECT", default=not DEBUG)
+# TESTING is carved out because now that DEBUG fails closed, the suite would
+# otherwise inherit the production default: the test client speaks plain HTTP, so
+# SecurityMiddleware would 301 every request and no view test would reach its view.
+SECURE_SSL_REDIRECT = _env_bool("SECURE_SSL_REDIRECT", default=not (DEBUG or TESTING))
 
 # When SSL redirect is enabled, trust Heroku's X-Forwarded-Proto header
 # This is required for Heroku's reverse proxy / load balancer

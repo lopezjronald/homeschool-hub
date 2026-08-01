@@ -9,10 +9,13 @@ key is set the grader is disabled and the UI says so.
 """
 
 import json
+import logging
 
 from django.conf import settings
 
-from . import mastery
+from . import mastery, spend
+
+logger = logging.getLogger(__name__)
 
 SYSTEM_PROMPT = """You are a supportive homeschool teaching assistant that assesses a child's work \
 against a rubric using MASTERY levels, never letter grades or percentages.
@@ -86,6 +89,35 @@ def _make_client(timeout=IN_REQUEST_TIMEOUT):
     )
 
 
+def _create_message(client, *, model, max_tokens, system, user_prompt):
+    """The one provider seam for every tutor AI call (HH-145).
+
+    Every ``messages.create`` in this module goes through here so two things are
+    true by construction rather than by remembering:
+
+    * the ceiling is checked BEFORE spending, so crossing it costs one more call
+      rather than an unbounded number; and
+    * the spend is recorded the INSTANT the provider responds — before the caller
+      parses anything — because a reply that fails to parse still cost money, and
+      a ledger that only counted successes would under-count precisely the runaway
+      case it exists to catch.
+
+    Raises ``spend.BudgetExceeded`` when the month's ceiling is already reached.
+    Callers decide how to surface that: grading refuses loudly, the optional
+    writing helpers degrade.
+    """
+    if spend.budget_exceeded():
+        raise spend.BudgetExceeded(spend.refusal_message())
+    response = client.messages.create(
+        model=model,
+        max_tokens=max_tokens,
+        system=system,
+        messages=[{"role": "user", "content": user_prompt}],
+    )
+    spend.record_usage(model, getattr(response, "usage", None))
+    return response
+
+
 def grading_model():
     """Model used for the in-request grader. Defaults to Opus, but a deployment
     under a hard request-time budget (e.g. Heroku's 30s cap) can set TUTOR_MODEL
@@ -151,12 +183,12 @@ def grade_work(*, rubric, answers, grade_level, subject, objectives="", client=N
 
     user_prompt = _build_user_prompt(rubric, answers, grade_level, subject, objectives)
     try:
-        response = client.messages.create(
-            model=grading_model(),
-            max_tokens=2500,
-            system=SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": user_prompt}],
+        response = _create_message(
+            client, model=grading_model(), max_tokens=2500,
+            system=SYSTEM_PROMPT, user_prompt=user_prompt,
         )
+    except spend.BudgetExceeded:
+        raise  # not a grader failure — the caller must say WHY, not "try again"
     except Exception as exc:  # noqa: BLE001 — surface any API/transport error uniformly
         raise GraderError(str(exc))
 
@@ -189,12 +221,17 @@ def suggest_words(word, grade_level="", client=None):
         client = _make_client()
     user_prompt = "Word: %s\nStudent grade level: %s" % (word, grade_level or "elementary")
     try:
-        response = client.messages.create(
-            model=WORD_HELP_MODEL,
-            max_tokens=120,
-            system=WORD_HELP_PROMPT,
-            messages=[{"role": "user", "content": user_prompt}],
+        response = _create_message(
+            client, model=WORD_HELP_MODEL, max_tokens=120,
+            system=WORD_HELP_PROMPT, user_prompt=user_prompt,
         )
+    except spend.BudgetExceeded:
+        # Deliberate asymmetry with grading: this is an optional helper inside a
+        # child's writing box, and a billing notice does not belong there. Degrade
+        # to no suggestions — but log it, so "the button stopped working" is
+        # answerable without guessing.
+        logger.warning("Word suggestions skipped: %s", spend.refusal_message())
+        return []
     except Exception:  # noqa: BLE001 — degrade to no suggestions
         return []
     text = next((b.text for b in response.content if getattr(b, "type", None) == "text"), "")
@@ -245,12 +282,13 @@ def check_spelling(text, grade_level="", client=None):
         client = _make_client()
     user_prompt = "Grade level: %s\n\nText:\n%s" % (grade_level or "elementary", text)
     try:
-        response = client.messages.create(
-            model=WORD_HELP_MODEL,
-            max_tokens=500,
-            system=SPELLCHECK_PROMPT,
-            messages=[{"role": "user", "content": user_prompt}],
+        response = _create_message(
+            client, model=WORD_HELP_MODEL, max_tokens=500,
+            system=SPELLCHECK_PROMPT, user_prompt=user_prompt,
         )
+    except spend.BudgetExceeded:
+        logger.warning("Spellcheck skipped: %s", spend.refusal_message())
+        return []
     except Exception:  # noqa: BLE001 — degrade to no squiggles
         return []
     body = next((b.text for b in response.content if getattr(b, "type", None) == "text"), "")
@@ -310,12 +348,12 @@ def review_draft(*, draft, assignment, grade_level, subject, client=None):
         "Coach this draft and return the JSON described above.",
     ])
     try:
-        response = client.messages.create(
-            model=grading_model(),
-            max_tokens=1000,
-            system=COACH_PROMPT,
-            messages=[{"role": "user", "content": user_prompt}],
+        response = _create_message(
+            client, model=grading_model(), max_tokens=1000,
+            system=COACH_PROMPT, user_prompt=user_prompt,
         )
+    except spend.BudgetExceeded:
+        raise  # not a grader failure — the caller must say WHY, not "try again"
     except Exception as exc:  # noqa: BLE001 — surface any API/transport error uniformly
         raise GraderError(str(exc))
 

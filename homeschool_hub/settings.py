@@ -337,6 +337,32 @@ INVITE_MAX_AGE_DAYS = 7
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 TUTOR_MODEL = os.getenv("TUTOR_MODEL", "claude-opus-4-8")
 
+# Monthly AI hard-stop ceiling in USD for the tutor path (HH-145) — grading, the
+# writing coach, and the writing-box helpers. Lingua has had one since LGA-29;
+# tutor is the HIGHER-volume side (it fires on ordinary use, not on an operator
+# authoring content) and had no backstop at all, so a retry storm or a stuck
+# daemon would have shown up first as a bill.
+#
+# The two ceilings are separate on purpose: lingua must stay extractable (D-03),
+# so its ledger travels with it. They are not additive — set each to the share of
+# the account you want that side to be able to spend.
+TUTOR_MONTHLY_COST_CEILING_USD = _env_float("TUTOR_MONTHLY_COST_CEILING_USD", 25.0)
+
+# USD per MILLION tokens, (input, output), per model. Tutor uses two tiers — a big
+# model for grading and coaching, a small one for word help and spellcheck — and
+# they differ by more than 10x, so cost has to be priced per model at the moment
+# of the call, not derived from a token total afterwards.
+TUTOR_AI_PRICES = {
+    "claude-opus-4-8": (15.0, 75.0),
+    "claude-opus-5": (15.0, 75.0),
+    "claude-sonnet-5": (3.0, 15.0),
+    "claude-haiku-4-5": (1.0, 5.0),
+}
+# Fallback for a model not in the table. Deliberately the most expensive tier:
+# an unrecognised model must over-estimate and stop early, never under-count and
+# sail past the ceiling.
+TUTOR_AI_PRICE_FALLBACK = (15.0, 75.0)
+
 # ---------------------------------------------------------------------------
 # Lingua (Spanish acquisition module) — namespaced config (D-06). Extractable
 # module: no FK to host models; learner carried as host_student_id (D-03).

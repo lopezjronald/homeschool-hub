@@ -785,3 +785,39 @@ class ResponseSheet(models.Model):
                 word = str(blanks.get(str(seg["blank"]), "")).strip()
                 out.append(f"[{word}]" if word else "[   ]")
         return "".join(out)
+
+
+class AiSpend(models.Model):
+    """Monthly AI spend ledger for the tutor path (HH-145).
+
+    One aggregate row per calendar month (``period`` = "YYYY-MM"). ``tutor.spend``
+    accumulates here at the provider seam — the instant the API responds, before
+    any parse can fail — and reads it back to hard-stop new calls once the month's
+    estimated spend reaches ``settings.TUTOR_MONTHLY_COST_CEILING_USD``.
+
+    Cost is stored as ``micro_usd`` (millionths of a dollar, integer) rather than
+    derived from the token totals later, because tutor calls two model tiers whose
+    prices differ by more than 10x: a month of "1M input tokens" could be $1 or $15
+    depending on the mix, so the only accurate moment to price a call is when it is
+    made. Integer micro-dollars also keep the running total exact under concurrent
+    F() increments, which a float would not.
+
+    The token columns are kept for reporting — they are what an invoice can be
+    reconciled against — but they are NOT what the ceiling reads.
+    """
+
+    period = models.CharField(max_length=7, unique=True, help_text='Calendar month, "YYYY-MM".')
+    input_tokens = models.PositiveBigIntegerField(default=0)
+    output_tokens = models.PositiveBigIntegerField(default=0)
+    calls = models.PositiveIntegerField(default=0)
+    micro_usd = models.PositiveBigIntegerField(
+        default=0, help_text="Accumulated estimated cost in millionths of a USD.",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-period"]
+
+    def __str__(self):
+        return f"AiSpend<{self.period}: ${self.micro_usd / 1_000_000:.2f}, {self.calls} calls>"

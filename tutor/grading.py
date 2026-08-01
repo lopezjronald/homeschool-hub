@@ -17,7 +17,7 @@ import threading
 from django.conf import settings
 from django.db import connections, transaction
 
-from . import ai
+from . import ai, spend
 from .models import MasteryAssessment
 
 logger = logging.getLogger(__name__)
@@ -107,6 +107,12 @@ def auto_grade_sheet(sheet, client=None, timeout=None):
     if not sheet.is_submitted or sheet.work_entry_id is None:
         return None, False
     if not ai.is_configured():
+        return None, False
+    # Over the monthly ceiling, behave exactly like "no API key": the child's work
+    # is still submitted and held, and the parent can grade it later. A child must
+    # not meet a spending notice, and their work must not be lost (HH-145).
+    if spend.budget_exceeded():
+        logger.warning("Auto-grade held for sheet %s: %s", sheet.pk, spend.refusal_message())
         return None, False
 
     # Serialize concurrent generate calls (double-tap / retry) on the sheet row:

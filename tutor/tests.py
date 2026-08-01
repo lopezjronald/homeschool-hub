@@ -16,28 +16,39 @@ from curricula.services import apply_blueprint, get_blueprint
 from students.models import Student
 from worklog.models import WorkLogEntry
 
-from . import ai, grading, imagegen, mastery
-from .models import Material, MasteryAssessment, Question, ResponseSheet
+from . import ai, grading, imagegen, mastery, spend
+from .models import AiSpend, Material, MasteryAssessment, Question, ResponseSheet
 
 User = get_user_model()
 
 
-def _fake_message(text):
-    """Mimic an anthropic Message with a single text content block."""
+def _fake_message(text, usage=None):
+    """Mimic an anthropic Message with a single text content block.
+
+    ``usage`` defaults to absent, matching a response object whose token counts
+    never arrived — the spend ledger has to survive that.
+    """
     block = SimpleNamespace(type="text", text=text)
-    return SimpleNamespace(content=[block])
+    return SimpleNamespace(content=[block], usage=usage)
+
+
+def _fake_usage(input_tokens, output_tokens):
+    return SimpleNamespace(input_tokens=input_tokens, output_tokens=output_tokens)
 
 
 class FakeAnthropic:
     """Stand-in for anthropic.Anthropic that returns a canned JSON response."""
 
-    def __init__(self, text):
+    def __init__(self, text, usage=None):
         self._text = text
+        self._usage = usage
+        self.calls = 0
         self.messages = SimpleNamespace(create=self._create)
 
     def _create(self, **kwargs):
         self.last_kwargs = kwargs
-        return _fake_message(self._text)
+        self.calls += 1
+        return _fake_message(self._text, self._usage)
 
 
 GOOD_JSON = (
@@ -872,3 +883,149 @@ class AssessmentDedupeMigrationTests(TestCase):
         mod.drop_duplicate_assessments(_Apps(), None)
 
         self.assertEqual([a.pk for a in MasteryAssessment.objects.all()], [only.pk])
+
+
+@override_settings(
+    ANTHROPIC_API_KEY="test-key",
+    TUTOR_MONTHLY_COST_CEILING_USD=10.0,
+    TUTOR_AI_PRICES={"big": (15.0, 75.0), "small": (1.0, 5.0)},
+    TUTOR_AI_PRICE_FALLBACK=(15.0, 75.0),
+)
+class TutorSpendLedgerTests(TestCase):
+    """HH-145: tutor is the higher-volume AI path and had no spend ceiling at all —
+    only lingua did. A retry storm or a stuck daemon would surface as a bill."""
+
+    def test_cost_is_priced_per_model_not_per_token_total(self):
+        # The two tiers differ by 15x, so the same token count must not cost the
+        # same. Deriving cost from a month's token total afterwards cannot work.
+        big = spend.micro_usd_for("big", 1_000_000, 1_000_000)
+        small = spend.micro_usd_for("small", 1_000_000, 1_000_000)
+        self.assertEqual(big, 90_000_000)    # $15 in + $75 out
+        self.assertEqual(small, 6_000_000)   # $1 in + $5 out
+
+    def test_an_unknown_model_is_priced_at_the_expensive_tier(self):
+        # Fail closed: over-estimating stops early and is recoverable; under-
+        # estimating sails past the ceiling, which is the whole failure mode.
+        self.assertEqual(
+            spend.micro_usd_for("some-new-model", 1_000_000, 1_000_000),
+            spend.micro_usd_for("big", 1_000_000, 1_000_000),
+        )
+
+    def test_usage_accumulates_across_calls(self):
+        spend.record_usage("small", _fake_usage(1_000_000, 0))
+        spend.record_usage("small", _fake_usage(1_000_000, 0))
+        row = AiSpend.objects.get()
+        self.assertEqual(row.calls, 2)
+        self.assertEqual(row.input_tokens, 2_000_000)
+        self.assertEqual(spend.month_to_date_usd(), 2.0)
+
+    def test_a_call_with_no_usage_object_still_counts_as_a_call(self):
+        # Token counts can be missing; the call count is what reveals a runaway
+        # loop even then, so it must not depend on them.
+        spend.record_usage("small", None)
+        self.assertEqual(AiSpend.objects.get().calls, 1)
+
+    def test_spend_is_recorded_even_when_the_reply_cannot_be_parsed(self):
+        # The seam records the instant the provider responds. A ledger that only
+        # counted successful parses would under-count exactly the runaway case.
+        client = FakeAnthropic("this is not JSON", usage=_fake_usage(500_000, 100_000))
+        with self.assertRaises(ai.GraderError):
+            ai.grade_work(rubric="r", answers="a", grade_level="3rd",
+                          subject="Math", client=client)
+        row = AiSpend.objects.get()
+        self.assertEqual(row.calls, 1)
+        self.assertEqual(row.input_tokens, 500_000)
+        self.assertGreater(row.micro_usd, 0)
+
+    def test_grading_is_refused_once_the_ceiling_is_reached(self):
+        AiSpend.objects.create(period=timezone.now().strftime("%Y-%m"),
+                               micro_usd=10_000_000)  # exactly $10.00 = the ceiling
+        client = FakeAnthropic(GOOD_JSON, usage=_fake_usage(10, 10))
+        with self.assertRaises(spend.BudgetExceeded):
+            ai.grade_work(rubric="r", answers="a", grade_level="3rd",
+                          subject="Math", client=client)
+        # Checked BEFORE the call: crossing the ceiling costs one more call, not
+        # an unbounded number.
+        self.assertEqual(client.calls, 0)
+
+    def test_just_under_the_ceiling_still_grades(self):
+        AiSpend.objects.create(period=timezone.now().strftime("%Y-%m"),
+                               micro_usd=9_999_999)
+        client = FakeAnthropic(GOOD_JSON, usage=_fake_usage(10, 10))
+        result = ai.grade_work(rubric="r", answers="a", grade_level="3rd",
+                               subject="Math", client=client)
+        self.assertEqual(result["level"], "proficient")
+        self.assertEqual(client.calls, 1)
+
+    def test_the_writing_helpers_degrade_instead_of_raising_at_a_child(self):
+        # Deliberate asymmetry: a billing notice does not belong in a kid's
+        # writing box, so these go quiet rather than erroring.
+        AiSpend.objects.create(period=timezone.now().strftime("%Y-%m"),
+                               micro_usd=10_000_000)
+        client = FakeAnthropic('["glad"]', usage=_fake_usage(10, 10))
+        self.assertEqual(ai.suggest_words("happy", client=client), [])
+        self.assertEqual(ai.check_spelling("becuse", client=client), [])
+        self.assertEqual(client.calls, 0)
+
+    def test_the_refusal_message_says_the_numbers_and_when_it_lifts(self):
+        AiSpend.objects.create(period=timezone.now().strftime("%Y-%m"),
+                               micro_usd=12_500_000)
+        msg = spend.refusal_message()
+        self.assertIn("$12.50", msg)
+        self.assertIn("$10.00", msg)
+        self.assertIn("1st", msg)
+
+    def test_tutor_spend_does_not_touch_the_lingua_ledger(self):
+        # The two ledgers are separate so lingua stays extractable (D-03); a tutor
+        # call must not consume lingua's compliance budget or vice versa.
+        from lingua.models import AiUsage
+        spend.record_usage("small", _fake_usage(1_000, 1_000))
+        self.assertEqual(AiUsage.objects.count(), 0)
+        self.assertEqual(AiSpend.objects.count(), 1)
+
+
+@override_settings(ANTHROPIC_API_KEY="test-key", TUTOR_MONTHLY_COST_CEILING_USD=10.0)
+class SpendCeilingIsLegibleToUsersTests(TestCase):
+    """The refusal has to reach a person as an explanation, not a 500 or a spinner
+    that never resolves."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from students.models import Student
+        from worklog.models import WorkLogEntry
+        cls.parent = User.objects.create_user("sp", "sp@e.com", "pw")
+        cls.family = Family.objects.create(name="Spend Fam")
+        FamilyMembership.objects.create(user=cls.parent, family=cls.family, role="parent")
+        cls.child = Student.objects.create(parent=cls.parent, first_name="Ada",
+                                           grade_level="G03", family=cls.family)
+        cls.entry = WorkLogEntry.objects.create(
+            parent=cls.parent, child=cls.child, subject="Math", family=cls.family,
+            description="p.40",
+        )
+
+    def _max_out(self):
+        AiSpend.objects.create(period=timezone.now().strftime("%Y-%m"),
+                               micro_usd=10_000_000)
+
+    def test_the_grade_button_explains_instead_of_spinning(self):
+        # Past this redirect the parent would get a pending page that polls until
+        # it gives up, with nothing saying why.
+        self._max_out()
+        self.client.login(username="sp", password="pw")
+        resp = self.client.post(
+            reverse("tutor:assess_create", kwargs={"entry_pk": self.entry.pk}),
+            data={"rubric": "r", "answers": "a"}, follow=True,
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "reached the")
+        self.assertFalse(MasteryAssessment.objects.filter(work_entry=self.entry).exists())
+
+    def test_a_childs_submitted_work_is_held_not_lost(self):
+        # The kid must never meet a spending notice, and their work must survive
+        # to be graded later — same behaviour as having no API key at all.
+        from tutor import grading
+        self._max_out()
+        sheet = SimpleNamespace(is_submitted=True, work_entry_id=self.entry.pk, pk=1)
+        assessment, created = grading.auto_grade_sheet(sheet)
+        self.assertIsNone(assessment)
+        self.assertFalse(created)

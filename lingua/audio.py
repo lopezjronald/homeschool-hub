@@ -23,7 +23,9 @@ import re
 
 from django.conf import settings
 
-from . import safety
+from xml.sax.saxutils import escape
+
+from . import pronunciation, safety
 
 WORD_RE = re.compile(r"\S+", re.UNICODE)
 
@@ -180,10 +182,20 @@ def synthesize_clip(text, *, voice=None, engine=None, client=None):
     voice = voice or settings.LINGUA.get("TTS_VOICE", "Mia")
     engine = engine or settings.LINGUA.get("TTS_ENGINE", "neural")
     ai = client or _polly_client()
+    # A phonics word exists to demonstrate ONE sound, so where we have an IPA
+    # transcription we say it explicitly rather than leaving it to Polly — "llama"
+    # was coming out closer to a plain /l/ than the yeísmo /ʝ/ the card teaches.
+    ipa = pronunciation.ipa_for(text)
+    if ipa:
+        body = (f'<speak><phoneme alphabet="ipa" ph="{escape(ipa)}">'
+                f'{escape(text)}</phoneme></speak>')
+        text_type = "ssml"
+    else:
+        body, text_type = text, "text"
     try:
         audio_resp = ai.synthesize_speech(
-            Text=text, VoiceId=voice, Engine=engine,
-            OutputFormat="mp3", TextType="text",
+            Text=body, VoiceId=voice, Engine=engine,
+            OutputFormat="mp3", TextType=text_type,
         )
         audio = audio_resp["AudioStream"].read()
         if not audio:

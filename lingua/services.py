@@ -20,7 +20,7 @@ from django.utils.module_loading import import_string
 
 from . import (
     advancement, assets, audio, cognates, comprehension, illustrate, leveling,
-    profiles, safety, schedulers, storage,
+    profiles, pronunciation, safety, schedulers, storage,
 )
 from .models import (
     AiUsage, AlphabetTile, AudioClip, AuditEvent, BookLogEntry, ClassroomPhrase,
@@ -1037,7 +1037,14 @@ def bake_audio_clip(text, *, voice=None, engine=None, provider="polly",
         raise ValueError("Cannot bake an empty clip.")
     voice = voice or settings.LINGUA.get("TTS_VOICE", "Mia")
     engine = engine or settings.LINGUA.get("TTS_ENGINE", "neural")
-    digest = assets.content_hash(text, provider=provider, voice=voice, engine=engine)
+    # Fold the pronunciation override into the hash so editing an IPA transcription
+    # re-bakes that clip by itself. Words WITHOUT an override hash exactly as before,
+    # so adding this mechanism doesn't invalidate the 300+ clips already baked.
+    ipa = pronunciation.ipa_for(text)
+    digest = assets.content_hash(
+        f"{text} [ipa:{ipa}]" if ipa else text,
+        provider=provider, voice=voice, engine=engine,
+    )
     key = assets.clip_key(digest)
     existing = AudioClip.objects.filter(
         text=text, voice=voice, engine=engine, provider=provider,

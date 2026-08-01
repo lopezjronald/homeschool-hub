@@ -20,6 +20,15 @@ RULES = [
     ("j", "La j", "j is a strong 'h' sound from the back of the throat.", "jugar · caja · rojo · trabajo"),
     ("g/gu", "g y gu", "g is soft (like j) before e/i; gu keeps the hard g before e/i.", "gato · gente · guitarra · guerra"),
     ("accents", "El acento", "The accent mark (´) tells you which syllable to stress.", "café · árbol · lápiz · pájaro"),
+    # The accented vowels are their own thing to RECOGNISE before any rule about when
+    # to write them: they are the same five sounds, just louder. Without this a child
+    # meets á for the first time inside a word and reads it as a new letter.
+    ("vowels-accent", "Las vocales con acento",
+     "á é í ó ú are the SAME sounds as a e i o u — you just say that part louder.",
+     "papá · bebé · aquí · avión · menú"),
+    ("dieresis", "La ü",
+     "In güe and güi the two dots mean you DO say the u: gwe, gwi.",
+     "pingüino · vergüenza · bilingüe · cigüeña"),
 ]
 
 

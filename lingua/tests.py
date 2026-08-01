@@ -5777,8 +5777,17 @@ class StationDoneControlTests(TestCase):
         )
 
     def test_no_button_when_the_station_is_not_on_her_pathway(self):
-        # KIDS_OLDER has no phonics stop; rendering a control she cannot tick would
-        # be another thing that looks interactive and does nothing.
+        # Both bands have a phonics stop now (the older band's accent unit needed a
+        # route), so remove the stop to prove the real property: no matching stop,
+        # no control — rendering one she cannot tick is the dead-button bug again.
+        from lingua.models import PathwayStep
+        PathwayStep.objects.filter(kind=PathwayStep.PHONICS).delete()
+        html = self.client.get(
+            reverse("portal:lingua_phonics", kwargs={"token": self.token})
+        ).content.decode()
+        self.assertNotIn("portal-station-done", html)
+
+    def test_the_older_band_DOES_get_a_phonics_control(self):
         from portal.tokens import make_portal_token
         # DOB, not grade_level, decides the band (band_for_dob) — a child with no
         # DOB silently lands in KIDS_EARLY, which is its own small trap.
@@ -5789,7 +5798,7 @@ class StationDoneControlTests(TestCase):
         html = self.client.get(
             reverse("portal:lingua_phonics", kwargs={"token": make_portal_token(older)})
         ).content.decode()
-        self.assertNotIn("portal-station-done", html)
+        self.assertIn("portal-station-done", html)
 
 
 class CaminoDeadEndsRemovedTests(TestCase):
@@ -6996,3 +7005,188 @@ class PhonicsFocusTests(TestCase):
             if "display" in m or "visibility" in m
         ]
         self.assertEqual(offenders, [], f"CSS hides non-focus sounds: {offenders}")
+
+
+class PronunciationOverrideTests(TestCase):
+    """LGA-101: a phonics word exists to demonstrate ONE sound. The owner reported
+    "llama" coming out closer to a plain /l/ than the yeísmo /ʝ/ the card teaches — a
+    phonics example that mispronounces its own sound is worse than no audio."""
+
+    def test_the_ll_words_all_carry_an_explicit_pronunciation(self):
+        from lingua import pronunciation
+        for word in ("llama", "pollo", "calle", "lluvia"):
+            ipa = pronunciation.ipa_for(word)
+            self.assertIsNotNone(ipa, f"{word} has no IPA override")
+            self.assertIn("ʝ", ipa, f"{word} is not transcribed with the yeísmo sound")
+            self.assertNotIn("l", ipa.replace("ʝ", ""),
+                             f"{word} still transcribes an /l/")
+
+    def test_seseo_not_castilian_lisp(self):
+        # es-MX (D-02): z and soft c are /s/, never /θ/.
+        from lingua import pronunciation
+        for word, ipa in pronunciation.IPA.items():
+            self.assertNotIn("θ", ipa, f"{word} uses the Castilian /θ/")
+
+    def test_rr_is_the_trill_and_not_the_tap(self):
+        from lingua import pronunciation
+        for word in ("perro", "carro", "gorra", "tierra"):
+            self.assertNotIn("ɾ", pronunciation.ipa_for(word),
+                             f"{word} transcribes the tap, not the trill")
+
+    def test_a_word_with_no_override_is_left_to_polly(self):
+        from lingua import pronunciation
+        self.assertIsNone(pronunciation.ipa_for("mesa"))
+        self.assertIsNone(pronunciation.ipa_for(""))
+        self.assertIsNone(pronunciation.ipa_for(None))
+
+    def test_an_override_is_sent_as_ssml_phoneme(self):
+        from lingua import audio
+        seen = {}
+
+        class _Polly:
+            def synthesize_speech(self, **kw):
+                seen.update(kw)
+                return {"AudioStream": io.BytesIO(b"mp3")}
+
+        audio.synthesize_clip("llama", client=_Polly())
+        self.assertEqual(seen["TextType"], "ssml")
+        self.assertIn('<phoneme alphabet="ipa"', seen["Text"])
+        self.assertIn("ʝ", seen["Text"])
+
+    def test_a_plain_word_is_still_sent_as_text(self):
+        from lingua import audio
+        seen = {}
+
+        class _Polly:
+            def synthesize_speech(self, **kw):
+                seen.update(kw)
+                return {"AudioStream": io.BytesIO(b"mp3")}
+
+        audio.synthesize_clip("mesa", client=_Polly())
+        self.assertEqual(seen["TextType"], "text")
+        self.assertEqual(seen["Text"], "mesa")
+
+    def test_ssml_special_characters_cannot_break_the_markup(self):
+        from lingua import audio, pronunciation
+        seen = {}
+
+        class _Polly:
+            def synthesize_speech(self, **kw):
+                seen.update(kw)
+                return {"AudioStream": io.BytesIO(b"mp3")}
+
+        with mock.patch.dict(pronunciation.IPA, {"a<b&c": "ˈa"}, clear=False):
+            audio.synthesize_clip("a<b&c", client=_Polly())
+        self.assertNotIn("<b&c", seen["Text"])
+        self.assertIn("&lt;", seen["Text"])
+
+    def test_changing_a_pronunciation_re_bakes_only_that_clip(self):
+        # The content hash is over the text, so without folding the IPA in, editing a
+        # transcription would leave the old (wrong-sounding) mp3 in place forever.
+        from lingua import assets, pronunciation
+        base = assets.content_hash("mesa", provider="polly", voice="Mia", engine="neural")
+        with_ipa = assets.content_hash(
+            f"llama [ipa:{pronunciation.ipa_for('llama')}]",
+            provider="polly", voice="Mia", engine="neural")
+        plain_llama = assets.content_hash("llama", provider="polly", voice="Mia",
+                                          engine="neural")
+        self.assertNotEqual(with_ipa, plain_llama)   # override changes the key
+        # ...and a word with no override keeps the key it already has on prod.
+        self.assertEqual(
+            base,
+            assets.content_hash("mesa", provider="polly", voice="Mia", engine="neural"))
+
+
+class AccentedVowelSoundsTests(TestCase):
+    """The owner asked for the accented vowels as a sound of their own."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from django.core.management import call_command
+        call_command("seed_phonics", verbosity=0)
+
+    def test_accented_vowels_are_taught_as_the_same_sounds(self):
+        from lingua.models import PhonicsRule
+        rule = PhonicsRule.objects.get(pattern="vowels-accent")
+        self.assertIn("SAME", rule.tip)
+        for w in ("papá", "bebé", "aquí", "avión", "menú"):
+            self.assertIn(w, rule.example)
+
+    def test_the_dieresis_is_taught(self):
+        from lingua.models import PhonicsRule
+        rule = PhonicsRule.objects.get(pattern="dieresis")
+        self.assertIn("pingüino", rule.example)
+
+    def test_the_new_sounds_go_to_the_YOUNGER_band_too(self):
+        # These are recognition, not the year-long accent RULES unit — a child meeting
+        # á for the first time inside a word needs to know it isn't a new letter.
+        titles = [r.title for r in services.phonics_rules(profiles.KIDS_EARLY)]
+        self.assertIn("Las vocales con acento", titles)
+        self.assertIn("La ü", titles)
+        self.assertNotIn("Esdrújulas", titles)      # the rules unit stays older-only
+
+    def test_every_new_example_word_is_offered_for_baking(self):
+        texts = set(services.clip_texts_to_bake(phonics=True))
+        for w in ("papá", "aquí", "menú", "pingüino", "bilingüe"):
+            self.assertIn(w, texts)
+
+
+class OlderBandSoundsRouteTests(TestCase):
+    """The accent rules were written FOR the 12-year-old but she had no route to
+    them: the Sonidos stone was gated to the younger band and camino-older had no
+    PHONICS step, so she could neither reach nor advance them."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from django.core.management import call_command
+        from portal.tokens import make_portal_token
+        call_command("seed_pathway", verbosity=0)
+        call_command("seed_phonics", verbosity=0)
+        call_command("seed_accent_rules", verbosity=0)
+        cls.parent = User.objects.create_user("ob_parent", "ob@example.com", "pw")
+        cls.kaylin = Student.objects.create(
+            parent=cls.parent, first_name="Kaylin", grade_level="G07",
+            date_of_birth=date(timezone.localdate().year - 12, 5, 1))
+        cls.violet = Student.objects.create(
+            parent=cls.parent, first_name="Violet", grade_level="G03",
+            date_of_birth=date(timezone.localdate().year - 9, 5, 1))
+        cls.k_token = make_portal_token(cls.kaylin)
+        cls.v_token = make_portal_token(cls.violet)
+
+    def test_the_older_band_has_a_sounds_stone_on_her_plan(self):
+        html = self.client.get(
+            reverse("portal:lingua_plan", kwargs={"token": self.k_token})
+        ).content.decode()
+        self.assertIn(reverse("portal:lingua_phonics", kwargs={"token": self.k_token}),
+                      html)
+        self.assertIn("Acentos", html)
+
+    def test_the_younger_band_still_has_hers(self):
+        html = self.client.get(
+            reverse("portal:lingua_plan", kwargs={"token": self.v_token})
+        ).content.decode()
+        self.assertIn(reverse("portal:lingua_phonics", kwargs={"token": self.v_token}),
+                      html)
+        self.assertIn("Sonidos", html)
+
+    def test_the_older_band_has_a_phonics_STOP_she_can_tick(self):
+        from lingua.models import PathwayStep
+        from homeschool_hub.adapters import lingua_students
+        learner = lingua_students.learner_for(self.kaylin)
+        kinds = [r["step"].kind for r in services.pathway_status(learner)["steps"]]
+        self.assertIn(PathwayStep.PHONICS, kinds)
+
+    def test_her_focus_advances_through_the_accent_rules(self):
+        # Previously she had no phonics step, so the focus could never move off rule 1.
+        from homeschool_hub.adapters import lingua_students
+        from lingua.models import PathwayStep
+        learner = lingua_students.learner_for(self.kaylin)
+        step = next(r["step"] for r in services.pathway_status(learner)["steps"]
+                    if r["step"].kind == PathwayStep.PHONICS)
+        rules = services.phonics_rules(profiles.KIDS_OLDER)
+        first = services.phonics_focus(learner, band=profiles.KIDS_OLDER).pattern
+        services.set_pathway_checkmark(
+            learner, step, True, on=timezone.localdate() - timedelta(days=1))
+        second = services.phonics_focus(learner, band=profiles.KIDS_OLDER).pattern
+        self.assertNotEqual(first, second)
+        self.assertEqual(second, rules[1].pattern)

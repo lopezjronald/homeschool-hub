@@ -37,6 +37,10 @@ OLDER_STEPS = [
     (2, "Escuchar", PathwayStep.LISTEN, "", {}, False),
     (3, "Con el maestro", PathwayStep.TUTOR_PACKET, "", {}, True),
     (4, "Palabras que sabes", PathwayStep.REVIEW, "", {"min_known": 5}, True),
+    # Her own sounds stop. Without it the accent rules written FOR her (LGA-98) had
+    # no route in the app at all: the Sonidos stone was gated to the younger band and
+    # camino-older had no PHONICS step, so she could never reach or advance them.
+    (5, "Los acentos", PathwayStep.PHONICS, "", {}, True),
 ]
 
 PATHWAYS = [

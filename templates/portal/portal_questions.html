@@ -139,7 +139,8 @@
                       <button type="button" class="markup-btn" data-tool="clear">Erase all</button>
                     </div>
                     <div class="markup-surface">
-                      <div class="markup-passage">{{ q.passage|linebreaksbr }}</div>
+                      {# Each word gets its own span so strokes drawn over it can be read back as "underlined X" for the grader. #}
+                      <div class="markup-passage">{% for line in q.markup_lines %}{% for w in line %}<span class="markup-word" data-word="{{ w.i }}">{{ w.text }}</span>{% if not forloop.last %} {% endif %}{% endfor %}{% if not forloop.last %}<br>{% endif %}{% endfor %}</div>
                       <canvas class="markup-canvas"></canvas>
                     </div>
                     <input type="hidden" name="answer_{{ q.pk }}" data-question="{{ q.pk }}" value="{{ q.my_answer }}">

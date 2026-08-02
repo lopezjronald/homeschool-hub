@@ -429,6 +429,28 @@ class Question(models.Model):
         return self.response_type == self.TYPE_MARKUP
 
     @property
+    def markup_lines(self):
+        """The passage split into lines of numbered words, for the drawing surface.
+
+        Each word is rendered in its own span so the browser can report where it
+        sits. Without that the passage is one text blob and a stroke is just
+        coordinates over nothing — which is why a marked-up sentence used to reach
+        the grader as "annotated: yes" and nothing more. With per-word boxes the
+        same strokes can be read back as "underlined 'quickly'".
+
+        Index is global across lines so it identifies a word in the whole passage,
+        not its position on a line.
+        """
+        lines, index = [], 0
+        for raw in (self.passage or "").splitlines():
+            words = []
+            for word in raw.split():
+                words.append({"i": index, "text": word})
+                index += 1
+            lines.append(words)
+        return lines
+
+    @property
     def is_characters(self):
         return self.response_type == self.TYPE_CHARACTERS
 
@@ -633,8 +655,7 @@ class ResponseSheet(models.Model):
         """
         raw = str(self.answer_for(question)).strip()
         if question.is_markup:
-            marked = "yes" if raw and raw != "[]" else "no"
-            return f'[marked up the sentence "{question.passage}" — annotated: {marked}]'
+            return self._format_markup(raw, question)
         if question.is_characters:
             return self._format_characters(raw)
         if question.is_matching:
@@ -718,6 +739,64 @@ class ResponseSheet(models.Model):
         if notes:
             lines.append("[planning notes (not graded) — " + "; ".join(notes) + "]")
         return "\n".join(lines)
+
+    @staticmethod
+    def _parse_markup(raw):
+        """(strokes, marks, unread) from a markup answer, old shape or new.
+
+        Answers saved before the marks existed are a bare list of strokes. Those
+        can never be read back — the word positions they were drawn over are gone
+        — so they keep the old behaviour of reporting only that she drew.
+        """
+        try:
+            data = json.loads(raw or "")
+        except (ValueError, TypeError):
+            return [], [], 0
+        if isinstance(data, list):
+            return data, [], 0
+        if not isinstance(data, dict):
+            return [], [], 0
+        marks = [m for m in (data.get("marks") or []) if isinstance(m, dict)]
+        return data.get("strokes") or [], marks, int(data.get("unread") or 0)
+
+    @classmethod
+    def _format_markup(cls, raw, question):
+        """Render a drawn-on sentence as something a grader can actually mark.
+
+        This used to return only "annotated: yes" — the grader could see that she
+        had drawn but not what she marked, so every mark-the-sentence exercise was
+        ungradeable. Now the child's own marks are named.
+
+        Unread strokes are reported rather than hidden. A stroke the reader could
+        not classify is not a wrong answer, and the grader is told so explicitly
+        so it doesn't penalise her for the reader's limits.
+        """
+        strokes, marks, unread = cls._parse_markup(raw)
+        if not strokes:
+            return f'[nothing marked on "{question.passage}"]'
+
+        parts = []
+        by_kind = {}
+        for m in marks:
+            word = str(m.get("word", "")).strip()
+            kind = str(m.get("kind", "")).strip()
+            if word and kind:
+                by_kind.setdefault(kind, []).append(word)
+        for kind in ("underlined", "circled", "crossed out"):
+            words = by_kind.get(kind)
+            if words:
+                parts.append(f"{kind} {', '.join(chr(34) + w + chr(34) for w in words)}")
+
+        head = f'[on "{question.passage}" she '
+        if parts:
+            body = "; ".join(parts)
+            if unread:
+                body += (f" — plus {unread} more mark(s) that could not be read "
+                         f"automatically, so judge those from the parent's review "
+                         f"rather than counting them wrong")
+            return head + body + "]"
+        return (f'[she drew {len(strokes)} mark(s) on "{question.passage}", but none '
+                f"could be read automatically — do not treat that as a wrong answer]")
 
     @classmethod
     def _format_matching(cls, raw, question):

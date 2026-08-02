@@ -30,28 +30,44 @@
         if (pt[1] > y1) y1 = pt[1];
       });
 
+      // Is the path closed? A loop comes back to where it started. This is a
+      // property of the GESTURE, not of the font, which is why circles are
+      // detected this way: measuring "reaches above and below the word" against
+      // the span's box got it badly wrong, because a span's box is the font's
+      // full ascent+descent while the letters fill barely half of it — a circle
+      // drawn snugly round the letters never reached the box edges and came back
+      // as a cross-out.
+      var span = Math.max(x1 - x0, y1 - y0);
+      var first = pts[0], last = pts[pts.length - 1];
+      var gap = Math.sqrt(Math.pow(last[0] - first[0], 2) + Math.pow(last[1] - first[1], 2));
+      var closed = span > 0 && gap <= 0.45 * span && pts.length >= 5;
+
       var hit = 0;
       words.forEach(function (w) {
-        var ww = w.x1 - w.x0, wh = w.y1 - w.y0;
-        if (ww <= 0 || wh <= 0) return;
+        var ww = w.x1 - w.x0;
+        // The band the LETTERS occupy, not the line box. Falls back to the box
+        // when glyph metrics are unavailable.
+        var gy0 = (w.gy0 == null ? w.y0 : w.gy0);
+        var gy1 = (w.gy1 == null ? w.y1 : w.gy1);
+        var gh = gy1 - gy0;
+        if (ww <= 0 || gh <= 0) return;
         // How much of this word's width the stroke spans.
         var cover = (Math.min(x1, w.x1) - Math.max(x0, w.x0)) / ww;
         if (cover < 0.5) return;
 
+        var mid = (y0 + y1) / 2;
+        var flat = (y1 - y0) <= 0.8 * gh;
+
         var kind = null;
-        if (y0 <= w.y0 + 0.25 * wh && y1 >= w.y1 - 0.25 * wh && cover >= 0.6) {
-          // Reaches above the word AND below it: drawn around it.
+        if (closed && cover >= 0.6 && y0 <= gy0 + 0.35 * gh && y1 >= gy1 - 0.35 * gh) {
+          // A loop drawn around the letters.
           kind = "circled";
-        } else if (y0 >= w.y0 + 0.55 * wh && y0 <= w.y1 + 0.6 * wh &&
-                   (y1 - y0) <= 0.9 * wh) {
-          // Flat, sitting just under the word. The upper bound on y0 matters:
-          // without it a line drawn well BELOW the text still claimed to
-          // underline it, because "below the middle" has no floor.
+        } else if (flat && y0 >= gy1 - 0.15 * gh && y0 <= gy1 + 1.2 * gh) {
+          // Flat, sitting below the letters — and not so far below that it is
+          // really underlining nothing.
           kind = "underlined";
-        } else if ((y1 - y0) <= 0.7 * wh &&
-                   (y0 + y1) / 2 >= w.y0 + 0.2 * wh &&
-                   (y0 + y1) / 2 <= w.y1 - 0.2 * wh) {
-          // Flat, through the middle.
+        } else if (flat && mid >= gy0 + 0.15 * gh && mid <= gy1 - 0.15 * gh) {
+          // Flat, passing through the letters.
           kind = "crossed out";
         }
         if (!kind) return;
@@ -143,6 +159,33 @@
        left UNREAD rather than guessed at, and the unread count is saved too: a
        wrong reading would mark a correct answer wrong, which is worse than
        admitting we couldn't tell. */
+    var metricsCtx = null;
+
+    /* Where the LETTERS sit inside a word's line box.
+
+       A span's rectangle is the font's full ascent+descent — for the reader's
+       24px Georgia that is 27px tall while the letters fill about 11px of it. A
+       child aiming at the middle of the letters is well below the middle of the
+       box, so thresholds measured against the box read a strike as an underline
+       and a snug circle as a strike. Measured for real here instead. */
+    function glyphBand(el, topPx, heightPx) {
+      try {
+        if (!metricsCtx) metricsCtx = document.createElement("canvas").getContext("2d");
+        var cs = window.getComputedStyle(el);
+        metricsCtx.font = cs.fontStyle + " " + cs.fontWeight + " " +
+                          cs.fontSize + " " + cs.fontFamily;
+        var m = metricsCtx.measureText(el.textContent || "x");
+        if (m.fontBoundingBoxAscent == null || m.actualBoundingBoxAscent == null) return null;
+        var baseline = topPx + m.fontBoundingBoxAscent;
+        return {
+          top: baseline - m.actualBoundingBoxAscent,
+          bottom: baseline + Math.max(0, m.actualBoundingBoxDescent),
+        };
+      } catch (e) {
+        return null;    // older browser: fall back to the line box
+      }
+    }
+
     function wordBoxes() {
       // Measured against the CANVAS, because that is the space strokes are
       // recorded and replayed in. The canvas sits a pixel inside the surface, so
@@ -153,6 +196,7 @@
       var words = [];
       widget.querySelectorAll(".markup-word").forEach(function (el) {
         var r = el.getBoundingClientRect();
+        var band = glyphBand(el, r.top, r.height);
         words.push({
           i: parseInt(el.dataset.word, 10),
           text: el.textContent,
@@ -160,6 +204,8 @@
           x1: (r.right - srect.left) / srect.width,
           y0: (r.top - srect.top) / srect.height,
           y1: (r.bottom - srect.top) / srect.height,
+          gy0: band ? (band.top - srect.top) / srect.height : null,
+          gy1: band ? (band.bottom - srect.top) / srect.height : null,
         });
       });
       return words;

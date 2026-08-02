@@ -757,7 +757,15 @@ class ResponseSheet(models.Model):
         if not isinstance(data, dict):
             return [], [], 0
         marks = [m for m in (data.get("marks") or []) if isinstance(m, dict)]
-        return data.get("strokes") or [], marks, int(data.get("unread") or 0)
+        # Autosave accepts whatever the client posts, and this is parsed inside the
+        # transaction that turns the work in — so a junk `unread` must degrade, not
+        # raise, or a child cannot submit at all.
+        try:
+            unread = int(data.get("unread") or 0)
+        except (TypeError, ValueError):
+            unread = 0
+        strokes = data.get("strokes")
+        return (strokes if isinstance(strokes, list) else []), marks, unread
 
     @classmethod
     def _format_markup(cls, raw, question):
@@ -787,16 +795,13 @@ class ResponseSheet(models.Model):
             if words:
                 parts.append(f"{kind} {', '.join(chr(34) + w + chr(34) for w in words)}")
 
-        head = f'[on "{question.passage}" she '
         if parts:
             body = "; ".join(parts)
             if unread:
-                body += (f" — plus {unread} more mark(s) that could not be read "
-                         f"automatically, so judge those from the parent's review "
-                         f"rather than counting them wrong")
-            return head + body + "]"
-        return (f'[she drew {len(strokes)} mark(s) on "{question.passage}", but none '
-                f"could be read automatically — do not treat that as a wrong answer]")
+                body += f" (plus {unread} other mark(s), not machine-readable)"
+            return f'[on "{question.passage}" she {body}]'
+        return (f'[she drew {len(strokes)} mark(s) on "{question.passage}"; none were '
+                f"machine-readable]")
 
     @classmethod
     def _format_matching(cls, raw, question):

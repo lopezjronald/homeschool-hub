@@ -369,7 +369,7 @@ class MarkupTests(TestCase):
         # way that does not read to the grader as a wrong answer.
         desc = sheet.work_entry.description
         self.assertIn('she drew 1 mark(s) on "The dog ran."', desc)
-        self.assertIn("do not treat that as a wrong answer", desc)
+        self.assertIn("none were machine-readable", desc)
 
     def test_a_marked_up_sentence_reaches_the_grader_as_words(self):
         # The point of the whole feature: the grader has to learn WHAT she marked,

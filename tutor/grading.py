@@ -85,8 +85,32 @@ def _grade_context(sheet):
     return sheet.child.get_grade_level_display()
 
 
+MARKUP_RUBRIC_NOTE = """
+
+### About the marked-up sentences
+
+Some answers describe marks the child DREW on a sentence — underlining, circling
+or crossing out words. They are read back from her strokes automatically.
+
+- A mark reported as "not machine-readable" is a limit of that reader, not a
+  mistake by the child. Do NOT count it wrong. Some exercises ask her to add
+  punctuation or rewrite by hand, which cannot be read this way at all; when
+  nothing was readable, say the work needs a parent's eye rather than judging it.
+- Judge only the marks that ARE reported, against the instruction above."""
+
+
 def _rubric_for(question_set):
     rubric = question_set.rubric or "Complete, thoughtful, age-appropriate work."
+    # The task itself lives on the set's intro ("Underline the complete subject"),
+    # and without it the grader was being asked to mark an answer whose question it
+    # had never seen.
+    if question_set.intro:
+        rubric = (
+            "### What she was asked to do\n\n"
+            f"{question_set.intro}\n\n---\n\n{rubric}"
+        )
+    if question_set.questions.filter(response_type="markup").exists():
+        rubric += MARKUP_RUBRIC_NOTE
     if question_set.answer_key:
         rubric = (
             rubric

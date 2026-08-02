@@ -16,19 +16,19 @@ from django.db.models import Q
 from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.db import transaction
-from django.urls import reverse
+from django.urls import NoReverseMatch, reverse
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 
 from activities.models import ExternalActivity
 from lingua import comprehension as lingua_comprehension
-from lingua import profiles as lingua_profiles
 from lingua import services as lingua_services
 from lingua import storage as lingua_storage
 from lingua import views as lingua_views
 from lingua.models import LibraryBook as LinguaLibraryBook
 from lingua.models import MilestoneAward as LinguaMilestone
+from lingua.models import PathwayStep
 from lingua.models import Story as LinguaStory
 from curricula.models import Curriculum, CurriculumPlacement
 from curricula.subjects import emoji_for, is_spelling
@@ -51,29 +51,20 @@ def _resolve_student(token):
 # a host model (D-03/D-04): the host knows the child's age and hands lingua a plain
 # host_student_id + a track profile.
 
-def _infer_band(student):
-    """Pick a Lingua track band from the child's age (KIDS_EARLY <10, else KIDS_OLDER);
-    default to KIDS_EARLY when the DOB is unknown. A parent settings UI can override
-    this later; v1 auto-provisions a sensible default on first entry."""
-    from datetime import date
-
-    dob = student.date_of_birth
-    if dob:
-        today = date.today()
-        # exact calendar age (no leap-day drift from //365 near the boundary)
-        age = today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
-        return lingua_profiles.KIDS_OLDER if age >= 10 else lingua_profiles.KIDS_EARLY
-    return lingua_profiles.KIDS_EARLY
-
-
 def _lingua_learner(student):
-    """The lingua Learner for this student, provisioned on first entry (idempotent)."""
-    return lingua_services.get_or_create_learner(student.pk, _infer_band(student))
+    """The lingua Learner for this student, provisioned on first entry (idempotent).
+
+    Goes through the shared adapter so the kid portal and the parent Spanish pages
+    provision identically — this used to carry its own copy of the age-band rule, which
+    is exactly the kind of thing that drifts."""
+    from homeschool_hub.adapters import lingua_students
+
+    return lingua_students.learner_for(student)
 
 
 def lingua_plan(request, token):
-    """The kid's Spanish 'today' page: the daily plan + the warm hero metric. Lives in
-    the portal shell (extends base_portal.html); the reader itself is CSP-clean."""
+    """The kid's Spanish 'today' page: Camino Hoy CTA + trail stones (LGA-87).
+    Lives in the portal shell (extends base_portal.html); the reader itself is CSP-clean."""
     student = _resolve_student(token)
     learner = _lingua_learner(student)
     celebrate = None
@@ -84,13 +75,120 @@ def lingua_plan(request, token):
             celebrate = {"threshold": threshold, "kind": kind}
     except (TypeError, ValueError):
         celebrate = None
+    extras = lingua_services.camino_plan_extras(learner)
     return render(request, "portal/lingua_plan.html", {
         "student": student, "token": token,
         "plan": lingua_services.build_daily_plan(learner),
         "totals": lingua_services.reading_totals(learner),
         "band": learner.profile.track_profile,
         "celebrate": celebrate,
+        "tutor_packets": lingua_services.tutor_packets_for(student.pk),
+        "camino_hint": extras["camino_hint"],
+        "review_due": extras["review_due"],
     })
+
+
+def _station_ctx(learner, kind):
+    """Context for the "¡Ya lo hice! ✓" control on a station page (LGA-97).
+
+    Returns the matching stop on THIS learner's own pathway, or blanks when she has
+    no such stop — the control is never rendered for a step she couldn't tick anyway,
+    and `lingua_path_check` re-derives the same allow-list before writing."""
+    status = lingua_services.pathway_status(learner)
+    row = next((r for r in status["steps"] if r["step"].kind == kind), None)
+    if row is None:
+        return {"station_step_id": None, "station_done": False, "station_auto": False}
+    done = row["status"] == lingua_services.PATH_COMPLETE
+    # A stop the app ticked ITSELF can't be untuck by clearing a checkmark that was
+    # never written — offering "undo" there is a control that visibly does nothing,
+    # which is the same class of bug as the Repaso stone this work deleted.
+    return {
+        "station_step_id": row["step"].pk,
+        "station_done": done,
+        "station_auto": done and not row["checked"],
+    }
+
+
+def lingua_path(request, token):
+    """Kid Camino map: every visible stop is open; checkbox marks Hecho (LGA-93)."""
+    student = _resolve_student(token)
+    learner = _lingua_learner(student)
+    status = lingua_services.pathway_status(learner)
+    steps = []
+    for row in status["steps"]:
+        step = row["step"]
+        if row["status"] == lingua_services.PATH_COMPLETE:
+            label = "Practicar otra vez" if row["practicar"] else "Hecho"
+        elif row["primary"]:
+            label = "Siguiente · ¡Empezar!"
+        else:
+            label = "¡Empezar!"
+        steps.append({
+            **row,
+            "href": _pathway_step_href(token, student.pk, step),
+            "label": label,
+        })  # row["title"] carries the level-resolved name
+    return render(request, "portal/lingua_path.html", {
+        "student": student, "token": token,
+        "pathway": status["pathway"],
+        "steps": steps,
+        "band": learner.profile.track_profile,
+        # Two timescales (LGA-100): today's count resets, the streak doesn't.
+        "done": status["done"], "total": status["total"],
+        "finished": status["finished"], "streak": status["streak"],
+    })
+
+
+@csrf_exempt
+@require_POST
+def lingua_path_check(request, token):
+    """Toggle a Camino map checkbox (LGA-93). Tokenless like other kid portal writes."""
+    student = _resolve_student(token)
+    learner = _lingua_learner(student)
+    try:
+        step_id = int(request.POST.get("step_id", ""))
+    except (TypeError, ValueError):
+        step_id = None
+    step = (
+        PathwayStep.objects.filter(pk=step_id, pathway__active=True).first()
+        if step_id else None
+    )
+    if step is None:
+        raise Http404("Step not found.")
+    # Only allow checking steps on this child's band pathway / visible tutor steps.
+    status = lingua_services.pathway_status(learner)
+    allowed = {row["step"].pk for row in status["steps"]}
+    if step.pk not in allowed:
+        raise Http404("Step not found.")
+    done = request.POST.get("done", "1") not in ("0", "false", "off", "")
+    lingua_services.set_pathway_checkmark(learner, step, done)
+    return redirect(reverse("portal:lingua_path", args=[token]))
+
+
+def _pathway_step_href(token, host_student_id, step):
+    """Deeplink for a PathwayStep — never invents new content URLs."""
+    kind, ref = step.kind, (step.target_ref or "").strip()
+    if kind == PathwayStep.STORY and ref.isdigit():
+        return reverse("portal:lingua_read", args=[token, int(ref)])
+    if kind == PathwayStep.STORY_LEVEL:
+        return reverse("portal:lingua_library", args=[token])
+    if kind == PathwayStep.PHONICS:
+        return reverse("portal:lingua_phonics", args=[token])
+    if kind == PathwayStep.LISTEN:
+        return reverse("portal:lingua_listen", args=[token])
+    if kind == PathwayStep.TUTOR_PACKET:
+        if ref.isdigit() and lingua_services.tutor_packet_for(host_student_id, int(ref)):
+            return reverse("portal:lingua_tutor_packet", args=[token, int(ref)])
+        return reverse("portal:lingua_tutor", args=[token])
+    if kind == PathwayStep.REVIEW:
+        return reverse("portal:lingua_plan", args=[token])
+    if kind == PathwayStep.LINK and ref:
+        # Allow only named portal lingua routes (no open redirects).
+        try:
+            return reverse(f"portal:{ref}", args=[token])
+        except NoReverseMatch:
+            return reverse("portal:lingua_plan", args=[token])
+    return reverse("portal:lingua_plan", args=[token])
 
 
 def lingua_library(request, token):
@@ -176,27 +274,67 @@ def lingua_read(request, token, story_id):
 
 
 def lingua_phonics(request, token):
-    """Spanish phonics mini-lesson (F-04, LGA-64): the handful of Spanish-specific
-    decoding rules + practice words. Linked from the plan for the youngest band; any
-    learner may open it. Provisions the learner on entry (idempotent)."""
+    """Spanish phonics mini-lesson (F-04, LGA-64/84): decoding rules + tappable
+    practice words with pre-baked audio when available. Linked from the plan for
+    the youngest band; any learner may open it. Provisions the learner on entry."""
     student = _resolve_student(token)
-    _lingua_learner(student)
+    learner = _lingua_learner(student)
+    band = learner.profile.track_profile
+    rules = lingua_services.phonics_rules_with_audio(band=band)
+    # Reuse the rules already fetched — phonics_focus takes them for this reason.
+    focus = lingua_services.phonics_focus(
+        learner, band=band, rules=[i["rule"] for i in rules])
     return render(request, "portal/lingua_phonics.html", {
-        "student": student, "token": token, "rules": lingua_services.phonics_rules(),
+        **_station_ctx(learner, PathwayStep.PHONICS),
+        "student": student, "token": token,
+        "rules": rules,
+        # One sound to actually work on today; the rest stay below. A wall of eight
+        # rules is a wall a 9-year-old works on none of.
+        "focus_pattern": focus.pattern if focus else "",
+        "focus_title": focus.title if focus else "",
     })
 
 
 def lingua_listen(request, token):
-    """Spanish listening track (F-02/N-02, LGA-55/57): curated comprehensible-input
-    videos for the learner's band, plus a minutes check-in. Listening minutes feed the
+    """Spanish listening track (F-02/N-02, LGA-55/57/86): curated YouTube plus
+    in-app alphabet chart and tutor practice phrases. Listening minutes feed the
     same 'minutes of input' hero metric as reading. Provisions the learner on entry."""
     student = _resolve_student(token)
     learner = _lingua_learner(student)
     return render(request, "portal/lingua_listen.html", {
+        **_station_ctx(learner, PathwayStep.LISTEN),
         "student": student, "token": token,
         "resources": lingua_services.listening_resources(learner.profile.track_profile),
+        "alphabet": lingua_services.alphabet_tiles_with_audio(),
+        "phrases": lingua_services.practice_phrases_for(student.pk),
         "totals": lingua_services.reading_totals(learner),
         "logged": request.GET.get("logged"),
+    })
+
+
+def lingua_tutor(request, token):
+    """Con el maestro (LGA-85): list of tutor homework packets visible to this child."""
+    student = _resolve_student(token)
+    _lingua_learner(student)  # provisions on first entry; the return value is unused
+    packets = lingua_services.tutor_packets_for(student.pk)
+    return render(request, "portal/lingua_tutor.html", {
+        "student": student, "token": token, "packets": packets,
+    })
+
+
+def lingua_tutor_packet(request, token, packet_id):
+    """One tutor packet: download handout + practice phrases (LGA-85)."""
+    student = _resolve_student(token)
+    _lingua_learner(student)  # provisions on first entry; the return value is unused
+    packet = lingua_services.tutor_packet_for(student.pk, packet_id)
+    if packet is None:
+        raise Http404("Packet not found.")
+    phrases = [
+        p for p in lingua_services.practice_phrases_for(student.pk)
+        if p["packet_id"] == packet.pk
+    ]
+    return render(request, "portal/lingua_tutor_packet.html", {
+        "student": student, "token": token, "packet": packet, "phrases": phrases,
     })
 
 
@@ -307,16 +445,30 @@ def lingua_finish(request, token, story_id):
 
 
 def _placed_curriculum_ids(student):
-    return list(student.placements.values_list("curriculum_id", flat=True))
+    """Active placements only — deactivated subjects leave the kid portal (HH-149)."""
+    return list(
+        student.placements.filter(is_active=True, curriculum__is_active=True)
+        .values_list("curriculum_id", flat=True)
+    )
 
 
 def _visible_materials(student):
-    """Approved materials for this child (theirs, or unpinned ones in their curricula)."""
+    """Approved materials this child may open.
+
+    Work pinned to THIS child stays visible even with no active placement in its
+    curriculum — that's how the manga lessons are assigned, and requiring a placement
+    made them vanish along with their bookmarked links. Deactivation (HH-149) applies
+    to the shared branch, which is the one a parent shelves.
+    """
     curriculum_ids = _placed_curriculum_ids(student)
     return (
         Material.objects.filter(status=Material.APPROVED)
         .filter(
-            Q(child=student)
+            # `child=student` is an exact FK match — this is the ONLY branch that
+            # bypasses the placement check, and it must never widen. Dropping the
+            # child predicate here exposes every sibling's and every other family's
+            # pinned work across nine endpoints; there is a test for exactly that.
+            Q(child=student, lesson__chapter__curriculum__is_active=True)
             | Q(child__isnull=True, lesson__chapter__curriculum_id__in=curriculum_ids)
         )
         .select_related("lesson", "lesson__chapter")
@@ -329,12 +481,17 @@ def _visible_question_sets(student):
 
     Teacher-led discussion sets are intentionally excluded — those are for the
     parent to lead orally, not for the child to fill out.
+
+    Shelving a child's PLACEMENT (HH-149) hides the shared work in that curriculum but
+    leaves the child's own pinned work reachable by link; retiring the whole
+    CURRICULUM hides both, which is what its is_active flag promises. This is the
+    authorization gate for nine endpoints — see the note in _visible_materials.
     """
     curriculum_ids = _placed_curriculum_ids(student)
     return (
         QuestionSet.objects.filter(status=QuestionSet.APPROVED, mode=QuestionSet.MODE_STUDENT)
         .filter(
-            Q(child=student)
+            Q(child=student, lesson__chapter__curriculum__is_active=True)
             | Q(child__isnull=True, lesson__chapter__curriculum_id__in=curriculum_ids)
         )
         .select_related("lesson", "lesson__chapter", "lesson__chapter__curriculum")
@@ -395,29 +552,16 @@ def _subject_cards(student):
 
     placements = {
         p.curriculum_id: p
-        for p in CurriculumPlacement.objects.filter(child=student).select_related(
+        for p in CurriculumPlacement.objects.filter(
+            child=student, is_active=True, curriculum__is_active=True,
+        ).select_related(
             "curriculum", "current_lesson", "current_lesson__chapter",
         )
     }
 
-    # Placements first (stable order), then any other curriculum owning work.
-    curr_ids = list(placements)
-    for cid in list(sets_by_curr) + list(materials_by_curr):
-        if cid not in curr_ids:
-            curr_ids.append(cid)
-
-    curricula = {p.curriculum_id: p.curriculum for p in placements.values()}
-    missing = [cid for cid in curr_ids if cid not in curricula]
-    if missing:
-        for c in Curriculum.objects.filter(id__in=missing):
-            curricula[c.id] = c
-
     cards = []
-    for cid in curr_ids:
-        curriculum = curricula.get(cid)
-        if curriculum is None:
-            continue
-        placement = placements.get(cid)
+    for cid, placement in placements.items():
+        curriculum = placement.curriculum
         curr_sets = sets_by_curr.get(cid, [])
         sets_total = len(curr_sets)
         sets_done = sum(1 for qs in curr_sets if _set_is_done(qs))
@@ -425,8 +569,8 @@ def _subject_cards(student):
             "curriculum": curriculum,
             "emoji": emoji_for(curriculum.subject),
             "placement": placement,
-            "progress": placement.progress() if placement else None,
-            "current_lesson": placement.current_lesson if placement else None,
+            "progress": placement.progress(),
+            "current_lesson": placement.current_lesson,
             "next_set": next((qs for qs in curr_sets if not _set_is_done(qs)), None),
             "sets_done": sets_done,
             "sets_total": sets_total,
@@ -453,8 +597,20 @@ def portal_home(request, token):
 
 
 def portal_subject(request, token, curriculum_id):
-    """Drill into one subject: chapters, the current one open, finished folded."""
+    """Drill into one subject: chapter → lesson outline with nested manga + sets (HH-148)."""
+    from curricula.models import Chapter
+
     student = _resolve_student(token)
+    placement = (
+        CurriculumPlacement.objects
+        .filter(child=student, curriculum_id=curriculum_id, is_active=True,
+                curriculum__is_active=True)
+        .select_related("curriculum", "current_lesson", "current_lesson__chapter")
+        .first()
+    )
+    if placement is None:
+        raise Http404
+    curriculum = placement.curriculum
 
     sets = [
         qs for qs in _annotated_question_sets(student)
@@ -464,42 +620,70 @@ def portal_subject(request, token, curriculum_id):
         m for m in _visible_materials(student)
         if m.lesson.chapter.curriculum_id == curriculum_id
     ]
-    placement = (
-        CurriculumPlacement.objects
-        .filter(child=student, curriculum_id=curriculum_id)
-        .select_related("curriculum", "current_lesson", "current_lesson__chapter")
-        .first()
-    )
-    # Authorize: the child must be placed in this subject or own work in it.
-    if placement is None and not sets and not materials:
-        raise Http404
-    curriculum = placement.curriculum if placement else get_object_or_404(Curriculum, pk=curriculum_id)
+    sets_by_lesson = defaultdict(list)
+    for qs in sets:
+        sets_by_lesson[qs.lesson_id].append(qs)
+    materials_by_lesson = defaultdict(list)
+    for m in materials:
+        materials_by_lesson[m.lesson_id].append(m)
 
     next_set = next((qs for qs in sets if not _set_is_done(qs)), None)
     if next_set is not None:
         current_chapter = next_set.lesson.chapter.number
-    elif placement and placement.current_lesson:
+    elif placement.current_lesson:
         current_chapter = placement.current_lesson.chapter.number
     else:
         current_chapter = None
 
-    # Sets arrive ordered curriculum→chapter→lesson, so group by chapter number.
     chapters = []
-    for (number, title), group in groupby(
-        sets, key=lambda s: (s.lesson.chapter.number, s.lesson.chapter.title),
-    ):
-        items = list(group)
+    db_chapters = (
+        Chapter.objects.filter(curriculum=curriculum)
+        .prefetch_related("lessons")
+        .order_by("number")
+    )
+    for chapter in db_chapters:
+        lessons_out = []
+        for lesson in chapter.lessons.all():
+            les_mats = materials_by_lesson.get(lesson.pk, [])
+            les_sets = sets_by_lesson.get(lesson.pk, [])
+            if not les_mats and not les_sets:
+                continue  # skip empty openers / structure-only noise
+            lessons_out.append({
+                "lesson": lesson,
+                "is_current": (
+                    placement.current_lesson_id == lesson.pk
+                    or (next_set is not None and next_set.lesson_id == lesson.pk)
+                ),
+                "materials": les_mats,
+                "sets": les_sets,
+                "sets_done": sum(1 for qs in les_sets if _set_is_done(qs)),
+                "sets_total": len(les_sets),
+            })
+        if not lessons_out:
+            continue
+        set_count = sum(l["sets_total"] for l in lessons_out)
+        set_done = sum(l["sets_done"] for l in lessons_out)
         chapters.append({
-            "number": number,
-            "title": title,
-            "sets": items,
-            "done": sum(1 for qs in items if _set_is_done(qs)),
-            "total": len(items),
-            "is_current": number == current_chapter,
+            "pk": chapter.pk,
+            "number": chapter.number,
+            "title": chapter.title,
+            "lessons": lessons_out,
+            "done": set_done,
+            "total": set_count or len(lessons_out),
+            "is_current": chapter.number == current_chapter,
         })
-    # If nothing is flagged current (e.g. all finished), open the first chapter.
     if chapters and not any(ch["is_current"] for ch in chapters):
         chapters[0]["is_current"] = True
+
+    next_material = None
+    if next_set is None:
+        for ch in chapters:
+            for les in ch["lessons"]:
+                if les["materials"]:
+                    next_material = les["materials"][0]
+                    break
+            if next_material:
+                break
 
     return render(request, "portal/portal_subject.html", {
         "student": student,
@@ -507,11 +691,11 @@ def portal_subject(request, token, curriculum_id):
         "curriculum": curriculum,
         "emoji": emoji_for(curriculum.subject),
         "placement": placement,
-        "progress": placement.progress() if placement else None,
-        "current_lesson": placement.current_lesson if placement else None,
+        "progress": placement.progress(),
+        "current_lesson": placement.current_lesson,
         "next_set": next_set,
+        "next_material": next_material,
         "chapters": chapters,
-        "materials": materials,
     })
 
 

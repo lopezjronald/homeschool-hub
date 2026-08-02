@@ -14,7 +14,7 @@ from core.permissions import (
 from curricula.models import Curriculum
 from worklog.models import WorkLogEntry
 
-from . import ai, grading, mastery
+from . import ai, grading, mastery, spend
 from .forms import AssessmentRequestForm, FinalizeForm
 from .models import MasteryAssessment, Material, QuestionSet
 
@@ -48,6 +48,12 @@ def assess_create(request, entry_pk):
                     request,
                     "AI grading isn't set up yet. Add an ANTHROPIC_API_KEY to enable it.",
                 )
+                return redirect("worklog:worklog_detail", pk=entry.pk)
+            # Refuse here rather than letting the background grade fail: this is the
+            # only point in the flow where someone is looking at a page and can be
+            # told why. Past this line the parent gets a pending spinner (HH-145).
+            if spend.budget_exceeded():
+                messages.error(request, spend.refusal_message())
                 return redirect("worklog:worklog_detail", pk=entry.pk)
             # Already graded (e.g. the portal auto-grader beat us here)? Go to it.
             existing = MasteryAssessment.objects.filter(work_entry=entry).first()
@@ -129,7 +135,14 @@ def assess_status(request, entry_pk):
             "ready": True,
             "url": reverse("tutor:assess_detail", kwargs={"pk": assessment.pk}),
         })
-    return JsonResponse({"ready": False, "grading": ai.is_configured()})
+    # `grading: false` is what the template turns into a legible message instead of
+    # a spinner. The ceiling can be crossed between the create-time check and the
+    # background thread, and that grade dies inside a broad except — without this,
+    # the parent watches "Still working…" for 150s and is then told to try again.
+    return JsonResponse({
+        "ready": False,
+        "grading": ai.is_configured() and not spend.budget_exceeded(),
+    })
 
 
 @login_required

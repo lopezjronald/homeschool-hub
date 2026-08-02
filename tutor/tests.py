@@ -1,4 +1,5 @@
 import json
+from datetime import timedelta
 from io import StringIO
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -6,6 +7,7 @@ from unittest.mock import patch
 from django.contrib.auth import get_user_model
 from django.core.management import call_command
 from django.test import TestCase, override_settings
+from django.utils import timezone
 from django.urls import reverse
 
 from core.models import Family, FamilyMembership
@@ -14,28 +16,39 @@ from curricula.services import apply_blueprint, get_blueprint
 from students.models import Student
 from worklog.models import WorkLogEntry
 
-from . import ai, grading, imagegen, mastery
-from .models import Material, MasteryAssessment, Question, ResponseSheet
+from . import ai, grading, imagegen, mastery, spend
+from .models import AiSpend, Material, MasteryAssessment, Question, ResponseSheet
 
 User = get_user_model()
 
 
-def _fake_message(text):
-    """Mimic an anthropic Message with a single text content block."""
+def _fake_message(text, usage=None):
+    """Mimic an anthropic Message with a single text content block.
+
+    ``usage`` defaults to absent, matching a response object whose token counts
+    never arrived — the spend ledger has to survive that.
+    """
     block = SimpleNamespace(type="text", text=text)
-    return SimpleNamespace(content=[block])
+    return SimpleNamespace(content=[block], usage=usage)
+
+
+def _fake_usage(input_tokens, output_tokens):
+    return SimpleNamespace(input_tokens=input_tokens, output_tokens=output_tokens)
 
 
 class FakeAnthropic:
     """Stand-in for anthropic.Anthropic that returns a canned JSON response."""
 
-    def __init__(self, text):
+    def __init__(self, text, usage=None):
         self._text = text
+        self._usage = usage
+        self.calls = 0
         self.messages = SimpleNamespace(create=self._create)
 
     def _create(self, **kwargs):
         self.last_kwargs = kwargs
-        return _fake_message(self._text)
+        self.calls += 1
+        return _fake_message(self._text, self._usage)
 
 
 GOOD_JSON = (
@@ -726,3 +739,366 @@ class SubmissionNotifyTests(TestCase):
             grading.auto_grade_sheet(sheet)
         self.assertEqual(len(mail.outbox), 1)
         self.assertEqual(mail.outbox[0].to, ["np@e.com"])
+
+
+class OneAssessmentPerWorkEntryTests(TestCase):
+    """HH-144: the one-assessment-per-entry rule was enforced only by an application
+    row lock, and prod had already accumulated an entry with THREE assessments."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from students.models import Student
+        from worklog.models import WorkLogEntry
+        User = get_user_model()
+        cls.parent = User.objects.create_user("oa_parent", "oa@example.com", "pw")
+        cls.kid = Student.objects.create(parent=cls.parent, first_name="Nia")
+        cls.entry = WorkLogEntry.objects.create(
+            parent=cls.parent, child=cls.kid, date=timezone.localdate(),
+            subject="Math", description="p.40",
+        )
+
+    def _make(self, entry=None, **kw):
+        from tutor.models import MasteryAssessment
+        return MasteryAssessment.objects.create(
+            work_entry=entry or self.entry, rubric="r", answers="a", **kw)
+
+    def test_a_second_assessment_is_refused_by_the_database(self):
+        from django.db import IntegrityError, transaction
+        from tutor.models import MasteryAssessment
+        self._make()
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                self._make()
+        self.assertEqual(MasteryAssessment.objects.count(), 1)
+
+    def test_a_different_entry_is_unaffected(self):
+        from tutor.models import MasteryAssessment
+        from worklog.models import WorkLogEntry
+        other = WorkLogEntry.objects.create(
+            parent=self.parent, child=self.kid, date=timezone.localdate(),
+            subject="Reading", description="ch.2",
+        )
+        self._make()
+        self._make(entry=other)
+        self.assertEqual(MasteryAssessment.objects.count(), 2)
+
+
+class AssessmentDedupeMigrationTests(TestCase):
+    """The migration has to dedupe BEFORE adding the constraint, or the release
+    aborts on prod — which already holds a work entry with three assessments.
+
+    The keep rule is exercised directly rather than through the ORM: once the
+    constraint stands there is no way to build a duplicate to feed it (that is the
+    whole point), and on SQLite the constraint is an inline table constraint that
+    every schema rebuild re-applies from the model. keep_one() sorts its own input
+    precisely so it can be tested this way.
+    """
+
+    @staticmethod
+    def _mod():
+        from importlib import import_module
+        return import_module("tutor.migrations.0018_one_assessment_per_work_entry")
+
+    def _keep_one(self):
+        return self._mod().keep_one
+
+    def _row(self, pk, status, age_days, entry=1):
+        # Unsaved instances: the rule only reads pk/work_entry_id/status/created_at.
+        return MasteryAssessment(
+            pk=pk, status=status, work_entry_id=entry,
+            created_at=timezone.now() - timedelta(days=age_days),
+        )
+
+    def test_only_the_losers_of_a_duplicated_entry_are_deleted(self):
+        # The selection is what destroys data, so cover it directly: the keeper must
+        # not be in the kill list, and a row that was never duplicated must not be
+        # swept up with them.
+        doomed_pks = self._mod().doomed_pks
+        keeper = self._row(1, MasteryAssessment.FINALIZED, age_days=9, entry=100)
+        rows = [
+            keeper,
+            self._row(2, MasteryAssessment.DRAFT, age_days=1, entry=100),
+            self._row(3, MasteryAssessment.DRAFT, age_days=0, entry=100),
+            self._row(4, MasteryAssessment.DRAFT, age_days=0, entry=200),  # not duped
+        ]
+        self.assertEqual(sorted(doomed_pks(rows)), [2, 3])
+
+    def test_nothing_is_deleted_when_every_entry_has_one(self):
+        doomed_pks = self._mod().doomed_pks
+        rows = [self._row(1, MasteryAssessment.DRAFT, age_days=0, entry=100),
+                self._row(2, MasteryAssessment.FINALIZED, age_days=3, entry=200)]
+        self.assertEqual(doomed_pks(rows), [])
+
+    def test_a_finalized_assessment_survives_a_newer_draft(self):
+        # The stamped level is what the parent decided and what the charter report
+        # counts, so keeping the most recent row would erase the wrong one.
+        keep_one = self._keep_one()
+        old_final = self._row(1, MasteryAssessment.FINALIZED, age_days=9)
+        rows = [self._row(2, MasteryAssessment.DRAFT, age_days=1),
+                old_final,
+                self._row(3, MasteryAssessment.DRAFT, age_days=0)]
+        self.assertEqual(keep_one(rows).pk, old_final.pk)
+
+    def test_the_newest_wins_when_none_is_finalized(self):
+        keep_one = self._keep_one()
+        newest = self._row(2, MasteryAssessment.DRAFT, age_days=1)
+        rows = [self._row(1, MasteryAssessment.DRAFT, age_days=4),
+                newest,
+                self._row(3, MasteryAssessment.DRAFT, age_days=7)]
+        self.assertEqual(keep_one(rows).pk, newest.pk)
+
+    def test_the_newest_wins_among_several_finalized(self):
+        keep_one = self._keep_one()
+        newer_final = self._row(1, MasteryAssessment.FINALIZED, age_days=1)
+        rows = [self._row(2, MasteryAssessment.FINALIZED, age_days=6), newer_final]
+        self.assertEqual(keep_one(rows).pk, newer_final.pk)
+
+    def test_recency_is_by_timestamp_not_row_id(self):
+        # A backfilled or re-imported row gets a high pk with an old created_at;
+        # ranking on pk would then keep stale work.
+        keep_one = self._keep_one()
+        rows = [self._row(99, MasteryAssessment.DRAFT, age_days=30),
+                self._row(2, MasteryAssessment.DRAFT, age_days=1)]
+        self.assertEqual(keep_one(rows).pk, 2)
+
+    def test_the_dedupe_is_a_no_op_when_there_are_no_duplicates(self):
+        from importlib import import_module
+        from students.models import Student
+        from worklog.models import WorkLogEntry
+        User = get_user_model()
+        parent = User.objects.create_user("dd_parent", "dd@example.com", "pw")
+        kid = Student.objects.create(parent=parent, first_name="Nia")
+        entry = WorkLogEntry.objects.create(
+            parent=parent, child=kid, date=timezone.localdate(),
+            subject="Math", description="p.40",
+        )
+        only = MasteryAssessment.objects.create(
+            work_entry=entry, rubric="r", answers="a")
+
+        class _Apps:
+            def get_model(self, app_label, name):
+                return MasteryAssessment
+
+        mod = import_module("tutor.migrations.0018_one_assessment_per_work_entry")
+        mod.drop_duplicate_assessments(_Apps(), None)
+
+        self.assertEqual([a.pk for a in MasteryAssessment.objects.all()], [only.pk])
+
+
+@override_settings(
+    ANTHROPIC_API_KEY="test-key",
+    TUTOR_MONTHLY_COST_CEILING_USD=10.0,
+    TUTOR_AI_PRICES={"big": (15.0, 75.0), "small": (1.0, 5.0)},
+    TUTOR_AI_PRICE_FALLBACK=(15.0, 75.0),
+)
+class TutorSpendLedgerTests(TestCase):
+    """HH-145: tutor is the higher-volume AI path and had no spend ceiling at all —
+    only lingua did. A retry storm or a stuck daemon would surface as a bill."""
+
+    def test_cost_is_priced_per_model_not_per_token_total(self):
+        # The two tiers differ by 15x, so the same token count must not cost the
+        # same. Deriving cost from a month's token total afterwards cannot work.
+        big = spend.micro_usd_for("big", 1_000_000, 1_000_000)
+        small = spend.micro_usd_for("small", 1_000_000, 1_000_000)
+        self.assertEqual(big, 90_000_000)    # $15 in + $75 out
+        self.assertEqual(small, 6_000_000)   # $1 in + $5 out
+
+    def test_an_unknown_model_is_priced_at_the_expensive_tier(self):
+        # Fail closed: over-estimating stops early and is recoverable; under-
+        # estimating sails past the ceiling, which is the whole failure mode.
+        self.assertEqual(
+            spend.micro_usd_for("some-new-model", 1_000_000, 1_000_000),
+            spend.micro_usd_for("big", 1_000_000, 1_000_000),
+        )
+
+    def test_usage_accumulates_across_calls(self):
+        # Output tokens are the 5x side of the price table, so they are asserted
+        # separately from input and the resulting cost is pinned exactly — reading
+        # the wrong field would otherwise under-count the expensive half silently.
+        spend.record_usage("small", _fake_usage(1_000_000, 1_000_000))
+        spend.record_usage("small", _fake_usage(1_000_000, 1_000_000))
+        row = AiSpend.objects.get()
+        self.assertEqual(row.calls, 2)
+        self.assertEqual(row.input_tokens, 2_000_000)
+        self.assertEqual(row.output_tokens, 2_000_000)
+        self.assertEqual(row.micro_usd, 12_000_000)   # 2 × ($1 in + $5 out)
+        self.assertEqual(spend.month_to_date_usd(), 12.0)
+
+    def test_cached_prompt_tokens_are_billed_too(self):
+        # Anthropic reports cached tokens SEPARATELY from input_tokens. Reading
+        # only input_tokens would under-count the moment anyone adds cache_control.
+        usage = SimpleNamespace(
+            input_tokens=1_000_000, output_tokens=0,
+            cache_creation_input_tokens=1_000_000, cache_read_input_tokens=1_000_000,
+        )
+        spend.record_usage("small", usage)
+        # 1M base + 1.25M weighted writes + 0.1M weighted reads
+        self.assertEqual(AiSpend.objects.get().input_tokens, 2_350_000)
+
+    def test_a_dated_snapshot_id_is_priced_as_its_family(self):
+        # The API answers with the resolved snapshot, not the alias we asked for.
+        # Exact-match-only pricing would bill every real call at the fallback tier.
+        self.assertEqual(
+            spend.prices_for("small-20260101"), spend.prices_for("small"),
+        )
+
+    def test_the_served_model_is_what_gets_priced(self):
+        # A server-side substitution must not be billed at the tier we asked for.
+        client = FakeAnthropic(GOOD_JSON, usage=_fake_usage(1_000_000, 0))
+        client._create = lambda **kw: SimpleNamespace(
+            content=[SimpleNamespace(type="text", text=GOOD_JSON)],
+            usage=_fake_usage(1_000_000, 0),
+            model="big",  # we asked for the grading model; the API served "big"
+        )
+        client.messages = SimpleNamespace(create=client._create)
+        with override_settings(TUTOR_MODEL="small"):
+            ai.grade_work(rubric="r", answers="a", grade_level="3rd",
+                          subject="Math", client=client)
+        self.assertEqual(AiSpend.objects.get().micro_usd, 15_000_000)  # big, not small
+
+    def test_a_call_with_no_usage_object_still_counts_as_a_call(self):
+        # Token counts can be missing; the call count is what reveals a runaway
+        # loop even then, so it must not depend on them.
+        spend.record_usage("small", None)
+        self.assertEqual(AiSpend.objects.get().calls, 1)
+
+    def test_spend_is_recorded_even_when_the_reply_cannot_be_parsed(self):
+        # The seam records the instant the provider responds. A ledger that only
+        # counted successful parses would under-count exactly the runaway case.
+        client = FakeAnthropic("this is not JSON", usage=_fake_usage(500_000, 100_000))
+        with self.assertRaises(ai.GraderError):
+            ai.grade_work(rubric="r", answers="a", grade_level="3rd",
+                          subject="Math", client=client)
+        row = AiSpend.objects.get()
+        self.assertEqual(row.calls, 1)
+        self.assertEqual(row.input_tokens, 500_000)
+        self.assertGreater(row.micro_usd, 0)
+
+    def test_grading_is_refused_once_the_ceiling_is_reached(self):
+        AiSpend.objects.create(period=timezone.now().strftime("%Y-%m"),
+                               micro_usd=10_000_000)  # exactly $10.00 = the ceiling
+        client = FakeAnthropic(GOOD_JSON, usage=_fake_usage(10, 10))
+        with self.assertRaises(spend.BudgetExceeded):
+            ai.grade_work(rubric="r", answers="a", grade_level="3rd",
+                          subject="Math", client=client)
+        # Checked BEFORE the call: crossing the ceiling costs one more call, not
+        # an unbounded number.
+        self.assertEqual(client.calls, 0)
+
+    def test_just_under_the_ceiling_still_grades(self):
+        AiSpend.objects.create(period=timezone.now().strftime("%Y-%m"),
+                               micro_usd=9_999_999)
+        client = FakeAnthropic(GOOD_JSON, usage=_fake_usage(10, 10))
+        result = ai.grade_work(rubric="r", answers="a", grade_level="3rd",
+                               subject="Math", client=client)
+        self.assertEqual(result["level"], "proficient")
+        self.assertEqual(client.calls, 1)
+
+    def test_the_writing_helpers_degrade_instead_of_raising_at_a_child(self):
+        # Deliberate asymmetry: a billing notice does not belong in a kid's
+        # writing box, so these go quiet rather than erroring. Asserting the LOG is
+        # what makes this discriminating — the generic `except Exception: return []`
+        # underneath already returns [], so an empty list alone proves nothing.
+        AiSpend.objects.create(period=timezone.now().strftime("%Y-%m"),
+                               micro_usd=10_000_000)
+        client = FakeAnthropic('["glad"]', usage=_fake_usage(10, 10))
+        with self.assertLogs("tutor.ai", level="WARNING") as logs:
+            self.assertEqual(ai.suggest_words("happy", client=client), [])
+            self.assertEqual(ai.check_spelling("becuse", client=client), [])
+        self.assertEqual(client.calls, 0)
+        joined = "\n".join(logs.output)
+        self.assertIn("Word suggestions skipped", joined)
+        self.assertIn("Spellcheck skipped", joined)
+
+    def test_the_draft_coach_degrades_rather_than_500ing_at_a_child(self):
+        # review_draft's only caller is the kid's writing box, which catches
+        # GraderError. Letting BudgetExceeded escape 500s a child-facing endpoint.
+        AiSpend.objects.create(period=timezone.now().strftime("%Y-%m"),
+                               micro_usd=10_000_000)
+        client = FakeAnthropic('{"praise": "p", "suggestions": []}')
+        with self.assertLogs("tutor.ai", level="WARNING"):
+            with self.assertRaises(ai.GraderError):
+                ai.review_draft(draft="d", assignment="a", grade_level="3rd",
+                                subject="Writing", client=client)
+        self.assertEqual(client.calls, 0)
+
+    def test_the_scheduled_sweep_stops_once_instead_of_per_sheet(self):
+        AiSpend.objects.create(period=timezone.now().strftime("%Y-%m"),
+                               micro_usd=10_000_000)
+        with self.assertLogs("tutor.grading", level="WARNING") as logs:
+            self.assertEqual(grading.grade_pending_sheets(), (0, 0))
+        self.assertEqual(len(logs.output), 1)
+        self.assertIn("sweep skipped", logs.output[0])
+
+    def test_the_month_rolls_over_in_local_time_not_utc(self):
+        # Under America/Los_Angeles, UTC rolls the month seven hours early — the
+        # ceiling would lift on the evening of the 31st while the refusal message
+        # was still promising "the 1st".
+        from datetime import datetime, timezone as dt_timezone
+        from unittest.mock import patch as _patch
+        late_august_pdt = datetime(2026, 9, 1, 1, 0, tzinfo=dt_timezone.utc)  # 6pm Aug 31 PDT
+        with _patch("django.utils.timezone.now", return_value=late_august_pdt):
+            self.assertEqual(spend._period(), "2026-08")
+
+    def test_the_refusal_message_says_the_numbers_and_when_it_lifts(self):
+        AiSpend.objects.create(period=timezone.now().strftime("%Y-%m"),
+                               micro_usd=12_500_000)
+        msg = spend.refusal_message()
+        self.assertIn("$12.50", msg)
+        self.assertIn("$10.00", msg)
+        self.assertIn("1st", msg)
+
+    def test_tutor_spend_does_not_touch_the_lingua_ledger(self):
+        # The two ledgers are separate so lingua stays extractable (D-03); a tutor
+        # call must not consume lingua's compliance budget or vice versa.
+        from lingua.models import AiUsage
+        spend.record_usage("small", _fake_usage(1_000, 1_000))
+        self.assertEqual(AiUsage.objects.count(), 0)
+        self.assertEqual(AiSpend.objects.count(), 1)
+
+
+@override_settings(ANTHROPIC_API_KEY="test-key", TUTOR_MONTHLY_COST_CEILING_USD=10.0)
+class SpendCeilingIsLegibleToUsersTests(TestCase):
+    """The refusal has to reach a person as an explanation, not a 500 or a spinner
+    that never resolves."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from students.models import Student
+        from worklog.models import WorkLogEntry
+        cls.parent = User.objects.create_user("sp", "sp@e.com", "pw")
+        cls.family = Family.objects.create(name="Spend Fam")
+        FamilyMembership.objects.create(user=cls.parent, family=cls.family, role="parent")
+        cls.child = Student.objects.create(parent=cls.parent, first_name="Ada",
+                                           grade_level="G03", family=cls.family)
+        cls.entry = WorkLogEntry.objects.create(
+            parent=cls.parent, child=cls.child, subject="Math", family=cls.family,
+            description="p.40",
+        )
+
+    def _max_out(self):
+        AiSpend.objects.create(period=timezone.now().strftime("%Y-%m"),
+                               micro_usd=10_000_000)
+
+    def test_the_grade_button_explains_instead_of_spinning(self):
+        # Past this redirect the parent would get a pending page that polls until
+        # it gives up, with nothing saying why.
+        self._max_out()
+        self.client.login(username="sp", password="pw")
+        resp = self.client.post(
+            reverse("tutor:assess_create", kwargs={"entry_pk": self.entry.pk}),
+            data={"rubric": "r", "answers": "a"}, follow=True,
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "reached the")
+        self.assertFalse(MasteryAssessment.objects.filter(work_entry=self.entry).exists())
+
+    def test_a_childs_submitted_work_is_held_not_lost(self):
+        # The kid must never meet a spending notice, and their work must survive
+        # to be graded later — same behaviour as having no API key at all.
+        from tutor import grading
+        self._max_out()
+        sheet = SimpleNamespace(is_submitted=True, work_entry_id=self.entry.pk, pk=1)
+        assessment, created = grading.auto_grade_sheet(sheet)
+        self.assertIsNone(assessment)
+        self.assertFalse(created)

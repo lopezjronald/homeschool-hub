@@ -720,8 +720,28 @@
 .portal-subject-card:hover .portal-subject-go { text-decoration: underline; }
 
 @media (max-width: 480px) {
-  .portal-subject-go { display: none; }   /* the whole card is tappable anyway */
+  /* Only hide the chevron when the whole card is the link (home/plan).
+     Keep it when the card is a div and .portal-subject-go is the real action
+     (e.g. Escuchar → open YouTube). */
+  a.portal-subject-card > .portal-subject-go { display: none; }
   .portal-subject-name { font-size: 1.08rem; }
+}
+
+/* Tap-to-hear feedback (Lingua clips.js adds .lingua-clip-playing). */
+.lingua-clip-playing {
+  border-color: rgba(30, 122, 80, 0.55) !important;
+  background: rgba(30, 122, 80, 0.12) !important;
+  box-shadow: 0 0 0 2px rgba(30, 122, 80, 0.22);
+}
+.lingua-clip-muted {
+  opacity: 0.45;
+  pointer-events: none;
+}
+button.portal-subject-card {
+  font: inherit;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
 }
 
 /* ---- subject drill-in ---- */
@@ -800,6 +820,35 @@
   padding: 0.1rem 0.6rem;
 }
 .portal-chapter-body { padding: 0 0.6rem 0.6rem; }
+.portal-lesson-block {
+  padding: 0.55rem 0.4rem;
+  border-top: 1px solid rgba(30, 122, 80, 0.1);
+}
+.portal-lesson-block:first-child { border-top: 0; }
+.portal-lesson-block.is-current {
+  background: rgba(235, 168, 58, 0.08);
+  border-radius: 10px;
+  margin: 0.2rem 0;
+  padding-left: 0.55rem;
+  padding-right: 0.55rem;
+}
+.portal-lesson-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.6rem;
+  align-items: baseline;
+  margin-bottom: 0.35rem;
+  font-weight: 700;
+  color: var(--ss-forest, #0F3D2E);
+}
+.portal-lesson-code {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ss-green, #1E7A50);
+}
+.portal-lesson-title { font-size: 0.98rem; }
+.portal-manga-row { border-left: 3px solid rgba(235, 168, 58, 0.55); }
 
 .portal-set-row {
   display: flex;
@@ -854,3 +903,313 @@
 }
 .book-feelings .felt span { font-size: .85rem; font-weight: 600; }
 .book-feelings .felt:hover { border-color: #EBA83A; background: rgba(235, 168, 58, .12); }
+
+/* ---- Camino de español (LGA-87) ---- */
+.portal-camino-eyebrow {
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ss-green, #1E7A50);
+  margin: 0;
+}
+.portal-camino-cta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 1.25rem 1.4rem;
+  background: linear-gradient(135deg, rgba(30, 122, 80, 0.14), rgba(235, 168, 58, 0.12));
+  border: 2px solid rgba(30, 122, 80, 0.45);
+  border-radius: 18px;
+  text-decoration: none;
+  color: var(--ss-forest, #0F3D2E);
+  box-shadow: 0 6px 18px rgba(15, 61, 46, 0.08);
+  transition: border-color 0.12s ease, transform 0.12s ease;
+}
+.portal-camino-cta:hover {
+  border-color: var(--ss-green, #1E7A50);
+  color: var(--ss-forest, #0F3D2E);
+  transform: translateY(-1px);
+}
+.portal-camino-cta-kicker {
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ss-green, #1E7A50);
+}
+.portal-camino-cta-title {
+  font-size: 1.45rem;
+  font-weight: 800;
+  line-height: 1.25;
+}
+.portal-camino-cta-meta {
+  font-size: 0.95rem;
+  font-weight: 600;
+  opacity: 0.9;
+}
+.portal-camino-more {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+.portal-camino-more-link {
+  font-weight: 600;
+  color: var(--ss-forest, #0F3D2E);
+  text-decoration: none;
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0.35rem 0;
+  border-bottom: 1px solid rgba(15, 61, 46, 0.08);
+}
+.portal-camino-more-link:hover { text-decoration: underline; }
+.portal-camino-more-link:last-child { border-bottom: 0; }
+.portal-camino-hint {
+  font-size: 0.9rem;
+  font-weight: 600;
+  font-style: italic;
+  color: #5a6a62;
+  background: none;
+  border-radius: 0;
+  padding: 0;
+  margin: 0;
+}
+.portal-camino-metrics {
+  font-size: 0.9rem;
+  margin: 0;
+  color: #5a6a62;
+}
+.portal-camino-path-sub {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--ss-green, #1E7A50);
+}
+.portal-camino-cta:focus-visible,
+.portal-camino-stone:focus-visible,
+.portal-path-step:focus-visible {
+  outline: 2px solid var(--ss-green, #1E7A50);
+  outline-offset: 2px;
+}
+.portal-camino-trail {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+}
+.portal-path-list {
+  position: relative;
+}
+.portal-path-step.is-primary {
+  border-color: rgba(235, 168, 58, 0.55);
+  box-shadow: 0 0 0 1px rgba(235, 168, 58, 0.25);
+}
+.portal-path-step.is-secondary {
+  border-color: rgba(30, 122, 80, 0.18);
+  box-shadow: none;
+}
+.portal-path-step.is-practicar {
+  border-color: rgba(30, 122, 80, 0.4);
+  background: rgba(30, 122, 80, 0.06);
+}
+.portal-path-step.is-optional {
+  border-style: dashed;
+}
+.portal-camino-stone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.2rem;
+  min-width: 4.5rem;
+  padding: 0.7rem 0.85rem;
+  background: #fff;
+  border: 1px solid rgba(30, 122, 80, 0.22);
+  border-radius: 999px;
+  text-decoration: none;
+  color: var(--ss-forest, #0F3D2E);
+  font-weight: 700;
+  font-size: 0.8rem;
+  transition: border-color 0.12s ease, background 0.12s ease;
+}
+.portal-camino-stone:hover {
+  border-color: rgba(30, 122, 80, 0.5);
+  background: rgba(30, 122, 80, 0.06);
+  color: var(--ss-forest, #0F3D2E);
+  text-decoration: none;
+}
+.portal-camino-stone--soft {
+  opacity: 0.55;
+  border-style: dashed;
+  cursor: default;
+}
+.portal-camino-stone-emoji { font-size: 1.35rem; line-height: 1; }
+.portal-camino-stone-label { line-height: 1.1; }
+.portal-camino-choices {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+.portal-camino-choice {
+  font-weight: 600;
+  color: var(--ss-forest, #0F3D2E);
+  text-decoration: none;
+  padding: 0.4rem 0;
+}
+.portal-camino-choice:hover { text-decoration: underline; }
+.portal-camino-side {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.portal-camino-chip {
+  display: inline-block;
+  padding: 0.35rem 0.75rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #5a6b63;
+  background: rgba(15, 61, 46, 0.05);
+  border-radius: 999px;
+  text-decoration: none;
+}
+.portal-camino-chip:hover {
+  color: var(--ss-green, #1E7A50);
+  background: rgba(30, 122, 80, 0.1);
+  text-decoration: none;
+}
+
+/* Pathway map (LGA-88 / LGA-93) */
+.portal-path-step {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  padding: 0.75rem 1rem;
+  background: #fff;
+  border: 1px solid rgba(30, 122, 80, 0.18);
+  border-radius: 14px;
+  margin-bottom: 0.55rem;
+  text-decoration: none;
+  color: inherit;
+}
+.portal-path-step.is-locked {
+  /* kept for legacy; map no longer locks stops (LGA-93) */
+  opacity: 0.45;
+}
+.portal-path-step.is-complete {
+  border-color: rgba(30, 122, 80, 0.4);
+  background: rgba(30, 122, 80, 0.06);
+}
+.portal-path-step.is-available.is-primary {
+  border-color: rgba(235, 168, 58, 0.55);
+  box-shadow: 0 0 0 1px rgba(235, 168, 58, 0.25);
+}
+.portal-path-step.is-available.is-secondary {
+  border-color: rgba(30, 122, 80, 0.18);
+  box-shadow: none;
+}
+.portal-path-check-form {
+  flex: 0 0 auto;
+  margin: 0;
+}
+.portal-path-check {
+  width: 2.75rem;
+  height: 2.75rem;
+  min-width: 44px;
+  min-height: 44px;
+  border: 2px solid rgba(30, 122, 80, 0.35);
+  border-radius: 10px;
+  background: #fff;
+  color: var(--ss-forest, #0F3D2E);
+  font-size: 1.35rem;
+  font-weight: 800;
+  line-height: 1;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+.portal-path-check.is-checked {
+  background: rgba(30, 122, 80, 0.15);
+  border-color: var(--ss-green, #1E7A50);
+  color: var(--ss-green, #1E7A50);
+}
+.portal-path-check:focus-visible {
+  outline: 2px solid var(--ss-green, #1E7A50);
+  outline-offset: 2px;
+}
+.portal-path-step-body {
+  flex: 1 1 auto;
+  min-width: 0;
+  text-decoration: none;
+  color: inherit;
+  padding: 0.25rem 0;
+}
+.portal-path-step-body:hover .portal-path-step-title {
+  text-decoration: underline;
+}
+.portal-path-step-mark {
+  font-size: 1.25rem;
+  line-height: 1;
+  min-width: 1.5rem;
+  text-align: center;
+}
+.portal-path-step-title { font-weight: 700; color: var(--ss-forest, #0F3D2E); }
+.portal-path-step-meta { font-size: 0.85rem; color: #7a8781; }
+
+/* ===== Camino: finish line, streak, station "done" (LGA-97/100) =========== */
+.portal-howto { font-size: .95rem; opacity: .92; }
+.portal-camino-count,
+.portal-camino-done,
+.portal-camino-streak { font-weight: 800; margin: 0 0 .4rem; }
+.portal-camino-count { font-size: 1.05rem; color: #2F6B4F; }
+.portal-camino-done { font-size: 1.15rem; color: #1E7A50; }
+.portal-camino-streak { font-size: 1rem; color: #B26A00; }
+
+.portal-station-done { margin: 1.6rem 0 .5rem; }
+.portal-station-done-btn {
+  display: block; width: 100%; min-height: 56px;
+  font: inherit; font-size: 1.15rem; font-weight: 800; cursor: pointer;
+  border-radius: 999px; border: 2px solid #1E7A50;
+  background: #1E7A50; color: #fff; padding: .6rem 1rem;
+}
+.portal-station-done-btn:hover { background: #17603E; border-color: #17603E; }
+.portal-station-done-btn:focus-visible { outline: 3px solid #EBA83A; outline-offset: 3px; }
+.portal-station-done-btn.is-done { background: #fff; color: #1E7A50; }
+
+/* The map's state label carried 3.74:1 contrast — below AA, on the one line that
+   says whether a stop is done. */
+.portal-path-step-meta { color: #5A6A62 !important; }
+
+/* Audio failure must SAY something. A silent flicker is the exact failure mode
+   that made the younger child give up on a screen. */
+.lingua-clip-btn.is-audio-error { border-color: #B3261E !important; color: #B3261E !important; }
+.lingua-clip-error {
+  display: block; margin-top: .5rem; font-size: .95rem; font-weight: 700;
+  color: #B3261E;
+}
+
+/* Audio failure must be SEEN as well as announced. Appended to the end of <body>
+   with no positioning, the message rendered far below whatever the child tapped. */
+.lingua-clip-toast {
+  position: fixed; left: 50%; bottom: 1.1rem; transform: translateX(-50%);
+  max-width: 92vw; margin: 0; padding: .7rem 1.1rem;
+  border-radius: 999px; background: #B3261E; color: #fff;
+  font-size: 1rem; font-weight: 700; text-align: center;
+  box-shadow: 0 6px 18px rgba(0,0,0,.25); z-index: 50;
+  opacity: 0; visibility: hidden; transition: opacity .15s ease;
+}
+.lingua-clip-toast.is-shown { opacity: 1; visibility: visible; }
+
+.portal-station-auto {
+  margin: 1.6rem 0 .5rem; padding: .7rem 1rem; border-radius: 999px;
+  background: #E7F3EC; color: #1E7A50; font-size: 1.1rem; font-weight: 800;
+  text-align: center;
+}
+
+/* One sound to work on today (LGA-100, progressive). The rest stay available —
+   nothing is locked — but a 9-year-old needs somewhere to start. */
+.portal-focus-note { font-size: .95rem; font-weight: 700; }
+.portal-subject-card.is-focus {
+  border: 2px solid #EBA83A; background: #FFF7E8;
+  box-shadow: 0 2px 10px rgba(235,168,58,.25);
+}

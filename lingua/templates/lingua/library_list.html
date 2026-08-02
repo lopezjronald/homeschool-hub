@@ -1,98 +1,56 @@
 {% extends "base.html" %}
-{% block title %}Spanish Library List · Lingua{% endblock %}
+{% block title %}Spanish books · Lingua{% endblock %}
 {% block content %}
 <div class="container py-4 lib">
 
   {% include "lingua/_lingua_subnav.html" with active='library' %}
 
-  {# ---------- Hero ---------- #}
-  <header class="lib-hero no-print">
-    <div class="lib-hero-body">
-      <p class="lib-eyebrow">Biblioteca · reading list</p>
-      <h1 class="lib-title">Spanish books worth borrowing</h1>
-      <p class="lib-sub">Every title here is a real, published book from our own researched
-        list — Latin America and Spain, Pre-K through 8th, plus a learner track and one for grown-ups.</p>
-    </div>
-    <div class="lib-hero-badge" aria-hidden="true">📖</div>
-  </header>
+  <h1 class="h4 mb-1">Spanish books</h1>
+  <p class="text-muted mb-3">Real books from our reading list — pick a shelf and tick what they read.</p>
 
-  {# ---------- Track switcher ---------- #}
-  <nav class="lib-tracks no-print" aria-label="Reading tracks">
-    {% for t in tracks %}
-      <a class="lib-track{% if t.value == active_track %} is-active{% endif %}"
-         {% if t.value == active_track %}aria-current="page"{% endif %}
-         href="?track={{ t.value }}">
-        <span class="lib-track-icon" aria-hidden="true">{{ t.icon }}</span>
-        <span class="lib-track-name">{{ t.label }}</span>
-        <span class="lib-track-count">{{ t.count }}</span>
-      </a>
+  {% if can_log %}
+    {% include "lingua/_library_logbar.html" %}
+  {% elif no_family %}
+    <p class="alert alert-info py-2 small">Browse away — ticking books off needs a family with children in it. Add one from <a href="{% url 'students:student_list' %}">My Children</a>.</p>
+  {% elif not children %}
+    <p class="alert alert-info py-2 small">Browse away — once you add a child under <a href="{% url 'students:student_list' %}">My Children</a>, each book gets a “Mark read” button.</p>
+  {% endif %}
+
+  {# One shelf rail: for-learners, then the grade bands, then grown-ups/free. `keep` carries the child and any backdate so they survive navigation. #}
+  <nav class="lib-shelves no-print" aria-label="Bookshelf">
+    {% for s in shelves %}
+      {% if s.divider %}
+        <span class="lib-shelf-div" aria-hidden="true">{{ s.divider }}</span>
+      {% else %}
+        <a class="lib-shelf{% if s.key == shelf %} is-active{% endif %}"
+           {% if s.key == shelf %}aria-current="page"{% endif %}
+           href="?shelf={{ s.key }}{{ keep_qs }}">
+          {{ s.label }}<span class="lib-shelf-n">{{ s.count }}</span>
+        </a>
+      {% endif %}
     {% endfor %}
   </nav>
 
-  {% if track_blurb %}
-    <p class="lib-blurb{% if active_track == 'ci' %} is-highlight{% endif %} no-print">{{ track_blurb }}</p>
-  {% endif %}
+  <div class="lib-head">
+    <h2 class="lib-shelf-title">{{ shelf_label }}
+      <span class="lib-shelf-count">{{ total }} book{{ total|pluralize }}</span></h2>
 
-  {# ---------- Grade rail (native track only) ---------- #}
-  {% if is_native %}
-    <div class="lib-rail no-print" role="tablist" aria-label="Grade">
-      {% for g in grades %}
-        <a class="lib-grade{% if g.value == active_grade %} is-active{% endif %}"
-           {% if g.value == active_grade %}aria-current="page"{% endif %}
-           href="?track=native&amp;grade={{ g.value }}">
-          <span class="lib-grade-name">{{ g.label }}</span>
-          <span class="lib-grade-count">{{ g.count }}</span>
-        </a>
-      {% endfor %}
-    </div>
-  {% endif %}
+    <form method="get" class="lib-search no-print" role="search">
+      <input type="hidden" name="shelf" value="{{ shelf }}">
+      {% if log_child %}<input type="hidden" name="for" value="{{ log_child.pk }}">{% endif %}
+      {% if not log_on_is_today %}<input type="hidden" name="on" value="{{ log_on|date:'Y-m-d' }}">{% endif %}
+      <label class="visually-hidden" for="q">Search these books</label>
+      <input type="search" id="q" name="q" value="{{ q }}" placeholder="Search title or author">
+      {% if q %}<a class="lib-search-clear" href="?shelf={{ shelf }}{{ keep_qs }}" aria-label="Clear search">×</a>{% endif %}
+    </form>
 
-  {# ---------- Print header + the band's defining characteristics ---------- #}
-  <h2 class="lib-print-title d-none d-print-block">
-    Spanish Library List — {% if is_native %}{{ active_grade_label }}{% else %}{{ track_label }}{% endif %}</h2>
+    <button type="button" class="lib-print no-print" onclick="window.print()">Print</button>
+  </div>
 
   {% if descriptor %}
-    <aside class="lib-descriptor">
-      <span class="lib-descriptor-tag">What books look like at this level</span>
-      <p>{{ descriptor }}</p>
-    </aside>
+    <p class="lib-descriptor"><strong>At this level:</strong> {{ descriptor }}</p>
   {% endif %}
 
-  {# ---------- Filters ---------- #}
-  <form method="get" class="lib-filters no-print" role="search">
-    <input type="hidden" name="track" value="{{ active_track }}">
-    {% if is_native %}<input type="hidden" name="grade" value="{{ active_grade }}">{% endif %}
-    <div class="lib-filter-field lib-filter-grow">
-      <label for="q">Search</label>
-      <input type="search" id="q" name="q" value="{{ q }}" placeholder="Title or author…">
-    </div>
-    {% if countries %}
-      <div class="lib-filter-field">
-        <label for="region">Country</label>
-        <select id="region" name="region">
-          <option value="">All countries</option>
-          {% for c in countries %}
-            <option value="{{ c }}"{% if c == region %} selected{% endif %}>{{ c }}</option>
-          {% endfor %}
-        </select>
-      </div>
-    {% endif %}
-    <div class="lib-filter-actions">
-      <button type="submit" class="btn btn-primary">Filter</button>
-      {% if filtered %}
-        <a class="btn btn-outline-secondary"
-           href="?track={{ active_track }}{% if is_native %}&amp;grade={{ active_grade }}{% endif %}">Clear</a>
-      {% endif %}
-      <button type="button" class="btn btn-outline-secondary" onclick="window.print()">🖨️ Print</button>
-    </div>
-  </form>
-
-  <p class="lib-count">
-    <strong>{{ total }}</strong> book{{ total|pluralize }}
-    {% if is_native %}for {{ active_grade_label }}{% endif %}{% if region %} · {{ region }}{% endif %}{% if q %} · “{{ q }}”{% endif %}
-  </p>
-
-  {# ---------- The books ---------- #}
   {% if books %}
     {% if groups %}
       {% for group in groups %}
@@ -106,14 +64,24 @@
         {% for book in books %}{% include "lingua/_library_card.html" %}{% endfor %}
       </div>
     {% endif %}
+
+    {% if can_log %}
+      <form method="post" action="{% url 'lingua:mark_read' %}" class="lib-freeform no-print">
+        {% csrf_token %}
+        <input type="hidden" name="child" value="{{ log_child.pk }}">
+        <input type="hidden" name="on" value="{{ log_on|date:'Y-m-d' }}">
+        <input type="hidden" name="next" value="{{ next_qs }}">
+        <label for="free-title">Read something that isn’t on this shelf?</label>
+        <input type="text" id="free-title" name="title" maxlength="200" placeholder="Book title" required>
+        <button type="submit" name="action" value="log" class="btn btn-outline-primary btn-sm">Log it</button>
+      </form>
+    {% endif %}
   {% else %}
     <div class="lib-empty">
       <div class="lib-empty-icon" aria-hidden="true">🔎</div>
-      <p class="mb-1"><strong>No books match.</strong></p>
-      <p class="text-muted mb-3">Try clearing the filters, or pick another
-        {% if is_native %}grade{% else %}track{% endif %}.</p>
-      <a class="btn btn-primary btn-sm"
-         href="?track={{ active_track }}{% if is_native %}&amp;grade={{ active_grade }}{% endif %}">Clear filters</a>
+      <p class="mb-1"><strong>No books here.</strong></p>
+      <p class="text-muted mb-3">Try another shelf{% if q %}, or clear the search{% endif %}.</p>
+      {% if q %}<a class="btn btn-primary btn-sm" href="?shelf={{ shelf }}{{ keep_qs }}">Clear search</a>{% endif %}
     </div>
   {% endif %}
 </div>

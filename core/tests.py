@@ -5,6 +5,10 @@ from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
 
+from io import StringIO
+
+from django.core.management import call_command
+
 from accounts.models import CustomUser
 from assignments.models import Assignment
 from django.test import RequestFactory
@@ -1612,3 +1616,127 @@ class InviteFamilySelectionTests(TestCase):
         )
         self.assertEqual(resp.status_code, 404)
         self.assertFalse(Invitation.objects.filter(email="x@e.com").exists())
+
+
+class TestEnvironmentDetectionTests(TestCase):
+    """settings.TESTING decides the password hasher, whether grading runs inline,
+    whether the API key is blanked, and (since HH-143) SECURE_SSL_REDIRECT.
+
+    If the detector ever stops matching, none of that fails — the suite just gets
+    slower, starts racing SQLite on daemon threads, and a developer whose .env
+    carries an ANTHROPIC_API_KEY starts making live billed calls from `manage.py
+    test`. So assert it directly; nothing else in 1200-odd tests does."""
+
+    def test_the_runner_is_detected(self):
+        from django.conf import settings
+        self.assertTrue(
+            settings.TESTING,
+            "settings.TESTING is False under the test runner: the MD5 hasher, "
+            "inline grading and the ANTHROPIC_API_KEY blanking are all off.",
+        )
+
+    def test_the_api_key_is_blanked_so_the_suite_cannot_bill(self):
+        from django.conf import settings
+        self.assertEqual(settings.ANTHROPIC_API_KEY, "")
+
+
+class AuditContentCommandTests(TestCase):
+    """`audit_content` is the repeatable version of clicking through every page.
+
+    Its value is entirely in what it CATCHES, so each test breaks something the
+    way it actually broke in production and asserts the audit says so.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        from curricula.models import Chapter, Curriculum, CurriculumPlacement, Lesson
+        from students.models import Student
+        cls.parent = CustomUser.objects.create_user(
+            username="auditor", email="a@e.com", password="pw")
+        cls.child = Student.objects.create(parent=cls.parent, first_name="Nia")
+        cls.cur = Curriculum.objects.create(
+            parent=cls.parent, name="Audit Math", subject="Math", grade_level="G03")
+        ch = Chapter.objects.create(curriculum=cls.cur, number=1, title="One")
+        cls.lesson = Lesson.objects.create(chapter=ch, order=1, number=1, title="L1")
+        CurriculumPlacement.objects.create(
+            child=cls.child, curriculum=cls.cur, current_lesson=cls.lesson)
+
+    def _run(self):
+        out, err = StringIO(), StringIO()
+        try:
+            call_command("audit_content", stdout=out, stderr=err)
+        except SystemExit:
+            pass
+        return out.getvalue() + err.getvalue()
+
+    def test_a_clean_setup_reports_no_problems(self):
+        self.assertIn("No problems", self._run())
+
+    def test_it_exits_nonzero_when_something_is_broken(self):
+        from tutor.models import QuestionSet
+        QuestionSet.objects.create(
+            lesson=self.lesson, title="Empty set", intro="i", rubric="r")
+        with self.assertRaises(SystemExit):
+            call_command("audit_content", stdout=StringIO(), stderr=StringIO())
+
+    def test_it_catches_an_answer_choice_posing_as_a_question(self):
+        # The EIW Lesson 7 bug: a lettered option from an answer bank standing
+        # alone as a question, with nothing for the child to answer.
+        from tutor.models import Question, QuestionSet
+        qs = QuestionSet.objects.create(
+            lesson=self.lesson, title="Choices", intro="i", rubric="r")
+        Question.objects.create(question_set=qs, order=1, category="grammar",
+                                response_type=Question.TYPE_TEXT,
+                                prompt="A. Question Mark (?)")
+        self.assertIn("answer CHOICE posing as a question", self._run())
+
+    def test_it_catches_a_question_that_renders_blank(self):
+        from tutor.models import Question, QuestionSet
+        qs = QuestionSet.objects.create(
+            lesson=self.lesson, title="Blank", intro="i", rubric="r")
+        Question.objects.create(question_set=qs, order=1, category="grammar",
+                                response_type=Question.TYPE_TEXT, prompt="", passage="")
+        self.assertIn("renders blank", self._run())
+
+    def test_it_catches_a_matching_answer_the_child_cannot_pick(self):
+        # Unwinnable: the correct answer isn't in the pool she taps from.
+        import json
+        from tutor.models import Question, QuestionSet
+        qs = QuestionSet.objects.create(
+            lesson=self.lesson, title="Match", intro="i", rubric="r")
+        Question.objects.create(
+            question_set=qs, order=1, category="grammar",
+            response_type=Question.TYPE_MATCHING,
+            passage=json.dumps({
+                "words": ["Period (.)"],
+                "definitions": [{"n": 1, "text": "Interrogative", "word": "Question Mark (?)"}],
+            }),
+        )
+        self.assertIn("expects answers that are not in the pool", self._run())
+
+    def test_it_catches_manga_art_that_is_not_deployed(self):
+        from tutor.models import MangaPanel, Material
+        m = Material.objects.create(
+            lesson=self.lesson, title="Manga", skill_type=Material.SKILL_MANGA,
+            student_content="x", parent_content="y", status=Material.APPROVED)
+        MangaPanel.objects.create(material=m, order=1, alt="a", caption="c",
+                                  image_path="manga/does-not-exist/p1.jpg")
+        self.assertIn("not in the deployed static files", self._run())
+
+    def test_it_catches_a_child_with_nowhere_to_go(self):
+        from students.models import Student
+        Student.objects.create(parent=self.parent, first_name="Stranded")
+        self.assertIn("no curriculum placements", self._run())
+
+    def test_a_draft_is_a_note_not_a_problem(self):
+        # The approval workflow is not a defect: a parent has simply not approved
+        # it yet. Flagging drafts as breakage would make the audit cry wolf and
+        # stop being read.
+        from tutor.models import MangaPanel, Material
+        m = Material.objects.create(
+            lesson=self.lesson, title="Pending", skill_type=Material.SKILL_MANGA,
+            student_content="x", parent_content="y", status=Material.DRAFT)
+        MangaPanel.objects.create(material=m, order=1, alt="a", caption="c", image_path="")
+        out = self._run()
+        self.assertIn("NOTE", out)
+        self.assertIn("has to approve it", out)

@@ -326,10 +326,22 @@ def student_lessons(request, pk, curriculum_id):
         ).values_list("question_set__lesson_id", flat=True)
     )
     placement = CurriculumPlacement.objects.filter(child=student, curriculum=curriculum).first()
-    _act = placement.current_actionable_lesson() if placement else None
-    current_id = _act.id if _act else None
+    # Resolve ONCE and hand the result to both derived readings below — the checklist,
+    # the "Now" pointer and the progress bar all need it, and each recomputing it meant
+    # the same three queries three times per page load.
+    resolution = placement.resolved_lesson_ids() if placement else ([], set())
+    _, resolved = resolution
+    actionable = placement.current_actionable_lesson(resolution) if placement else None
+    current_id = actionable.id if actionable else None
+    # Lessons BELOW the parent's placement pointer already count as done (the floor),
+    # so they must render TICKED — otherwise the bar says "16 done" while every box
+    # sits empty, which reads as broken.
     for lesson in lessons:
-        lesson.mark_status = marks.get(lesson.id) or ("submitted" if lesson.id in submitted else "not_started")
+        lesson.mark_status = (
+            marks.get(lesson.id)
+            or ("submitted" if lesson.id in submitted else "")
+            or ("completed" if lesson.id in resolved else "not_started")
+        )
         lesson.is_current = lesson.id == current_id
         lesson.is_practice = lesson.lesson_type == Lesson.TYPE_PRACTICE
 
@@ -338,11 +350,10 @@ def student_lessons(request, pk, curriculum_id):
         for (num, _t), group in groupby(lessons, key=lambda x: (x.chapter.number, x.chapter.title))
         for items in [list(group)]
     ]
-    prog = placement.progress() if placement else {
-        "done": 0, "total": len(lessons), "pct": 0, "skipped": 0}
     # "Now" is DERIVED live (first unresolved lesson, skips passed over) — the stored
     # placement pointer is the parent's placement and is never auto-rewritten.
-    actionable = placement.current_actionable_lesson() if placement else None
+    prog = placement.progress(resolution) if placement else {
+        "done": 0, "total": len(lessons), "pct": 0, "skipped": 0}
     return render(request, "students/student_lessons.html", {
         "student": student, "curriculum": curriculum, "chapters": chapters,
         "can_edit": can_edit, "progress": prog,
@@ -394,7 +405,7 @@ def lessons_skip_practice(request, pk, curriculum_id):
     student = get_object_or_404(editable_queryset(Student.objects.all(), request.user), pk=pk)
     curriculum = _child_curriculum(request, student, curriculum_id)
     placement, _ = CurriculumPlacement.objects.get_or_create(child=student, curriculum=curriculum)
-    ids, resolved = placement._resolved_lesson_ids()
+    ids, resolved = placement.resolved_lesson_ids()
     practice = (Lesson.objects.filter(chapter__curriculum=curriculum,
                                       lesson_type=Lesson.TYPE_PRACTICE, id__in=ids)
                 .exclude(id__in=resolved))
@@ -405,4 +416,55 @@ def lessons_skip_practice(request, pk, curriculum_id):
             defaults={"status": LessonProgress.SKIPPED, "marked_by": request.user})
         n += 1
     messages.success(request, f"Skipped {n} remaining practice lesson{'' if n == 1 else 's'}.")
+    return redirect("students:student_lessons", pk=pk, curriculum_id=curriculum_id)
+
+
+@login_required
+@require_POST
+def lessons_save(request, pk, curriculum_id):
+    """Save the whole lesson checklist in one submit (HH-142).
+
+    The parent's mental model is a checklist: tick the lessons the child finished.
+    So the page is ONE form of checkboxes and this view reconciles the full state —
+    ``done`` holds the lesson ids that are now ticked, ``skip`` the ones marked
+    skipped. Anything previously marked but absent from both is cleared, which makes
+    un-ticking work exactly the way un-ticking should. Works with no JavaScript.
+    """
+    from curricula.models import CurriculumPlacement, Lesson, LessonProgress
+
+    student = get_object_or_404(editable_queryset(Student.objects.all(), request.user), pk=pk)
+    curriculum = _child_curriculum(request, student, curriculum_id)
+
+    valid = set(
+        Lesson.objects.filter(chapter__curriculum=curriculum)
+        .exclude(lesson_type=Lesson.TYPE_OPENER).values_list("id", flat=True)
+    )
+
+    def _ids(field):
+        out = set()
+        for raw in request.POST.getlist(field):
+            raw = (raw or "").strip()
+            if raw.isdigit() and raw.isascii() and int(raw) in valid:
+                out.add(int(raw))
+        return out
+
+    done = _ids("done")
+    skipped = _ids("skip") - done            # ticking "done" wins over a stale skip
+    keep = done | skipped
+
+    # Clear marks the parent un-ticked, then upsert the current state.
+    LessonProgress.objects.filter(child=student, lesson_id__in=valid - keep).delete()
+    for lesson_id in keep:
+        LessonProgress.objects.update_or_create(
+            child=student, lesson_id=lesson_id,
+            defaults={"status": (LessonProgress.COMPLETED if lesson_id in done
+                                 else LessonProgress.SKIPPED),
+                      "marked_by": request.user},
+        )
+    CurriculumPlacement.objects.get_or_create(child=student, curriculum=curriculum)
+    messages.success(
+        request,
+        f"Saved — {len(done)} lesson{'' if len(done) == 1 else 's'} done"
+        + (f", {len(skipped)} skipped." if skipped else "."),
+    )
     return redirect("students:student_lessons", pk=pk, curriculum_id=curriculum_id)

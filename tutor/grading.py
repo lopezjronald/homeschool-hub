@@ -17,7 +17,7 @@ import threading
 from django.conf import settings
 from django.db import connections, transaction
 
-from . import ai
+from . import ai, spend
 from .models import MasteryAssessment
 
 logger = logging.getLogger(__name__)
@@ -108,6 +108,12 @@ def auto_grade_sheet(sheet, client=None, timeout=None):
         return None, False
     if not ai.is_configured():
         return None, False
+    # Over the monthly ceiling, behave exactly like "no API key": the child's work
+    # is still submitted and held, and the parent can grade it later. A child must
+    # not meet a spending notice, and their work must not be lost (HH-145).
+    if spend.budget_exceeded():
+        logger.warning("Auto-grade held for sheet %s: %s", sheet.pk, spend.refusal_message())
+        return None, False
 
     # Serialize concurrent generate calls (double-tap / retry) on the sheet row:
     # the first request creates the assessment, the second returns it.
@@ -177,6 +183,13 @@ def grade_pending_sheets(limit=None):
     from .models import ResponseSheet
 
     if not ai.is_configured():
+        return 0, 0
+    # Check once, not once per sheet. The Scheduler runs this every 10 minutes, and
+    # over the ceiling the loop would otherwise re-query the ledger and log an
+    # identical warning for every pending sheet, then report "graded 0, failed 0" —
+    # indistinguishable from having nothing to do (HH-145).
+    if spend.budget_exceeded():
+        logger.warning("grade_pending: sweep skipped — %s", spend.refusal_message())
         return 0, 0
     graded_entry_ids = MasteryAssessment.objects.values_list("work_entry_id", flat=True)
     pending = (

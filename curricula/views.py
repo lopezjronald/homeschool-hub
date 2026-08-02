@@ -46,12 +46,13 @@ def curriculum_list(request):
     """Filterable, searchable, tiled list of curricula the user can view."""
     family = get_selected_family(request)
     base = scoped_queryset(Curriculum.objects.all(), request.user, family)
+    show_deactivated = request.GET.get("show_deactivated") == "1"
 
     subject = request.GET.get("subject", "").strip()
     grade = request.GET.get("grade", "").strip()
     q = request.GET.get("q", "").strip()
 
-    curricula = base
+    curricula = base if show_deactivated else base.filter(is_active=True)
     if subject:
         curricula = curricula.filter(subject__iexact=subject)
     if grade:
@@ -64,9 +65,11 @@ def curriculum_list(request):
         c.emoji = emoji_for(c.subject)
 
     # Facets derived from the full scoped set (so options don't vanish mid-filter).
-    subjects = sorted({s for s in base.values_list("subject", flat=True) if s})
-    present_grades = set(base.exclude(grade_level="").values_list("grade_level", flat=True))
+    facet_base = base if show_deactivated else base.filter(is_active=True)
+    subjects = sorted({s for s in facet_base.values_list("subject", flat=True) if s})
+    present_grades = set(facet_base.exclude(grade_level="").values_list("grade_level", flat=True))
     grade_choices = [(v, label) for v, label in Curriculum.GRADE_CHOICES if v in present_grades]
+    deactivated_count = base.filter(is_active=False).count()
 
     return render(request, "curricula/curriculum_list.html", {
         "curricula": curricula,
@@ -79,8 +82,10 @@ def curriculum_list(request):
         "active_subject": subject,
         "active_grade": grade,
         "q": q,
-        "has_filters": bool(subject or grade or q),
-        "total_count": base.count(),
+        "has_filters": bool(subject or grade or q or show_deactivated),
+        "total_count": facet_base.count(),
+        "show_deactivated": show_deactivated,
+        "deactivated_count": deactivated_count,
     })
 
 
@@ -314,4 +319,47 @@ def curriculum_set_placement(request, pk, child_pk):
         defaults={"current_lesson": lesson},
     )
     messages.success(request, f"Updated {child.get_full_name()}'s progress.")
+    return redirect("curricula:curriculum_detail", pk=curriculum.pk)
+
+
+@login_required
+@require_POST
+def curriculum_toggle_active(request, pk):
+    """Shelf or restore a curriculum in the family catalog (HH-149)."""
+    curriculum = get_object_or_404(editable_queryset(Curriculum.objects.all(), request.user), pk=pk)
+    curriculum.is_active = not curriculum.is_active
+    curriculum.save(update_fields=["is_active", "updated_at"])
+    if curriculum.is_active:
+        messages.success(request, f'"{curriculum.name}" is active again.')
+    else:
+        messages.success(
+            request,
+            f'"{curriculum.name}" deactivated — hidden from Curricula and every child portal.',
+        )
+    return redirect("curricula:curriculum_detail", pk=curriculum.pk)
+
+
+@login_required
+@require_POST
+def curriculum_toggle_placement_active(request, pk, child_pk):
+    """Turn a subject on/off for one child without deleting the placement (HH-149)."""
+    curriculum = get_object_or_404(editable_queryset(Curriculum.objects.all(), request.user), pk=pk)
+    child = get_object_or_404(_curriculum_students(request.user, curriculum), pk=child_pk)
+    # The button reads "Show on portal" when there is no placement yet, so CREATING
+    # one has to mean shown. Toggling unconditionally made the first click create it
+    # active and immediately flip it off — the parent pressed "Show" and was told it
+    # was hidden, and had to press twice.
+    placement, created = CurriculumPlacement.objects.get_or_create(
+        child=child, curriculum=curriculum, defaults={"is_active": True},
+    )
+    if not created:
+        placement.is_active = not placement.is_active
+        placement.save(update_fields=["is_active", "updated_at"])
+    if placement.is_active:
+        messages.success(request, f"{child.first_name} can see {curriculum.name} again.")
+    else:
+        messages.success(
+            request,
+            f"{curriculum.name} hidden from {child.first_name}'s portal.",
+        )
     return redirect("curricula:curriculum_detail", pk=curriculum.pk)

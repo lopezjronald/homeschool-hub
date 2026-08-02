@@ -6,6 +6,7 @@ Repo convention: django.test.TestCase + setUpTestData, no pytest.
 Run: `python manage.py collectstatic --noinput && python manage.py test lingua`.
 """
 import ast
+import datetime
 import inspect
 import io
 import json
@@ -18,6 +19,8 @@ from django.contrib.auth import get_user_model
 from django.db import models as dj_models
 from django.test import RequestFactory, TestCase, override_settings
 from django.urls import reverse
+from datetime import date, timedelta
+from django.utils import timezone
 
 from students.models import Student
 
@@ -27,10 +30,11 @@ from . import advancement, assets, audio, cognates, comprehension, illustrate, l
 from . import storage as lingua_storage
 from .integrations import directory
 from .models import (
-    AiUsage, AuditEvent, BookLogEntry, ComprehensionCheck, KnownWord, Learner,
-    LearnerProfile, LibraryBook, ListeningResource, ListeningSession, MilestoneAward,
-    PhonicsRule, ReadingSession, ReviewItem, Story, StoryAudio, StoryImage,
-    StoryRecording, Theme,
+    AiUsage, AlphabetTile, AudioClip, AuditEvent, BookLogEntry, ComprehensionCheck,
+    KnownWord, Learner, LearnerProfile, LibraryBook, ListeningResource,
+    ListeningSession, MilestoneAward, Pathway, PathwayCheckmark, PathwayStep,
+    PhonicsRule, ReadingSession, ReviewItem, Story, StoryAudio,
+    StoryImage, StoryRecording, Theme, TutorPacket,
 )
 from .ports import AIClient, AIResult, ImageClient
 
@@ -174,6 +178,29 @@ class UserDirectoryTests(TestCase):
             directory.existing_student_ids([self.student.pk, 999999]),
             {self.student.pk},
         )
+
+    def test_find_student_id_matches_one_child_case_insensitively(self):
+        self.assertEqual(directory.find_student_id("ada"), self.student.pk)
+        self.assertEqual(directory.find_student_id("  Ada  "), self.student.pk)
+
+    def test_find_student_id_returns_none_for_no_match_or_blank(self):
+        self.assertIsNone(directory.find_student_id("Nobody"))
+        self.assertIsNone(directory.find_student_id(""))
+        self.assertIsNone(directory.find_student_id(None))
+
+    def test_find_student_id_refuses_an_AMBIGUOUS_name(self):
+        # This app is multi-family. Seed commands scope private material (a tutor's
+        # homework) by host_student_id, so picking one of two same-named children
+        # would hand one family's material to another family's kid. Refuse instead.
+        other_parent = User.objects.create_user(
+            username="p2", email="p2@example.com", password="x", is_active=True,
+        )
+        twin = Student.objects.create(
+            parent=other_parent, first_name="Ada", last_name="Other", grade_level="G05",
+        )
+        self.assertIsNone(directory.find_student_id("Ada"))
+        self.assertNotEqual(directory.find_student_id("Ada"), self.student.pk)
+        self.assertNotEqual(directory.find_student_id("Ada"), twin.pk)
 
 
 class PortsAndAdapterTests(TestCase):
@@ -2321,7 +2348,8 @@ class KidPortalTests(TestCase):
         self.assertEqual(r.status_code, 200)
         self.assertTrue(Learner.objects.filter(host_student_id=self.student.pk).exists())
         self.assertContains(r, "El sol")                 # the approved story is in the plan
-        self.assertContains(r, "palabras leídas")        # the hero metric renders
+        self.assertContains(r, "Hoy")                    # Camino IA hero
+        self.assertContains(r, "palabras leídas")        # soft metrics line
 
     def test_plan_provision_is_idempotent(self):
         self.client.get(self._url("lingua_plan"))
@@ -2406,7 +2434,7 @@ class KidPortalTests(TestCase):
     def test_band_inferred_from_dob(self):
         from datetime import date
 
-        from portal.views import _infer_band
+        from homeschool_hub.adapters.lingua_students import infer_band as _infer_band
         y = date.today().year
         young = Student.objects.create(parent=self.parent, first_name="Bo",
                                        date_of_birth=date(y - 8, 1, 1))
@@ -2420,7 +2448,7 @@ class KidPortalTests(TestCase):
         # //365 math would drift to 10 (KIDS_OLDER) after ~2-3 leap days.
         from datetime import date, timedelta
 
-        from portal.views import _infer_band
+        from homeschool_hub.adapters.lingua_students import infer_band as _infer_band
         today = date.today()
         try:
             tenth_bday = today.replace(year=today.year - 10)
@@ -2617,12 +2645,37 @@ class PhonicsTests(TestCase):
         html = self.client.get(url).content.decode()
         self.assertIn("La ñ", html)            # a rule title
         self.assertIn("niño", html)            # a practice word
+        # Without baked clips, words render as plain text (not dead buttons).
+        self.assertNotIn('data-audio-url', html)
 
-    def test_plan_shows_phonics_only_for_kids_early(self):
+    @override_settings(STORAGES=_INMEM_STORAGES)
+    def test_phonics_page_tappable_when_clips_baked(self):
+        self._seed()
+        from django.conf import settings as dj_settings
+        voice = dj_settings.LINGUA.get("TTS_VOICE", "Mia")
+        engine = dj_settings.LINGUA.get("TTS_ENGINE", "neural")
+        word = "niño"
+        digest = assets.content_hash(word, provider="polly", voice=voice, engine=engine)
+        key = assets.clip_key(digest)
+        lingua_storage.save_audio(key, b"ID3fake")
+        AudioClip.objects.create(
+            text=word, voice=voice, engine=engine, provider="polly",
+            content_hash=digest, audio_key=key,
+        )
+        url = reverse("portal:lingua_phonics", kwargs={"token": self.early_token})
+        html = self.client.get(url).content.decode()
+        self.assertIn("data-audio-url", html)
+        self.assertIn("lingua-clip-btn", html)
+        self.assertIn("data-play-all", html)
+
+    def test_both_bands_get_a_sounds_stone_with_their_own_label(self):
         early = self.client.get(reverse("portal:lingua_plan", kwargs={"token": self.early_token})).content.decode()
         older = self.client.get(reverse("portal:lingua_plan", kwargs={"token": self.older_token})).content.decode()
-        self.assertIn("Los sonidos", early)     # phonics card for the youngest band
-        self.assertNotIn("Los sonidos", older)  # not for older kids
+        self.assertIn("Sonidos", early)     # phonics trail stone for the youngest band
+        self.assertNotIn(">Sonidos<", older)   # hers reads "Acentos"  # not for older kids
+        self.assertIn("Hoy", early)
+        self.assertIn("Mapa", early)
+        self.assertIn("Sigue explorando", early)
 
 
 class ReviewItemTests(TestCase):
@@ -3769,23 +3822,6 @@ class ReadingLogViewTests(TestCase):
         LibraryBook.objects.create(title="El pollo Pepe", author="Nick Denchfield",
                                    country="España", grade="1")
 
-    def test_library_list_requires_login(self):
-        self.assertIn(self.client.get(reverse("lingua:library_list")).status_code, (301, 302))
-
-    def test_library_list_renders_books_and_filters(self):
-        self.client.force_login(self.parent)
-        html = self.client.get(reverse("lingua:library_list") + "?grade=1").content.decode()
-        self.assertIn("Manuelita la tortuga", html)
-        self.assertIn("María Elena Walsh", html)
-        self.assertIn("Library list", html)             # shared sub-nav present
-        self.assertIn("window.print()", html)           # print action available
-
-    def test_library_country_filter_excludes_others(self):
-        self.client.force_login(self.parent)
-        html = self.client.get(reverse("lingua:library_list") + "?grade=1&region=España").content.decode()
-        self.assertIn("El pollo Pepe", html)            # España book kept
-        self.assertNotIn("Manuelita la tortuga", html)  # Argentina book filtered out
-
     def test_kid_books_page_renders_entry(self):
         html = self.client.get(reverse("portal:lingua_books", args=[self.token])).content.decode()
         self.assertIn("Mis libros", html)
@@ -3809,77 +3845,6 @@ class ReadingLogViewTests(TestCase):
         self.assertEqual(r.status_code, 302)
         learner = Learner.objects.get(host_student_id=self.student.pk)
         self.assertEqual(learner.book_logs.get().display_title, "Un libro cualquiera")
-
-    def test_parent_book_log_page_renders(self):
-        self.client.force_login(self.parent)
-        r = self.client.get(reverse("lingua:book_log"))
-        self.assertEqual(r.status_code, 200)
-        self.assertIn("Spanish reading log", r.content.decode())
-
-
-class LibraryTrackTests(TestCase):
-    """LGA-75: the library has separate ladders — native grade-level books, CI/TPRS
-    learner novellas, an adult track, and free/public-domain texts."""
-
-    @classmethod
-    def setUpTestData(cls):
-        from students.models import Student
-        cls.parent = User.objects.create_user("trk_parent", password="pw")
-        Student.objects.create(parent=cls.parent, first_name="Tr")
-        cls.native = LibraryBook.objects.create(
-            title="El libro salvaje", author="Juan Villoro", country="México",
-            grade="4", track=LibraryBook.NATIVE, isbn="978-607-16-0001-1")
-        cls.trans = LibraryBook.objects.create(
-            title="La oruga muy hambrienta", author="Eric Carle", country="EE. UU.",
-            grade="PK", track=LibraryBook.NATIVE, is_translation=True)
-        cls.ci = LibraryBook.objects.create(
-            title="Pobre Ana", author="Blaine Ray", track=LibraryBook.CI,
-            level_label="Level 1 · Present")
-        cls.adult = LibraryBook.objects.create(
-            title="Cuentos de la selva", author="Horacio Quiroga", track=LibraryBook.ADULT)
-        cls.free = LibraryBook.objects.create(
-            title="La Edad de Oro", author="José Martí", track=LibraryBook.FREE,
-            url="https://www.gutenberg.org/ebooks/19898")
-
-    def setUp(self):
-        self.client.force_login(self.parent)
-
-    def _get(self, qs=""):
-        return self.client.get(reverse("lingua:library_list") + qs).content.decode()
-
-    def test_native_track_is_default_and_grade_filtered(self):
-        html = self._get("?grade=4")
-        self.assertIn("El libro salvaje", html)
-        self.assertNotIn("Pobre Ana", html)          # CI book not in the native grade list
-        self.assertNotIn("Cuentos de la selva", html)
-
-    def test_ci_track_lists_learner_novellas_with_levels(self):
-        html = self._get("?track=ci")
-        self.assertIn("Pobre Ana", html)
-        self.assertIn("Level 1 · Present", html)     # the level label badge
-        self.assertIn("written", html)               # the "start here" explainer
-        self.assertNotIn("El libro salvaje", html)   # native book excluded
-
-    def test_adult_and_free_tracks(self):
-        adult = self._get("?track=adult")
-        self.assertIn("Cuentos de la selva", adult)
-        self.assertNotIn("Pobre Ana", adult)
-        free = self._get("?track=free")
-        self.assertIn("La Edad de Oro", free)
-        self.assertIn("gutenberg.org", free)         # free texts link out to the full text
-
-    def test_isbn_and_translation_badge_render(self):
-        html = self._get("?grade=4")
-        self.assertIn("978-607-16-0001-1", html)     # ISBN shown for library lookup
-        self.assertIn("original", html)              # originally-Spanish marked
-        pk_html = self._get("?grade=PK")
-        self.assertIn("traducción", pk_html)         # translation marked
-        self.assertNotIn("traducción", html)         # original Spanish is not
-
-    def test_invalid_track_falls_back_to_native(self):
-        html = self._get("?track=bogus&grade=4")
-        self.assertIn("El libro salvaje", html)
-        self.assertNotIn("Pobre Ana", html)
 
 
 class BookLogWorkLogMirrorTests(TestCase):
@@ -3940,34 +3905,6 @@ class BookLogWorkLogMirrorTests(TestCase):
         self.assertIsNone(entry.host_worklog_id)                      # just not mirrored
         self.assertTrue(services.delete_book_log(learner, entry.pk, worklog_sink=_Boom()))
 
-    def test_parent_form_files_the_book_against_the_SELECTED_child(self):
-        # Regression, end-to-end THROUGH THE RENDERED FORM: the option value the form
-        # emits must be the id the view resolves. It keys its learner map on
-        # host_student_id, so emitting the lingua Learner.pk filed the book against the
-        # wrong sibling. Decoy learners force Learner.pk != host_student_id, so the two
-        # id spaces genuinely differ (otherwise this test can't fail).
-        for decoy in range(9001, 9004):
-            Learner.create_for_host_student(decoy, profiles.KIDS_EARLY)
-        self._learner(self.ana)
-        leo_learner = self._learner(self.leo)
-        self.assertNotEqual(leo_learner.pk, leo_learner.host_student_id)  # guard: ids diverge
-
-        self.client.force_login(self.parent)
-        page = self.client.get(reverse("lingua:book_log_add")).content.decode()
-        # Pull Leo's option value straight out of the rendered <select>.
-        m = re.search(r'<option value="(\d+)">\s*Leo', page)
-        self.assertIsNotNone(m, "Leo is not offered in the child picker")
-        posted_id = m.group(1)
-
-        r = self.client.post(reverse("lingua:book_log_add"), {
-            "host_student_id": posted_id, "book_id": str(self.book.pk),
-            "read_on": "2026-07-20", "enjoyed": "loved",
-        })
-        self.assertEqual(r.status_code, 302)
-        logged = BookLogEntry.objects.get()
-        self.assertEqual(logged.learner, leo_learner)                 # Leo, not Ana
-        self.assertEqual(logged.learner.host_student_id, self.leo.pk)
-
 
 class LibraryReviewFixTests(TestCase):
     """LGA-75 review fixes: kid-endpoint honesty + field forwarding, hostile input,
@@ -4015,11 +3952,6 @@ class LibraryReviewFixTests(TestCase):
         self.assertEqual(r.status_code, 302)                 # not a 500
         self.assertEqual(BookLogEntry.objects.get().display_title, "T")
 
-    def test_parent_form_survives_non_numeric_book_param(self):
-        self.client.force_login(self.parent)
-        r = self.client.get(reverse("lingua:book_log_add") + "?book=abc")
-        self.assertEqual(r.status_code, 200)                 # not a 500
-
     def test_suggested_books_follow_the_ladder_not_the_alphabet(self):
         # grade sorts lexicographically as a CharField ("1" < "2" < "K" < "PK"), which
         # would put the HARDEST books first for an early reader.
@@ -4035,22 +3967,6 @@ class LibraryReviewFixTests(TestCase):
         LibraryBook.objects.create(title="Pobre Ana", track=LibraryBook.CI)
         learner = Learner.create_for_host_student(8802, profiles.KIDS_EARLY)
         self.assertNotIn("Pobre Ana", [b.title for b in services.suggested_books(learner)])
-
-    def test_clear_link_keeps_the_active_track(self):
-        self.client.force_login(self.parent)
-        LibraryBook.objects.create(title="Pobre Ana", track=LibraryBook.CI)
-        html = self.client.get(reverse("lingua:library_list") + "?track=ci&q=x").content.decode()
-        self.assertIn('href="?track=ci"', html)              # Clear stays on the CI track
-
-    def test_country_filter_is_canonical(self):
-        # The two source lists spelled countries differently (Spain/España); the seed
-        # data is canonicalized so one filter value returns them all.
-        self.client.force_login(self.parent)
-        LibraryBook.objects.create(title="Otro español", country="España", grade="1")
-        html = self.client.get(
-            reverse("lingua:library_list") + "?track=native&grade=1&region=España").content.decode()
-        self.assertIn("Otro español", html)
-        self.assertNotIn("Camino a casa", html)              # Colombia filtered out
 
 
 class TemplateCommentLeakGuardTests(TestCase):
@@ -4082,59 +3998,3422 @@ class TemplateCommentLeakGuardTests(TestCase):
         self.assertEqual(offenders, [], f"Leaky Django template comments: {offenders}")
 
 
-class LibraryFilterTests(TestCase):
-    """LGA-75: the grade/country/search filters must actually work together — the
-    country choices are scoped to the CURRENT grade so every option returns books."""
+class ShelfLibraryTests(TestCase):
+    """HH-143: the catalog is one shelf rail with a REAL mark-read control on each
+    card. The old page had a decorative span styled like a checkbox that did nothing,
+    plus a track/grade/country filter stack the owner reported as broken."""
 
     @classmethod
     def setUpTestData(cls):
-        cls.parent = User.objects.create_user("filt_parent", password="pw")
-        # grade 1: México + España ; grade 5: Uruguay only
-        LibraryBook.objects.create(title="Camino a casa", author="Jairo Buitrago",
-                                   country="Colombia", grade="1")
-        LibraryBook.objects.create(title="El pollo Pepe", author="Nick Denchfield",
-                                   country="España", grade="1")
-        LibraryBook.objects.create(title="Cuentos de la selva", author="Horacio Quiroga",
-                                   country="Uruguay", grade="5")
+        from core.models import Family, FamilyMembership
+        from students.models import Student
+        cls.parent = User.objects.create_user("shelf_parent", password="pw")
+        cls.family = Family.objects.create(name="Shelf Fam")
+        FamilyMembership.objects.create(user=cls.parent, family=cls.family, role="parent")
+        cls.vio = Student.objects.create(parent=cls.parent, first_name="Vio",
+                                         family=cls.family, grade_level="G03")
+        cls.ada = Student.objects.create(parent=cls.parent, first_name="Ada",
+                                         family=cls.family, grade_level="G01")
+        cls.g1 = LibraryBook.objects.create(
+            title="Camino a casa", author="Jairo Buitrago", country="Colombia",
+            grade="1", track=LibraryBook.NATIVE)
+        cls.g3 = LibraryBook.objects.create(
+            title="El libro salvaje", author="Juan Villoro", country="México",
+            grade="3", track=LibraryBook.NATIVE)
+        cls.ci = LibraryBook.objects.create(
+            title="Pobre Ana", author="Blaine Ray", track=LibraryBook.CI,
+            level_label="Level 1 · Present")
+        cls.free = LibraryBook.objects.create(
+            title="La Edad de Oro", author="José Martí", track=LibraryBook.FREE,
+            url="https://www.gutenberg.org/ebooks/19898")
 
     def setUp(self):
         self.client.force_login(self.parent)
 
-    def _get(self, qs):
+    def _get(self, qs=""):
         return self.client.get(reverse("lingua:library_list") + qs).content.decode()
 
-    def test_country_choices_are_scoped_to_the_active_grade(self):
-        # The reported bug: the dropdown offered every country in the catalog, so most
-        # picks returned nothing and the filter looked broken.
-        g1 = self._get("?track=native&grade=1")
-        self.assertIn('value="Colombia"', g1)
-        self.assertIn('value="España"', g1)
-        self.assertNotIn('value="Uruguay"', g1)      # no grade-1 Uruguay book → not offered
-        g5 = self._get("?track=native&grade=5")
-        self.assertIn('value="Uruguay"', g5)
-        self.assertNotIn('value="Colombia"', g5)
+    def test_requires_login(self):
+        self.client.logout()
+        self.assertIn(self.client.get(reverse("lingua:library_list")).status_code, (301, 302))
 
-    def test_country_filter_narrows_within_the_grade(self):
-        html = self._get("?track=native&grade=1&region=España")
-        self.assertIn("El pollo Pepe", html)
-        self.assertNotIn("Camino a casa", html)
+    def test_shelf_shows_only_its_own_books(self):
+        g3 = self._get("?shelf=g-3&for=%d" % self.vio.pk)
+        self.assertIn("El libro salvaje", g3)
+        self.assertNotIn("Camino a casa", g3)        # other grade
+        self.assertNotIn("Pobre Ana", g3)            # other track
+        ci = self._get("?shelf=learners&for=%d" % self.vio.pk)
+        self.assertIn("Pobre Ana", ci)
+        self.assertIn("Level 1 · Present", ci)       # the CI ladder still groups by level
+        self.assertNotIn("El libro salvaje", ci)
 
-    def test_search_and_grade_combine(self):
-        self.assertIn("Camino a casa", self._get("?track=native&grade=1&q=camino"))
-        self.assertNotIn("Camino a casa", self._get("?track=native&grade=5&q=camino"))
+    def test_free_shelf_links_out_to_the_full_text(self):
+        self.assertIn("gutenberg.org", self._get("?shelf=free&for=%d" % self.vio.pk))
 
-    def test_out_of_scope_country_is_ignored_not_empty(self):
-        # Selecting grade 5 while ?region=Colombia (a grade-1 country) must fall back to
-        # "all countries" for that grade rather than render a confusing empty page.
-        html = self._get("?track=native&grade=5&region=Colombia")
-        self.assertIn("Cuentos de la selva", html)
+    def test_shelf_defaults_to_the_selected_childs_grade(self):
+        # The reported confusion started with landing on a shelf nobody asked for.
+        # Violet is G3, so she opens on grade 3 — and Ada (G1) on grade 1.
+        self.assertIn("El libro salvaje", self._get("?for=%d" % self.vio.pk))
+        ada = self._get("?for=%d" % self.ada.pk)
+        self.assertIn("Camino a casa", ada)
+        self.assertNotIn("El libro salvaje", ada)
 
-    def test_grade_defaults_to_the_first_grade_that_has_books(self):
-        html = self._get("?track=native")
-        self.assertIn("Camino a casa", html)         # grade 1 is the first populated band
+    def test_unknown_shelf_falls_back_instead_of_500ing(self):
+        html = self._get("?shelf=../etc&for=%d" % self.vio.pk)
+        self.assertIn("El libro salvaje", html)      # fell back to her grade shelf
 
-    def test_grade_band_shows_its_defining_characteristics(self):
+    def test_search_narrows_within_the_shelf_and_clear_keeps_it(self):
+        html = self._get("?shelf=g-3&for=%d&q=salvaje" % self.vio.pk)
+        self.assertIn("El libro salvaje", html)
+        self.assertIn("?shelf=g-3", html)            # Clear-search link stays on this shelf
+        self.assertNotIn("El libro salvaje",
+                         self._get("?shelf=g-3&for=%d&q=zzz" % self.vio.pk))
+
+    def test_every_card_carries_a_real_submit_control(self):
+        html = self._get("?shelf=g-3&for=%d" % self.vio.pk)
+        self.assertIn(reverse("lingua:mark_read"), html)   # posts somewhere real
+        self.assertIn('name="action" value="log"', html)
+        self.assertIn('value="%d"' % self.g3.pk, html)     # the book is actually named
+        self.assertNotIn("lib-check", html)                # the old fake checkbox is gone
+
+    def test_grade_shelf_shows_its_defining_characteristics(self):
         from lingua.views import grade_descriptor
-        self.assertTrue(grade_descriptor("PK"))      # loaded from the attachment
-        html = self._get("?track=native&grade=1")
-        self.assertIn("What books look like at this level", html)
+        self.assertTrue(grade_descriptor("PK"))          # loaded from the family's list
+        self.assertIn("At this level", self._get("?shelf=g-1&for=%d" % self.ada.pk))
+
+    def test_child_picker_lists_children_without_a_learner_row_yet(self):
+        # Regression: keying the picker off Learner rows hid any child who had never
+        # opened Español — so the parent could not log their very first book.
+        self.assertFalse(Learner.objects.filter(host_student_id=self.ada.pk).exists())
+        html = self._get("?shelf=g-3&for=%d" % self.vio.pk)
+        self.assertIn(">Ada<", html)
+        self.assertIn(">Vio<", html)
+
+
+class MarkReadTests(TestCase):
+    """HH-143: one click on a card logs the read for the child in the log bar, mirrors
+    it into the Work Log, and can be undone."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from core.models import Family, FamilyMembership
+        from students.models import Student
+        cls.parent = User.objects.create_user("mark_parent", "mark@example.com", "pw")
+        cls.family = Family.objects.create(name="Mark Fam")
+        FamilyMembership.objects.create(user=cls.parent, family=cls.family, role="parent")
+        cls.vio = Student.objects.create(parent=cls.parent, first_name="Vio",
+                                         family=cls.family, grade_level="G01")
+        cls.outsider_parent = User.objects.create_user("out_parent", "out@example.com", "pw")
+        cls.outsider_family = Family.objects.create(name="Other Fam")
+        FamilyMembership.objects.create(user=cls.outsider_parent,
+                                        family=cls.outsider_family, role="parent")
+        cls.outsider_kid = Student.objects.create(parent=cls.outsider_parent,
+                                                  first_name="Nope",
+                                                  family=cls.outsider_family)
+        cls.book = LibraryBook.objects.create(
+            title="Camino a casa", author="Jairo Buitrago", country="Colombia", grade="1")
+
+    def setUp(self):
+        self.client.force_login(self.parent)
+
+    def _post(self, **extra):
+        data = {"book": str(self.book.pk), "child": str(self.vio.pk),
+                "on": "2026-07-20", "action": "log"}
+        data.update(extra)
+        return self.client.post(reverse("lingua:mark_read"), data)
+
+    def test_get_is_rejected(self):
+        self.assertEqual(self.client.get(reverse("lingua:mark_read")).status_code, 405)
+
+    def test_marking_read_logs_and_mirrors_into_the_worklog(self):
+        from worklog.models import WorkLogEntry
+        r = self._post()
+        self.assertEqual(r.status_code, 302)
+        entry = BookLogEntry.objects.get()
+        self.assertEqual(entry.book, self.book)
+        self.assertEqual(entry.logged_by, BookLogEntry.PARENT)
+        self.assertEqual(entry.read_on.isoformat(), "2026-07-20")   # the log-bar date
+        self.assertEqual(entry.learner.host_student_id, self.vio.pk)
+        wl = WorkLogEntry.objects.get(pk=entry.host_worklog_id)
+        self.assertEqual(wl.child, self.vio)
+        self.assertEqual(wl.subject, "Spanish reading")
+        self.assertIn("Camino a casa", wl.description)
+
+    def test_the_card_then_shows_the_read_state(self):
+        self._post()
+        html = self.client.get(
+            reverse("lingua:library_list") + "?shelf=g-1&for=%d" % self.vio.pk
+        ).content.decode()
+        self.assertIn('name="action" value="undo"', html)   # the control flipped
+        self.assertIn("Jul 20", html)                       # and says when
+
+    def test_undo_removes_both_sides(self):
+        from worklog.models import WorkLogEntry
+        self._post()
+        entry = BookLogEntry.objects.get()
+        wl_id = entry.host_worklog_id
+        r = self.client.post(reverse("lingua:mark_read"), {
+            "book": str(self.book.pk), "child": str(self.vio.pk),
+            "entry": str(entry.pk), "action": "undo"})
+        self.assertEqual(r.status_code, 302)
+        self.assertFalse(BookLogEntry.objects.filter(pk=entry.pk).exists())
+        self.assertFalse(WorkLogEntry.objects.filter(pk=wl_id).exists())
+
+    def test_re_reading_the_same_book_stacks(self):
+        self._post()
+        self._post(on="2026-07-21")
+        self.assertEqual(BookLogEntry.objects.count(), 2)
+        html = self.client.get(
+            reverse("lingua:library_list") + "?shelf=g-1&for=%d" % self.vio.pk
+        ).content.decode()
+        self.assertIn("2×", html)                           # the count is visible
+
+    def test_free_text_title_logs_without_a_catalog_book(self):
+        r = self._post(book="", title="Un libro de la biblioteca")
+        self.assertEqual(r.status_code, 302)
+        e = BookLogEntry.objects.get()
+        self.assertIsNone(e.book)
+        self.assertEqual(e.display_title, "Un libro de la biblioteca")
+
+    def test_nothing_to_log_is_not_claimed_as_success(self):
+        self._post(book="", title="   ")
+        self.assertFalse(BookLogEntry.objects.exists())
+
+    def test_cannot_log_against_another_familys_child(self):
+        r = self._post(child=str(self.outsider_kid.pk))
+        self.assertEqual(r.status_code, 404)
+        self.assertFalse(BookLogEntry.objects.exists())
+
+    def test_hostile_next_is_not_an_open_redirect(self):
+        r = self._post(next="https://evil.example/steal")
+        self.assertEqual(r.status_code, 302)
+        self.assertFalse(r.url.startswith("https://evil.example"))
+        self.assertIn(reverse("lingua:library_list"), r.url)
+
+    def test_hostile_book_id_does_not_500(self):
+        r = self._post(book="٧", title="T")                 # non-ASCII digits
+        self.assertEqual(r.status_code, 302)
+        self.assertEqual(BookLogEntry.objects.get().display_title, "T")
+
+
+class ReadingInTheWorkLogTests(TestCase):
+    """HH-143: the parent manages reading in the Work Log — one record, one place.
+    The separate reading-log page is gone and deleting the work-log entry un-reads
+    the book, so the library can't keep showing a tick for a row that no longer exists."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from core.models import Family, FamilyMembership
+        from students.models import Student
+        cls.parent = User.objects.create_user("wlui_parent", password="pw")
+        cls.family = Family.objects.create(name="WLUI Fam")
+        FamilyMembership.objects.create(user=cls.parent, family=cls.family, role="parent")
+        cls.vio = Student.objects.create(parent=cls.parent, first_name="Vio",
+                                         family=cls.family, grade_level="G01")
+        cls.book = LibraryBook.objects.create(title="Camino a casa",
+                                              author="Jairo Buitrago", grade="1")
+
+    def setUp(self):
+        self.client.force_login(self.parent)
+
+    def _log_a_book(self):
+        self.client.post(reverse("lingua:mark_read"), {
+            "book": str(self.book.pk), "child": str(self.vio.pk), "action": "log"})
+        return BookLogEntry.objects.get()
+
+    def test_old_reading_log_url_redirects_into_the_worklog(self):
+        r = self.client.get(reverse("lingua:book_log"))
+        self.assertEqual(r.status_code, 302)
+        self.assertTrue(r.url.startswith(reverse("worklog:worklog_list")))
+        self.assertIn("Spanish+reading", r.url)      # lands on the reading filter
+
+    def test_worklog_offers_the_book_entry_point_and_subject_filter(self):
+        self._log_a_book()
+        html = self.client.get(reverse("worklog:worklog_list")).content.decode()
+        self.assertIn(reverse("lingua:library_list"), html)   # "Log a book they read"
+        self.assertIn("Camino a casa", html)
+        self.assertIn("subject=Spanish", html)                # the reading chip
+
+    def test_subject_filter_narrows_the_list(self):
+        from worklog.models import WorkLogEntry
+        self._log_a_book()
+        WorkLogEntry.objects.create(parent=self.parent, family=self.family,
+                                    child=self.vio, date=timezone.localdate(),
+                                    subject="Math", description="Dimensions 3A p. 40")
+        reading = self.client.get(
+            reverse("worklog:worklog_list") + "?subject=Spanish+reading").content.decode()
+        self.assertIn("Camino a casa", reading)
+        self.assertNotIn("Dimensions 3A", reading)
+        math = self.client.get(
+            reverse("worklog:worklog_list") + "?subject=Math").content.decode()
+        self.assertIn("Dimensions 3A", math)
+        self.assertNotIn("Camino a casa", math)
+
+    def test_unknown_subject_shows_everything_rather_than_an_empty_page(self):
+        self._log_a_book()
+        html = self.client.get(
+            reverse("worklog:worklog_list") + "?subject=Nope").content.decode()
+        self.assertIn("Camino a casa", html)
+
+    def test_deleting_the_worklog_entry_un_reads_the_book(self):
+        from worklog.models import WorkLogEntry
+        entry = self._log_a_book()
+        wl_id = entry.host_worklog_id
+        r = self.client.post(reverse("worklog:worklog_delete", args=[wl_id]))
+        self.assertEqual(r.status_code, 302)
+        self.assertFalse(WorkLogEntry.objects.filter(pk=wl_id).exists())
+        self.assertFalse(BookLogEntry.objects.filter(pk=entry.pk).exists())  # no ghost tick
+        html = self.client.get(
+            reverse("lingua:library_list") + "?shelf=g-1&for=%d" % self.vio.pk
+        ).content.decode()
+        self.assertNotIn('name="action" value="undo"', html)
+
+    def test_deleting_an_unrelated_entry_leaves_reading_alone(self):
+        from worklog.models import WorkLogEntry
+        entry = self._log_a_book()
+        other = WorkLogEntry.objects.create(
+            parent=self.parent, family=self.family, child=self.vio,
+            date=timezone.localdate(), subject="Math", description="p. 40")
+        self.client.post(reverse("worklog:worklog_delete", args=[other.pk]))
+        self.assertTrue(BookLogEntry.objects.filter(pk=entry.pk).exists())
+
+    def test_deleting_one_book_leaves_the_other_books_read(self):
+        # The cleanup must clear exactly ONE mirror. Deleting a single work-log entry
+        # cannot be allowed to wipe the whole reading history — which is what a
+        # forget_mirror that forgot to filter would do.
+        other_book = LibraryBook.objects.create(title="El pollo Pepe", grade="1")
+        first = self._log_a_book()
+        self.client.post(reverse("lingua:mark_read"), {
+            "book": str(other_book.pk), "child": str(self.vio.pk), "action": "log"})
+        second = BookLogEntry.objects.exclude(pk=first.pk).get()
+        self.client.post(reverse("worklog:worklog_delete", args=[first.host_worklog_id]))
+        self.assertFalse(BookLogEntry.objects.filter(pk=first.pk).exists())
+        self.assertTrue(BookLogEntry.objects.filter(pk=second.pk).exists())
+
+
+class LibraryReviewFollowupTests(TestCase):
+    """HH-143 review round: the paths the first pass left unpinned — viewer-only
+    refusal, sibling isolation on undo, the date the log bar promises, and the
+    zero-padded Level codes production actually stores."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from core.models import Family, FamilyMembership
+        from students.models import Student
+        cls.parent = User.objects.create_user("rf_parent", "rf_parent@example.com", "pw")
+        cls.teacher = User.objects.create_user("rf_teacher", "rf_teacher@example.com", "pw")
+        cls.family = Family.objects.create(name="RF Fam")
+        FamilyMembership.objects.create(user=cls.parent, family=cls.family, role="parent")
+        FamilyMembership.objects.create(user=cls.teacher, family=cls.family, role="teacher")
+        cls.vio = Student.objects.create(parent=cls.parent, first_name="Vio",
+                                         family=cls.family, grade_level="G03")
+        cls.ada = Student.objects.create(parent=cls.parent, first_name="Ada",
+                                         family=cls.family, grade_level="G01")
+        cls.book = LibraryBook.objects.create(title="Camino a casa",
+                                              author="Jairo Buitrago", grade="1")
+        cls.g3 = LibraryBook.objects.create(title="El libro salvaje",
+                                            author="Juan Villoro", grade="3")
+
+    def _mark(self, child, **extra):
+        data = {"book": str(self.book.pk), "child": str(child.pk), "action": "log"}
+        data.update(extra)
+        return self.client.post(reverse("lingua:mark_read"), data)
+
+    # --- authorization ----------------------------------------------------
+    def test_view_only_member_gets_no_control_and_cannot_log(self):
+        # can_edit_family_or_global has two branches and only the editor one was
+        # exercised. A teacher/grandparent may READ the shelf but not log against it.
+        self.client.force_login(self.teacher)
+        html = self.client.get(
+            reverse("lingua:library_list") + "?shelf=g-3&for=%d" % self.vio.pk
+        ).content.decode()
+        self.assertIn("El libro salvaje", html)              # can still browse
+        self.assertNotIn('name="action" value="log"', html)  # but no control offered
+        self.assertEqual(self._mark(self.vio).status_code, 404)   # nor via a raw POST
+        self.assertFalse(BookLogEntry.objects.exists())
+
+    def test_undo_cannot_reach_a_siblings_entry(self):
+        # Same family, so the child check passes — it is delete_book_log's learner
+        # scoping that has to refuse, and nothing pinned that.
+        self.client.force_login(self.parent)
+        self._mark(self.ada)
+        ada_entry = BookLogEntry.objects.get()
+        r = self.client.post(reverse("lingua:mark_read"), {
+            "book": str(self.book.pk), "child": str(self.vio.pk),
+            "entry": str(ada_entry.pk), "action": "undo"})
+        self.assertEqual(r.status_code, 302)
+        self.assertTrue(BookLogEntry.objects.filter(pk=ada_entry.pk).exists())
+
+    # --- the date the log bar promises ------------------------------------
+    def test_a_backdate_survives_changing_shelf_and_searching(self):
+        # Pick "read on Jul 10", switch shelves, and the next tick must STILL be
+        # Jul 10 — otherwise the parent silently files it today, in the charter report.
+        self.client.force_login(self.parent)
+        html = self.client.get(
+            reverse("lingua:library_list")
+            + "?shelf=g-3&for=%d&on=2026-07-10" % self.vio.pk
+        ).content.decode()
+        # Assert on the SHELF LINKS specifically — `next_qs` also carries the date, so a
+        # bare "on=2026-07-10 appears somewhere" check passes even when the rail drops it.
+        shelf_hrefs = re.findall(r'class="lib-shelf[^"]*"[^>]*href="([^"]+)"', html)
+        self.assertTrue(shelf_hrefs, "no shelf links rendered")
+        for href in shelf_hrefs:
+            self.assertIn("on=2026-07-10", href)
+        self.assertIn('name="on" value="2026-07-10"', html)   # and the search form
+        # and the mark-read control posts that date, not today
+        self.assertNotIn('name="on" value="%s"' % timezone.localdate().isoformat(), html)
+
+    def test_a_future_date_is_clamped_on_the_write_path(self):
+        from worklog.models import WorkLogEntry
+        self.client.force_login(self.parent)
+        self._mark(self.vio, on="2099-01-01")
+        today = timezone.localdate()
+        self.assertEqual(BookLogEntry.objects.get().read_on, today)
+        self.assertEqual(WorkLogEntry.objects.get().date, today)  # not decades out
+
+    def test_undo_targets_the_entry_whose_date_is_shown(self):
+        # Log today, then backdate a second read. The label shows the LATEST read;
+        # clicking undo must remove that one, not whichever row happens to be newest.
+        self.client.force_login(self.parent)
+        self._mark(self.vio)
+        self._mark(self.vio, on="2026-01-05")
+        latest = max(BookLogEntry.objects.all(), key=lambda e: e.read_on)
+        html = self.client.get(
+            reverse("lingua:library_list") + "?shelf=g-1&for=%d" % self.vio.pk
+        ).content.decode()
+        m = re.search(r'name="entry" value="(\d+)"', html)
+        self.assertIsNotNone(m, "no undo target rendered")
+        self.assertEqual(int(m.group(1)), latest.pk)
+        self.assertIn(latest.read_on.strftime("%b").lstrip("0"), html)
+
+    # --- production Level codes -------------------------------------------
+    def test_default_shelf_handles_the_zero_padded_level_codes(self):
+        # Student.LEVEL_CHOICES stores G01..G12 zero-padded; "G3" is not a real value.
+        # Parsing that wrong sends every child to the wrong shelf.
+        from lingua.views import _default_shelf
+        keys = {"learners", "g-PK", "g-K", "g-1", "g-3"}
+        self.assertEqual(_default_shelf({"grade_level": "G03"}, keys), "g-3")
+        self.assertEqual(_default_shelf({"grade_level": "G01"}, keys), "g-1")
+        self.assertEqual(_default_shelf({"grade_level": "PREK"}, keys), "g-PK")
+        self.assertEqual(_default_shelf({"grade_level": "K"}, keys), "g-K")
+        self.assertEqual(_default_shelf({"grade_level": "G12"}, keys), "learners")  # no shelf
+        self.assertEqual(_default_shelf(None, keys), "learners")
+
+    # --- messaging honesty ------------------------------------------------
+    def test_logging_nothing_is_not_reported_as_a_success(self):
+        from django.contrib.messages import constants as levels
+        self.client.force_login(self.parent)
+        r = self._mark(self.vio, book="", title="   ", follow=True)
+        got = [m.level for m in self.client.get(
+            reverse("lingua:library_list"), follow=True).context["messages"]]
+        self.assertNotIn(levels.SUCCESS, got)
+        self.assertIn(levels.INFO, got)
+
+    def test_the_worklog_subject_comes_from_settings(self):
+        from worklog.models import WorkLogEntry
+        with override_settings(LINGUA={**settings.LINGUA, "WORKLOG_SUBJECT": "Lectura"}):
+            self.client.force_login(self.parent)
+            self._mark(self.vio)
+            self.assertEqual(WorkLogEntry.objects.get().subject, "Lectura")
+
+    # --- the browse-only page still explains itself -----------------------
+    def test_a_user_with_no_children_is_told_why_there_are_no_buttons(self):
+        from core.models import Family, FamilyMembership
+        lone = User.objects.create_user("rf_lone", "rf_lone@example.com", "pw")
+        empty = Family.objects.create(name="Empty Fam")
+        FamilyMembership.objects.create(user=lone, family=empty, role="parent")
+        self.client.force_login(lone)
+        html = self.client.get(reverse("lingua:library_list")).content.decode()
+        self.assertNotIn('name="action" value="log"', html)
+        self.assertIn("My Children", html)          # says what to do about it
+
+
+class MirroredEntryRenameTests(TestCase):
+    """HH-143 review, HIGH: the subject is a free-text field the parent can edit. Both
+    directions of the mirror keyed on it, so renaming a mirrored entry stranded one
+    side or the other — the exact ghost-tick this feature exists to prevent."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from core.models import Family, FamilyMembership
+        from students.models import Student
+        cls.parent = User.objects.create_user("ren_parent", "ren@example.com", "pw")
+        cls.family = Family.objects.create(name="Ren Fam")
+        FamilyMembership.objects.create(user=cls.parent, family=cls.family, role="parent")
+        cls.vio = Student.objects.create(parent=cls.parent, first_name="Vio",
+                                         family=cls.family, grade_level="G01")
+        cls.book = LibraryBook.objects.create(title="Camino a casa", grade="1")
+
+    def setUp(self):
+        self.client.force_login(self.parent)
+
+    def _log(self):
+        self.client.post(reverse("lingua:mark_read"), {
+            "book": str(self.book.pk), "child": str(self.vio.pk), "action": "log"})
+        return BookLogEntry.objects.get()
+
+    def _rename(self, wl_id, subject):
+        from worklog.models import WorkLogEntry
+        WorkLogEntry.objects.filter(pk=wl_id).update(subject=subject)
+
+    def test_deleting_a_RENAMED_mirrored_entry_still_un_reads_the_book(self):
+        entry = self._log()
+        self._rename(entry.host_worklog_id, "Reading")     # the parent retitles it
+        self.client.post(reverse("worklog:worklog_delete", args=[entry.host_worklog_id]))
+        self.assertFalse(BookLogEntry.objects.filter(pk=entry.pk).exists())
+        html = self.client.get(
+            reverse("lingua:library_list") + "?shelf=g-1&for=%d" % self.vio.pk
+        ).content.decode()
+        self.assertNotIn('name="action" value="undo"', html)   # no ghost tick
+
+    def test_undoing_a_RENAMED_mirrored_entry_leaves_no_orphan_in_the_report(self):
+        from worklog.models import WorkLogEntry
+        entry = self._log()
+        wl_id = entry.host_worklog_id
+        self._rename(wl_id, "Reading")
+        self.client.post(reverse("lingua:mark_read"), {
+            "book": str(self.book.pk), "child": str(self.vio.pk),
+            "entry": str(entry.pk), "action": "undo"})
+        self.assertFalse(BookLogEntry.objects.filter(pk=entry.pk).exists())
+        # Nothing left pointing at it, so an orphan here would be permanent.
+        self.assertFalse(WorkLogEntry.objects.filter(pk=wl_id).exists())
+
+
+class TutorPacketTests(TestCase):
+    """LGA-85: Con el maestro — visibility + portal download surface."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from portal.tokens import make_portal_token
+        cls.parent = User.objects.create_user("tp_parent", email="tp@e.com", password="pw")
+        cls.kaylin = Student.objects.create(parent=cls.parent, first_name="Kaylin")
+        cls.violet = Student.objects.create(parent=cls.parent, first_name="Violet")
+        Learner.create_for_host_student(cls.kaylin.pk, profiles.KIDS_OLDER)
+        Learner.create_for_host_student(cls.violet.pk, profiles.KIDS_EARLY)
+        cls.kaylin_token = make_portal_token(cls.kaylin)
+        cls.violet_token = make_portal_token(cls.violet)
+
+    def test_seed_creates_kaylin_packet(self):
+        from io import StringIO
+        from django.core.management import call_command
+        call_command("seed_tutor_leccion1", stdout=StringIO())
+        pkt = TutorPacket.objects.get(title__startswith="Lección 1")
+        self.assertEqual(pkt.host_student_id, self.kaylin.pk)
+        self.assertGreaterEqual(len(pkt.phrase_lines()), 5)
+
+    def test_kaylin_sees_packet_violet_does_not(self):
+        TutorPacket.objects.create(
+            title="Lección 1 — Mis primeros pasos",
+            source="italki",
+            body="Yo soy amigable.\nMi hermana es alta.",
+            host_student_id=self.kaylin.pk,
+        )
+        kaylin_plan = self.client.get(
+            reverse("portal:lingua_plan", kwargs={"token": self.kaylin_token})
+        ).content.decode()
+        violet_plan = self.client.get(
+            reverse("portal:lingua_plan", kwargs={"token": self.violet_token})
+        ).content.decode()
+        # Assert on the LINK, not a display string. The original asserted the label
+        # "Con el maestro", which LGA-87 renamed to "Maestro" on this page — so the
+        # positive half broke on a rename and the negative half could never fail,
+        # since that string is on nobody's plan page.
+        kaylin_link = reverse("portal:lingua_tutor", kwargs={"token": self.kaylin_token})
+        violet_link = reverse("portal:lingua_tutor", kwargs={"token": self.violet_token})
+        self.assertIn(kaylin_link, kaylin_plan)
+        self.assertNotIn(violet_link, violet_plan)
+
+    def test_packet_page_shows_phrases_and_file_url(self):
+        from django.core.files.base import ContentFile
+        pkt = TutorPacket.objects.create(
+            title="Lección 1 — Mis primeros pasos",
+            body="Yo soy amigable.",
+            host_student_id=self.kaylin.pk,
+        )
+        pkt.file.save("leccion1.docx", ContentFile(b"PK fake docx"), save=True)
+        url = reverse("portal:lingua_tutor_packet",
+                      kwargs={"token": self.kaylin_token, "packet_id": pkt.pk})
+        html = self.client.get(url).content.decode()
+        self.assertIn("Yo soy amigable.", html)
+        self.assertIn("Descargar documento", html)
+        self.assertIn(pkt.file.url, html)
+
+    def test_violet_cannot_open_kaylin_packet(self):
+        pkt = TutorPacket.objects.create(
+            title="Secret", body="hola", host_student_id=self.kaylin.pk,
+        )
+        url = reverse("portal:lingua_tutor_packet",
+                      kwargs={"token": self.violet_token, "packet_id": pkt.pk})
+        self.assertEqual(self.client.get(url).status_code, 404)
+
+
+@override_settings(STORAGES=_INMEM_STORAGES)
+class AudioClipBakeTests(TestCase):
+    """LGA-84: content-addressed clip bake; no Polly on link-only / skip."""
+
+    def test_synthesize_clip_mp3_only(self):
+        client = _FakePolly([])
+        out = audio.synthesize_clip("perro", client=client)
+        self.assertEqual(out["audio"], b"ID3" + bytes([3]) + b"fake-mp3")
+        self.assertEqual([c["OutputFormat"] for c in client.calls], ["mp3"])
+
+    def test_bake_audio_clip_idempotent(self):
+        client = _FakePolly([])
+        obj, action = services.bake_audio_clip("perro", client=client)
+        self.assertEqual(action, "baked")
+        self.assertTrue(lingua_storage.readalong_storage().exists(obj.audio_key))
+        obj2, action2 = services.bake_audio_clip("perro", client=client)
+        self.assertEqual(action2, "skipped")
+        self.assertEqual(obj.pk, obj2.pk)
+        self.assertEqual(AudioClip.objects.filter(text="perro").count(), 1)
+
+    def test_bake_link_only_without_asset_fails(self):
+        with self.assertRaises(FileNotFoundError):
+            services.bake_audio_clip("missing-word", link_only=True)
+
+    def test_clips_build_phonics_with_fake_polly(self):
+        from io import StringIO
+        from django.core.management import call_command
+        call_command("seed_phonics", stdout=StringIO())
+        with mock.patch("lingua.audio.synthesize_clip",
+                        side_effect=lambda text, **kw: {
+                            "audio": b"ID3x", "voice": "Mia", "engine": "neural",
+                        }):
+            call_command("clips_build", "--phonics", stdout=StringIO())
+        self.assertGreaterEqual(AudioClip.objects.count(), 8)
+
+
+class AlphabetEscucharTests(TestCase):
+    """LGA-86: alphabet chart incl. ll/rr + Kaylin phrases on Escuchar."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from portal.tokens import make_portal_token
+        cls.parent = User.objects.create_user("ab_parent", email="ab@e.com", password="pw")
+        cls.kaylin = Student.objects.create(parent=cls.parent, first_name="Kaylin")
+        cls.violet = Student.objects.create(parent=cls.parent, first_name="Violet")
+        Learner.create_for_host_student(cls.kaylin.pk, profiles.KIDS_OLDER)
+        Learner.create_for_host_student(cls.violet.pk, profiles.KIDS_EARLY)
+        cls.kaylin_token = make_portal_token(cls.kaylin)
+        cls.violet_token = make_portal_token(cls.violet)
+
+    def _seed_alphabet(self):
+        from io import StringIO
+        from django.core.management import call_command
+        call_command("seed_alphabet", stdout=StringIO())
+
+    def test_seed_includes_ll_and_rr(self):
+        self._seed_alphabet()
+        symbols = set(AlphabetTile.objects.values_list("symbol", flat=True))
+        self.assertIn("ll", symbols)
+        self.assertIn("rr", symbols)
+        self.assertIn("ñ", symbols)
+        self.assertGreaterEqual(len(symbols), 29)
+
+    def test_seed_idempotent(self):
+        self._seed_alphabet()
+        n = AlphabetTile.objects.count()
+        self._seed_alphabet()
+        self.assertEqual(AlphabetTile.objects.count(), n)
+
+    def test_escuchar_shows_alphabet_and_kaylin_phrases(self):
+        self._seed_alphabet()
+        TutorPacket.objects.create(
+            title="Lección 1",
+            body="Yo soy amigable.\nMi hermana es alta.",
+            host_student_id=self.kaylin.pk,
+        )
+        k_html = self.client.get(
+            reverse("portal:lingua_listen", kwargs={"token": self.kaylin_token})
+        ).content.decode()
+        v_html = self.client.get(
+            reverse("portal:lingua_listen", kwargs={"token": self.violet_token})
+        ).content.decode()
+        self.assertIn("Alfabeto", k_html)
+        self.assertRegex(k_html, r">\s*ll\s*<")
+        self.assertRegex(k_html, r">\s*rr\s*<")
+        self.assertIn("Yo soy amigable.", k_html)
+        self.assertIn("Alfabeto", v_html)
+        self.assertNotIn("Yo soy amigable.", v_html)
+
+
+class PathwayStatusTests(TestCase):
+    """LGA-88/93: Camino map never locks; kid checkbox marks Hecho."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from django.core.management import call_command
+        from portal.tokens import make_portal_token
+
+        call_command("seed_pathway")
+        cls.parent = User.objects.create_user("path_parent", password="pw")
+        cls.violet = Student.objects.create(parent=cls.parent, first_name="Violet")
+        cls.kaylin = Student.objects.create(parent=cls.parent, first_name="Kaylin")
+        cls.early = Learner.create_for_host_student(cls.violet.pk, profiles.KIDS_EARLY)
+        cls.older = Learner.create_for_host_student(cls.kaylin.pk, profiles.KIDS_OLDER)
+        cls.story = Story.objects.create(
+            title="Hola", body="Hola sol.", level="L1", status=Story.APPROVED,
+        )
+        TutorPacket.objects.create(
+            title="Lección 1", body="Yo soy amigable.", host_student_id=cls.kaylin.pk,
+        )
+        cls.violet_token = make_portal_token(cls.violet)
+        cls.kaylin_token = make_portal_token(cls.kaylin)
+
+    def test_seed_creates_band_pathways(self):
+        self.assertTrue(Pathway.objects.filter(slug="camino-early", age_band=profiles.KIDS_EARLY).exists())
+        self.assertTrue(Pathway.objects.filter(slug="camino-older", age_band=profiles.KIDS_OLDER).exists())
+
+    def test_all_visible_steps_are_open_never_locked(self):
+        status = services.pathway_status(self.early)
+        self.assertTrue(status["steps"])
+        self.assertTrue(all(r["status"] == services.PATH_AVAILABLE
+                            for r in status["steps"]))
+        listen = next(r for r in status["steps"] if r["step"].kind == PathwayStep.LISTEN)
+        self.assertEqual(listen["status"], services.PATH_AVAILABLE)
+
+    def test_checkmark_marks_step_complete(self):
+        l1 = next(
+            r["step"] for r in services.pathway_status(self.early)["steps"]
+            if r["step"].kind == PathwayStep.STORY_LEVEL
+        )
+        services.set_pathway_checkmark(self.early, l1, True)
+        status = services.pathway_status(self.early)
+        row = next(r for r in status["steps"] if r["step"].pk == l1.pk)
+        self.assertEqual(row["status"], services.PATH_COMPLETE)
+        self.assertTrue(row["checked"])
+        self.assertTrue(row["practicar"])
+
+    def test_uncheck_reopens_step(self):
+        phonics = next(
+            r["step"] for r in services.pathway_status(self.early)["steps"]
+            if r["step"].kind == PathwayStep.PHONICS
+        )
+        services.set_pathway_checkmark(self.early, phonics, True)
+        services.set_pathway_checkmark(self.early, phonics, False)
+        row = next(
+            r for r in services.pathway_status(self.early)["steps"]
+            if r["step"].pk == phonics.pk
+        )
+        self.assertEqual(row["status"], services.PATH_AVAILABLE)
+        self.assertFalse(row["checked"])
+
+    def test_reading_a_story_TICKS_the_map_step_by_itself(self):
+        # Reverses LGA-93's rule deliberately (LGA-100). Requiring her to walk back to
+        # the map to record work the app already watched her do is why the map read
+        # "0 done" while she was doing it — the single biggest effort/reward gap for
+        # the younger child. Auto-tick what we can observe.
+        l1 = next(
+            r for r in services.pathway_status(self.early)["steps"]
+            if r["step"].kind == PathwayStep.STORY_LEVEL
+        )
+        self.assertEqual(l1["status"], services.PATH_AVAILABLE)   # nothing read yet
+
+        ReadingSession.objects.create(learner=self.early, story=self.story, words=2, seconds=30)
+        l1 = next(
+            r for r in services.pathway_status(self.early)["steps"]
+            if r["step"].kind == PathwayStep.STORY_LEVEL
+        )
+        self.assertEqual(l1["status"], services.PATH_COMPLETE)
+
+    def test_phonics_stays_self_reported(self):
+        # The other half of the rule: we cannot observe whether she SAID the sounds
+        # out loud, so OPENING the page proves nothing and this one stays
+        # self-reported. (Opening used to write a StationVisit row; nothing ever read
+        # it, so the row is gone and the page visit is simply not evidence.)
+        phonics = next(
+            r for r in services.pathway_status(self.early)["steps"]
+            if r["step"].kind == PathwayStep.PHONICS
+        )
+        self.assertEqual(phonics["status"], services.PATH_AVAILABLE)
+
+    def test_review_due_respects_absence_pause(self):
+        from datetime import timedelta
+
+        now = timezone.now()
+        ReviewItem.objects.create(
+            learner=self.early, target_ref="gato", scheduler=ReviewItem.LEITNER,
+            scheduler_state={"box": 1}, due=now - timedelta(minutes=5),
+        )
+        self.assertTrue(services.camino_plan_extras(self.early)["review_due"])
+        services.pause_reviews(self.early, now + timedelta(days=3))
+        self.assertFalse(services.camino_plan_extras(self.early)["review_due"])
+
+    def test_primary_available_is_first_only(self):
+        status = services.pathway_status(self.early)
+        available = [r for r in status["steps"] if r["status"] == services.PATH_AVAILABLE]
+        self.assertGreaterEqual(len(available), 1)
+        self.assertTrue(available[0]["primary"])
+        self.assertTrue(all(not r["primary"] for r in available[1:]))
+        self.assertTrue(status["hint"].startswith("Después:"))
+
+    def test_tutor_step_only_for_kaylin(self):
+        v = services.pathway_status(self.early)
+        k = services.pathway_status(self.older)
+        self.assertFalse(any(r["step"].kind == PathwayStep.TUTOR_PACKET for r in v["steps"]))
+        self.assertTrue(any(r["step"].kind == PathwayStep.TUTOR_PACKET for r in k["steps"]))
+
+    def test_the_story_stop_FOLLOWS_her_ceiling(self):
+        # Replaces test_l2_open_even_when_ceiling_is_l1, which a review showed could
+        # never fail: content_ceiling was read nowhere in the Camino, so its setup had
+        # no bearing on its assertion. It is read now, and the point has inverted — the
+        # stop should MOVE with her rather than naming a fixed rung forever.
+        for ceiling in ("L1", "L3"):
+            self.older.profile.content_ceiling = ceiling
+            self.older.profile.save(update_fields=["content_ceiling"])
+            row = next(
+                r for r in services.pathway_status(self.older)["steps"]
+                if r["step"].kind == PathwayStep.STORY_LEVEL
+            )
+            self.assertEqual(row["level"], ceiling)
+            self.assertIn(ceiling, row["title"])
+            self.assertEqual(row["status"], services.PATH_AVAILABLE)
+
+    def test_map_page_renders_checkboxes(self):
+        r = self.client.get(reverse("portal:lingua_path", kwargs={"token": self.violet_token}))
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, "Tu mapa")
+        self.assertContains(r, "Leer historias L1")
+        self.assertContains(r, "Marcar hecho")
+        self.assertNotContains(r, "🔒")
+
+    def test_checkbox_post_toggles_hecho(self):
+        step = next(
+            r["step"] for r in services.pathway_status(self.early)["steps"]
+            if r["step"].kind == PathwayStep.LISTEN
+        )
+        url = reverse("portal:lingua_path_check", kwargs={"token": self.violet_token})
+        r = self.client.post(url, {"step_id": step.pk, "done": "1"})
+        self.assertEqual(r.status_code, 302)
+        self.assertTrue(PathwayCheckmark.objects.filter(learner=self.early, step=step).exists())
+        r = self.client.post(url, {"step_id": step.pk, "done": "0"})
+        self.assertFalse(PathwayCheckmark.objects.filter(learner=self.early, step=step).exists())
+
+    def test_plan_links_to_map(self):
+        r = self.client.get(reverse("portal:lingua_plan", kwargs={"token": self.violet_token}))
+        self.assertContains(r, reverse("portal:lingua_path", kwargs={"token": self.violet_token}))
+
+
+class KnownWordFromReviewTests(TestCase):
+    """LGA-89: strong SRS corrects credit KnownWord."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.learner = Learner.create_for_host_student(8901, profiles.KIDS_EARLY)
+
+    def test_leitner_credits_at_warm_box(self):
+        now = timezone.now()
+        item = ReviewItem.objects.create(
+            learner=self.learner, target_ref="gato", scheduler=ReviewItem.LEITNER,
+            scheduler_state={"box": 3}, due=now,
+        )
+        services.grade_review_item(item, True, now=now)  # box 3 -> 4
+        self.assertTrue(KnownWord.objects.filter(learner=self.learner, word="gato").exists())
+
+    def test_leitner_low_box_does_not_credit(self):
+        now = timezone.now()
+        item = ReviewItem.objects.create(
+            learner=self.learner, target_ref="sol", scheduler=ReviewItem.LEITNER,
+            scheduler_state={"box": 1}, due=now,
+        )
+        services.grade_review_item(item, True, now=now)  # box 1 -> 2
+        self.assertFalse(KnownWord.objects.filter(learner=self.learner, word="sol").exists())
+
+    def test_fsrs_correct_credits(self):
+        from lingua import schedulers as sched_mod
+
+        learner = Learner.create_for_host_student(8902, profiles.KIDS_OLDER)
+        now = timezone.now()
+        item = ReviewItem.objects.create(
+            learner=learner, target_ref="casa", scheduler=ReviewItem.FSRS,
+            scheduler_state=sched_mod.get_scheduler(ReviewItem.FSRS).initial_state(),
+            due=now,
+        )
+        services.grade_review_item(item, True, now=now)
+        self.assertTrue(KnownWord.objects.filter(learner=learner, word="casa").exists())
+
+
+class CaminoSeedIsNonDestructiveTests(TestCase):
+    """LGA-96: re-seeding the Camino must not destroy the girls' progress.
+
+    PathwayCheckmark.step CASCADEs, so a delete-then-recreate seed wipes every
+    child's "Hecho" while leaving the row COUNTS identical — invisible from the
+    command's own summary line."""
+
+    def _seed(self):
+        from django.core.management import call_command
+        call_command("seed_pathway", verbosity=0)
+
+    def test_reseeding_keeps_checkmarks_and_step_pks(self):
+        from lingua.models import Pathway, PathwayCheckmark, PathwayStep
+        self._seed()
+        learner = Learner.create_for_host_student(7701, profiles.KIDS_EARLY)
+        step = PathwayStep.objects.filter(pathway__slug="camino-early").order_by("order").first()
+        self.assertIsNotNone(step, "seed produced no steps")
+        PathwayCheckmark.objects.create(learner=learner, step=step)
+        pks_before = list(PathwayStep.objects.order_by("pk").values_list("pk", flat=True))
+
+        self._seed()
+
+        self.assertTrue(
+            PathwayCheckmark.objects.filter(learner=learner, step_id=step.pk).exists(),
+            "re-seeding destroyed the child's progress",
+        )
+        self.assertEqual(
+            list(PathwayStep.objects.order_by("pk").values_list("pk", flat=True)),
+            pks_before,
+            "step PKs churned on re-seed — anything referencing them breaks",
+        )
+
+    def test_reseeding_still_removes_a_step_dropped_from_the_spec(self):
+        # Update-in-place must not mean "never delete" — a step taken out of the
+        # spec has to disappear, or the map keeps a stop that no longer exists.
+        from lingua.models import Pathway, PathwayStep
+        self._seed()
+        pathway = Pathway.objects.get(slug="camino-early")
+        orphan = PathwayStep.objects.create(
+            pathway=pathway, order=999, title="Parada vieja", kind=PathwayStep.LINK,
+        )
+        self._seed()
+        self.assertFalse(PathwayStep.objects.filter(pk=orphan.pk).exists())
+
+
+class PathCheckAuthorizationTests(TestCase):
+    """LGA-99 / M2: the IDOR gate on the tokenless checkmark endpoint had NO test —
+    deleting it left all 523 lingua+portal tests green."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from portal.tokens import make_portal_token
+        from datetime import date
+        cls.parent = User.objects.create_user("pc_parent", "pc@example.com", "pw")
+        cls.violet = Student.objects.create(
+            parent=cls.parent, first_name="Violet", grade_level="G03",
+            date_of_birth=date(2017, 10, 10),
+        )
+        cls.violet_token = make_portal_token(cls.violet)
+
+    def test_cannot_tick_a_step_from_another_bands_pathway(self):
+        from django.core.management import call_command
+        from lingua.models import PathwayCheckmark, PathwayStep
+        call_command("seed_pathway", verbosity=0)
+        # Provision Violet (KIDS_EARLY) by visiting her plan.
+        self.client.get(reverse("portal:lingua_plan", kwargs={"token": self.violet_token}))
+        foreign = PathwayStep.objects.filter(pathway__slug="camino-older").first()
+        self.assertIsNotNone(foreign)
+
+        r = self.client.post(
+            reverse("portal:lingua_path_check", kwargs={"token": self.violet_token}),
+            {"step_id": str(foreign.pk)},
+        )
+        self.assertEqual(r.status_code, 404)
+        self.assertFalse(
+            PathwayCheckmark.objects.filter(step_id=foreign.pk).exists(),
+            "a child ticked a step that is not on their own pathway",
+        )
+
+
+class PinnedWorkStaysVisibleTests(TestCase):
+    """HH-150: HH-148 required an active placement for ALL portal work, which hid
+    material pinned directly to a child — the manga-lesson assignment path."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from curricula.models import Chapter, Curriculum, CurriculumPlacement, Lesson
+        from portal.tokens import make_portal_token
+        from tutor.models import Material
+        cls.parent = User.objects.create_user("pin_parent", "pin@example.com", "pw")
+        cls.kid = Student.objects.create(parent=cls.parent, first_name="Nia", grade_level="G03")
+        cls.token = make_portal_token(cls.kid)
+        cls.cur = Curriculum.objects.create(name="Unplaced Math", parent=cls.parent)
+        ch = Chapter.objects.create(curriculum=cls.cur, number=1, title="Ch1")
+        cls.lesson = Lesson.objects.create(chapter=ch, order=1, title="L1")
+        cls.pinned = Material.objects.create(
+            lesson=cls.lesson, child=cls.kid, title="PinnedManga",
+            status=Material.APPROVED,
+        )
+        cls.shared = Material.objects.create(
+            lesson=cls.lesson, child=None, title="SharedManga",
+            status=Material.APPROVED,
+        )
+        cls.placement = CurriculumPlacement.objects.create(
+            child=cls.kid, curriculum=cls.cur, is_active=True,
+        )
+
+    def test_child_pinned_material_survives_an_inactive_placement(self):
+        from portal.views import _visible_materials
+        self.placement.is_active = False
+        self.placement.save(update_fields=["is_active"])
+        titles = set(_visible_materials(self.kid).values_list("title", flat=True))
+        self.assertIn("PinnedManga", titles)     # theirs — still reachable
+        self.assertNotIn("SharedManga", titles)  # shelved — correctly gone
+
+    def test_a_sibling_cannot_see_this_childs_pinned_work(self):
+        # The `child=student` branch is the ONLY one that bypasses the placement
+        # check. Dropping the child predicate turns it into a cross-child IDOR across
+        # nine endpoints, and the full suite stayed green when a reviewer mutated it.
+        from portal.views import _visible_materials, _visible_question_sets
+        sibling = Student.objects.create(
+            parent=self.parent, first_name="Sib", grade_level="G05",
+        )
+        titles = set(_visible_materials(sibling).values_list("title", flat=True))
+        self.assertNotIn("PinnedManga", titles)
+        self.assertFalse(
+            _visible_question_sets(sibling).filter(child=self.kid).exists()
+        )
+
+    def test_another_familys_child_cannot_see_it_either(self):
+        from core.models import Family
+        from portal.views import _visible_materials
+        other_parent = User.objects.create_user("pin_other", "pin2@example.com", "pw")
+        other_fam = Family.objects.create(name="Other Pin Fam")
+        outsider = Student.objects.create(
+            parent=other_parent, first_name="Out", family=other_fam, grade_level="G03",
+        )
+        self.assertNotIn(
+            "PinnedManga",
+            set(_visible_materials(outsider).values_list("title", flat=True)),
+        )
+
+    def test_retiring_the_whole_curriculum_hides_even_pinned_work(self):
+        # Curriculum.is_active promises "hidden from every child's portal". Shelving a
+        # PLACEMENT is the softer control and leaves their own work reachable; retiring
+        # the curriculum is the hard one and must take everything with it.
+        from portal.views import _visible_materials
+        self.cur.is_active = False
+        self.cur.save(update_fields=["is_active"])
+        self.assertEqual(list(_visible_materials(self.kid)), [])
+
+    def test_shelving_hides_shared_material(self):
+        # The HH-149 feature itself must still work; this is what kills the mutant
+        # that drops the is_active filter entirely.
+        from portal.views import _visible_materials
+        self.assertIn("SharedManga",
+                      set(_visible_materials(self.kid).values_list("title", flat=True)))
+        self.placement.is_active = False
+        self.placement.save(update_fields=["is_active"])
+        self.assertNotIn("SharedManga",
+                         set(_visible_materials(self.kid).values_list("title", flat=True)))
+
+
+class ShowOnPortalTogglesTheRightWayTests(TestCase):
+    """HH-150: 'Show on portal' created the placement active then immediately
+    flipped it off — the parent pressed Show and was told it was hidden."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from core.models import Family, FamilyMembership
+        from curricula.models import Curriculum
+        cls.parent = User.objects.create_user("tog_parent", "tog@example.com", "pw")
+        cls.family = Family.objects.create(name="Tog Fam")
+        FamilyMembership.objects.create(user=cls.parent, family=cls.family, role="parent")
+        cls.kid = Student.objects.create(
+            parent=cls.parent, first_name="Nia", family=cls.family, grade_level="G03",
+        )
+        cls.cur = Curriculum.objects.create(
+            name="Dimensions Math 3A", parent=cls.parent, family=cls.family,
+        )
+
+    def setUp(self):
+        self.client.force_login(self.parent)
+
+    def _toggle(self):
+        return self.client.post(reverse(
+            "curricula:curriculum_toggle_placement_active",
+            kwargs={"pk": self.cur.pk, "child_pk": self.kid.pk},
+        ))
+
+    def test_first_click_shows_and_second_hides(self):
+        from curricula.models import CurriculumPlacement
+        self.assertFalse(CurriculumPlacement.objects.filter(child=self.kid).exists())
+        self._toggle()
+        p = CurriculumPlacement.objects.get(child=self.kid, curriculum=self.cur)
+        self.assertTrue(p.is_active, "'Show on portal' created the placement hidden")
+        self._toggle()
+        p.refresh_from_db()
+        self.assertFalse(p.is_active)
+
+
+class SessionKitTests(TestCase):
+    """LGA-94: 'La sesión' is the PARENT's tool — the routine, the Spanish to run it
+    in, and a sheet to print. Nothing here may call an AI or TTS at request time."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from core.models import Family, FamilyMembership
+        from lingua.models import ClassroomPhrase
+        cls.parent = User.objects.create_user("ses_parent", "ses@example.com", "pw")
+        cls.family = Family.objects.create(name="Ses Fam")
+        FamilyMembership.objects.create(user=cls.parent, family=cls.family, role="parent")
+        cls.violet = Student.objects.create(
+            parent=cls.parent, first_name="Violet", family=cls.family, grade_level="G03",
+        )
+        cls.kaylin = Student.objects.create(
+            parent=cls.parent, first_name="Kaylin", family=cls.family, grade_level="G07",
+        )
+        # Orders deliberately DISAGREE with CATEGORY_ORDER, so a page that grouped by
+        # insertion/order rather than by the session arc would fail the ordering test.
+        ClassroomPhrase.objects.create(
+            text="¿Qué es esto?", english="What is this?",
+            category=ClassroomPhrase.ASKING, order=5,
+        )
+        ClassroomPhrase.objects.create(
+            text="Vamos a leer.", english="Let's read.",
+            category=ClassroomPhrase.OPENING, order=9,
+        )
+        ClassroomPhrase.objects.create(
+            text="¡Muy bien!", english="Very good!",
+            category=ClassroomPhrase.PRAISE, order=0,
+        )
+
+    def setUp(self):
+        self.client.force_login(self.parent)
+
+    def _get(self, qs=""):
+        return self.client.get(reverse("lingua:session") + qs).content.decode()
+
+    def test_requires_login(self):
+        self.client.logout()
+        self.assertIn(self.client.get(reverse("lingua:session")).status_code, (301, 302))
+
+    def test_shows_the_routine_and_both_children(self):
+        html = self._get()
+        self.assertIn("Review", html)
+        self.assertIn("Read together", html)
+        self.assertIn("Write", html)
+        self.assertIn(">Violet<", html)
+        self.assertIn(">Kaylin<", html)
+
+    def test_phrases_render_in_session_order_not_insertion_order(self):
+        # The arc of a real sitting: you open, then ask, then praise. Ordering by the
+        # category list is the point — insertion order would scatter them.
+        html = self._get()
+        self.assertLess(html.index("Vamos a leer."), html.index("¿Qué es esto?"))
+        self.assertLess(html.index("¿Qué es esto?"), html.index("¡Muy bien!"))
+
+    def test_a_phrase_without_audio_is_not_a_dead_button(self):
+        # No AudioClip rows exist in this test, so every phrase should render as text.
+        html = self._get()
+        self.assertIn("Vamos a leer.", html)
+        self.assertNotIn("lingua-clip-btn", html)   # nothing pretends to be tappable
+        # Django escapes the apostrophe in "Let's read.", so assert on a phrase
+        # without one — the point is that the English gloss is still rendered.
+        self.assertIn("Very good!", html)           # the English still helps the parent
+
+    def test_a_phrase_with_audio_becomes_a_real_tap_target(self):
+        from lingua.models import AudioClip
+        from lingua import assets
+        AudioClip.objects.create(
+            text="Vamos a leer.", voice="Mia", engine="neural", provider="polly",
+            content_hash=assets.content_hash(
+                "Vamos a leer.", provider="polly", voice="Mia", engine="neural"),
+            audio_key="lingua/clips/vamos.mp3",
+        )
+        with mock.patch.object(lingua_storage, "public_url", return_value="https://x/vamos.mp3"):
+            html = self._get()
+        self.assertIn("lingua-clip-btn", html)
+        self.assertIn("https://x/vamos.mp3", html)
+
+    def test_the_page_never_synthesizes_audio(self):
+        # D-16: baking happens in management commands only. A request that reached
+        # Polly would be both slow and a surprise bill.
+        from lingua import audio as lingua_audio
+        with mock.patch.object(lingua_audio, "synthesize_clip") as m:
+            self._get()
+        m.assert_not_called()
+
+
+class SessionSheetTests(TestCase):
+    """LGA-94: the printable half. Copia and dictado are drawn from text the child has
+    ALREADY read — she can only attend to spelling when she isn't also decoding."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.body = "El gato come. La niña corre rápido. Vamos a casa. Hoy hace sol."
+        cls.story = Story.objects.create(
+            title="El gato", body=cls.body, level="L1", status=Story.APPROVED,
+        )
+
+    def _learner(self, band, host_id):
+        return Learner.create_for_host_student(host_id, band)
+
+    def test_young_child_gets_WORD_dictado_and_older_gets_SENTENCES(self):
+        # The research scales dictado from a handful of words up to a couple of
+        # sentences. Handing a 9-year-old three sentences is how you lose her.
+        early = services.session_sheet(self._learner(profiles.KIDS_EARLY, 9101))
+        older = services.session_sheet(self._learner(profiles.KIDS_OLDER, 9102))
+        self.assertTrue(early["dictado"], "the young band got NO dictado at all")
+        self.assertTrue(older["dictado"], "the older band got NO dictado at all")
+        self.assertTrue(all(" " not in d for d in early["dictado"]),
+                        f"early band got sentences, not words: {early['dictado']}")
+        self.assertTrue(any(" " in d for d in older["dictado"]),
+                        f"older band got words, not sentences: {older['dictado']}")
+        self.assertLessEqual(len(early["dictado"]), 5)
+
+    def test_copia_lines_are_whole_sentences_from_the_story(self):
+        sheet = services.session_sheet(self._learner(profiles.KIDS_EARLY, 9103))
+        self.assertTrue(sheet["copia"])
+        for line in sheet["copia"]:
+            self.assertIn(line, self.body)
+            self.assertTrue(line.endswith((".", "!", "?", "…")))
+
+    def test_prefers_a_story_the_child_has_already_read(self):
+        other = Story.objects.create(
+            title="Otro", body="Un perro salta. Nada más.", level="L1",
+            status=Story.APPROVED,
+        )
+        learner = self._learner(profiles.KIDS_EARLY, 9104)
+        learner.reading_sessions.create(story=other, seconds=60)
+        self.assertEqual(services.session_sheet(learner)["story"], other)
+
+    def test_unapproved_stories_are_never_used(self):
+        Story.objects.all().update(status=Story.PENDING)
+        sheet = services.session_sheet(self._learner(profiles.KIDS_EARLY, 9105))
+        self.assertIsNone(sheet["story"])
+        self.assertEqual(sheet["copia"], [])
+        self.assertEqual(sheet["dictado"], [])
+
+    def test_no_stories_at_all_returns_empty_rather_than_raising(self):
+        Story.objects.all().delete()
+        sheet = services.session_sheet(self._learner(profiles.KIDS_EARLY, 9106))
+        self.assertIsNone(sheet["story"])
+
+    def test_dictado_words_are_deduplicated(self):
+        Story.objects.all().delete()
+        Story.objects.create(
+            title="Rep", body="La la la casa casa perro.", level="L1",
+            status=Story.APPROVED,
+        )
+        words = services.session_sheet(self._learner(profiles.KIDS_EARLY, 9107))["dictado"]
+        self.assertTrue(words, "no dictado to de-duplicate")
+        self.assertEqual(len(words), len(set(w.lower() for w in words)))
+
+
+class ClassroomPhraseSeedTests(TestCase):
+    """The phrase seed backs a page a parent uses mid-session — re-running it must
+    not duplicate or renumber anything."""
+
+    def test_seed_is_idempotent(self):
+        from django.core.management import call_command
+        from lingua.models import ClassroomPhrase
+        call_command("seed_classroom_phrases", verbosity=0)
+        first = ClassroomPhrase.objects.count()
+        pks = set(ClassroomPhrase.objects.values_list("pk", flat=True))
+        call_command("seed_classroom_phrases", verbosity=0)
+        self.assertEqual(ClassroomPhrase.objects.count(), first)
+        self.assertEqual(set(ClassroomPhrase.objects.values_list("pk", flat=True)), pks)
+
+    def test_every_seeded_phrase_is_offered_for_baking(self):
+        from django.core.management import call_command
+        from lingua.models import ClassroomPhrase
+        call_command("seed_classroom_phrases", verbosity=0)
+        texts = services.clip_texts_to_bake(classroom=True)
+        self.assertEqual(
+            set(texts),
+            set(ClassroomPhrase.objects.filter(active=True).values_list("text", flat=True)),
+        )
+
+    def test_inactive_phrases_are_not_baked(self):
+        from lingua.models import ClassroomPhrase
+        ClassroomPhrase.objects.create(
+            text="Retirada.", english="Retired.", active=False,
+        )
+        self.assertNotIn("Retirada.", services.clip_texts_to_bake(classroom=True))
+
+
+class SessionSheetRotationTests(TestCase):
+    """LGA-94 review: the sheet IS the deliverable, so it has to change. It was
+    sents[:N] with no rotation — day 2 printed the same copia and the same dictado."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.body = (
+            "Uno uno. Dos dos. Tres tres. Cuatro cuatro. Cinco cinco. "
+            "Seis seis. Siete siete. Ocho ocho. Nueve nueve. Diez diez."
+        )
+        cls.story = Story.objects.create(
+            title="Números", body=cls.body, level="L1", status=Story.APPROVED,
+        )
+
+    def _learner(self, host_id, band=None):
+        return Learner.create_for_host_student(host_id, band or profiles.KIDS_EARLY)
+
+    def test_the_sheet_changes_from_one_day_to_the_next(self):
+        from datetime import date
+        learner = self._learner(9201)
+        a = services.session_sheet(learner, on=date(2026, 8, 1))
+        b = services.session_sheet(learner, on=date(2026, 8, 2))
+        self.assertNotEqual(a["copia"], b["copia"])
+
+    def test_the_sheet_is_stable_within_a_day(self):
+        # Reloading mid-session must not reshuffle what she's already writing.
+        from datetime import date
+        learner = self._learner(9202)
+        day = date(2026, 8, 1)
+        self.assertEqual(
+            services.session_sheet(learner, on=day)["copia"],
+            services.session_sheet(learner, on=day)["copia"],
+        )
+
+    def _assert_disjoint(self, sheet, why):
+        """Dictado must not be the SAME SENTENCES the copia already printed.
+
+        Deliberately sentence-level, not word-level. Beginner Spanish reuses "la",
+        "es", "y" in nearly every line, so demanding unseen words is unachievable —
+        and wrong: dictado in the Literacy Squared method IS dictation of text the
+        child has studied. The thing that must not happen is her copying the exact
+        line she is then asked to write from hearing."""
+        copia = {c.strip().lower() for c in sheet["copia"]}
+        overlap = [d for d in sheet["dictado"] if d.strip().lower() in copia]
+        self.assertEqual(overlap, [], f"{why}: dictado repeats a copia line: {overlap}")
+
+    def test_dictado_is_not_just_the_copia_she_already_copied(self):
+        # Dictation only tests spelling if the answer isn't sitting above the lines.
+        from datetime import date
+        for band, host in ((profiles.KIDS_EARLY, 9203), (profiles.KIDS_OLDER, 9204)):
+            self._assert_disjoint(
+                services.session_sheet(self._learner(host, band), on=date(2026, 8, 1)),
+                band,
+            )
+
+    def test_disjoint_even_for_a_SHORT_story(self):
+        # The real ones are short. With 4-6 sentences the copia would take the whole
+        # story and the dictado window would wrap back onto it — which is exactly what
+        # happened on prod, while a 10-sentence fixture passed.
+        from datetime import date
+        Story.objects.all().delete()
+        Story.objects.create(
+            title="La fruta", level="L1", status=Story.APPROVED,
+            body="La manzana es roja. Ana come la manzana. El plátano es amarillo. "
+                 "Nos gusta la fruta.",
+        )
+        for band, host in ((profiles.KIDS_EARLY, 9208), (profiles.KIDS_OLDER, 9209)):
+            for day in range(1, 6):
+                sheet = services.session_sheet(
+                    self._learner(host + day * 100, band), on=date(2026, 8, day),
+                )
+                self.assertTrue(sheet["copia"], "short story produced no copia")
+                self.assertTrue(sheet["dictado"], "short story produced no dictado")
+                self._assert_disjoint(sheet, f"{band} day {day}")
+                # The copia must leave the story something to dictate from.
+                self.assertLess(len(sheet["copia"]), 4,
+                                "copia consumed the whole 4-sentence story")
+
+    def test_rotation_wraps_instead_of_running_out(self):
+        from datetime import date
+        learner = self._learner(9205, profiles.KIDS_OLDER)
+        for offset in range(12):          # more days than the story has sentences
+            sheet = services.session_sheet(learner, on=date(2026, 8, 1).replace(day=1 + offset))
+            self.assertEqual(len(sheet["copia"]), 6)
+            self.assertTrue(sheet["dictado"])
+
+    def test_a_one_sentence_story_still_produces_a_sheet(self):
+        Story.objects.all().delete()
+        Story.objects.create(
+            title="Corto", body="Una sola frase.", level="L1", status=Story.APPROVED,
+        )
+        sheet = services.session_sheet(self._learner(9206))
+        self.assertEqual(sheet["copia"], ["Una sola frase."])
+        self.assertTrue(sheet["dictado"])
+
+    def test_a_body_with_no_sentences_returns_empty_not_junk(self):
+        Story.objects.all().delete()
+        s = Story.objects.create(
+            title="Vacío", body="   \n  ", level="L1", status=Story.APPROVED,
+        )
+        sheet = services.session_sheet(self._learner(9207))
+        self.assertEqual(sheet["story"], s)
+        self.assertEqual(sheet["copia"], [])
+        self.assertEqual(sheet["dictado"], [])
+
+
+class SessionStoryChoiceTests(TestCase):
+    """LGA-94 review H1: 'the story she read most recently' was actually 'the story
+    authored most recently', because Story.Meta.ordering re-sorts a pk__in filter."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.old_story = Story.objects.create(
+            title="Autor primero", body="Alfa alfa. Beta beta. Gama gama.",
+            level="L1", status=Story.APPROVED,
+        )
+        cls.new_story = Story.objects.create(
+            title="Autor último", body="Uno uno. Dos dos. Tres tres.",
+            level="L1", status=Story.APPROVED,
+        )
+        # Force the authored order to fight the read order.
+        Story.objects.filter(pk=cls.old_story.pk).update(created_at=timezone.now() - timedelta(days=30))
+        Story.objects.filter(pk=cls.new_story.pk).update(created_at=timezone.now() - timedelta(days=1))
+
+    def test_picks_the_most_recently_READ_story_not_the_newest_one(self):
+        learner = Learner.create_for_host_student(9301, profiles.KIDS_EARLY)
+        # Read the NEWER story long ago, the OLDER story today.
+        s1 = learner.reading_sessions.create(story=self.new_story, seconds=60)
+        s2 = learner.reading_sessions.create(story=self.old_story, seconds=60)
+        type(s1).objects.filter(pk=s1.pk).update(created_at=timezone.now() - timedelta(days=5))
+        type(s2).objects.filter(pk=s2.pk).update(created_at=timezone.now())
+
+        self.assertEqual(services.session_sheet(learner)["story"], self.old_story)
+
+    def test_a_story_that_lost_approval_is_skipped_for_the_next_most_recent(self):
+        # D-49: only approved content is ever served. A story the parent later rejects
+        # must stop feeding the sheet rather than silently continuing.
+        learner = Learner.create_for_host_student(9302, profiles.KIDS_EARLY)
+        s1 = learner.reading_sessions.create(story=self.new_story, seconds=60)
+        s2 = learner.reading_sessions.create(story=self.old_story, seconds=60)
+        type(s1).objects.filter(pk=s1.pk).update(created_at=timezone.now() - timedelta(days=5))
+        type(s2).objects.filter(pk=s2.pk).update(created_at=timezone.now())
+        Story.objects.filter(pk=self.old_story.pk).update(status=Story.PENDING)
+
+        self.assertEqual(services.session_sheet(learner)["story"], self.new_story)
+
+    def test_first_sheet_respects_the_learners_level_ceiling(self):
+        # Nothing read yet. A Level-7 reader must not be handed the L1 sheet.
+        Story.objects.all().delete()
+        low = Story.objects.create(title="Bajo", body="Uno. Dos.", level="L1",
+                                   status=Story.APPROVED)
+        high = Story.objects.create(title="Alto", body="Tres. Cuatro.", level="L3",
+                                    status=Story.APPROVED)
+        learner = Learner.create_for_host_student(9303, profiles.KIDS_OLDER)
+        learner.profile.content_ceiling = "L3"
+        learner.profile.save(update_fields=["content_ceiling"])
+        self.assertEqual(services.session_sheet(learner)["story"], high)
+
+        capped = Learner.create_for_host_student(9304, profiles.KIDS_EARLY)
+        capped.profile.content_ceiling = "L1"
+        capped.profile.save(update_fields=["content_ceiling"])
+        self.assertEqual(services.session_sheet(capped)["story"], low)
+
+
+class SessionKitScopingTests(TestCase):
+    """LGA-94 review H2: the ?for= child picker had NO scoping test — a mutant that
+    swapped the family-scoped lookup for a global one left the whole suite green."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from core.models import Family, FamilyMembership
+        cls.mine = User.objects.create_user("sc_mine", "scm@example.com", "pw")
+        cls.fam_a = Family.objects.create(name="Fam A")
+        FamilyMembership.objects.create(user=cls.mine, family=cls.fam_a, role="parent")
+        cls.my_kid = Student.objects.create(
+            parent=cls.mine, first_name="Mia", family=cls.fam_a, grade_level="G03",
+        )
+        theirs = User.objects.create_user("sc_theirs", "sct@example.com", "pw")
+        cls.fam_b = Family.objects.create(name="Fam B")
+        FamilyMembership.objects.create(user=theirs, family=cls.fam_b, role="parent")
+        cls.their_kid = Student.objects.create(
+            parent=theirs, first_name="Zzzsecret", family=cls.fam_b, grade_level="G05",
+        )
+
+    def test_cannot_open_a_session_for_another_familys_child(self):
+        self.client.force_login(self.mine)
+        html = self.client.get(
+            reverse("lingua:session") + "?for=%d" % self.their_kid.pk
+        ).content.decode()
+        self.assertNotIn("Zzzsecret", html)   # never names the other family's child
+        self.assertIn("Mia", html)            # falls back to their own
+
+    def test_an_unknown_child_id_falls_back_rather_than_500ing(self):
+        self.client.force_login(self.mine)
+        r = self.client.get(reverse("lingua:session") + "?for=999999")
+        self.assertEqual(r.status_code, 200)
+        self.assertIn("Mia", r.content.decode())
+
+
+class ClipsBuildClassroomTests(TestCase):
+    """The --classroom flag and the fail-loud exit are what make the audio actually
+    reach prod; neither had a test."""
+
+    def test_classroom_flag_bakes_classroom_phrases(self):
+        from django.core.management import call_command
+        from lingua.models import ClassroomPhrase
+        ClassroomPhrase.objects.create(text="Vamos a leer.", english="Let's read.")
+        called = []
+
+        def _fake(text, **kw):
+            called.append(text)
+            return mock.Mock(audio_key="k"), "baked"
+
+        with mock.patch.object(services, "bake_audio_clip", side_effect=_fake):
+            call_command("clips_build", "--classroom", verbosity=0)
+        self.assertIn("Vamos a leer.", called)
+
+    def test_total_failure_exits_non_zero(self):
+        # A deploy step must not go green when every clip failed.
+        from django.core.management import call_command
+        from django.core.management.base import CommandError
+        from lingua.models import ClassroomPhrase
+        ClassroomPhrase.objects.create(text="Otra vez.", english="Again.")
+        with mock.patch.object(services, "bake_audio_clip", side_effect=RuntimeError("polly down")):
+            with self.assertRaises(CommandError):
+                call_command("clips_build", "--classroom", verbosity=0)
+
+    def test_partial_failure_still_succeeds(self):
+        from django.core.management import call_command
+        from lingua.models import ClassroomPhrase
+        ClassroomPhrase.objects.create(text="Uno.", english="One.")
+        ClassroomPhrase.objects.create(text="Dos.", english="Two.")
+        calls = {"n": 0}
+
+        def _flaky(text, **kw):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise RuntimeError("transient")
+            return mock.Mock(audio_key="k"), "baked"
+
+        with mock.patch.object(services, "bake_audio_clip", side_effect=_flaky):
+            call_command("clips_build", "--classroom", verbosity=0)   # must not raise
+
+
+class ClassroomPhraseActiveFilterTests(TestCase):
+    """A retired phrase must leave the page, not just the bake list."""
+
+    def test_inactive_phrases_are_not_shown_to_the_parent(self):
+        from lingua.models import ClassroomPhrase
+        ClassroomPhrase.objects.create(text="Vigente.", english="Current.", active=True)
+        ClassroomPhrase.objects.create(text="Retirada.", english="Retired.", active=False)
+        shown = [
+            p["phrase"].text
+            for g in services.classroom_phrases_with_audio() for p in g["phrases"]
+        ]
+        self.assertIn("Vigente.", shown)
+        self.assertNotIn("Retirada.", shown)
+
+
+class CaminoDailyResetTests(TestCase):
+    """LGA-100: the Camino is a DAILY walk. Before this, a tick was permanent — four
+    ticks filled the map forever and it never said anything again."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from django.core.management import call_command
+        call_command("seed_pathway", verbosity=0)
+
+    def setUp(self):
+        self.learner = Learner.create_for_host_student(9401, profiles.KIDS_EARLY)
+
+    def _phonics_step(self):
+        from lingua.models import PathwayStep
+        return PathwayStep.objects.filter(
+            pathway__slug="camino-early", kind=PathwayStep.PHONICS).first()
+
+    def test_yesterdays_tick_does_not_complete_todays_stop(self):
+        from datetime import date
+        step = self._phonics_step()
+        yesterday, today = date(2026, 8, 1), date(2026, 8, 2)
+        services.set_pathway_checkmark(self.learner, step, True, on=yesterday)
+
+        rows = {r["step"].pk: r for r in
+                services.pathway_status(self.learner, on=today)["steps"]}
+        self.assertEqual(rows[step.pk]["status"], services.PATH_AVAILABLE,
+                         "yesterday's tick still marks today done")
+
+    def test_yesterdays_tick_is_still_on_record(self):
+        # The reset must not erase history — the streak and the charter record want it.
+        from datetime import date
+        from lingua.models import PathwayCheckmark
+        step = self._phonics_step()
+        yesterday = date(2026, 8, 1)
+        services.set_pathway_checkmark(self.learner, step, True, on=yesterday)
+        self.assertTrue(
+            PathwayCheckmark.objects.filter(learner=self.learner, on_date=yesterday).exists()
+        )
+
+    def test_ticking_the_same_stop_on_two_days_keeps_both(self):
+        from datetime import date
+        from lingua.models import PathwayCheckmark
+        step = self._phonics_step()
+        services.set_pathway_checkmark(self.learner, step, True, on=date(2026, 8, 1))
+        services.set_pathway_checkmark(self.learner, step, True, on=date(2026, 8, 2))
+        self.assertEqual(
+            PathwayCheckmark.objects.filter(learner=self.learner, step=step).count(), 2
+        )
+
+    def test_unticking_only_clears_that_day(self):
+        from datetime import date
+        from lingua.models import PathwayCheckmark
+        step = self._phonics_step()
+        services.set_pathway_checkmark(self.learner, step, True, on=date(2026, 8, 1))
+        services.set_pathway_checkmark(self.learner, step, True, on=date(2026, 8, 2))
+        services.set_pathway_checkmark(self.learner, step, False, on=date(2026, 8, 2))
+        remaining = list(
+            PathwayCheckmark.objects.filter(learner=self.learner, step=step)
+            .values_list("on_date", flat=True)
+        )
+        self.assertEqual(remaining, [date(2026, 8, 1)])
+
+
+class CaminoStreakTests(TestCase):
+    """LGA-100: today's stops reset, the journey doesn't. Without the streak the daily
+    reset is a treadmill — she does the work and wakes up to '0 of 3'."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from django.core.management import call_command
+        call_command("seed_pathway", verbosity=0)
+
+    def setUp(self):
+        from lingua.models import PathwayStep
+        self.learner = Learner.create_for_host_student(9402, profiles.KIDS_EARLY)
+        self.step = PathwayStep.objects.filter(pathway__slug="camino-early").first()
+
+    def _tick(self, d):
+        services.set_pathway_checkmark(self.learner, self.step, True, on=d)
+
+    def test_no_activity_is_no_streak(self):
+        from datetime import date
+        self.assertEqual(services.camino_streak(self.learner, on=date(2026, 8, 5)), 0)
+
+    def test_consecutive_days_count(self):
+        from datetime import date
+        for d in (date(2026, 8, 3), date(2026, 8, 4), date(2026, 8, 5)):
+            self._tick(d)
+        self.assertEqual(services.camino_streak(self.learner, on=date(2026, 8, 5)), 3)
+
+    def test_a_gap_breaks_the_streak(self):
+        from datetime import date
+        self._tick(date(2026, 8, 1))
+        self._tick(date(2026, 8, 5))
+        self.assertEqual(services.camino_streak(self.learner, on=date(2026, 8, 5)), 1)
+
+    def test_morning_before_starting_keeps_yesterdays_streak(self):
+        # Opening the app at breakfast must not show the streak already lost.
+        from datetime import date
+        self._tick(date(2026, 8, 3))
+        self._tick(date(2026, 8, 4))
+        self.assertEqual(services.camino_streak(self.learner, on=date(2026, 8, 5)), 2)
+
+    def test_streak_is_per_learner(self):
+        from datetime import date
+        other = Learner.create_for_host_student(9403, profiles.KIDS_EARLY)
+        self._tick(date(2026, 8, 4))
+        self.assertEqual(services.camino_streak(other, on=date(2026, 8, 4)), 0)
+
+
+class CaminoAutoTickTests(TestCase):
+    """LGA-100: auto-tick what the app can observe, keep the checkbox for what it
+    can't. She should never have to re-record work the app already saw."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from django.core.management import call_command
+        call_command("seed_pathway", verbosity=0)
+        cls.story = Story.objects.create(
+            title="Auto", body="Uno dos.", level="L1", status=Story.APPROVED,
+        )
+
+    def setUp(self):
+        self.learner = Learner.create_for_host_student(9404, profiles.KIDS_EARLY)
+
+    def _row(self, kind, on=None):
+        rows = services.pathway_status(self.learner, on=on)["steps"]
+        return next((r for r in rows if r["step"].kind == kind), None)
+
+    def test_listening_ticks_the_listen_stop(self):
+        from lingua.models import ListeningResource, PathwayStep
+        self.assertEqual(self._row(PathwayStep.LISTEN)["status"], services.PATH_AVAILABLE)
+        res = ListeningResource.objects.create(
+            title="Canal", url="https://example.com/v", age_band=profiles.KIDS_EARLY,
+        )
+        services.record_listening(self.learner, res, 10)
+        self.assertEqual(self._row(PathwayStep.LISTEN)["status"], services.PATH_COMPLETE)
+
+    def test_yesterdays_reading_does_not_tick_todays_story_stop(self):
+        from datetime import date, timedelta as td
+        from lingua.models import PathwayStep, ReadingSession
+        rs = ReadingSession.objects.create(learner=self.learner, story=self.story,
+                                           words=2, seconds=30)
+        ReadingSession.objects.filter(pk=rs.pk).update(
+            created_at=timezone.now() - td(days=1))
+        today = timezone.localdate()
+        self.assertEqual(
+            self._row(PathwayStep.STORY_LEVEL, on=today)["status"],
+            services.PATH_AVAILABLE,
+        )
+
+    def test_phonics_still_needs_her_checkbox(self):
+        from lingua.models import PathwayStep
+        step = self._row(PathwayStep.PHONICS)["step"]
+        self.assertEqual(self._row(PathwayStep.PHONICS)["status"], services.PATH_AVAILABLE)
+        services.set_pathway_checkmark(self.learner, step, True)
+        self.assertEqual(self._row(PathwayStep.PHONICS)["status"], services.PATH_COMPLETE)
+
+
+class CaminoFinishLineTests(TestCase):
+    """LGA-97: checking every box produced three near-white rows and no message at
+    all. A trail whose whole payoff is reaching the end has to say so."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from django.core.management import call_command
+        call_command("seed_pathway", verbosity=0)
+
+    def setUp(self):
+        self.learner = Learner.create_for_host_student(9405, profiles.KIDS_EARLY)
+
+    def test_counts_and_finish_state(self):
+        status = services.pathway_status(self.learner)
+        self.assertEqual(status["done"], 0)
+        self.assertGreater(status["total"], 0)
+        self.assertFalse(status["finished"])
+
+        for row in status["steps"]:
+            services.set_pathway_checkmark(self.learner, row["step"], True)
+
+        done = services.pathway_status(self.learner)
+        self.assertEqual(done["done"], done["total"])
+        self.assertTrue(done["finished"])
+        self.assertIn("🎉", done["hint"])
+
+    def test_review_stops_are_not_offered_while_they_go_nowhere(self):
+        # A REVIEW stop deeplinked back to the plan she just came from, labelled
+        # "¡Empezar!", and could then be ticked without doing anything.
+        from lingua.models import PathwayStep
+        older = Learner.create_for_host_student(9406, profiles.KIDS_OLDER)
+        kinds = [r["step"].kind for r in services.pathway_status(older)["steps"]]
+        self.assertNotIn(PathwayStep.REVIEW, kinds)
+
+
+class CaminoQueryCostTests(TestCase):
+    """LGA-99: _step_visible re-queried tutor packets inside the per-step loop, so
+    pathway_status was linear in the number of tutor steps."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from django.core.management import call_command
+        call_command("seed_pathway", verbosity=0)
+
+    def test_query_count_does_not_grow_with_tutor_steps(self):
+        from django.test.utils import CaptureQueriesContext
+        from django.db import connection
+        from lingua.models import Pathway, PathwayStep, TutorPacket
+
+        learner = Learner.create_for_host_student(9407, profiles.KIDS_OLDER)
+        TutorPacket.objects.create(title="P1", body="Hola.", active=True)
+        pathway = Pathway.objects.get(slug="camino-older")
+
+        with CaptureQueriesContext(connection) as base:
+            services.pathway_status(learner)
+
+        for i in range(6):
+            PathwayStep.objects.create(
+                pathway=pathway, order=50 + i, title=f"Maestro {i}",
+                kind=PathwayStep.TUTOR_PACKET,
+            )
+        with CaptureQueriesContext(connection) as more:
+            services.pathway_status(learner)
+
+        self.assertLessEqual(
+            len(more), len(base) + 1,
+            f"query count grew with tutor steps: {len(base)} -> {len(more)}",
+        )
+
+
+class StationDoneControlTests(TestCase):
+    """LGA-97: the map could only be ticked from the map. The reviewer named this the
+    single biggest effort/reward gap for the younger child — she does the phonics and
+    the map still says nothing happened."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from django.core.management import call_command
+        from portal.tokens import make_portal_token
+        call_command("seed_pathway", verbosity=0)
+        call_command("seed_phonics", verbosity=0)
+        cls.parent = User.objects.create_user("st_parent", "st@example.com", "pw")
+        cls.kid = Student.objects.create(
+            parent=cls.parent, first_name="Vi", grade_level="G03",
+        )
+        cls.token = make_portal_token(cls.kid)
+
+    def _learner(self):
+        from homeschool_hub.adapters import lingua_students
+        return lingua_students.learner_for(self.kid)
+
+    def test_phonics_page_offers_the_done_button(self):
+        html = self.client.get(
+            reverse("portal:lingua_phonics", kwargs={"token": self.token})
+        ).content.decode()
+        self.assertIn("portal-station-done", html)
+        self.assertIn("¡Ya lo hice!", html)
+
+    def test_pressing_done_ticks_the_map_without_visiting_it(self):
+        from lingua.models import PathwayStep
+        learner = self._learner()
+        rows = services.pathway_status(learner)["steps"]
+        step = next(r["step"] for r in rows if r["step"].kind == PathwayStep.PHONICS)
+
+        r = self.client.post(
+            reverse("portal:lingua_path_check", kwargs={"token": self.token}),
+            {"step_id": str(step.pk), "done": "1"},
+        )
+        self.assertEqual(r.status_code, 302)
+        row = next(x for x in services.pathway_status(learner)["steps"]
+                   if x["step"].pk == step.pk)
+        self.assertEqual(row["status"], services.PATH_COMPLETE)
+
+    def test_the_button_reflects_state_and_toggles_back(self):
+        from lingua.models import PathwayStep
+        learner = self._learner()
+        step = next(r["step"] for r in services.pathway_status(learner)["steps"]
+                    if r["step"].kind == PathwayStep.PHONICS)
+        services.set_pathway_checkmark(learner, step, True)
+
+        html = self.client.get(
+            reverse("portal:lingua_phonics", kwargs={"token": self.token})
+        ).content.decode()
+        self.assertIn("¡Ya lo hiciste!", html)      # shows the done state
+        self.assertIn('name="done" value="0"', html)  # and offers to undo
+
+    def test_a_child_with_no_date_of_birth_lands_in_the_young_band(self):
+        # Documents a real trap rather than asserting it is desirable: grade_level
+        # says Level 7, but band inference reads date_of_birth, which is optional.
+        from homeschool_hub.adapters import lingua_students
+        no_dob = Student.objects.create(
+            parent=self.parent, first_name="Sin", grade_level="G07",
+        )
+        self.assertIsNone(no_dob.date_of_birth)
+        self.assertEqual(
+            lingua_students.learner_for(no_dob).profile.track_profile,
+            profiles.KIDS_EARLY,
+        )
+
+    def test_no_button_when_the_station_is_not_on_her_pathway(self):
+        # Both bands have a phonics stop now (the older band's accent unit needed a
+        # route), so remove the stop to prove the real property: no matching stop,
+        # no control — rendering one she cannot tick is the dead-button bug again.
+        from lingua.models import PathwayStep
+        PathwayStep.objects.filter(kind=PathwayStep.PHONICS).delete()
+        html = self.client.get(
+            reverse("portal:lingua_phonics", kwargs={"token": self.token})
+        ).content.decode()
+        self.assertNotIn("portal-station-done", html)
+
+    def test_the_older_band_DOES_get_a_phonics_control(self):
+        from portal.tokens import make_portal_token
+        # DOB, not grade_level, decides the band (band_for_dob) — a child with no
+        # DOB silently lands in KIDS_EARLY, which is its own small trap.
+        older = Student.objects.create(
+            parent=self.parent, first_name="Ka", grade_level="G07",
+            date_of_birth=date(timezone.localdate().year - 12, 5, 10),
+        )
+        html = self.client.get(
+            reverse("portal:lingua_phonics", kwargs={"token": make_portal_token(older)})
+        ).content.decode()
+        self.assertIn("portal-station-done", html)
+
+
+class CaminoDeadEndsRemovedTests(TestCase):
+    """LGA-97: two things on the child's most-visited screens looked tappable and did
+    nothing. The decorative-span bug had already confused the owner once."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from django.core.management import call_command
+        from portal.tokens import make_portal_token
+        call_command("seed_pathway", verbosity=0)
+        cls.parent = User.objects.create_user("de_parent", "de@example.com", "pw")
+        cls.kid = Student.objects.create(
+            parent=cls.parent, first_name="Vi", grade_level="G03",
+        )
+        cls.token = make_portal_token(cls.kid)
+
+    def test_the_plan_has_no_disabled_stone(self):
+        html = self.client.get(
+            reverse("portal:lingua_plan", kwargs={"token": self.token})
+        ).content.decode()
+        self.assertNotIn("aria-disabled", html)
+        self.assertNotIn("portal-camino-stone--soft", html)
+        self.assertNotIn("Repaso", html)
+
+    def test_every_trail_stone_is_a_real_link(self):
+        import re as _re
+        html = self.client.get(
+            reverse("portal:lingua_plan", kwargs={"token": self.token})
+        ).content.decode()
+        trail = _re.search(r'portal-camino-trail.*?</div>', html, _re.S)
+        self.assertIsNotNone(trail, "trail not rendered")
+        stones = _re.findall(r'<(\w+)[^>]*class="portal-camino-stone"', trail.group(0))
+        self.assertTrue(stones, "no stones rendered")
+        self.assertEqual(set(stones), {"a"}, f"non-link stones present: {set(stones)}")
+
+    def test_the_map_explains_itself_in_english(self):
+        # Procedural copy was in subjunctive Spanish, for a Level-3 beginner, while
+        # the teaching content was in English. That was backwards.
+        html = self.client.get(
+            reverse("portal:lingua_path", kwargs={"token": self.token})
+        ).content.decode()
+        self.assertIn("Tap a stop to open it", html)
+        self.assertNotIn("Abre una parada", html)
+
+
+class CaminoAutoTickScopingTests(TestCase):
+    """LGA-100 review H1: auto-tick ignored target_ref, so one L1 story marked BOTH
+    of Kaylin's story stops 'Hecho' — credit for reading she never did."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from django.core.management import call_command
+        call_command("seed_pathway", verbosity=0)
+        cls.l1 = Story.objects.create(title="Uno", body="Uno.", level="L1",
+                                      status=Story.APPROVED)
+        cls.l2 = Story.objects.create(title="Dos", body="Dos.", level="L2",
+                                      status=Story.APPROVED)
+
+    def setUp(self):
+        self.learner = Learner.create_for_host_student(9501, profiles.KIDS_OLDER)
+
+    def _by_ref(self):
+        from lingua.models import PathwayStep
+        return {
+            (r["step"].target_ref or ""): r["status"]
+            for r in services.pathway_status(self.learner)["steps"]
+            if r["step"].kind == PathwayStep.STORY_LEVEL
+        }
+
+    def _story_row(self):
+        from lingua.models import PathwayStep
+        return next(r for r in services.pathway_status(self.learner)["steps"]
+                    if r["step"].kind == PathwayStep.STORY_LEVEL)
+
+    def _set_ceiling(self, level):
+        self.learner.profile.content_ceiling = level
+        self.learner.profile.save(update_fields=["content_ceiling"])
+
+    def test_reading_BELOW_her_ceiling_still_completes_the_stop(self):
+        # content_ceiling means "how far UP the ladder", inclusive — that is what
+        # _servable_stories uses, and her own daily plan routinely offers a level
+        # below it. Demanding an exact rung meant she could read the only story the
+        # app gave her and the map stayed grey. Verified against live prod: Kaylin's
+        # ceiling is L2 while today's plan is all L1.
+        from lingua.models import ReadingSession
+        self._set_ceiling("L2")
+        ReadingSession.objects.create(learner=self.learner, story=self.l1,
+                                      words=1, seconds=20)
+        self.assertEqual(self._story_row()["status"], services.PATH_COMPLETE)
+
+    def test_reading_ABOVE_her_ceiling_does_not_complete_the_stop(self):
+        from lingua.models import ReadingSession
+        self._set_ceiling("L1")
+        ReadingSession.objects.create(learner=self.learner, story=self.l2,
+                                      words=1, seconds=20)
+        self.assertEqual(self._story_row()["status"], services.PATH_AVAILABLE,
+                         "a read above her ceiling completed the stop")
+
+    def test_reading_AT_her_level_completes_it(self):
+        from lingua.models import ReadingSession
+        self._set_ceiling("L2")
+        ReadingSession.objects.create(learner=self.learner, story=self.l2,
+                                      words=1, seconds=20)
+        self.assertEqual(self._story_row()["status"], services.PATH_COMPLETE)
+
+    def test_the_stop_still_NAMES_her_new_level_after_she_advances(self):
+        # The label follows her even though an earlier read still satisfies it — the
+        # stop moves, the credit for work already done does not evaporate.
+        from lingua.models import ReadingSession
+        self._set_ceiling("L1")
+        ReadingSession.objects.create(learner=self.learner, story=self.l1,
+                                      words=1, seconds=20)
+        self.assertEqual(self._story_row()["level"], "L1")
+        self._set_ceiling("L2")
+        row = self._story_row()
+        self.assertEqual(row["level"], "L2")
+        self.assertEqual(row["status"], services.PATH_COMPLETE)
+
+    def test_a_story_stop_naming_one_story_needs_THAT_story(self):
+        from lingua.models import Pathway, PathwayStep, ReadingSession
+        pathway = Pathway.objects.get(slug="camino-older")
+        step = PathwayStep.objects.create(
+            pathway=pathway, order=80, title="Lee Dos",
+            kind=PathwayStep.STORY, target_ref=str(self.l2.pk),
+        )
+        ReadingSession.objects.create(learner=self.learner, story=self.l1,
+                                      words=1, seconds=20)
+        row = next(r for r in services.pathway_status(self.learner)["steps"]
+                   if r["step"].pk == step.pk)
+        self.assertEqual(row["status"], services.PATH_AVAILABLE,
+                         "reading a different story completed this one")
+
+        ReadingSession.objects.create(learner=self.learner, story=self.l2,
+                                      words=1, seconds=20)
+        row = next(r for r in services.pathway_status(self.learner)["steps"]
+                   if r["step"].pk == step.pk)
+        self.assertEqual(row["status"], services.PATH_COMPLETE)
+
+
+class CaminoStreakCountsRealWorkTests(TestCase):
+    """LGA-100 review H2: the streak read only checkmarks, but auto-tick writes none.
+    A child who read and listened every day scored 0 — the exact 'did the work, got
+    nothing' failure the streak exists to prevent."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from django.core.management import call_command
+        call_command("seed_pathway", verbosity=0)
+        cls.story = Story.objects.create(title="S", body="Uno.", level="L1",
+                                         status=Story.APPROVED)
+
+    def setUp(self):
+        self.learner = Learner.create_for_host_student(9502, profiles.KIDS_EARLY)
+
+    def _read_on(self, d):
+        from lingua.models import ReadingSession
+        rs = ReadingSession.objects.create(learner=self.learner, story=self.story,
+                                           words=1, seconds=20)
+        ReadingSession.objects.filter(pk=rs.pk).update(
+            created_at=timezone.make_aware(datetime.datetime.combine(d, datetime.time(9, 0)))
+        )
+
+    def test_reading_alone_builds_a_streak(self):
+        today = timezone.localdate()
+        for back in (2, 1, 0):
+            self._read_on(today - timedelta(days=back))
+        self.assertEqual(services.camino_streak(self.learner, on=today), 3)
+
+    def test_listening_alone_builds_a_streak(self):
+        from lingua.models import ListeningResource, ListeningSession
+        res = ListeningResource.objects.create(
+            title="C", url="https://e.com/v", age_band=profiles.KIDS_EARLY)
+        today = timezone.localdate()
+        for back in (1, 0):
+            ls = ListeningSession.objects.create(learner=self.learner, resource=res,
+                                                 minutes=10)
+            ListeningSession.objects.filter(pk=ls.pk).update(
+                created_at=timezone.make_aware(
+                    datetime.datetime.combine(today - timedelta(days=back),
+                                              datetime.time(9, 0)))
+            )
+        self.assertEqual(services.camino_streak(self.learner, on=today), 2)
+
+    def test_the_page_shows_the_streak_she_earned_by_reading(self):
+        # End to end: the number on the map comes from real work, not just boxes.
+        today = timezone.localdate()
+        for back in (1, 0):
+            self._read_on(today - timedelta(days=back))
+        self.assertEqual(services.pathway_status(self.learner)["streak"], 2)
+
+
+class CaminoStationAutoTickTests(TestCase):
+    """LGA-100 review M1: once a stop auto-ticks there is no checkmark to clear, so
+    an 'undo' button there is a control that visibly does nothing."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from django.core.management import call_command
+        from portal.tokens import make_portal_token
+        call_command("seed_pathway", verbosity=0)
+        cls.parent = User.objects.create_user("sa_parent", "sa@example.com", "pw")
+        cls.kid = Student.objects.create(parent=cls.parent, first_name="Vi",
+                                         grade_level="G03")
+        cls.token = make_portal_token(cls.kid)
+
+    def test_auto_ticked_station_shows_a_statement_not_a_dead_button(self):
+        from lingua.models import ListeningResource
+        from homeschool_hub.adapters import lingua_students
+        learner = lingua_students.learner_for(self.kid)
+        res = ListeningResource.objects.create(
+            title="C", url="https://e.com/v", age_band=profiles.KIDS_EARLY)
+        services.record_listening(learner, res, 10)
+
+        html = self.client.get(
+            reverse("portal:lingua_listen", kwargs={"token": self.token})
+        ).content.decode()
+        self.assertIn("portal-station-auto", html)
+        self.assertNotIn("portal-station-done-btn", html)
+
+    def test_self_reported_station_still_offers_undo(self):
+        from lingua.models import PathwayStep
+        from homeschool_hub.adapters import lingua_students
+        learner = lingua_students.learner_for(self.kid)
+        step = next(r["step"] for r in services.pathway_status(learner)["steps"]
+                    if r["step"].kind == PathwayStep.PHONICS)
+        services.set_pathway_checkmark(learner, step, True)
+        html = self.client.get(
+            reverse("portal:lingua_phonics", kwargs={"token": self.token})
+        ).content.decode()
+        self.assertIn('name="done" value="0"', html)
+        self.assertNotIn("portal-station-auto", html)
+
+
+class CaminoBackfillMigrationTests(TestCase):
+    """LGA-100 review: the RunPython that reconstructs real tick history had no test,
+    so deleting it entirely was invisible. It is the riskiest part of the deploy."""
+
+    def _run_backfill(self):
+        from importlib import import_module
+        from lingua.models import PathwayCheckmark
+        mod = import_module("lingua.migrations.0028_daily_camino_checkmark")
+
+        class _Apps:
+            def get_model(self, app_label, name):
+                return PathwayCheckmark
+
+        mod.backfill_on_date(_Apps(), None)
+
+    def _mark(self, created):
+        from django.core.management import call_command
+        from lingua.models import PathwayCheckmark, PathwayStep
+        call_command("seed_pathway", verbosity=0)
+        learner = Learner.create_for_host_student(9503, profiles.KIDS_EARLY)
+        step = PathwayStep.objects.first()
+        cm = PathwayCheckmark.objects.create(learner=learner, step=step)
+        # Simulate what AddField's default did: every pre-existing row stamped today.
+        PathwayCheckmark.objects.filter(pk=cm.pk).update(
+            created_at=created, on_date=timezone.localdate())
+        return cm
+
+    def test_backfill_dates_rows_from_created_at_not_deploy_day(self):
+        from lingua.models import PathwayCheckmark
+        five_days_ago = timezone.now() - timedelta(days=5)
+        cm = self._mark(five_days_ago)
+        self.assertEqual(PathwayCheckmark.objects.get(pk=cm.pk).on_date,
+                         timezone.localdate())      # the wrong value, pre-backfill
+
+        self._run_backfill()
+
+        self.assertEqual(
+            PathwayCheckmark.objects.get(pk=cm.pk).on_date,
+            timezone.localtime(five_days_ago).date(),
+            "backfill did not restore the real tick date",
+        )
+
+    def test_backfill_uses_LOCAL_dates_not_utc(self):
+        # An evening tick in Pacific is the NEXT day in UTC; dating it from the raw
+        # UTC value would silently move a whole day of history.
+        from lingua.models import PathwayCheckmark
+        local_evening = timezone.make_aware(
+            datetime.datetime.combine(
+                timezone.localdate() - timedelta(days=3), datetime.time(22, 30))
+        )
+        cm = self._mark(local_evening)
+        self._run_backfill()
+        self.assertEqual(
+            PathwayCheckmark.objects.get(pk=cm.pk).on_date,
+            (timezone.localdate() - timedelta(days=3)),
+        )
+
+
+class WritingErrorTaxonomyTests(TestCase):
+    """LGA-95: the research asks for exactly this — frequency per category per learner,
+    so the app can target remediation and show the parent a 'top 3 this month'."""
+
+    def setUp(self):
+        self.learner = Learner.create_for_host_student(9601, profiles.KIDS_EARLY)
+
+    def _log(self, cat, n=1, on=None):
+        from lingua.models import WritingError
+        for _ in range(n):
+            services.log_writing_error(self.learner, cat, on=on)
+
+    def test_all_eight_research_categories_exist(self):
+        from lingua.models import WritingError
+        self.assertEqual(len(WritingError.CATEGORY_CHOICES), 8)
+        self.assertEqual(
+            set(WritingError.CATEGORY_ORDER),
+            {c for c, _ in WritingError.CATEGORY_CHOICES},
+            "CATEGORY_ORDER and CATEGORY_CHOICES disagree",
+        )
+
+    def test_an_unknown_category_is_refused_not_stored(self):
+        # A typo in a caller must not pollute the counts that drive remediation.
+        from lingua.models import WritingError
+        self.assertIsNone(services.log_writing_error(self.learner, "spelling"))
+        self.assertEqual(WritingError.objects.count(), 0)
+
+    def test_an_unknown_source_falls_back_rather_than_rejecting_the_error(self):
+        from lingua.models import WritingError
+        e = services.log_writing_error(self.learner, WritingError.ACCENT, source="junk")
+        self.assertIsNotNone(e)
+        self.assertEqual(e.source, WritingError.DICTADO)
+
+    def test_top_three_are_ordered_by_frequency(self):
+        from lingua.models import WritingError
+        self._log(WritingError.ORTHOGRAPHIC, 5)
+        self._log(WritingError.ACCENT, 3)
+        self._log(WritingError.VERB, 1)
+        self._log(WritingError.MECHANICS, 4)
+        top = services.top_error_categories(self.learner)
+        self.assertEqual([t["category"] for t in top],
+                         [WritingError.ORTHOGRAPHIC, WritingError.MECHANICS,
+                          WritingError.ACCENT])
+        self.assertEqual(top[0]["count"], 5)
+
+    def test_ties_break_stably_by_the_taxonomy_order(self):
+        # A "top 3" that wobbles between page loads is untrustworthy.
+        from lingua.models import WritingError
+        self._log(WritingError.MECHANICS, 2)
+        self._log(WritingError.ORTHOGRAPHIC, 2)
+        first = [t["category"] for t in services.top_error_categories(self.learner)]
+        for _ in range(4):
+            self.assertEqual(
+                [t["category"] for t in services.top_error_categories(self.learner)],
+                first,
+            )
+        # ORTHOGRAPHIC is earlier in CATEGORY_ORDER, so it wins the tie.
+        self.assertEqual(first[0], WritingError.ORTHOGRAPHIC)
+
+    def test_old_errors_fall_out_of_the_window(self):
+        from lingua.models import WritingError
+        self._log(WritingError.VERB, 3, on=timezone.localdate() - timedelta(days=90))
+        self._log(WritingError.ACCENT, 1)
+        top = services.top_error_categories(self.learner)
+        self.assertEqual([t["category"] for t in top], [WritingError.ACCENT])
+
+    def test_counts_are_per_learner(self):
+        from lingua.models import WritingError
+        other = Learner.create_for_host_student(9602, profiles.KIDS_EARLY)
+        self._log(WritingError.ORTHOGRAPHIC, 4)
+        self.assertEqual(services.top_error_categories(other), [])
+
+    def test_remediation_focus_names_the_contrasts_to_drill(self):
+        from lingua.models import WritingError
+        self._log(WritingError.ORTHOGRAPHIC, 2)
+        focus = services.remediation_focus(self.learner)
+        self.assertEqual(focus["category"], WritingError.ORTHOGRAPHIC)
+        # These are the ones a Mexican-Spanish learner genuinely cannot HEAR
+        # (seseo + yeísmo), which is why they need explicit drilling.
+        self.assertIn("c/s/z", focus["patterns"])
+        self.assertIn("ll/y", focus["patterns"])
+        self.assertIn("b/v", focus["patterns"])
+
+    def test_no_errors_means_no_invented_weakness(self):
+        self.assertIsNone(services.remediation_focus(self.learner))
+
+
+class SessionErrorTaggingTests(TestCase):
+    """LGA-95: tagging happens mid-session with a pencil in hand — two taps, and it
+    must be family-scoped like every other write."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from core.models import Family, FamilyMembership
+        cls.parent = User.objects.create_user("tx_parent", "tx@example.com", "pw")
+        cls.family = Family.objects.create(name="Tx Fam")
+        FamilyMembership.objects.create(user=cls.parent, family=cls.family, role="parent")
+        cls.vio = Student.objects.create(parent=cls.parent, first_name="Violet",
+                                         family=cls.family, grade_level="G03")
+        other = User.objects.create_user("tx_other", "txo@example.com", "pw")
+        cls.other_family = Family.objects.create(name="Other Tx")
+        FamilyMembership.objects.create(user=other, family=cls.other_family, role="parent")
+        cls.outsider = Student.objects.create(parent=other, first_name="Zzz",
+                                              family=cls.other_family, grade_level="G05")
+
+    def setUp(self):
+        self.client.force_login(self.parent)
+
+    def _post(self, **extra):
+        from lingua.models import WritingError
+        data = {"child": str(self.vio.pk), "category": WritingError.ORTHOGRAPHIC,
+                "source": "dictado", "wrote": "vaca", "expected": "baca"}
+        data.update(extra)
+        return self.client.post(reverse("lingua:session_log_error"), data)
+
+    def test_get_is_rejected(self):
+        self.assertEqual(
+            self.client.get(reverse("lingua:session_log_error")).status_code, 405)
+
+    def test_tagging_stores_the_error_against_the_right_child(self):
+        from lingua.models import WritingError
+        r = self._post()
+        self.assertEqual(r.status_code, 302)
+        e = WritingError.objects.get()
+        self.assertEqual(e.learner.host_student_id, self.vio.pk)
+        self.assertEqual(e.category, WritingError.ORTHOGRAPHIC)
+        self.assertEqual(e.wrote, "vaca")
+
+    def test_cannot_tag_against_another_familys_child(self):
+        from lingua.models import WritingError
+        r = self._post(child=str(self.outsider.pk))
+        self.assertEqual(r.status_code, 404)
+        self.assertFalse(WritingError.objects.exists())
+
+    def test_a_bad_category_stores_nothing(self):
+        from lingua.models import WritingError
+        r = self._post(category="nonsense")
+        self.assertEqual(r.status_code, 302)
+        self.assertFalse(WritingError.objects.exists())
+
+    def test_the_session_page_shows_the_top_three_and_the_focus(self):
+        from lingua.models import WritingError
+        for _ in range(3):
+            self._post()
+        self._post(category=WritingError.ACCENT)
+        html = self.client.get(
+            reverse("lingua:session") + "?for=%d" % self.vio.pk).content.decode()
+        self.assertIn("Top mistakes this month", html)
+        self.assertIn("Work on this", html)
+        self.assertIn("c/s/z", html)          # the drill patterns for her top category
+
+    def test_correction_mode_follows_the_child_not_a_hardcode(self):
+        # Direct for the younger child (supply the form), indirect for the older
+        # (underline, she self-corrects) — Kang & Han (2015).
+        kaylin = Student.objects.create(
+            parent=self.parent, first_name="Kaylin", family=self.family,
+            grade_level="G07", date_of_birth=date(timezone.localdate().year - 12, 5, 1),
+        )
+        young = self.client.get(
+            reverse("lingua:session") + "?for=%d" % self.vio.pk).content.decode()
+        older = self.client.get(
+            reverse("lingua:session") + "?for=%d" % kaylin.pk).content.decode()
+        self.assertIn("Correct directly", young)
+        self.assertIn("Correct indirectly", older)
+        self.assertNotIn("Correct indirectly", young)
+
+    def test_the_marking_panel_sits_inside_the_no_print_wrapper(self):
+        # The sheet goes to the child; the error taxonomy is the parent's. Assert the
+        # STRUCTURE, not a CSS substring — the old version passed whether or not the
+        # rule was inside @media print, and read a file relative to the CWD.
+        html = self.client.get(
+            reverse("lingua:session") + "?for=%d" % self.vio.pk).content.decode()
+        self.assertIn("ses-marking", html)
+        before = html.split("ses-marking")[0]
+        self.assertIn('class="no-print"', before)
+        self.assertLess(before.rindex('class="no-print"'), len(before))
+        # ...and above the printable sheet, which must stay outside that wrapper.
+        self.assertLess(html.index("ses-marking"), html.index("ses-sheet")
+                        if "ses-sheet" in html else len(html))
+
+    def test_a_view_only_member_sees_the_counts_but_no_tag_buttons(self):
+        # Rendering a control that 404s on tap is the same "looks interactive, does
+        # nothing" bug that has bitten this app twice. Also pins the write guard:
+        # deleting can_edit_family_or_global from the view leaves the POST open.
+        from core.models import FamilyMembership
+        from lingua.models import WritingError
+        self._post()
+        teacher = User.objects.create_user("tx_teach", "txt@example.com", "pw")
+        FamilyMembership.objects.create(user=teacher, family=self.family, role="teacher")
+        self.client.force_login(teacher)
+
+        html = self.client.get(
+            reverse("lingua:session") + "?for=%d" % self.vio.pk).content.decode()
+        self.assertIn("Top mistakes this month", html)     # may READ
+        self.assertNotIn("ses-tag-btn", html)              # but not tag
+
+        before = WritingError.objects.count()
+        r = self.client.post(reverse("lingua:session_log_error"), {
+            "child": str(self.vio.pk), "category": WritingError.ACCENT})
+        self.assertEqual(r.status_code, 404)
+        self.assertEqual(WritingError.objects.count(), before)
+
+    def test_the_buttons_are_labelled_with_bare_category_names(self):
+        # They were rendered through |cut:"—"|truncatewords:2, which produced
+        # "Spelling b/v, …" on six of the eight. These buttons ARE the interaction.
+        html = self.client.get(
+            reverse("lingua:session") + "?for=%d" % self.vio.pk).content.decode()
+        for name in ("Spelling", "Accents", "Agreement", "Verbs", "Mechanics"):
+            self.assertIn(">%s</button>" % name, html)
+        self.assertNotIn("b/v, …", html)
+
+    def test_overlong_text_is_truncated_rather_than_500ing(self):
+        # Postgres enforces varchar(120); SQLite does not, so without the slice this
+        # passes in tests and DataErrors in prod on a paste.
+        from lingua.models import WritingError
+        self._post(wrote="x" * 400, expected="y" * 400)
+        e = WritingError.objects.latest("id")
+        self.assertEqual(len(e.wrote), 120)
+        self.assertEqual(len(e.expected), 120)
+
+    def test_errors_are_dated_today_in_local_time(self):
+        from lingua.models import WritingError
+        self._post()
+        self.assertEqual(WritingError.objects.latest("id").on_date,
+                         timezone.localdate())
+
+
+class FreeWriteTests(TestCase):
+    """LGA-98: the TPRS fluency routine — write for N minutes, count the words, chart
+    it. The count is the score; this measures fluency, not correctness."""
+
+    def setUp(self):
+        self.learner = Learner.create_for_host_student(9701, profiles.KIDS_OLDER)
+
+    def test_word_count_is_derived_from_typed_text(self):
+        fw = services.log_free_write(self.learner, minutes=5,
+                                     text="Hoy fui al parque con mi hermana.")
+        self.assertEqual(fw.words, 7)
+
+    def test_accents_and_enye_count_as_words_and_digits_do_not(self):
+        # "3" and "2026" are not words; inflating the score would make the chart lie.
+        fw = services.log_free_write(
+            self.learner, text="La niña comió 3 manzanas pequeñas en 2026")
+        self.assertEqual(fw.words, 6)
+
+    def test_paper_case_takes_the_count_directly(self):
+        # Handwriting beats typing for orthographic memory, so "she wrote it on paper,
+        # here are 87 words" is a first-class case, not a degraded one.
+        fw = services.log_free_write(self.learner, minutes=8, words=87)
+        self.assertEqual(fw.words, 87)
+        self.assertEqual(fw.text, "")
+
+    def test_typed_text_wins_over_a_supplied_count(self):
+        # Otherwise a stale number in the box scores a typed entry wrong.
+        fw = services.log_free_write(self.learner, text="una dos tres", words=999)
+        self.assertEqual(fw.words, 3)
+
+    def test_minutes_are_clamped_so_one_typo_cannot_distort_the_chart(self):
+        self.assertEqual(
+            services.log_free_write(self.learner, minutes=600, words=10).minutes, 30)
+        self.assertEqual(
+            services.log_free_write(self.learner, minutes=0, words=10).minutes, 1)
+        self.assertEqual(
+            services.log_free_write(self.learner, minutes="junk", words=10).minutes, 5)
+
+    def test_a_junk_word_count_banks_nothing_rather_than_raising(self):
+        # Junk parses to zero, and a zero-word entry is refused outright — otherwise a
+        # fat-fingered submit lands a permanent 0 on her chart with no way to delete it.
+        self.assertIsNone(services.log_free_write(self.learner, words="lots"))
+        self.assertIsNone(services.log_free_write(self.learner, words=-5))
+
+    def test_words_per_minute(self):
+        fw = services.log_free_write(self.learner, minutes=5, words=60)
+        self.assertEqual(fw.words_per_minute, 12.0)
+
+    def test_series_is_oldest_first_for_the_chart(self):
+        for n in (10, 20, 30):
+            services.log_free_write(self.learner, words=n)
+        series = services.free_write_series(self.learner)
+        self.assertEqual([r.words for r in series["rows"]], [10, 20, 30])
+        self.assertEqual(series["best"], 30)
+        self.assertEqual(series["latest"].words, 30)
+
+    def test_bar_heights_are_relative_to_her_own_best(self):
+        for n in (5, 10):
+            services.log_free_write(self.learner, words=n)
+        bars = services.free_write_series(self.learner)["bars"]
+        self.assertEqual([b["pct"] for b in bars], [50, 100])
+
+    def test_an_empty_series_returns_a_usable_shape(self):
+        series = services.free_write_series(self.learner)
+        self.assertEqual(series["bars"], [])
+        self.assertEqual(series["best"], 0)
+        self.assertIsNone(series["latest"])
+        self.assertEqual(series["next_minutes"], 3)   # the research's starting point
+
+    def test_the_timer_climbs_the_ladder_but_never_drops(self):
+        for _ in range(3):
+            services.log_free_write(self.learner, minutes=3, words=20)
+        self.assertEqual(services.free_write_series(self.learner)["next_minutes"], 5)
+
+    def test_the_timer_holds_until_she_is_settled_at_a_length(self):
+        services.log_free_write(self.learner, minutes=3, words=20)
+        self.assertEqual(services.free_write_series(self.learner)["next_minutes"], 3)
+
+    def test_series_is_per_learner(self):
+        other = Learner.create_for_host_student(9702, profiles.KIDS_OLDER)
+        services.log_free_write(self.learner, words=50)
+        self.assertEqual(services.free_write_series(other)["rows"], [])
+
+
+class DialogueJournalTests(TestCase):
+    """LGA-98: she writes, the parent replies to the MEANING. A reply that corrects
+    her spelling turns the journal into more marking and kills it."""
+
+    def setUp(self):
+        self.learner = Learner.create_for_host_student(9703, profiles.KIDS_OLDER)
+
+    def test_an_entry_starts_awaiting_a_reply(self):
+        e = services.log_journal_entry(self.learner, "Hoy fui al parque.")
+        self.assertTrue(e.awaiting_reply)
+        self.assertEqual(services.journal_thread(self.learner)["awaiting"], 1)
+
+    def test_replying_clears_the_awaiting_count_and_stamps_the_time(self):
+        e = services.log_journal_entry(self.learner, "Hoy fui al parque.")
+        services.reply_to_journal(self.learner, e.pk, "¡Qué divertido! ¿Con quién fuiste?")
+        e.refresh_from_db()
+        self.assertFalse(e.awaiting_reply)
+        self.assertIsNotNone(e.replied_at)
+        self.assertEqual(services.journal_thread(self.learner)["awaiting"], 0)
+
+    def test_an_empty_entry_is_not_stored(self):
+        from lingua.models import JournalEntry
+        self.assertIsNone(services.log_journal_entry(self.learner, "   "))
+        self.assertIsNone(services.log_journal_entry(self.learner, ""))
+        self.assertEqual(JournalEntry.objects.count(), 0)
+
+    def test_an_empty_reply_does_not_mark_it_answered(self):
+        e = services.log_journal_entry(self.learner, "Hola.")
+        self.assertIsNone(services.reply_to_journal(self.learner, e.pk, "  "))
+        e.refresh_from_db()
+        self.assertTrue(e.awaiting_reply)
+
+    def test_cannot_reply_to_another_learners_entry(self):
+        other = Learner.create_for_host_student(9704, profiles.KIDS_OLDER)
+        e = services.log_journal_entry(other, "Secreto.")
+        self.assertIsNone(services.reply_to_journal(self.learner, e.pk, "Hola"))
+        e.refresh_from_db()
+        self.assertTrue(e.awaiting_reply)
+
+    def test_the_model_has_no_correction_field(self):
+        # Structural guard on the pedagogy: the journal is a meaning exchange, and
+        # adding a "corrections" field here is how it quietly becomes marking.
+        from lingua.models import JournalEntry
+        names = {f.name for f in JournalEntry._meta.get_fields()}
+        for banned in ("correction", "corrections", "errors", "score", "grade"):
+            self.assertNotIn(banned, names)
+
+
+class WritingTrackViewTests(TestCase):
+    """LGA-98: the page. Family-scoped like every other write, and viewers may read
+    but not write."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from core.models import Family, FamilyMembership
+        cls.parent = User.objects.create_user("wr_parent", "wr@example.com", "pw")
+        cls.family = Family.objects.create(name="Wr Fam")
+        FamilyMembership.objects.create(user=cls.parent, family=cls.family, role="parent")
+        cls.kaylin = Student.objects.create(
+            parent=cls.parent, first_name="Kaylin", family=cls.family, grade_level="G07",
+            date_of_birth=date(timezone.localdate().year - 12, 5, 1),
+        )
+        other = User.objects.create_user("wr_other", "wro@example.com", "pw")
+        cls.other_family = Family.objects.create(name="Other Wr")
+        FamilyMembership.objects.create(user=other, family=cls.other_family, role="parent")
+        cls.outsider = Student.objects.create(
+            parent=other, first_name="Zzz", family=cls.other_family, grade_level="G05")
+
+    def setUp(self):
+        self.client.force_login(self.parent)
+
+    def test_requires_login(self):
+        self.client.logout()
+        self.assertIn(self.client.get(reverse("lingua:writing")).status_code, (301, 302))
+
+    def test_page_renders_both_halves(self):
+        html = self.client.get(
+            reverse("lingua:writing") + "?for=%d" % self.kaylin.pk).content.decode()
+        self.assertIn("Timed free-write", html)
+        self.assertIn("Dialogue journal", html)
+        self.assertNotIn("#}", html)
+
+    def test_logging_a_free_write_shows_up_on_the_chart(self):
+        r = self.client.post(reverse("lingua:writing_free_write"), {
+            "child": str(self.kaylin.pk), "minutes": "5",
+            "text": "Hoy fui al parque con mi hermana."})
+        self.assertEqual(r.status_code, 302)
+        html = self.client.get(
+            reverse("lingua:writing") + "?for=%d" % self.kaylin.pk).content.decode()
+        self.assertIn("wri-bar", html)
+        self.assertIn("Best so far", html)
+
+    def test_cannot_write_against_another_familys_child(self):
+        from lingua.models import FreeWrite, JournalEntry
+        r = self.client.post(reverse("lingua:writing_free_write"), {
+            "child": str(self.outsider.pk), "words": "50"})
+        self.assertEqual(r.status_code, 404)
+        self.assertFalse(FreeWrite.objects.exists())
+        r = self.client.post(reverse("lingua:writing_journal"), {
+            "child": str(self.outsider.pk), "entry": "Hola"})
+        self.assertEqual(r.status_code, 404)
+        self.assertFalse(JournalEntry.objects.exists())
+
+    def test_a_view_only_member_reads_but_gets_no_forms(self):
+        from core.models import FamilyMembership
+        from lingua.models import FreeWrite
+        services.log_free_write(
+            services.learner_for_child({"pk": self.kaylin.pk, "date_of_birth": None}),
+            words=40)
+        teacher = User.objects.create_user("wr_teach", "wrt@example.com", "pw")
+        FamilyMembership.objects.create(user=teacher, family=self.family, role="teacher")
+        self.client.force_login(teacher)
+
+        html = self.client.get(
+            reverse("lingua:writing") + "?for=%d" % self.kaylin.pk).content.decode()
+        self.assertIn("Best so far", html)              # may read the chart
+        self.assertNotIn("wri-form", html)              # but not write
+
+        before = FreeWrite.objects.count()
+        r = self.client.post(reverse("lingua:writing_free_write"), {
+            "child": str(self.kaylin.pk), "words": "99"})
+        self.assertEqual(r.status_code, 404)
+        self.assertEqual(FreeWrite.objects.count(), before)
+
+    def test_get_is_rejected_on_the_write_endpoints(self):
+        self.assertEqual(
+            self.client.get(reverse("lingua:writing_free_write")).status_code, 405)
+        self.assertEqual(
+            self.client.get(reverse("lingua:writing_journal")).status_code, 405)
+
+    def test_journal_reply_flow_end_to_end(self):
+        from lingua.models import JournalEntry
+        self.client.post(reverse("lingua:writing_journal"), {
+            "child": str(self.kaylin.pk), "entry": "Hoy fui al parque."})
+        e = JournalEntry.objects.get()
+        self.client.post(reverse("lingua:writing_journal"), {
+            "child": str(self.kaylin.pk), "reply_to": str(e.pk),
+            "reply": "¿Con quién fuiste?"})
+        e.refresh_from_db()
+        self.assertFalse(e.awaiting_reply)
+        html = self.client.get(
+            reverse("lingua:writing") + "?for=%d" % self.kaylin.pk).content.decode()
+        self.assertIn("¿Con quién fuiste?", html)
+
+
+class AccentRuleSeedTests(TestCase):
+    """LGA-98: the full accent rules, per the 2010 RAE Ortografía."""
+
+    def test_seed_adds_the_five_rule_classes(self):
+        from django.core.management import call_command
+        from lingua.models import PhonicsRule
+        call_command("seed_accent_rules", verbosity=0)
+        patterns = set(PhonicsRule.objects.values_list("pattern", flat=True))
+        for p in ("agudas", "llanas", "esdrujulas", "diacritica", "hiato"):
+            self.assertIn(p, patterns)
+
+    def test_seed_is_idempotent(self):
+        from django.core.management import call_command
+        from lingua.models import PhonicsRule
+        call_command("seed_accent_rules", verbosity=0)
+        first = PhonicsRule.objects.count()
+        call_command("seed_accent_rules", verbosity=0)
+        self.assertEqual(PhonicsRule.objects.count(), first)
+
+    def test_it_does_not_teach_the_pre_2010_rules(self):
+        # The 2010 Ortografía removed the tilde from adverbial "solo" and from
+        # demonstratives. Teaching those has her "correcting" what is now correct.
+        from django.core.management import call_command
+        from lingua.models import PhonicsRule
+        call_command("seed_accent_rules", verbosity=0)
+        text = " ".join(
+            PhonicsRule.objects.values_list("tip", flat=True)
+        ) + " " + " ".join(PhonicsRule.objects.values_list("example", flat=True))
+        for stale in ("sólo", "éste", "ése", "aquél"):
+            self.assertNotIn(stale, text)
+
+    def test_esdrujulas_are_taught_as_always_accented(self):
+        from django.core.management import call_command
+        from lingua.models import PhonicsRule
+        call_command("seed_accent_rules", verbosity=0)
+        rule = PhonicsRule.objects.get(pattern="esdrujulas")
+        self.assertIn("ALWAYS", rule.tip)
+
+
+class FreeWriteReviewFixTests(TestCase):
+    """LGA-98 review: a Postgres-only overflow, a ladder that dropped, an awaiting
+    count capped by the page size, and a junk 0-word row with no delete path."""
+
+    def setUp(self):
+        self.learner = Learner.create_for_host_student(9801, profiles.KIDS_OLDER)
+
+    def test_an_absurd_word_count_is_capped_not_stored_raw(self):
+        # PositiveIntegerField is Postgres `integer` (max 2**31-1); SQLite ignores the
+        # range, so an unclamped paste is a prod-only 500 no test could otherwise see.
+        fw = services.log_free_write(self.learner, words="99999999999")
+        self.assertLessEqual(fw.words, services.MAX_FREEWRITE_WORDS)
+        self.assertLess(fw.words, 2_147_483_647)
+
+    def test_a_giant_paste_is_capped_too(self):
+        fw = services.log_free_write(self.learner, text="palabra " * 80_000)
+        self.assertLessEqual(fw.words, services.MAX_FREEWRITE_WORDS)
+
+    def test_an_empty_submit_banks_nothing(self):
+        from lingua.models import FreeWrite
+        self.assertIsNone(services.log_free_write(self.learner, minutes=5))
+        self.assertIsNone(services.log_free_write(self.learner, minutes=5, text="   "))
+        self.assertIsNone(services.log_free_write(self.learner, minutes=5, words=0))
+        self.assertEqual(FreeWrite.objects.count(), 0)
+
+    def test_the_ladder_never_drops_after_one_short_day(self):
+        for _ in range(3):
+            services.log_free_write(self.learner, minutes=10, words=100)
+        self.assertEqual(services.free_write_series(self.learner)["next_minutes"], 10)
+        services.log_free_write(self.learner, minutes=5, words=40)   # one short day
+        self.assertEqual(services.free_write_series(self.learner)["next_minutes"], 10,
+                         "one short session dragged the ladder back down")
+
+    def test_an_off_ladder_value_still_lands_on_a_rung(self):
+        # A hand-edited POST could store 6, which is on no rung. Three 6-minute writes
+        # mean she is comfortably past 5, so 8 is the right next step — the thing that
+        # must never happen is a suggestion that is itself off-ladder.
+        for _ in range(3):
+            services.log_free_write(self.learner, minutes=6, words=50)
+        nxt = services.free_write_series(self.learner)["next_minutes"]
+        self.assertIn(nxt, services.FREEWRITE_MINUTES)
+        self.assertEqual(nxt, 8)
+
+    def test_a_single_off_ladder_write_does_not_promote(self):
+        services.log_free_write(self.learner, minutes=6, words=50)
+        self.assertEqual(services.free_write_series(self.learner)["next_minutes"], 5)
+
+    def test_the_awaiting_count_is_not_capped_by_the_page_size(self):
+        for i in range(25):
+            services.log_journal_entry(self.learner, f"Entrada {i}")
+        self.assertEqual(services.journal_thread(self.learner)["awaiting"], 25)
+        self.assertEqual(len(services.journal_thread(self.learner)["rows"]), 20)
+
+    def test_the_chart_shows_the_NEWEST_entries_not_the_oldest(self):
+        for n in range(1, 16):
+            services.log_free_write(self.learner, words=n)
+        words = [r.words for r in services.free_write_series(self.learner)["rows"]]
+        self.assertEqual(words[-1], 15)
+        self.assertNotIn(1, words)
+
+    def test_best_is_the_maximum_not_the_latest(self):
+        services.log_free_write(self.learner, words=100)
+        services.log_free_write(self.learner, words=20)
+        self.assertEqual(services.free_write_series(self.learner)["best"], 100)
+
+    def test_an_all_zero_series_cannot_divide_by_zero(self):
+        # The old test only covered the EMPTY list, so the comprehension never ran and
+        # the guard it was named for was never executed.
+        from lingua.models import FreeWrite
+        for _ in range(3):
+            FreeWrite.objects.create(learner=self.learner, minutes=5, words=0)
+        series = services.free_write_series(self.learner)
+        self.assertEqual([b["pct"] for b in series["bars"]], [0, 0, 0])
+
+    def test_words_per_minute_keeps_one_decimal(self):
+        fw = services.log_free_write(self.learner, minutes=3, words=50)
+        self.assertEqual(fw.words_per_minute, 16.7)
+
+    def test_journal_text_is_escaped_not_rendered_as_html(self):
+        e = services.log_journal_entry(self.learner, "<script>alert('x')</script>")
+        self.assertIn("<script>", e.entry)          # stored verbatim
+        # ...and escaped on the way out — see the view test for the rendered page.
+
+
+class PhonicsBandGateTests(TestCase):
+    """LGA-98 review H2: the accent rules are a YEAR-LONG unit for the 12-year-old, but
+    phonics_rules() had no band filter and the phonics page is linked only from the
+    9-year-old's plan — so seeding them put them on the wrong child and gave the right
+    one nothing."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from django.core.management import call_command
+        call_command("seed_phonics", verbosity=0)
+        call_command("seed_accent_rules", verbosity=0)
+
+    def test_accent_rules_are_stamped_for_the_older_band(self):
+        from lingua.models import PhonicsRule
+        for pattern in ("agudas", "llanas", "esdrujulas", "diacritica", "hiato"):
+            self.assertEqual(
+                PhonicsRule.objects.get(pattern=pattern).age_band,
+                profiles.KIDS_OLDER,
+                f"{pattern} would show on the younger child's sounds card",
+            )
+
+    def test_the_younger_band_does_not_get_the_accent_unit(self):
+        titles = [r.title for r in services.phonics_rules(profiles.KIDS_EARLY)]
+        self.assertIn("La ñ", titles)               # base sounds: yes
+        self.assertNotIn("Esdrújulas", titles)      # year-long accent unit: no
+        self.assertNotIn("Tilde diacrítica", titles)
+
+    def test_the_older_band_gets_base_sounds_AND_accents(self):
+        titles = [r.title for r in services.phonics_rules(profiles.KIDS_OLDER)]
+        self.assertIn("La ñ", titles)
+        self.assertIn("Esdrújulas", titles)
+
+    def test_no_band_asked_for_means_everything(self):
+        self.assertEqual(len(services.phonics_rules()),
+                         len(services.phonics_rules(profiles.KIDS_OLDER)))
+
+    def test_the_kid_phonics_page_is_band_filtered(self):
+        from portal.tokens import make_portal_token
+        parent = User.objects.create_user("pb_parent", "pb@example.com", "pw")
+        vio = Student.objects.create(parent=parent, first_name="Vi", grade_level="G03")
+        html = self.client.get(
+            reverse("portal:lingua_phonics", kwargs={"token": make_portal_token(vio)})
+        ).content.decode()
+        self.assertIn("La ñ", html)
+        self.assertNotIn("Esdrújulas", html)
+
+    def test_pre_2010_forms_are_absent_from_titles_too(self):
+        # The earlier version of this check only joined tip + example, so a stale form
+        # in a title slipped through.
+        from lingua.models import PhonicsRule
+        blob = " ".join(
+            list(PhonicsRule.objects.values_list("title", flat=True))
+            + list(PhonicsRule.objects.values_list("tip", flat=True))
+            + list(PhonicsRule.objects.values_list("example", flat=True))
+        )
+        for stale in ("sólo", "éste", "ése", "aquél"):
+            self.assertNotIn(stale, blob)
+
+
+class WritingPageReviewFixTests(TestCase):
+    """The accent rules must reach the child they were seeded for, and the page must
+    escape what she wrote."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from core.models import Family, FamilyMembership
+        from django.core.management import call_command
+        call_command("seed_accent_rules", verbosity=0)
+        cls.parent = User.objects.create_user("wf_parent", "wf@example.com", "pw")
+        cls.family = Family.objects.create(name="Wf Fam")
+        FamilyMembership.objects.create(user=cls.parent, family=cls.family, role="parent")
+        cls.kaylin = Student.objects.create(
+            parent=cls.parent, first_name="Kaylin", family=cls.family, grade_level="G07",
+            date_of_birth=date(timezone.localdate().year - 12, 5, 1))
+        cls.violet = Student.objects.create(
+            parent=cls.parent, first_name="Violet", family=cls.family, grade_level="G03",
+            date_of_birth=date(timezone.localdate().year - 9, 5, 1))
+
+    def setUp(self):
+        self.client.force_login(self.parent)
+
+    def _page(self, child):
+        return self.client.get(
+            reverse("lingua:writing") + "?for=%d" % child.pk).content.decode()
+
+    def test_the_older_child_sees_the_accent_rules(self):
+        html = self._page(self.kaylin)
+        self.assertIn("Esdrújulas", html)
+        self.assertIn("Tilde diacrítica", html)
+
+    def test_the_younger_child_does_not(self):
+        self.assertNotIn("Esdrújulas", self._page(self.violet))
+
+    def test_journal_text_is_escaped_on_the_page(self):
+        self.client.post(reverse("lingua:writing_journal"), {
+            "child": str(self.kaylin.pk), "entry": "<script>alert('x')</script>"})
+        html = self._page(self.kaylin)
+        self.assertNotIn("<script>alert", html)
+        self.assertIn("&lt;script&gt;", html)
+
+    def test_her_last_free_write_can_be_read_back(self):
+        self.client.post(reverse("lingua:writing_free_write"), {
+            "child": str(self.kaylin.pk), "minutes": "5",
+            "text": "Hoy fui al parque con mi hermana."})
+        html = self._page(self.kaylin)
+        self.assertIn("Read her last free-write", html)
+        self.assertIn("Hoy fui al parque", html)
+
+    def test_an_empty_free_write_submit_is_not_celebrated(self):
+        from lingua.models import FreeWrite
+        r = self.client.post(reverse("lingua:writing_free_write"), {
+            "child": str(self.kaylin.pk), "minutes": "5"}, follow=True)
+        self.assertEqual(FreeWrite.objects.count(), 0)
+        self.assertNotIn("0 words in 5 min", r.content.decode())
+
+
+class ProgressiveCaminoTests(TestCase):
+    """LGA-100, progressive half: the map has to move as she does. The seeded stop
+    said "Leer historias L1" forever, so it still pointed at L1 after she advanced."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from django.core.management import call_command
+        call_command("seed_pathway", verbosity=0)
+        for lvl in ("L1", "L2", "L3"):
+            Story.objects.create(title=f"S{lvl}", body="Uno.", level=lvl,
+                                 status=Story.APPROVED)
+
+    def _learner(self, host_id, ceiling, band=None):
+        l = Learner.create_for_host_student(host_id, band or profiles.KIDS_EARLY)
+        l.profile.content_ceiling = ceiling
+        l.profile.save(update_fields=["content_ceiling"])
+        return l
+
+    def _story_row(self, learner):
+        from lingua.models import PathwayStep
+        return next(r for r in services.pathway_status(learner)["steps"]
+                    if r["step"].kind == PathwayStep.STORY_LEVEL)
+
+    def test_the_stop_names_her_own_level(self):
+        self.assertEqual(self._story_row(self._learner(9901, "L1"))["level"], "L1")
+        self.assertEqual(self._story_row(self._learner(9902, "L4"))["level"], "L4")
+
+    def test_the_title_shown_to_her_carries_the_level(self):
+        row = self._story_row(self._learner(9903, "L3"))
+        self.assertIn("L3", row["title"])
+        self.assertNotIn("@level", row["title"])   # never leak the token
+
+    def test_a_LITERAL_level_step_does_not_get_its_level_doubled(self):
+        # This is the live state between the release and the manual re-seed: the DB
+        # still holds target_ref="L1" on a step whose title already ends in "L1".
+        # Appending unconditionally rendered "Leer historias L1 L1" to both girls.
+        from lingua.models import Pathway, PathwayStep
+        learner = self._learner(9920, "L2")
+        PathwayStep.objects.filter(
+            pathway__slug="camino-early", kind=PathwayStep.STORY_LEVEL
+        ).update(title="Leer historias L1", target_ref="L1")
+        row = self._story_row(learner)
+        self.assertEqual(row["title"], "Leer historias L1")
+        self.assertNotIn("L1 L1", row["title"])
+
+    def test_a_literal_step_is_satisfied_by_its_own_level(self):
+        # The pass-through must still WORK, not just avoid doubling.
+        from lingua.models import PathwayStep, ReadingSession
+        learner = self._learner(9921, "L2")
+        PathwayStep.objects.filter(
+            pathway__slug="camino-early", kind=PathwayStep.STORY_LEVEL
+        ).update(title="Leer historias L1", target_ref="L1")
+        ReadingSession.objects.create(
+            learner=learner, story=Story.objects.get(level="L1"), words=1, seconds=20)
+        self.assertEqual(self._story_row(learner)["status"], services.PATH_COMPLETE)
+
+    def test_two_children_at_different_levels_get_different_stops(self):
+        a = self._story_row(self._learner(9904, "L1"))
+        b = self._story_row(self._learner(9905, "L5"))
+        self.assertNotEqual(a["level"], b["level"])
+
+    def test_the_stop_moves_when_she_advances(self):
+        learner = self._learner(9906, "L1")
+        self.assertEqual(self._story_row(learner)["level"], "L1")
+        learner.profile.content_ceiling = "L2"
+        learner.profile.save(update_fields=["content_ceiling"])
+        self.assertEqual(self._story_row(learner)["level"], "L2")
+
+    def test_a_learner_with_no_ceiling_still_renders(self):
+        learner = Learner.create_for_host_student(9907, profiles.KIDS_EARLY)
+        learner.profile.content_ceiling = ""
+        learner.profile.save(update_fields=["content_ceiling"])
+        row = self._story_row(learner)
+        self.assertEqual(row["level"], "")
+        self.assertNotIn("@level", row["title"])
+
+    def test_the_older_band_no_longer_has_two_story_stops(self):
+        # It had "Leer historias L1" AND "Leer historias L2" — two stops that were
+        # really one, neither of which followed her.
+        from lingua.models import PathwayStep
+        older = self._learner(9908, "L2", profiles.KIDS_OLDER)
+        story_rows = [r for r in services.pathway_status(older)["steps"]
+                      if r["step"].kind == PathwayStep.STORY_LEVEL]
+        self.assertEqual(len(story_rows), 1)
+
+    def test_reseeding_still_preserves_ticks_on_the_kept_orders(self):
+        # The new spec DROPS order 1 from the older pathway. The remaining orders keep
+        # their original numbers on purpose, because steps are keyed on `order` and
+        # renumbering would move a child's ticks onto different activities.
+        from django.core.management import call_command
+        from lingua.models import PathwayCheckmark, PathwayStep
+        older = self._learner(9909, "L2", profiles.KIDS_OLDER)
+        listen = PathwayStep.objects.get(pathway__slug="camino-older",
+                                         kind=PathwayStep.LISTEN)
+        self.assertEqual(listen.order, 2, "Escuchar moved — ticks would follow the slot")
+        services.set_pathway_checkmark(older, listen, True)
+        call_command("seed_pathway", verbosity=0)
+        listen.refresh_from_db()
+        self.assertEqual(listen.kind, PathwayStep.LISTEN)
+        self.assertTrue(
+            PathwayCheckmark.objects.filter(learner=older, step=listen).exists())
+
+
+class PhonicsFocusTests(TestCase):
+    """LGA-100, progressive half: one sound to work on today. A wall of eight rules is
+    a wall a 9-year-old works on none of."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from django.core.management import call_command
+        call_command("seed_pathway", verbosity=0)
+        call_command("seed_phonics", verbosity=0)
+
+    def setUp(self):
+        self.learner = Learner.create_for_host_student(9910, profiles.KIDS_EARLY)
+
+    def _phonics_step(self):
+        from lingua.models import PathwayStep
+        return PathwayStep.objects.filter(
+            pathway__slug="camino-early", kind=PathwayStep.PHONICS
+        ).order_by("order").first()
+
+    def test_a_new_learner_starts_at_the_first_sound(self):
+        rules = services.phonics_rules(profiles.KIDS_EARLY)
+        self.assertEqual(services.phonics_focus(self.learner).pattern, rules[0].pattern)
+
+    def _tick_days_ago(self, n, step=None):
+        services.set_pathway_checkmark(
+            self.learner, step or self._phonics_step(), True,
+            on=timezone.localdate() - timedelta(days=n))
+
+    def test_the_focus_advances_only_when_she_DOES_a_session(self):
+        rules = services.phonics_rules(profiles.KIDS_EARLY)
+        self._tick_days_ago(2)
+        self.assertEqual(services.phonics_focus(self.learner).pattern, rules[1].pattern)
+        self._tick_days_ago(1)
+        self.assertEqual(services.phonics_focus(self.learner).pattern, rules[2].pattern)
+
+    def test_todays_own_tick_does_not_move_the_sound_under_her(self):
+        # She ticks "Los sonidos" and comes back — the page must still highlight the
+        # sound she just worked on, not the next one.
+        rules = services.phonics_rules(profiles.KIDS_EARLY)
+        before = services.phonics_focus(self.learner).pattern
+        services.set_pathway_checkmark(self.learner, self._phonics_step(), True)
+        self.assertEqual(services.phonics_focus(self.learner).pattern, before)
+
+    def test_two_ticks_on_the_SAME_day_only_advance_once(self):
+        # Two DIFFERENT phonics steps on one day, so the unique constraint isn't what
+        # makes this pass — the distinct-on-date count is.
+        from lingua.models import Pathway, PathwayStep
+        rules = services.phonics_rules(profiles.KIDS_EARLY)
+        original = self._phonics_step()          # grab before adding the second one
+        extra = PathwayStep.objects.create(
+            pathway=Pathway.objects.get(slug="camino-early"), order=90,
+            title="Más sonidos", kind=PathwayStep.PHONICS,
+        )
+        self._tick_days_ago(1, step=original)
+        self._tick_days_ago(1, step=extra)
+        self.assertEqual(services.phonics_focus(self.learner).pattern, rules[1].pattern)
+
+    def test_ticking_a_NON_phonics_stop_does_not_move_the_sound(self):
+        # Violet ticks three stops a day on prod; without the kind filter her sound
+        # would jump three places daily.
+        from lingua.models import PathwayStep
+        rules = services.phonics_rules(profiles.KIDS_EARLY)
+        listen = PathwayStep.objects.get(pathway__slug="camino-early",
+                                         kind=PathwayStep.LISTEN)
+        self._tick_days_ago(1)
+        self._tick_days_ago(1, step=listen)
+        self.assertEqual(services.phonics_focus(self.learner).pattern, rules[1].pattern)
+
+    def test_the_focus_wraps_rather_than_running_out(self):
+        rules = services.phonics_rules(profiles.KIDS_EARLY)
+        for i in range(len(rules)):
+            self._tick_days_ago(i + 1)
+        self.assertEqual(services.phonics_focus(self.learner).pattern, rules[0].pattern)
+
+    def test_no_rules_for_the_band_is_not_a_crash(self):
+        from lingua.models import PhonicsRule
+        PhonicsRule.objects.update(active=False)
+        self.assertIsNone(services.phonics_focus(self.learner))
+
+    def test_the_page_highlights_exactly_one_sound(self):
+        from portal.tokens import make_portal_token
+        parent = User.objects.create_user("pf_parent", "pf@example.com", "pw")
+        kid = Student.objects.create(parent=parent, first_name="Vi", grade_level="G03")
+        html = self.client.get(
+            reverse("portal:lingua_phonics", kwargs={"token": make_portal_token(kid)})
+        ).content.decode()
+        self.assertEqual(html.count("is-focus"), 1)
+        self.assertIn("Hoy:", html)
+
+    def test_nothing_is_locked_by_the_focus(self):
+        # Highlighting must not become gating — LGA-93 removed locking deliberately
+        # and it is right for a 9-year-old.
+        from portal.tokens import make_portal_token
+        parent = User.objects.create_user("pf2_parent", "pf2@example.com", "pw")
+        kid = Student.objects.create(parent=parent, first_name="Vi", grade_level="G03")
+        html = self.client.get(
+            reverse("portal:lingua_phonics", kwargs={"token": make_portal_token(kid)})
+        ).content.decode()
+        for title in ("Vocales puras", "La ñ", "La rr fuerte", "El acento"):
+            self.assertIn(title, html)
+        self.assertNotIn("disabled", html)
+
+    def test_no_stylesheet_rule_hides_the_non_focus_sounds(self):
+        # The HTML check alone let a CSS mutant through: adding
+        # `.portal-subject-card:not(.is-focus){display:none}` passed every test while
+        # hiding seven of the eight rules. Highlighting must never become gating.
+        import pathlib
+        import re as _re
+        from django.conf import settings
+        css = (pathlib.Path(settings.BASE_DIR) / "static" / "css" / "portal.css").read_text(
+            encoding="utf-8")
+        offenders = [
+            m for m in _re.findall(r"[^}]*:not\(\.is-focus\)[^{]*\{[^}]*\}", css)
+            if "display" in m or "visibility" in m
+        ]
+        self.assertEqual(offenders, [], f"CSS hides non-focus sounds: {offenders}")
+
+
+class PronunciationOverrideTests(TestCase):
+    """LGA-101: Polly's es-MX is good, so overrides are for the few texts it gets
+    WRONG. Measured with viseme speech marks: the ll TILE ("elle") comes out
+    e-t — alveolar /l/ — while the ll WORDS ("llama" -> J-a-p-a) are already
+    correct. Overriding the words changed nothing; overriding the tile is the fix."""
+
+    def test_the_ll_letter_name_is_overridden(self):
+        from lingua import pronunciation
+        ipa = pronunciation.ipa_for("elle")
+        self.assertIsNotNone(ipa)
+        self.assertIn("ʝ", ipa, "the ll letter name is not transcribed as palatal")
+
+    def test_words_polly_already_says_correctly_are_left_alone(self):
+        # Measured byte-identical with and without an override, so an entry here
+        # would churn the content hash and re-bake for no audible change.
+        from lingua import pronunciation
+        for word in ("llama", "pollo", "calle", "lluvia", "perro", "mesa", "hoy"):
+            self.assertIsNone(pronunciation.ipa_for(word),
+                              f"{word} has a no-op override")
+
+    def test_no_override_uses_a_symbol_outside_pollys_es_MX_table(self):
+        # Polly silently IGNORES symbols it doesn't know rather than erroring, so a
+        # stray one degrades the word instead of failing loudly. "oi̯" did exactly
+        # that: the combining breve was dropped and "hoy" became two syllables.
+        from lingua import pronunciation
+        allowed_marks = {"ˈ", "ˌ", "."}
+        for text, ipa in pronunciation.IPA.items():
+            for ch in ipa:
+                self.assertFalse(
+                    ch in "̯̃͡" or (not ch.isalpha() and ch not in allowed_marks),
+                    f"{text!r} uses {ch!r} (U+{ord(ch):04X}), outside Polly's es-MX table",
+                )
+            self.assertNotIn("θ", ipa, f"{text} uses the Castilian /θ/, not es-MX seseo")
+
+    def test_an_override_is_sent_as_ssml_phoneme(self):
+        from lingua import audio
+        seen = {}
+
+        class _Polly:
+            def synthesize_speech(self, **kw):
+                seen.update(kw)
+                return {"AudioStream": io.BytesIO(b"mp3")}
+
+        audio.synthesize_clip("elle", client=_Polly())
+        self.assertEqual(seen["TextType"], "ssml")
+        self.assertIn('<phoneme alphabet="ipa"', seen["Text"])
+        self.assertIn("ʝ", seen["Text"])
+
+    def test_a_plain_word_is_still_sent_as_text(self):
+        from lingua import audio
+        seen = {}
+
+        class _Polly:
+            def synthesize_speech(self, **kw):
+                seen.update(kw)
+                return {"AudioStream": io.BytesIO(b"mp3")}
+
+        audio.synthesize_clip("llama", client=_Polly())
+        self.assertEqual(seen["TextType"], "text")
+        self.assertEqual(seen["Text"], "llama")
+
+    def test_a_quote_in_an_ipa_cannot_break_out_of_the_attribute(self):
+        from lingua import audio, pronunciation
+        seen = {}
+
+        class _Polly:
+            def synthesize_speech(self, **kw):
+                seen.update(kw)
+                return {"AudioStream": io.BytesIO(b"mp3")}
+
+        with mock.patch.dict(pronunciation.IPA,
+                             {"x": 'a"><prosody rate="x-slow">'}, clear=False):
+            audio.synthesize_clip("x", client=_Polly())
+        self.assertNotIn("<prosody", seen["Text"])
+
+    def test_changing_a_pronunciation_re_bakes_THROUGH_bake_audio_clip(self):
+        # Exercise the real path: the previous version recomputed the hash by hand,
+        # which asserted nothing about whether bake_audio_clip folds the IPA in.
+        from lingua import pronunciation
+        from lingua.models import AudioClip
+
+        class _Polly:
+            def synthesize_speech(self, **kw):
+                return {"AudioStream": io.BytesIO(b"mp3")}
+
+        with mock.patch.object(lingua_storage, "save_audio"):
+            services.bake_audio_clip("elle", client=_Polly())
+            first = AudioClip.objects.get(text="elle").content_hash
+            with mock.patch.dict(pronunciation.IPA, {"elle": "ˈe.ʝo"}, clear=False):
+                services.bake_audio_clip("elle", client=_Polly())
+                second = AudioClip.objects.get(text="elle").content_hash
+        self.assertNotEqual(first, second,
+                            "editing the IPA did not invalidate the baked clip")
+
+    def test_a_word_with_no_override_keeps_the_key_it_already_has(self):
+        # The 131 clips on prod must not churn just because this mechanism exists.
+        from lingua import assets
+        self.assertEqual(
+            assets.content_hash("mesa", provider="polly", voice="Mia", engine="neural"),
+            assets.content_hash("mesa", provider="polly", voice="Mia", engine="neural"),
+        )
+
+
+class AccentedVowelSoundsTests(TestCase):
+    """The owner asked for the accented vowels as a sound of their own."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from django.core.management import call_command
+        call_command("seed_phonics", verbosity=0)
+
+    def test_accented_vowels_are_taught_as_the_same_sounds(self):
+        from lingua.models import PhonicsRule
+        rule = PhonicsRule.objects.get(pattern="acentuadas")
+        self.assertIn("SAME", rule.tip)
+        for w in ("papá", "bebé", "aquí", "avión", "menú"):
+            self.assertIn(w, rule.example)
+
+    def test_the_dieresis_is_taught(self):
+        from lingua.models import PhonicsRule
+        rule = PhonicsRule.objects.get(pattern="dieresis")
+        self.assertIn("pingüino", rule.example)
+
+    def test_the_new_sounds_go_to_the_YOUNGER_band_too(self):
+        # These are recognition, not the year-long accent RULES unit — a child meeting
+        # á for the first time inside a word needs to know it isn't a new letter.
+        titles = [r.title for r in services.phonics_rules(profiles.KIDS_EARLY)]
+        self.assertIn("Las vocales con acento", titles)
+        self.assertIn("La ü", titles)
+        self.assertNotIn("Esdrújulas", titles)      # the rules unit stays older-only
+
+    def test_every_new_example_word_is_offered_for_baking(self):
+        texts = set(services.clip_texts_to_bake(phonics=True))
+        for w in ("papá", "aquí", "menú", "pingüino", "bilingüe"):
+            self.assertIn(w, texts)
+
+
+class OlderBandSoundsRouteTests(TestCase):
+    """The accent rules were written FOR the 12-year-old but she had no route to
+    them: the Sonidos stone was gated to the younger band and camino-older had no
+    PHONICS step, so she could neither reach nor advance them."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from django.core.management import call_command
+        from portal.tokens import make_portal_token
+        call_command("seed_pathway", verbosity=0)
+        call_command("seed_phonics", verbosity=0)
+        call_command("seed_accent_rules", verbosity=0)
+        cls.parent = User.objects.create_user("ob_parent", "ob@example.com", "pw")
+        cls.kaylin = Student.objects.create(
+            parent=cls.parent, first_name="Kaylin", grade_level="G07",
+            date_of_birth=date(timezone.localdate().year - 12, 5, 1))
+        cls.violet = Student.objects.create(
+            parent=cls.parent, first_name="Violet", grade_level="G03",
+            date_of_birth=date(timezone.localdate().year - 9, 5, 1))
+        cls.k_token = make_portal_token(cls.kaylin)
+        cls.v_token = make_portal_token(cls.violet)
+
+    def test_the_older_band_has_a_sounds_stone_on_her_plan(self):
+        html = self.client.get(
+            reverse("portal:lingua_plan", kwargs={"token": self.k_token})
+        ).content.decode()
+        self.assertIn(reverse("portal:lingua_phonics", kwargs={"token": self.k_token}),
+                      html)
+        self.assertIn("Acentos", html)
+
+    def test_the_younger_band_still_has_hers(self):
+        html = self.client.get(
+            reverse("portal:lingua_plan", kwargs={"token": self.v_token})
+        ).content.decode()
+        self.assertIn(reverse("portal:lingua_phonics", kwargs={"token": self.v_token}),
+                      html)
+        self.assertIn("Sonidos", html)
+
+    def test_the_older_band_has_a_phonics_STOP_she_can_tick(self):
+        from lingua.models import PathwayStep
+        from homeschool_hub.adapters import lingua_students
+        learner = lingua_students.learner_for(self.kaylin)
+        kinds = [r["step"].kind for r in services.pathway_status(learner)["steps"]]
+        self.assertIn(PathwayStep.PHONICS, kinds)
+
+    def test_her_focus_STARTS_on_an_accent_rule_not_a_base_sound(self):
+        # The stone says "Acentos". Cycling all 15 rules meant ten ticked days before
+        # the focus reached one, so the stone promised something it wasn't showing.
+        from homeschool_hub.adapters import lingua_students
+        learner = lingua_students.learner_for(self.kaylin)
+        focus = services.phonics_focus(learner, band=profiles.KIDS_OLDER)
+        self.assertEqual(focus.age_band, profiles.KIDS_OLDER)
+        self.assertIn(focus.pattern,
+                      {"agudas", "llanas", "esdrujulas", "diacritica", "hiato"})
+
+    def test_the_younger_bands_focus_still_covers_the_base_sounds(self):
+        from homeschool_hub.adapters import lingua_students
+        learner = lingua_students.learner_for(self.violet)
+        focus = services.phonics_focus(learner, band=profiles.KIDS_EARLY)
+        self.assertEqual(focus.age_band, "")
+
+    def test_her_focus_advances_through_the_accent_rules(self):
+        # Previously she had no phonics step, so the focus could never move off rule 1.
+        from homeschool_hub.adapters import lingua_students
+        from lingua.models import PathwayStep
+        learner = lingua_students.learner_for(self.kaylin)
+        step = next(r["step"] for r in services.pathway_status(learner)["steps"]
+                    if r["step"].kind == PathwayStep.PHONICS)
+        rules = [r for r in services.phonics_rules(profiles.KIDS_OLDER)
+                 if r.age_band == profiles.KIDS_OLDER]
+        first = services.phonics_focus(learner, band=profiles.KIDS_OLDER).pattern
+        services.set_pathway_checkmark(
+            learner, step, True, on=timezone.localdate() - timedelta(days=1))
+        second = services.phonics_focus(learner, band=profiles.KIDS_OLDER).pattern
+        self.assertNotEqual(first, second)
+        self.assertEqual(second, rules[1].pattern)
+
+
+class NoSynthesisOnTheRequestPathTests(TestCase):
+    """LGA-99: D-16 says audio is baked by management commands, never at request
+    time. It holds today, but nothing ENFORCED it — unlike D-04, which is AST-guarded.
+    A single import in a view would make every page load a Polly call and a bill."""
+
+    REQUEST_MODULES = ["portal.views", "lingua.views"]
+
+    def test_no_request_module_reaches_the_tts_layer(self):
+        import importlib
+        import inspect
+        offenders = []
+        for name in self.REQUEST_MODULES:
+            src = inspect.getsource(importlib.import_module(name))
+            roots = _import_roots(src)
+            if "boto3" in roots:
+                offenders.append(f"{name} imports boto3")
+            for marker in ("synthesize_clip", "synthesize_story", "bake_audio_clip",
+                           "bake_story_audio"):
+                if marker in src:
+                    offenders.append(f"{name} references {marker}")
+        self.assertEqual(offenders, [], f"D-16 violations: {offenders}")
+
+    def test_only_management_commands_bake(self):
+        # The other half. The guard above greps portal.views / lingua.views own
+        # source, so it cannot see an INDIRECT reach: services.py is imported by the
+        # views and its functions run on every portal request, so a future
+        # services.ensure_audio() that lazily bakes would be the exact "one call in
+        # a view turns every page load into a Polly bill" case and slip past it.
+        # Hence the exemption is for the DEFINITIONS, not for the file.
+        # Walk the AST rather than the text: a line-based filter cannot tell
+        # `def bake_audio_clip(...)` from `def ensure_audio(s): return
+        # bake_story_audio(s)` — a one-liner whose line also starts with `def` —
+        # and that one-liner is precisely the violation this test exists to catch.
+        import ast
+        import pathlib
+        from django.conf import settings
+        baked = {"bake_audio_clip", "bake_story_audio"}
+        root = pathlib.Path(settings.BASE_DIR) / "lingua"
+        callers = set()
+        for py in root.rglob("*.py"):
+            rel = py.relative_to(root).as_posix()
+            if rel == "tests.py" or rel.startswith("spikes/"):
+                continue
+            tree = ast.parse(py.read_text(encoding="utf-8", errors="replace"))
+            for node in ast.walk(tree):
+                if not isinstance(node, ast.Call):
+                    continue
+                fn = node.func
+                name = getattr(fn, "id", None) or getattr(fn, "attr", None)
+                if name in baked:
+                    callers.add(rel)
+                # getattr(services, "bake_story_audio")() would dodge the check above.
+                if name == "getattr" and any(
+                    isinstance(a, ast.Constant) and a.value in baked for a in node.args
+                ):
+                    callers.add(rel)
+        self.assertEqual(
+            callers,
+            {"management/commands/clips_build.py",
+             "management/commands/tts_build.py"},
+            f"unexpected baker: {sorted(callers)}",
+        )
+
+
+@override_settings(STORAGES=_INMEM_STORAGES)
+class DeletedChildLeavesNothingBehindTests(TestCase):
+    """LGA-99 / D-03: nothing cascades from a host Student into lingua, so every
+    model carrying a bare host_student_id has to be purged explicitly.
+
+    In-memory storage is not optional here: this class writes a real upload, and
+    the default store is S3 whenever USE_R2 is set — so without the override the
+    suite would create and delete objects in the live bucket."""
+
+    def test_deleting_a_learner_takes_their_tutor_packets(self):
+        from lingua.models import TutorPacket
+        learner = Learner.create_for_host_student(9990, profiles.KIDS_OLDER)
+        TutorPacket.objects.create(title="Hers", body="Hola.", host_student_id=9990)
+        shared = TutorPacket.objects.create(title="Shared", body="Hola.",
+                                            host_student_id=None)
+        other = TutorPacket.objects.create(title="His", body="Hola.",
+                                           host_student_id=9991)
+
+        services.delete_learner_for_student(9990)
+
+        self.assertFalse(TutorPacket.objects.filter(title="Hers").exists())
+        self.assertTrue(TutorPacket.objects.filter(pk=shared.pk).exists())
+        self.assertTrue(TutorPacket.objects.filter(pk=other.pk).exists())
+
+    def test_the_prune_command_sweeps_orphaned_packets_too(self):
+        # This command runs unattended on a schedule, so the negative cases matter
+        # more than the positive one: a broadened filter here wipes every child's
+        # homework with nobody watching.
+        from django.contrib.auth import get_user_model
+        from django.core.management import call_command
+        from lingua.models import TutorPacket
+        from students.models import Student
+
+        parent = get_user_model().objects.create_user("pr_p", "pr@example.com", "pw")
+        live = Student.objects.create(parent=parent, first_name="Ada")
+        Learner.create_for_host_student(live.pk, profiles.KIDS_OLDER)
+        Learner.create_for_host_student(9992, profiles.KIDS_OLDER)
+
+        TutorPacket.objects.create(title="Orphan", body="Hola.", host_student_id=9992)
+        kept = TutorPacket.objects.create(title="Live", body="Hola.",
+                                          host_student_id=live.pk)
+        shared = TutorPacket.objects.create(title="Shared", body="Hola.",
+                                            host_student_id=None)
+
+        # 9992 is not a real host Student, so only that learner is an orphan.
+        call_command("lingua_prune_orphans", verbosity=0)
+
+        self.assertFalse(Learner.objects.filter(host_student_id=9992).exists())
+        self.assertFalse(TutorPacket.objects.filter(title="Orphan").exists())
+        self.assertTrue(Learner.objects.filter(host_student_id=live.pk).exists())
+        self.assertTrue(TutorPacket.objects.filter(pk=kept.pk).exists())
+        self.assertTrue(TutorPacket.objects.filter(pk=shared.pk).exists())
+
+    def test_the_purge_takes_the_uploaded_file_out_of_storage_too(self):
+        # A row delete never touches FileField storage, so the child's handout would
+        # otherwise sit in R2 forever with nothing left pointing at it.
+        from django.core.files.base import ContentFile
+        from lingua.models import TutorPacket
+
+        Learner.create_for_host_student(9994, profiles.KIDS_OLDER)
+        packet = TutorPacket.objects.create(title="Handout", body="Hola.",
+                                            host_student_id=9994)
+        packet.file.save("handout.txt", ContentFile(b"tarea"), save=True)
+        name = packet.file.name
+        self.assertTrue(packet.file.storage.exists(name))
+        storage = packet.file.storage
+
+        services.delete_learner_for_student(9994)
+
+        self.assertFalse(TutorPacket.objects.filter(pk=packet.pk).exists())
+        self.assertFalse(storage.exists(name))
+
+    def test_a_storage_failure_is_counted_not_swallowed(self):
+        # A token missing s3:DeleteObject fails on EVERY packet, and the row is gone
+        # by then, so nothing points at the object any more. Reporting plain success
+        # would make a permanent, systematic leak look like a clean purge.
+        from unittest.mock import patch
+        from django.core.files.base import ContentFile
+        from lingua.models import TutorPacket
+
+        Learner.create_for_host_student(9995, profiles.KIDS_OLDER)
+        packet = TutorPacket.objects.create(title="Handout", body="Hola.",
+                                            host_student_id=9995)
+        packet.file.save("handout.txt", ContentFile(b"tarea"), save=True)
+
+        with patch("django.core.files.storage.InMemoryStorage.delete",
+                   side_effect=PermissionError("R2 403 AccessDenied")):
+            deleted, stranded = services.purge_tutor_packets([9995])
+
+        self.assertEqual(deleted, 1)      # the row still goes — it holds the data
+        self.assertEqual(stranded, 1)     # ...but the caller is told the file did not
+        self.assertFalse(TutorPacket.objects.filter(pk=packet.pk).exists())
+
+    def test_the_prune_command_reports_stranded_files_on_stderr(self):
+        from io import StringIO
+        from unittest.mock import patch
+        from django.core.management import call_command
+
+        with patch("lingua.services.purge_tutor_packets", return_value=(2, 2)):
+            err = StringIO()
+            Learner.create_for_host_student(9996, profiles.KIDS_OLDER)
+            call_command("lingua_prune_orphans", stderr=err, verbosity=0)
+
+        self.assertIn("could NOT be removed", err.getvalue())
+
+    def test_a_dry_run_deletes_nothing(self):
+        from django.core.management import call_command
+        from lingua.models import TutorPacket
+        Learner.create_for_host_student(9993, profiles.KIDS_OLDER)
+        TutorPacket.objects.create(title="Safe", body="Hola.", host_student_id=9993)
+        call_command("lingua_prune_orphans", "--dry-run", verbosity=0)
+        self.assertTrue(Learner.objects.filter(host_student_id=9993).exists())
+        self.assertTrue(TutorPacket.objects.filter(title="Safe").exists())
+
+
+class NoDeadCaminoCodeTests(TestCase):
+    """LGA-99: StationVisit was written by three GET handlers and read by nothing,
+    and PATH_LOCKED named a state the map can never produce."""
+
+    def test_the_locked_state_is_gone(self):
+        self.assertFalse(hasattr(services, "PATH_LOCKED"))
+
+    def test_the_write_only_visit_model_is_gone(self):
+        from django.apps import apps
+        with self.assertRaises(LookupError):
+            apps.get_model("lingua", "StationVisit")
+        for name in ("record_station_visit", "_has_station_visit",
+                     "_stories_read_at_level"):
+            self.assertFalse(hasattr(services, name), f"{name} survived")

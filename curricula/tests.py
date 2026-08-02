@@ -495,6 +495,36 @@ class BlueprintTests(TestCase):
         )
         self.assertEqual(opener.code, "Ch 1 Opener")
 
+    def test_every_teaching_lesson_in_chapters_1_to_3_has_objectives(self):
+        # Objectives are not decoration: tutor.views._entry_objectives feeds them to
+        # the AI grader as concept context, so a lesson with none is graded blind.
+        # Openers, practices and reviews carry none by design — they have no new
+        # objective of their own.
+        apply_blueprint(self.curriculum, get_blueprint("dimensions_math_3a"))
+        blind = [
+            f"Ch{L.chapter.number} L{L.number} {L.title}"
+            for L in Lesson.objects.filter(
+                chapter__curriculum=self.curriculum,
+                chapter__number__in=(1, 2, 3),
+                lesson_type=Lesson.TYPE_LESSON,
+            ).select_related("chapter")
+            if not (L.objectives or "").strip()
+        ]
+        self.assertEqual(blind, [], f"lessons the grader would judge blind: {blind}")
+
+    def test_re_applying_the_blueprint_backfills_objectives_in_place(self):
+        # How Ch3's objectives reach a curriculum that was created before they were
+        # written: apply_blueprint updates rather than skipping existing lessons.
+        apply_blueprint(self.curriculum, get_blueprint("dimensions_math_3a"))
+        lesson = Lesson.objects.get(
+            chapter__curriculum=self.curriculum, chapter__number=3, number=4)
+        Lesson.objects.filter(pk=lesson.pk).update(objectives="")
+
+        apply_blueprint(self.curriculum, get_blueprint("dimensions_math_3a"))
+
+        lesson.refresh_from_db()
+        self.assertIn("estimate", lesson.objectives.lower())
+
     def test_apply_blueprint_view_requires_editor(self):
         # teacher (view-only) cannot apply
         teacher = User.objects.create_user(username="bt", email="bt@e.com", password="pw")
@@ -841,11 +871,12 @@ class LessonProgressTests(TestCase):
         url = reverse("students:student_lessons",
                       kwargs={"pk": self.child.pk, "curriculum_id": self.curriculum.pk})
         html = c.get(url).content.decode()
-        self.assertIn("Dimensions Math 3A — lessons", html)         # the checklist page
-        self.assertIn('value="completed"', html)                    # Complete button
-        self.assertIn('value="skipped"', html)                      # Skip button
-        self.assertIn("Skip remaining practice", html)              # bulk practice skip
-        self.assertIn('class="badge bg-light text-dark ms-1">Practice', html)  # practice badge
+        self.assertIn("Dimensions Math 3A", html)                   # the checklist page
+        self.assertIn('name="done"', html)                          # a real checkbox per lesson
+        self.assertIn('name="skip"', html)                          # per-lesson skip checkbox
+        self.assertIn("Save changes", html)                         # explicit save (works w/o JS)
+        self.assertIn("Skip all remaining practice", html)          # bulk practice skip
+        self.assertIn("lessons-badge", html)                        # practice badge
 
 
 class LessonProgressReviewFixTests(TestCase):
@@ -936,3 +967,129 @@ class LessonProgressReviewFixTests(TestCase):
         with self.assertNumQueries(3):        # lesson ids + marks + submitted work
             prog = p.progress()
         self.assertEqual(prog["skipped"], 1)
+
+
+class LessonChecklistSaveTests(TestCase):
+    """HH-142: the lesson page is a CHECKLIST — tick what's done, Save, un-tick to undo."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.parent = User.objects.create_user(username="ck", email="ck@e.com", password="pw")
+        cls.teacher = User.objects.create_user(username="ckt", email="ckt@e.com", password="pw")
+        cls.family = Family.objects.create(name="CK Fam")
+        FamilyMembership.objects.create(user=cls.parent, family=cls.family, role="parent")
+        FamilyMembership.objects.create(user=cls.teacher, family=cls.family, role="teacher")
+        cls.child = Student.objects.create(
+            parent=cls.parent, first_name="Violet", grade_level="G03", family=cls.family)
+        cls.curriculum = Curriculum.objects.create(
+            parent=cls.parent, name="Dimensions Math 3A", subject="Math", family=cls.family)
+        apply_blueprint(cls.curriculum, get_blueprint("dimensions_math_3a"))
+        cls.lessons = list(
+            Lesson.objects.filter(chapter__curriculum=cls.curriculum)
+            .exclude(lesson_type=Lesson.TYPE_OPENER).order_by("chapter__number", "order"))
+        cls.opener = Lesson.objects.filter(
+            chapter__curriculum=cls.curriculum, lesson_type=Lesson.TYPE_OPENER).first()
+
+    def _c(self, who="ck"):
+        c = Client(); c.login(username=who, password="pw"); return c
+
+    def _url(self):
+        return reverse("students:lessons_save",
+                       kwargs={"pk": self.child.pk, "curriculum_id": self.curriculum.pk})
+
+    def test_ticking_lessons_marks_them_done(self):
+        ids = [self.lessons[0].pk, self.lessons[1].pk]
+        r = self._c().post(self._url(), {"done": [str(i) for i in ids]})
+        self.assertEqual(r.status_code, 302)
+        self.assertEqual(
+            set(LessonProgress.objects.filter(status=LessonProgress.COMPLETED)
+                .values_list("lesson_id", flat=True)), set(ids))
+        p = CurriculumPlacement.objects.get(child=self.child, curriculum=self.curriculum)
+        self.assertEqual(p.progress()["done"], 2)
+
+    def test_unticking_undoes(self):
+        c = self._c()
+        c.post(self._url(), {"done": [str(self.lessons[0].pk), str(self.lessons[1].pk)]})
+        c.post(self._url(), {"done": [str(self.lessons[0].pk)]})   # untick the second
+        done = set(LessonProgress.objects.filter(status=LessonProgress.COMPLETED)
+                   .values_list("lesson_id", flat=True))
+        self.assertEqual(done, {self.lessons[0].pk})
+        c.post(self._url(), {})                                     # untick everything
+        self.assertFalse(LessonProgress.objects.exists())
+
+    def test_skip_column_marks_skipped_and_done_wins(self):
+        c = self._c()
+        c.post(self._url(), {"skip": [str(self.lessons[2].pk)]})
+        self.assertEqual(LessonProgress.objects.get(lesson=self.lessons[2]).status,
+                         LessonProgress.SKIPPED)
+        # ticking BOTH done and skip for the same lesson resolves to done
+        c.post(self._url(), {"done": [str(self.lessons[2].pk)], "skip": [str(self.lessons[2].pk)]})
+        self.assertEqual(LessonProgress.objects.get(lesson=self.lessons[2]).status,
+                         LessonProgress.COMPLETED)
+
+    def test_hostile_and_foreign_ids_are_ignored(self):
+        other_cur = Curriculum.objects.create(
+            parent=self.parent, name="Other", subject="Math", family=self.family)
+        ch = Chapter.objects.create(curriculum=other_cur, number=1, title="C")
+        foreign = Lesson.objects.create(chapter=ch, order=1, number=1, title="L1")
+        r = self._c().post(self._url(), {
+            "done": ["abc", "٧", "999999", str(foreign.pk), str(self.lessons[0].pk)]})
+        self.assertEqual(r.status_code, 302)                        # no 500
+        self.assertEqual(list(LessonProgress.objects.values_list("lesson_id", flat=True)),
+                         [self.lessons[0].pk])                      # only the valid own-lesson
+
+    def test_openers_cannot_be_ticked(self):
+        self._c().post(self._url(), {"done": [str(self.opener.pk)]})
+        self.assertFalse(LessonProgress.objects.exists())           # openers aren't checklist items
+
+    def test_view_only_teacher_cannot_save(self):
+        r = self._c("ckt").post(self._url(), {"done": [str(self.lessons[0].pk)]})
+        self.assertEqual(r.status_code, 404)
+        self.assertFalse(LessonProgress.objects.exists())
+
+    def test_checklist_renders_current_state(self):
+        c = self._c()
+        c.post(self._url(), {"done": [str(self.lessons[0].pk)],
+                             "skip": [str(self.lessons[1].pk)]})
+        html = c.get(reverse("students:student_lessons", kwargs={
+            "pk": self.child.pk, "curriculum_id": self.curriculum.pk})).content.decode()
+        self.assertIn(f'name="done" value="{self.lessons[0].pk}"\n                     checked', html.replace("\r", ""))
+        self.assertIn("is-skipped", html)                           # skipped row styled
+
+
+class LessonChecklistFloorTests(TestCase):
+    """HH-142: lessons already counted done by the placement floor must render TICKED,
+    so the progress number and the checkboxes never disagree."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.parent = User.objects.create_user(username="fl", email="fl@e.com", password="pw")
+        cls.family = Family.objects.create(name="FL Fam")
+        FamilyMembership.objects.create(user=cls.parent, family=cls.family, role="parent")
+        cls.child = Student.objects.create(
+            parent=cls.parent, first_name="Violet", grade_level="G03", family=cls.family)
+        cls.curriculum = Curriculum.objects.create(
+            parent=cls.parent, name="Dimensions Math 3A", subject="Math", family=cls.family)
+        apply_blueprint(cls.curriculum, get_blueprint("dimensions_math_3a"))
+        cls.lessons = list(
+            Lesson.objects.filter(chapter__curriculum=cls.curriculum)
+            .exclude(lesson_type=Lesson.TYPE_OPENER).order_by("chapter__number", "order"))
+
+    def test_lessons_below_the_pointer_render_checked(self):
+        # Parent placed the child mid-curriculum: everything before the pointer is done.
+        pointer = self.lessons[5]
+        p = CurriculumPlacement.objects.create(
+            child=self.child, curriculum=self.curriculum, current_lesson=pointer)
+        self.assertEqual(p.progress()["done"], 5)
+
+        c = Client(); c.login(username="fl", password="pw")
+        html = c.get(reverse("students:student_lessons", kwargs={
+            "pk": self.child.pk, "curriculum_id": self.curriculum.pk})).content.decode()
+        flat = " ".join(html.split())
+        # the 5 lessons before the pointer are ticked...
+        for lesson in self.lessons[:5]:
+            self.assertIn(f'name="done" value="{lesson.pk}" checked', flat,
+                          f"{lesson.code} should render checked (below the floor)")
+        # ...and the pointer lesson itself is NOT ticked (it's the one still to do)
+        self.assertNotIn(f'name="done" value="{pointer.pk}" checked', flat)
+        self.assertIn(f'name="done" value="{pointer.pk}"', flat)   # but it is on the page

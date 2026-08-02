@@ -1,4 +1,4 @@
-{# Shared pill sub-nav across the parent Spanish/Lingua pages (LGA-75). Pass `active` as one of: progress, library or books. Keep this comment to one physical line with no comment markers inside, or it leaks to the page (LGA-83). #}
+{# Shared pill sub-nav across the parent Spanish/Lingua pages. Pass `active` as one of: progress, library. The old third pill (Reading log) is gone: reading now lives in the Work Log, so there is one place to manage it (HH-143). Keep this comment to one physical line with no comment markers inside, or it leaks to the page (LGA-83). #}
 <ul class="nav nav-pills gap-1 mb-3 no-print">
   <li class="nav-item">
     <a class="nav-link{% if active == 'progress' %} active{% endif %}"
@@ -6,13 +6,18 @@
        href="{% url 'lingua:progress' %}">Progress</a>
   </li>
   <li class="nav-item">
-    <a class="nav-link{% if active == 'library' %} active{% endif %}"
-       {% if active == 'library' %}aria-current="page"{% endif %}
-       href="{% url 'lingua:library_list' %}">Library list</a>
+    <a class="nav-link{% if active == 'session' %} active{% endif %}"
+       {% if active == 'session' %}aria-current="page"{% endif %}
+       href="{% url 'lingua:session' %}">La sesión</a>
   </li>
   <li class="nav-item">
-    <a class="nav-link{% if active == 'books' %} active{% endif %}"
-       {% if active == 'books' %}aria-current="page"{% endif %}
-       href="{% url 'lingua:book_log' %}">Reading log</a>
+    <a class="nav-link{% if active == 'writing' %} active{% endif %}"
+       {% if active == 'writing' %}aria-current="page"{% endif %}
+       href="{% url 'lingua:writing' %}">Writing</a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link{% if active == 'library' %} active{% endif %}"
+       {% if active == 'library' %}aria-current="page"{% endif %}
+       href="{% url 'lingua:library_list' %}">Spanish books</a>
   </li>
 </ul>

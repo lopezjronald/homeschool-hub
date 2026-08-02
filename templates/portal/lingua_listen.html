@@ -1,4 +1,5 @@
 {% extends "portal/base_portal.html" %}
+{% load static %}
 {% block title %}Escuchar · {{ student.first_name }}{% endblock %}
 
 {% block content %}
@@ -6,7 +7,7 @@
 
   <div class="portal-hero mb-4">
     <h1>🎧 Escuchar español</h1>
-    <p class="mb-0">Mira y escucha. Después anota tus minutos. 🌱</p>
+    <p class="mb-0">Letras, palabras y videos. Después anota tus minutos. 🌱</p>
   </div>
 
   {% if logged %}
@@ -21,6 +22,55 @@
     <small class="text-muted">minutos escuchados &middot; {{ totals.minutes }} minutos de español en total</small>
   </div></div>
 
+  {% if alphabet %}
+    <h2 class="portal-section-title mb-3">Alfabeto</h2>
+    <p class="text-muted small mb-3">Toca una letra (o <strong>ll</strong> / <strong>rr</strong>) para oírla.</p>
+    <div class="d-flex flex-wrap gap-2 mb-4" data-lingua-clips>
+      {% for item in alphabet %}
+        {% if item.spoken_url %}
+          <button type="button" class="btn btn-outline-secondary lingua-clip-btn"
+                  data-audio-url="{{ item.spoken_url }}"
+                  title="{{ item.tile.spoken }}{% if item.tile.example %} · {{ item.tile.example }}{% endif %}"
+                  aria-label="Oír {{ item.tile.spoken }}{% if item.tile.example %}, como en {{ item.tile.example }}{% endif %}"
+                  style="min-width:48px; min-height:48px; font-size:1.25rem;">
+            {{ item.tile.symbol }}
+          </button>
+        {% else %}
+          <span class="btn btn-outline-secondary disabled lingua-clip-muted"
+                style="min-width:48px; min-height:48px; font-size:1.25rem;"
+                title="Audio próximamente">{{ item.tile.symbol }}</span>
+        {% endif %}
+      {% endfor %}
+    </div>
+  {% endif %}
+
+  {% if phrases %}
+    <h2 class="portal-section-title mb-3">Palabras y frases</h2>
+    <p class="text-muted small mb-3">Frases de tu clase — tócalas para oírlas.</p>
+    <div class="portal-subjects mb-4" data-lingua-clips>
+      {% for p in phrases %}
+        {% if p.audio_url %}
+          <button type="button" class="portal-subject-card lingua-clip-btn"
+                  data-audio-url="{{ p.audio_url }}"
+                  style="width:100%; text-align:left; min-height:44px;">
+            <div class="portal-subject-emoji">🔊</div>
+            <div class="portal-subject-body">
+              <div class="portal-subject-name">{{ p.text }}</div>
+            </div>
+          </button>
+        {% else %}
+          <div class="portal-subject-card" style="cursor:default;">
+            <div class="portal-subject-emoji">💬</div>
+            <div class="portal-subject-body">
+              <div class="portal-subject-name">{{ p.text }}</div>
+            </div>
+          </div>
+        {% endif %}
+      {% endfor %}
+    </div>
+  {% endif %}
+
+  <h2 class="portal-section-title mb-3">Videos</h2>
   {% if resources %}
     <div class="portal-subjects">
       {% for r in resources %}
@@ -43,7 +93,7 @@
           <input type="number" min="1" max="600" name="minutes" id="min-{{ r.id }}"
                  value="{{ r.minutes }}" class="form-control form-control-sm" style="width: 5rem;">
           <span class="small text-muted">min</span>
-          <button type="submit" class="btn btn-sm btn-outline-primary">Anotar</button>
+          <button type="submit" class="btn btn-outline-primary" style="min-height:44px;">Anotar</button>
         </form>
       </div>
       {% endfor %}
@@ -52,6 +102,12 @@
     <div class="alert alert-info">Pronto habrá videos para escuchar. 🌱</div>
   {% endif %}
 
+  {% include "portal/_station_done.html" %}
+
   <p class="mt-4"><a href="{% url 'portal:lingua_plan' token=token %}">&larr; Volver a leer</a></p>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'lingua/clips.js' %}"></script>
 {% endblock %}

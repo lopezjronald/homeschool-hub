@@ -11,6 +11,7 @@ Examples:
     python manage.py seed_eiw_violet --for-user ronald --child-name Violet
 """
 
+import json
 import re
 
 from django.core.management.base import BaseCommand, CommandError
@@ -33,6 +34,11 @@ KIND_MAP = {
     "short-answer": ("grammar", Question.TYPE_TEXT, "Practice"),
     "paragraph-writing": ("writing", Question.TYPE_TEXT, "Write"),
     "multiple-choice": ("grammar", Question.TYPE_TEXT, "Choose the answer"),
+    # A tap-to-pair exercise: ONE question, not one per row. The workbook prints
+    # these as a column of blanks beside a lettered answer bank, which flattens
+    # into a single list of items — and seeding that list as separate questions
+    # turns the answer bank itself into four unanswerable questions.
+    "matching": ("grammar", Question.TYPE_MATCHING, "Match them up"),
 }
 
 MARKUP_INTRO_HINT = (
@@ -57,6 +63,43 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         parser.add_argument("--for-user", required=True)
         parser.add_argument("--child-name", default="Violet")
+        parser.add_argument(
+            "--dry-run", action="store_true",
+            help="Report which superseded sets would be removed, without removing "
+                 "them. Worth doing first against live data.",
+        )
+
+    @staticmethod
+    def _prune_questions(qset, *, keep_through):
+        """Drop questions past ``keep_through`` that nobody has answered.
+
+        Answers are keyed by question pk, so deleting an answered question would
+        strand a child's response with nothing to render it against.
+        """
+        stale = qset.questions.filter(order__gt=keep_through)
+        answered = set()
+        for sheet in ResponseSheet.objects.filter(question_set=qset):
+            answered |= {int(k) for k, v in (sheet.answers or {}).items()
+                         if str(v).strip() and k.isdigit()}
+        stale.exclude(pk__in=answered).delete()
+
+    @staticmethod
+    def _has_work(qset):
+        """True if a child has anything invested in this set.
+
+        Deliberately wider than "has typed an answer". A SUBMITTED sheet is what
+        lesson completion counts, so deleting one rolls the lesson back to
+        not-done and moves the child's "What's Next" pointer backwards — even if
+        every answer box was left blank, which is exactly what a child does with
+        a broken exercise. A linked work-log entry or saved coach feedback is
+        likewise work she did.
+        """
+        for sheet in ResponseSheet.objects.filter(question_set=qset):
+            if sheet.is_submitted or sheet.work_entry_id or sheet.draft_feedback:
+                return True
+            if any(str(v).strip() for v in (sheet.answers or {}).values()):
+                return True
+        return False
 
     @transaction.atomic
     def handle(self, *args, **options):
@@ -92,6 +135,7 @@ class Command(BaseCommand):
             if lsn.number is not None
         }
 
+        dry_run = options.get("dry_run", False)
         set_count = q_count = markup_count = 0
         for lesson_num in sorted(EXERCISES):
             lesson_row = lessons_by_number.get(lesson_num)
@@ -99,6 +143,7 @@ class Command(BaseCommand):
                 continue
             title_base = LESSON_TITLES.get(lesson_num, f"Lesson {lesson_num}")
             used = {}
+            produced = set()
             for exercise in EXERCISES[lesson_num]:
                 category, response_type, label = KIND_MAP.get(
                     exercise["kind"], ("grammar", Question.TYPE_TEXT, "Practice"),
@@ -115,6 +160,7 @@ class Command(BaseCommand):
                 used[title] = used.get(title, 0) + 1
                 if used[title] > 1:
                     title = f"{title} ({used[title]})"
+                produced.add(title)
                 intro = exercise["instructions"] + (
                     MARKUP_INTRO_HINT if is_markup or wants_writemark else ""
                 )
@@ -129,6 +175,36 @@ class Command(BaseCommand):
                         "status": QuestionSet.APPROVED,
                     },
                 )
+                if response_type == Question.TYPE_MATCHING:
+                    # One question for the whole grid. `items` are (row, answer)
+                    # pairs; `options` is the pool the child taps, kept in the
+                    # workbook's printed order.
+                    pairs = exercise["items"]
+                    Question.objects.update_or_create(
+                        question_set=qset, order=1,
+                        defaults={
+                            "category": category,
+                            "response_type": Question.TYPE_MATCHING,
+                            # The instruction is already the set's intro; repeating
+                            # it as the prompt renders it twice on the page.
+                            "prompt": "",
+                            "passage": json.dumps({
+                                "words": exercise["options"],
+                                "definitions": [
+                                    {"n": n, "text": row, "word": answer}
+                                    for n, (row, answer) in enumerate(pairs, start=1)
+                                ],
+                            }),
+                        },
+                    )
+                    q_count += 1
+                    # Same answered-question guard the text path uses below: a
+                    # matching set that ever sheds rows must not take a child's
+                    # saved answers with them.
+                    self._prune_questions(qset, keep_through=1)
+                    set_count += 1
+                    continue
+
                 for order, item in enumerate(exercise["items"], start=1):
                     if is_markup:
                         defaults = {
@@ -165,14 +241,38 @@ class Command(BaseCommand):
                     )
                     q_count += 1
                     markup_count += 1 if is_markup else 0
-                # prune stale questions that have no saved answer
-                stale = qset.questions.filter(order__gt=len(exercise["items"]))
-                answered = set()
-                for sheet in ResponseSheet.objects.filter(question_set=qset):
-                    answered |= {int(k) for k, v in (sheet.answers or {}).items()
-                                 if str(v).strip() and k.isdigit()}
-                stale.exclude(pk__in=answered).delete()
+                self._prune_questions(qset, keep_through=len(exercise["items"]))
                 set_count += 1
+
+            # Retitling an exercise (e.g. Lesson 7 moving from "Choose the answer"
+            # to "Match them up") would otherwise leave the old set beside the new
+            # one, since sets are keyed on title — and the old one is the broken
+            # one. Drop what this run no longer produces.
+            #
+            # Scoped to what THIS seeder owns: a teacher-led discussion set or a
+            # per-child set was put there by something else, and can never have a
+            # ResponseSheet to protect it (discussion sets are excluded from the
+            # child's portal), so an unscoped sweep would delete them every run.
+            superseded = (
+                QuestionSet.objects
+                .filter(lesson=lesson_row, mode=QuestionSet.MODE_STUDENT, child__isnull=True)
+                .exclude(title__in=produced)
+            )
+            for old in superseded:
+                if self._has_work(old):
+                    self.stdout.write(self.style.WARNING(
+                        f"Kept superseded set '{old.title}' — a child has work in it."
+                    ))
+                    continue
+                # Say what went. This runs against live data and the deletion is
+                # not reversible, so "it silently vanished" is not something anyone
+                # should have to reconstruct afterwards.
+                self.stdout.write(self.style.WARNING(
+                    f"Removed superseded set '{old.title}' "
+                    f"({old.questions.count()} questions, no saved work)."
+                ))
+                if not dry_run:
+                    old.delete()
 
         self.stdout.write(self.style.SUCCESS(
             f"Seeded {set_count} question sets, {q_count} questions "

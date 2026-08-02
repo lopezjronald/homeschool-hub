@@ -91,8 +91,11 @@ def _env_float(name: str, default: float) -> float:
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = os.getenv("SECRET_KEY", "unsafe-secret-for-dev-only")
 
-# DEBUG: Default True for local dev (when env var not set), explicitly set False in production
-DEBUG = _env_bool("DEBUG", default=True)
+# Fail CLOSED. Prod sets DEBUG=false explicitly, but any NEW environment that
+# forgets it (review app, restored dyno, rebuilt account) would otherwise serve
+# full tracebacks — settings, local variables and query contents — to anyone
+# who triggers an error. Local dev opts in via .env.
+DEBUG = _env_bool("DEBUG", default=False)
 
 # ALLOWED_HOSTS: Comma-separated list of hostnames
 # Local dev default: localhost only. Production: set to exact hostname(s).
@@ -213,7 +216,17 @@ AUTH_PASSWORD_VALIDATORS = [
 # `manage.py test`. Django hashes a password on nearly every user-creating test,
 # and the default PBKDF2 hasher dominates runtime. This is auto-detected from
 # argv, so no separate settings module or test runner flag is needed.
-if "test" in sys.argv:
+# Match the SUBCOMMAND, not any argument: `"test" in sys.argv` also fires for
+# `manage.py createsuperuser --username test`, which then writes an MD5 password
+# hash the web dyno cannot verify — that account can never log in, with nothing
+# to explain why. It now also decides a security default (SECURE_SSL_REDIRECT).
+#
+# Deliberately NOT keyed off PYTEST_CURRENT_TEST: pytest sets that per-test, long
+# after settings import, so it would be dead here — while still being live in
+# every other process, where one env var of that name would silently turn off the
+# HTTPS redirect and make every password an unsalted MD5.
+TESTING = len(sys.argv) > 1 and sys.argv[1] == "test"
+if TESTING:
     PASSWORD_HASHERS = ["django.contrib.auth.hashers.MD5PasswordHasher"]
     # Grade inline (no daemon thread) under the test runner: a background grade
     # thread races the test's own transaction on SQLite ("table is locked") and
@@ -293,6 +306,9 @@ if _google_client_id:
 EMAIL_HOST = os.getenv("EMAIL_HOST", "")
 if EMAIL_HOST:
     EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
+    # Never inherit the global socket default (which can block forever):
+    # a wedged SES connection would hang a dyno worker on register/invite.
+    EMAIL_TIMEOUT = 10
     EMAIL_PORT = _env_int("EMAIL_PORT", 587)
     EMAIL_USE_TLS = _env_bool("EMAIL_USE_TLS", True)
     EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER", "")
@@ -321,6 +337,37 @@ INVITE_MAX_AGE_DAYS = 7
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 TUTOR_MODEL = os.getenv("TUTOR_MODEL", "claude-opus-4-8")
 
+# Monthly AI hard-stop ceiling in USD for the tutor path (HH-145) — grading, the
+# writing coach, and the writing-box helpers. Lingua has had one since LGA-29;
+# tutor is the HIGHER-volume side (it fires on ordinary use, not on an operator
+# authoring content) and had no backstop at all, so a retry storm or a stuck
+# daemon would have shown up first as a bill.
+#
+# The two ceilings are separate on purpose: lingua must stay extractable (D-03),
+# so its ledger travels with it. They are not additive — set each to the share of
+# the account you want that side to be able to spend.
+TUTOR_MONTHLY_COST_CEILING_USD = _env_float("TUTOR_MONTHLY_COST_CEILING_USD", 25.0)
+
+# USD per MILLION tokens, (input, output), per model. Tutor uses two tiers — a big
+# model for grading and coaching, a small one for word help and spellcheck — and
+# they differ by more than 10x, so cost has to be priced per model at the moment
+# of the call, not derived from a token total afterwards.
+#
+# These are ESTIMATES, not a bill. They set where the ceiling trips and what the
+# admin's spend column reads, so check them against the current price list when a
+# model changes — pricing that is wrong by 3x turns a $25 ceiling into an $8 one.
+# Override any of them via TUTOR_AI_PRICES in code, or raise the ceiling.
+TUTOR_AI_PRICES = {
+    "claude-opus-4-8": (5.0, 25.0),
+    "claude-opus-5": (5.0, 25.0),
+    "claude-sonnet-5": (3.0, 15.0),
+    "claude-haiku-4-5": (1.0, 5.0),
+}
+# Fallback for a model not in the table. Deliberately the most expensive tier:
+# an unrecognised model must over-estimate and stop early, never under-count and
+# sail past the ceiling.
+TUTOR_AI_PRICE_FALLBACK = (15.0, 75.0)
+
 # ---------------------------------------------------------------------------
 # Lingua (Spanish acquisition module) — namespaced config (D-06). Extractable
 # module: no FK to host models; learner carried as host_student_id (D-03).
@@ -333,8 +380,8 @@ LINGUA = {
     # if the model/price changes). Story generation is operator content-authoring, so
     # this is a single monthly ceiling, not per-child.
     "MONTHLY_COST_CEILING_USD": _env_int("LINGUA_MONTHLY_COST_CEILING_USD", 25),
-    "AI_PRICE_INPUT_PER_MTOK": _env_float("LINGUA_AI_PRICE_INPUT_PER_MTOK", 15.0),
-    "AI_PRICE_OUTPUT_PER_MTOK": _env_float("LINGUA_AI_PRICE_OUTPUT_PER_MTOK", 75.0),
+    "AI_PRICE_INPUT_PER_MTOK": _env_float("LINGUA_AI_PRICE_INPUT_PER_MTOK", 5.0),
+    "AI_PRICE_OUTPUT_PER_MTOK": _env_float("LINGUA_AI_PRICE_OUTPUT_PER_MTOK", 25.0),
     # Audit-trail retention in days (~18 months); enforced by `purge_stale` (D-56).
     "AUDIT_RETENTION_DAYS": _env_int("LINGUA_AUDIT_RETENTION_DAYS", 548),
     # TTS provider order (SPIKE-01: Polly primary, edge-tts fallback — D-17/D-18).
@@ -383,6 +430,16 @@ LINGUA = {
     "WORKLOG_SINK": os.getenv(
         "LINGUA_WORKLOG_SINK", "homeschool_hub.adapters.lingua_worklog.HostWorkLogSink"
     ),
+    # The work-log subject mirrored books are filed under. One definition, read by the
+    # adapter, the Work Log's subject filter, and lingua's legacy redirect — so nobody
+    # has to import anybody to agree on the string (HH-143).
+    "WORKLOG_SUBJECT": os.getenv("LINGUA_WORKLOG_SUBJECT", "Spanish reading"),
+    # Host URL name the legacy reading-log link redirects to. Named here rather than
+    # hard-coded in lingua so extracting the module degrades gracefully instead of
+    # raising NoReverseMatch on a route that left with the host.
+    "WORKLOG_LIST_URL_NAME": os.getenv(
+        "LINGUA_WORKLOG_LIST_URL_NAME", "worklog:worklog_list"
+    ),
 }
 
 # ---------------------------------------------------------------------------
@@ -398,8 +455,9 @@ MANGA_REFERENCE_KEY = os.getenv("MANGA_REFERENCE_KEY", "image_input")
 # ---------------------------------------------------------------------------
 # Security Settings (env-driven, safe defaults)
 # ---------------------------------------------------------------------------
-# In production (DEBUG=False), these default to strict/secure values.
-# In development (DEBUG=True), they default to permissive values for localhost.
+# These default to strict/secure values. DEBUG now fails closed, so an
+# environment that says nothing gets the production posture; a developer opts
+# down to the permissive localhost values with DEBUG=true in their .env.
 #
 # Heroku deployment: Set these env vars in Heroku config:
 #   DEBUG=false
@@ -413,7 +471,10 @@ MANGA_REFERENCE_KEY = os.getenv("MANGA_REFERENCE_KEY", "image_input")
 # ---------------------------------------------------------------------------
 
 # SSL/HTTPS redirect (default: False in dev, True in prod)
-SECURE_SSL_REDIRECT = _env_bool("SECURE_SSL_REDIRECT", default=not DEBUG)
+# TESTING is carved out because now that DEBUG fails closed, the suite would
+# otherwise inherit the production default: the test client speaks plain HTTP, so
+# SecurityMiddleware would 301 every request and no view test would reach its view.
+SECURE_SSL_REDIRECT = _env_bool("SECURE_SSL_REDIRECT", default=not (DEBUG or TESTING))
 
 # When SSL redirect is enabled, trust Heroku's X-Forwarded-Proto header
 # This is required for Heroku's reverse proxy / load balancer

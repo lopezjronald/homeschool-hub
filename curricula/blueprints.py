@@ -2,9 +2,14 @@
 
 A blueprint is plain data transcribed from a published curriculum's scope &
 sequence. Applying one populates Chapter/Lesson rows for a given Curriculum via
-``manage.py apply_blueprint``. Objectives are included where available (Ch1–2
-of Dimensions Math 3A, from the Home Instructor's Guide 3A); others can be
-filled in over time.
+``manage.py apply_blueprint``. Objectives are included where available. For
+Dimensions Math 3A, Ch1–2 are transcribed from the Home Instructor's Guide 3A;
+Ch3's describe the same lesson content but were written here rather than copied
+from the guide, so check them against your edition before relying on the exact
+wording. Later chapters can be filled in over time.
+
+Objectives are not decoration: ``tutor.views._entry_objectives`` feeds them to
+the AI grader as concept context, so a lesson with none is graded blind.
 
 Lesson dict keys: order, number (None for openers/reviews), title, type
 (opener|lesson|practice|review), objectives.
@@ -94,12 +99,26 @@ DIMENSIONS_MATH_3A = {
             "title": "Addition and Subtraction - Part 2",
             "lessons": [
                 _op(0),
-                _ls(1, 1, "Addition with Regrouping"),
-                _ls(2, 2, "Subtraction with Regrouping - Part 1"),
-                _ls(3, 3, "Subtraction with Regrouping - Part 2"),
-                _ls(4, 4, "Estimating Sums and Differences - Part 1"),
-                _ls(5, 5, "Estimating Sums and Differences - Part 2"),
-                _ls(6, 6, "Word Problems"),
+                _ls(1, 1, "Addition with Regrouping",
+                    "Add numbers within 10,000 using the standard algorithm, regrouping "
+                    "ten ones as one ten, ten tens as one hundred, and ten hundreds as "
+                    "one thousand."),
+                _ls(2, 2, "Subtraction with Regrouping - Part 1",
+                    "Subtract numbers within 10,000 using the standard algorithm, "
+                    "regrouping one of a larger place into ten of the next place."),
+                _ls(3, 3, "Subtraction with Regrouping - Part 2",
+                    "Subtract from numbers containing zeros, regrouping across more than "
+                    "one place."),
+                _ls(4, 4, "Estimating Sums and Differences - Part 1",
+                    "Round numbers to the nearest hundred to estimate a sum, and use the "
+                    "estimate to check whether an exact answer is reasonable."),
+                _ls(5, 5, "Estimating Sums and Differences - Part 2",
+                    "Round numbers to estimate a difference, and choose a rounding place "
+                    "that gives a useful estimate."),
+                _ls(6, 6, "Word Problems",
+                    "Solve one- and two-step word problems involving addition and "
+                    "subtraction within 10,000, using bar models to represent the "
+                    "information."),
                 _ls(7, 7, "Practice", type=PRACTICE),
             ],
         },

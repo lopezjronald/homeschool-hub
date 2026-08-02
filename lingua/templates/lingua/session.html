@@ -1,0 +1,199 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}La sesión · Lingua{% endblock %}
+{% block content %}
+<div class="container py-4 ses">
+
+  <div class="no-print">
+    {% include "lingua/_lingua_subnav.html" with active='session' %}
+
+    <h1 class="h4 mb-1">La sesión</h1>
+    <p class="text-muted mb-3">Twenty minutes, one child, mostly off the screen. You run it — this page just hands you the words and the paper.</p>
+
+    {% if child %}
+      <div class="ses-who no-print">
+        <span class="ses-who-label">Session for</span>
+        {% if multi_child %}
+          <form method="get" class="ses-who-btns">
+            {% for c in children %}
+              <button type="submit" name="for" value="{{ c.pk }}"
+                      class="ses-who-btn{% if c.pk == child.pk %} is-active{% endif %}"
+                      {% if c.pk == child.pk %}aria-current="true"{% endif %}>{{ c.first_name }}</button>
+            {% endfor %}
+          </form>
+        {% else %}
+          <strong>{{ child.first_name }}</strong>
+        {% endif %}
+        {% if band_label %}<span class="ses-band">{{ band_label }}</span>{% endif %}
+        <button type="button" class="ses-print" onclick="window.print()">Print the sheet</button>
+      </div>
+    {% elif no_family %}
+      <p class="alert alert-info py-2 small">Add a family with children to generate a session sheet. You can still use the phrases below.</p>
+    {% else %}
+      <p class="alert alert-info py-2 small">Add a child under <a href="{% url 'students:student_list' %}">My Children</a> to generate a session sheet. The phrases below work regardless.</p>
+    {% endif %}
+
+    {# The routine. Deliberately three steps and 20 minutes — a longer plan is one you abandon. #}
+    <ol class="ses-routine">
+      <li>
+        <span class="ses-step-time">5 min</span>
+        <span class="ses-step-name">Review</span>
+        <span class="ses-step-what">Yesterday's dictado words. Say each one, she writes it. No new material.</span>
+      </li>
+      <li>
+        <span class="ses-step-time">10 min</span>
+        <span class="ses-step-name">Read together</span>
+        <span class="ses-step-what">A library book or a story she knows. You read a page, she reads a page. Point at pictures and use the questions below.</span>
+      </li>
+      <li>
+        <span class="ses-step-time">5 min</span>
+        <span class="ses-step-name">Write</span>
+        <span class="ses-step-what">Copy the lines on the sheet, then the dictado. On paper — handwriting is what builds the spelling memory.</span>
+      </li>
+    </ol>
+
+    <div class="ses-coach">
+      <strong>You're the facilitator, not the expert.</strong> You do not need to be fluent for this to work — you need the routine to happen, in Spanish, most days. Tap any phrase to hear it, then say it yourself.
+    </div>
+
+    {% if child %}
+      <section class="ses-marking">
+        <h2 class="ses-h2">Marking her writing</h2>
+
+        {% if focus %}
+          <p class="ses-focus">
+            <strong>Work on this:</strong> {{ focus.label }}
+            <span class="ses-focus-n">({{ focus.count }} this month)</span>
+            {% if focus.patterns %}
+              <span class="ses-focus-drill">Drill: {{ focus.patterns|join:" · " }}</span>
+            {% endif %}
+          </p>
+        {% endif %}
+
+        <p class="ses-mode">
+          {% if correction_mode == 'indirect' %}
+            <strong>Correct indirectly.</strong> Underline the mistake and let her find it —
+            she's old enough to self-correct, and it sticks better than being told.
+          {% else %}
+            <strong>Correct directly.</strong> Show her the right form and move on. Keep it
+            light and pick <em>one</em> thing per session — correcting everything is how a
+            9-year-old stops wanting to write.
+          {% endif %}
+        </p>
+
+        {% if can_tag %}
+        <form method="post" action="{% url 'lingua:session_log_error' %}" class="ses-tag">
+          {% csrf_token %}
+          <input type="hidden" name="child" value="{{ child.pk }}">
+          <label class="visually-hidden" for="tag-source">Where</label>
+          <select id="tag-source" name="source" class="ses-tag-src">
+            <option value="dictado">Dictado</option>
+            <option value="copia">Copia</option>
+            <option value="freewrite">Free write</option>
+            <option value="journal">Journal</option>
+            <option value="other">Other</option>
+          </select>
+          <input type="text" name="wrote" maxlength="120" placeholder="she wrote…"
+                 class="ses-tag-text" aria-label="What she wrote">
+          <input type="text" name="expected" maxlength="120" placeholder="should be…"
+                 class="ses-tag-text" aria-label="What it should be">
+          <span class="ses-tag-cats">
+            {% for c in error_categories %}
+              <button type="submit" name="category" value="{{ c.value }}"
+                      class="ses-tag-btn" title="{{ c.label }}">{{ c.short }}</button>
+            {% endfor %}
+          </span>
+        </form>
+        {% endif %}
+
+        {% if top_errors %}
+          <h3 class="ses-cat">Top mistakes this month</h3>
+          <ol class="ses-top">
+            {% for e in top_errors %}
+              <li><span class="ses-top-n">{{ e.count }}×</span> {{ e.label }}</li>
+            {% endfor %}
+          </ol>
+        {% else %}
+          <p class="text-muted small mb-0">Nothing tagged yet — tag a mistake above and
+            the sheet starts targeting it.</p>
+        {% endif %}
+      </section>
+    {% endif %}
+
+    {% if groups %}
+      <h2 class="ses-h2">Say it in Spanish</h2>
+      <div data-lingua-clips>
+        {% for g in groups %}
+          <h3 class="ses-cat">{{ g.label }}</h3>
+          <ul class="ses-phrases">
+            {% for item in g.phrases %}
+              <li class="ses-phrase">
+                {% if item.audio_url %}
+                  <button type="button" class="ses-say lingua-clip-btn"
+                          data-audio-url="{{ item.audio_url }}"
+                          aria-label="Hear: {{ item.phrase.text }}">
+                    <span class="ses-say-icon" aria-hidden="true">🔊</span>
+                    <span class="ses-say-es">{{ item.phrase.text }}</span>
+                  </button>
+                {% else %}
+                  <span class="ses-say is-mute">
+                    <span class="ses-say-icon" aria-hidden="true">💬</span>
+                    <span class="ses-say-es">{{ item.phrase.text }}</span>
+                  </span>
+                {% endif %}
+                <span class="ses-en">{{ item.phrase.english }}</span>
+                {% if item.phrase.note %}<span class="ses-note">{{ item.phrase.note }}</span>{% endif %}
+              </li>
+            {% endfor %}
+          </ul>
+        {% endfor %}
+      </div>
+    {% else %}
+      <p class="alert alert-info">No phrases yet — run <code>manage.py seed_classroom_phrases</code>.</p>
+    {% endif %}
+  </div>
+
+  {# ---- The printable sheet. Everything above is screen-only. ---- #}
+  {% if sheet and sheet.story %}
+    <section class="ses-sheet">
+      <header class="ses-sheet-head">
+        <h2>{% if child %}{{ child.first_name }}{% endif %} · {{ sheet.story.title }}</h2>
+        <span class="ses-sheet-date">Fecha: ____________</span>
+      </header>
+      <p class="ses-sheet-note no-print">
+        These lines rotate each day, so tomorrow's sheet is different.
+        Want other material? Read a different story with her — the sheet follows
+        whatever she read most recently.
+      </p>
+
+      {% if sheet.copia %}
+        <h3 class="ses-sheet-h3">Copia <span class="ses-sheet-hint">— copy each line exactly</span></h3>
+        {% for line in sheet.copia %}
+          <p class="ses-copia-model">{{ line }}</p>
+          <div class="ses-rule"></div>
+          <div class="ses-rule"></div>
+        {% endfor %}
+      {% endif %}
+
+      {% if sheet.dictado %}
+        <h3 class="ses-sheet-h3">Dictado
+          <span class="ses-sheet-hint">— she writes what you read out</span></h3>
+        {# Screen-only, deliberately: the parent reads these off the phone while she writes on the printed page. Printing them would hand her the answers. #}
+        <p class="ses-dictado-model no-print">
+          <span class="ses-dictado-cue">Read aloud:</span> {{ sheet.dictado|join:" · " }}
+        </p>
+        {% for item in sheet.dictado %}
+          <div class="ses-rule"></div>
+        {% endfor %}
+        <div class="ses-rule"></div>
+      {% endif %}
+    </section>
+  {% elif child %}
+    <p class="alert alert-info no-print">No approved story to build a sheet from yet — approve one under <a href="{% url 'lingua:approvals' %}">Approvals</a> and it'll appear here.</p>
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'lingua/clips.js' %}"></script>
+{% endblock %}

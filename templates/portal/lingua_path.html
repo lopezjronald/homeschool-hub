@@ -1,0 +1,57 @@
+{% extends "portal/base_portal.html" %}
+{% block title %}Mapa · {{ student.first_name }}{% endblock %}
+
+{% block content %}
+<div class="container portal-narrow">
+
+  <div class="portal-hero mb-3">
+    <p class="portal-camino-eyebrow mb-1">Camino de español</p>
+    <h1>Tu mapa</h1>
+    {% if pathway %}
+      <p class="portal-camino-path-sub mb-0">{{ pathway.title }}</p>
+    {% endif %}
+    <p class="mb-0 portal-howto">Tap a stop to open it. Tick the box when you finish.</p>
+  </div>
+
+  {% if steps %}
+    {% if finished %}
+      <p class="portal-camino-done" role="status">¡Terminaste el camino de hoy! 🎉</p>
+    {% else %}
+      <p class="portal-camino-count">{{ done }} de {{ total }} · hoy</p>
+    {% endif %}
+    {% if streak > 1 %}
+      <p class="portal-camino-streak">🔥 {{ streak }} días seguidos</p>
+    {% endif %}
+
+    <div class="mb-4 portal-path-list">
+      {% for row in steps %}
+        <div class="portal-path-step {% if row.status == 'complete' %}is-complete{% if row.practicar %} is-practicar{% endif %}{% elif row.primary %}is-available is-primary{% else %}is-available is-secondary{% endif %}">
+          <form method="post" action="{% url 'portal:lingua_path_check' token=token %}" class="portal-path-check-form">
+            <input type="hidden" name="step_id" value="{{ row.step.id }}">
+            <input type="hidden" name="done" value="{% if row.checked %}0{% else %}1{% endif %}">
+            <button type="submit"
+                    class="portal-path-check{% if row.checked %} is-checked{% endif %}"
+                    aria-pressed="{% if row.checked %}true{% else %}false{% endif %}"
+                    aria-label="{% if row.checked %}Quitar hecho: {{ row.title }}{% else %}Marcar hecho: {{ row.title }}{% endif %}">
+              {% if row.checked %}✓{% else %}☐{% endif %}
+            </button>
+          </form>
+          <a href="{{ row.href }}" class="portal-path-step-body">
+            <div class="portal-path-step-title">{{ row.title }}</div>
+            <div class="portal-path-step-meta">{{ row.label }}</div>
+          </a>
+        </div>
+      {% endfor %}
+    </div>
+  {% else %}
+    <div class="alert alert-info mb-4">
+      El mapa todavía se está armando. Mientras tanto, sigue con
+      <a href="{% url 'portal:lingua_plan' token=token %}">Hoy</a>.
+    </div>
+  {% endif %}
+
+  <p class="mt-2">
+    <a class="portal-back" href="{% url 'portal:lingua_plan' token=token %}">&larr; Hoy</a>
+  </p>
+</div>
+{% endblock %}

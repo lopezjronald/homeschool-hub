@@ -9,11 +9,20 @@
   <div class="d-flex justify-content-between align-items-center mb-3">
     <div>
       <h1 class="mb-0">Curricula</h1>
-      <small class="text-muted">{{ total_count }} on file</small>
+      <small class="text-muted">{{ total_count }} on file{% if deactivated_count and not show_deactivated %} · {{ deactivated_count }} deactivated{% endif %}</small>
     </div>
-    {% if can_edit %}
-    <a href="{% url 'curricula:curriculum_create' %}" class="btn btn-primary">Add Curriculum</a>
-    {% endif %}
+    <div class="d-flex gap-2 align-items-center">
+      {% if deactivated_count or show_deactivated %}
+        {% if show_deactivated %}
+          <a href="?{% if q %}q={{ q }}&{% endif %}{% if active_subject %}subject={{ active_subject }}&{% endif %}{% if active_grade %}grade={{ active_grade }}{% endif %}" class="btn btn-sm btn-outline-secondary">Hide deactivated</a>
+        {% else %}
+          <a href="?show_deactivated=1{% if q %}&q={{ q }}{% endif %}{% if active_subject %}&subject={{ active_subject }}{% endif %}{% if active_grade %}&grade={{ active_grade }}{% endif %}" class="btn btn-sm btn-outline-secondary">Show deactivated ({{ deactivated_count }})</a>
+        {% endif %}
+      {% endif %}
+      {% if can_edit %}
+      <a href="{% url 'curricula:curriculum_create' %}" class="btn btn-primary">Add Curriculum</a>
+      {% endif %}
+    </div>
   </div>
 
   {% if total_count %}
@@ -61,6 +70,7 @@
               <div class="ss-feature-emoji mb-2">{{ curriculum.emoji }}</div>
               <h5 class="card-title mb-1">
                 <a href="{% url 'curricula:curriculum_detail' curriculum.pk %}" class="text-decoration-none">{{ curriculum.name }}</a>
+                {% if not curriculum.is_active %}<span class="badge bg-secondary">Deactivated</span>{% endif %}
               </h5>
               <p class="mb-0">
                 {% if curriculum.subject %}<span class="badge bg-light text-dark">{{ curriculum.subject }}</span>{% endif %}

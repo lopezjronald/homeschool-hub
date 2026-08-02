@@ -5,8 +5,12 @@ custom managers (D-05) — the Django QuerySet is the repository. This module al
 holds the composition helper that resolves the host-provided AIClient adapter
 from settings, so lingua never imports the adapter (or tutor) directly.
 """
+from datetime import timedelta
+
 import json
+import logging
 import os
+import re
 import tempfile
 
 from django.conf import settings
@@ -17,15 +21,20 @@ from django.utils.module_loading import import_string
 
 from . import (
     advancement, assets, audio, cognates, comprehension, illustrate, leveling,
-    profiles, safety, schedulers, storage,
+    profiles, pronunciation, safety, schedulers, storage,
 )
 from .models import (
-    AiUsage, AuditEvent, BookLogEntry, ComprehensionCheck, KnownWord, Learner,
-    LibraryBook, ListeningResource, ListeningSession, MilestoneAward, PhonicsRule,
-    ReadingSession, ReviewItem, Story, StoryAudio, StoryImage, StoryRecording, Theme,
+    AiUsage, AlphabetTile, AudioClip, AuditEvent, BookLogEntry, ClassroomPhrase,
+    ComprehensionCheck, KnownWord, Learner, LibraryBook, ListeningResource,
+    ListeningSession, MilestoneAward, Pathway, PathwayCheckmark, PathwayStep,
+    PhonicsRule, ReadingSession, ReviewItem, Story, StoryAudio,
+    FreeWrite, JournalEntry,
+    StoryImage, StoryRecording, Theme, TutorPacket, WritingError,
 )
 from .ports import AIClient, ImageClient
 from .prompts import CRITIC_SYSTEM, STORY_SYSTEM
+
+logger = logging.getLogger(__name__)
 
 
 class BudgetExceeded(Exception):
@@ -59,7 +68,48 @@ def delete_learner_for_student(host_student_id):
     backstop for any inline call that didn't run. Returns the rows-deleted count.
     """
     deleted, _ = Learner.objects.filter(host_student_id=host_student_id).delete()
-    return deleted
+    # TutorPacket carries host_student_id as a plain int too (D-03), so nothing
+    # cascades it. Left behind it keeps the tutor's name, the child's homework text
+    # and an R2 file forever — exactly the gap the inline-purge rule exists to close.
+    packets, _stranded = purge_tutor_packets([host_student_id])
+    return deleted + packets
+
+
+def purge_tutor_packets(host_student_ids):
+    """Delete tutor packets for the given host students, uploads included.
+
+    Django stopped deleting FileField storage on model delete in 1.3, and a
+    queryset delete() never touches storage at all — so a plain .delete() here
+    would drop the row and strand the child's uploaded handout in R2 with nothing
+    left pointing at it. For a deleted-child privacy purge that is worse than
+    leaving the row, so the files go first.
+
+    A NULL host_student_id means a packet SHARED with every child; it is never an
+    orphan, so it is excluded rather than left to SQL's `IN (NULL)` behaviour.
+
+    Returns (rows_deleted, files_left_behind). The second number matters: once the
+    row is gone nothing points at the object any more, so a storage failure here is
+    permanent. A missing key is a harmless no-op, but a token without
+    s3:DeleteObject fails EVERY time and looks exactly the same from one call —
+    hence the count, so the caller can say so out loud rather than report success.
+    """
+    hsids = [h for h in host_student_ids if h is not None]
+    if not hsids:
+        return 0, 0
+    packets = TutorPacket.objects.filter(host_student_id__in=hsids)
+    stranded = 0
+    for packet in packets.exclude(file=""):
+        try:
+            packet.file.delete(save=False)
+        except Exception:  # noqa: BLE001 — a missing/unreachable object must not
+            # block the row purge; the row is the part that holds the child's data.
+            stranded += 1
+            logger.exception(
+                "Could not delete tutor packet file: packet=%s host_student=%s file=%s",
+                packet.pk, packet.host_student_id, packet.file.name,
+            )
+    deleted, _ = packets.delete()
+    return deleted, stranded
 
 
 def rotate_themes(age_band, count=3):
@@ -261,6 +311,38 @@ def delete_book_log(learner, entry_id, *, worklog_sink=None):
             except Exception:  # noqa: BLE001 — best-effort cleanup
                 pass
     return True
+
+
+def band_for_dob(dob):
+    """The track band a child of this birth date starts in: KIDS_EARLY under 10, else
+    KIDS_OLDER; KIDS_EARLY when the DOB is unknown. The ONE definition — the host
+    adapter delegates here rather than keeping its own copy."""
+    if not dob:
+        return profiles.KIDS_EARLY
+    from datetime import date as _date
+    today = _date.today()
+    # exact calendar age (no leap-day drift from //365 near the boundary)
+    age = today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
+    return profiles.KIDS_OLDER if age >= 10 else profiles.KIDS_EARLY
+
+
+def learner_for_child(child):
+    """The Learner for a ``directory`` child row, provisioned on first use. ``child`` is
+    a plain dict, not a host model — lingua never sees one (D-03/D-04)."""
+    return get_or_create_learner(child["pk"], band_for_dob(child.get("date_of_birth")))
+
+
+def forget_mirror(host_record_id):
+    """Drop the book-log rows mirrored into a host record that no longer exists.
+
+    The other half of :func:`delete_book_log`: the parent can also delete the entry
+    from the host's own log, and without this the library page would keep showing the
+    book as read, pointing at a work-log row that is gone. Deliberately does NOT call
+    the sink back — the host record is already deleted. Returns the number removed."""
+    if not host_record_id:
+        return 0
+    deleted, _ = BookLogEntry.objects.filter(host_worklog_id=host_record_id).delete()
+    return deleted
 
 
 # --- Illustrated storybook pictures (LGA-71) ---------------------------------
@@ -868,14 +950,519 @@ def mark_nudge_shown(learner):
     profile.save(update_fields=["last_nudge_reading_count", "updated_at"])
 
 
-def phonics_rules():
-    """The active Spanish phonics rules for the mini-lesson (F-04, LGA-64), ordered."""
-    return list(PhonicsRule.objects.filter(active=True))
+def phonics_rules(band=None):
+    """The active Spanish phonics rules for a band (F-04, LGA-64/98), ordered.
+
+    Rules with a blank ``age_band`` are universal; a rule that names a band is shown
+    only to that band. Without this the accent rules — which are a YEAR-LONG unit for
+    the 12-year-old — landed on the 9-year-old's sounds card, which is the exact
+    inverse of the intent."""
+    qs = PhonicsRule.objects.filter(active=True)
+    if band:
+        qs = qs.filter(Q(age_band="") | Q(age_band=band))
+    return list(qs)
+
+
+def phonics_example_words(example):
+    """Split a PhonicsRule.example string ('mesa · piso · luna') into words."""
+    if not example:
+        return []
+    return [w.strip() for w in example.replace("·", " ").split() if w.strip()]
+
+
+def _clip_lookup(texts, *, voice=None, engine=None, provider="polly"):
+    """Map exact text -> current AudioClip URL for the given voice (LGA-84)."""
+    voice = voice or settings.LINGUA.get("TTS_VOICE", "Mia")
+    engine = engine or settings.LINGUA.get("TTS_ENGINE", "neural")
+    texts = [t for t in texts if t]
+    if not texts:
+        return {}
+    out = {}
+    for clip in AudioClip.objects.filter(
+        text__in=texts, voice=voice, engine=engine, provider=provider,
+    ):
+        if clip.is_current:
+            try:
+                out[clip.text] = storage.public_url(clip.audio_key)
+            except Exception:  # noqa: BLE001 — missing storage must not 500 the portal
+                continue
+    return out
+
+
+def phonics_rules_with_audio(*, band=None, voice=None, engine=None):
+    """Phonics rules with per-word tap targets + optional audio URLs (LGA-84).
+
+    Each rule becomes ``{rule, words: [{text, audio_url|None}]}``. Missing clips
+    degrade to plain text (no dead buttons).
+    """
+    rules = phonics_rules(band)
+    all_words = []
+    for rule in rules:
+        all_words.extend(phonics_example_words(rule.example))
+    urls = _clip_lookup(all_words, voice=voice, engine=engine)
+    result = []
+    for rule in rules:
+        words = [{"text": w, "audio_url": urls.get(w)} for w in phonics_example_words(rule.example)]
+        result.append({"rule": rule, "words": words})
+    return result
 
 
 def listening_resources(age_band):
     """Active curated listening items for a band, ordered (F-02/N-02, LGA-55/56)."""
     return list(ListeningResource.objects.filter(age_band=age_band, active=True))
+
+
+def tutor_packets_for(host_student_id):
+    """Active tutor packets visible to a host student (LGA-85).
+
+    A packet with ``host_student_id`` NULL is shared; otherwise it must match.
+    """
+    return list(
+        TutorPacket.objects.filter(active=True).filter(
+            Q(host_student_id__isnull=True) | Q(host_student_id=host_student_id)
+        )
+    )
+
+
+def tutor_packet_for(host_student_id, packet_id):
+    """One visible TutorPacket or None (LGA-85)."""
+    return (
+        TutorPacket.objects.filter(pk=packet_id, active=True)
+        .filter(Q(host_student_id__isnull=True) | Q(host_student_id=host_student_id))
+        .first()
+    )
+
+
+def alphabet_tiles():
+    """Active alphabet / digraph tiles in chart order (LGA-86)."""
+    return list(AlphabetTile.objects.filter(active=True))
+
+
+def alphabet_tiles_with_audio(*, voice=None, engine=None):
+    """Alphabet tiles with spoken + example audio URLs when baked (LGA-86)."""
+    tiles = alphabet_tiles()
+    texts = []
+    for t in tiles:
+        texts.append(t.spoken)
+        if t.example:
+            texts.append(t.example)
+    urls = _clip_lookup(texts, voice=voice, engine=engine)
+    return [
+        {
+            "tile": t,
+            "spoken_url": urls.get(t.spoken),
+            "example_url": urls.get(t.example) if t.example else None,
+        }
+        for t in tiles
+    ]
+
+
+def practice_phrases_for(host_student_id, *, voice=None, engine=None):
+    """Practice lines from visible tutor packets, with audio when baked (LGA-86)."""
+    phrases = []
+    for packet in tutor_packets_for(host_student_id):
+        for line in packet.phrase_lines():
+            phrases.append({"text": line, "packet_id": packet.pk, "audio_url": None})
+    urls = _clip_lookup([p["text"] for p in phrases], voice=voice, engine=engine)
+    for p in phrases:
+        p["audio_url"] = urls.get(p["text"])
+    return phrases
+
+
+def bake_audio_clip(text, *, voice=None, engine=None, provider="polly",
+                    link_only=False, force=False, client=None):
+    """Bake or link one AudioClip (LGA-84/86). Idempotent by content hash.
+
+    Returns ``(AudioClip, "baked"|"linked"|"skipped")``. ``link_only`` requires the
+    mp3 already in the public store. Never call from a request path.
+    """
+    text = (text or "").strip()
+    if not text:
+        raise ValueError("Cannot bake an empty clip.")
+    voice = voice or settings.LINGUA.get("TTS_VOICE", "Mia")
+    engine = engine or settings.LINGUA.get("TTS_ENGINE", "neural")
+    # Fold the pronunciation override into the hash so editing an IPA transcription
+    # re-bakes that clip by itself. Words WITHOUT an override hash exactly as before,
+    # so adding this mechanism doesn't invalidate the 300+ clips already baked.
+    ipa = pronunciation.ipa_for(text)
+    digest = assets.content_hash(
+        f"{text} [ipa:{ipa}]" if ipa else text,
+        provider=provider, voice=voice, engine=engine,
+    )
+    key = assets.clip_key(digest)
+    existing = AudioClip.objects.filter(
+        text=text, voice=voice, engine=engine, provider=provider,
+    ).first()
+    if existing and existing.content_hash == digest and not force:
+        return existing, "skipped"
+    if link_only:
+        if not storage.readalong_storage().exists(key):
+            raise FileNotFoundError(f"Clip asset missing for link-only: {key}")
+        action = "linked"
+    else:
+        out = audio.synthesize_clip(text, voice=voice, engine=engine, client=client)
+        storage.save_audio(key, out["audio"])
+        action = "baked"
+    obj, _ = AudioClip.objects.update_or_create(
+        text=text, voice=voice, engine=engine, provider=provider,
+        defaults={"content_hash": digest, "audio_key": key, "duration_ms": 0},
+    )
+    return obj, action
+
+
+def clip_texts_to_bake(*, phonics=False, alphabet=False, phrases=False, classroom=False):
+    """Collect unique texts that need AudioClip rows (authoring inventory)."""
+    texts = []
+    if phonics:
+        for rule in PhonicsRule.objects.filter(active=True):
+            texts.extend(phonics_example_words(rule.example))
+    if alphabet:
+        for tile in AlphabetTile.objects.filter(active=True):
+            texts.append(tile.spoken)
+            if tile.example:
+                texts.append(tile.example)
+    if phrases:
+        for packet in TutorPacket.objects.filter(active=True):
+            texts.extend(packet.phrase_lines())
+    if classroom:
+        texts.extend(
+            ClassroomPhrase.objects.filter(active=True).values_list("text", flat=True)
+        )
+    # Preserve order, drop dupes / blanks
+    seen, out = set(), []
+    for t in texts:
+        t = (t or "").strip()
+        if t and t not in seen:
+            seen.add(t)
+            out.append(t)
+    return out
+
+
+# --- "La sesión": the parent-led session kit (LGA-94) ------------------------
+#
+# For the younger child the app is the PARENT's tool, not her screen: it generates
+# the paper, the parent runs the 20 minutes. Handwriting beats typing for
+# orthographic memory (Ouellette & Tims 2014; Acha et al. 2025), so everything here
+# is built to print. Nothing on this path calls an AI or a TTS provider at request
+# time (D-16) — the phrases are seeded content and the audio is pre-baked.
+
+
+def classroom_phrases_with_audio(*, voice=None, engine=None):
+    """The parent's session phrases, grouped into the arc of a real sitting.
+
+    Returns ``[{key, label, phrases: [{phrase, audio_url|None}]}]``. A phrase with no
+    baked clip still appears — the parent can read it — it just isn't tappable, which
+    is the same graceful-degradation rule the reader follows (LGA-54)."""
+    rows = list(ClassroomPhrase.objects.filter(active=True))
+    urls = _clip_lookup([p.text for p in rows], voice=voice, engine=engine)
+    labels = dict(ClassroomPhrase.CATEGORY_CHOICES)
+    by_cat = {}
+    for p in rows:
+        by_cat.setdefault(p.category, []).append(
+            {"phrase": p, "audio_url": urls.get(p.text)}
+        )
+    return [
+        {"key": key, "label": labels.get(key, key), "phrases": by_cat[key]}
+        for key in ClassroomPhrase.CATEGORY_ORDER
+        if by_cat.get(key)
+    ]
+
+
+# How much writing to ask for, by band. The research scales dictado from a handful of
+# words up to a couple of sentences — starting too long is how you lose a 9-year-old.
+SESSION_SHAPE = {
+    profiles.KIDS_EARLY: {"dictado_words": 5, "dictado_sentences": 0, "copia_lines": 4},
+    profiles.KIDS_OLDER: {"dictado_words": 0, "dictado_sentences": 3, "copia_lines": 6},
+}
+_DEFAULT_SHAPE = SESSION_SHAPE[profiles.KIDS_EARLY]
+
+
+def _sentences(text):
+    """Split a story body into trimmed sentences, keeping their end punctuation."""
+    parts = re.split(r"(?<=[.!?…])\s+", (text or "").strip())
+    return [p.strip() for p in parts if p.strip()]
+
+
+def _recent_story_for(learner):
+    """The story this learner read most RECENTLY that is still approved, else the
+    easiest approved story at or below her level, else None.
+
+    Ordering has to happen in Python: ``filter(pk__in=read_ids)`` does not preserve the
+    id order, and Story.Meta.ordering silently re-sorts it by authored date — which
+    would pick the newest story she happens to have read rather than the last one."""
+    read_ids = list(dict.fromkeys(
+        learner.reading_sessions.order_by("-created_at")
+        .values_list("story_id", flat=True)[:20]
+    ))
+    if read_ids:
+        approved = set(
+            Story.objects.filter(pk__in=read_ids, status=Story.APPROVED)
+            .values_list("pk", flat=True)
+        )
+        recent = next((sid for sid in read_ids if sid in approved), None)
+        if recent:
+            return Story.objects.filter(pk=recent).first()
+
+    # Nothing read yet: don't hand a Level 7 reader an L1 sheet. Take the HIGHEST
+    # level she's cleared for, so the first sheet is worth doing.
+    ceiling = getattr(getattr(learner, "profile", None), "content_ceiling", "") or ""
+    qs = Story.objects.filter(status=Story.APPROVED)
+    if ceiling:
+        at_or_below = qs.filter(level__lte=ceiling)
+        if at_or_below.exists():
+            return at_or_below.order_by("-level", "id").first()
+    return qs.order_by("level", "id").first()
+
+
+def session_sheet(learner, *, story=None, on=None):
+    """The printable half of a session: copia lines + a dictado, drawn from a story
+    this child has ALREADY read.
+
+    Copying and dictating from familiar text is the point — ACTFL puts transcription at
+    the foundation of writing, and the child can only attend to spelling when she isn't
+    also decoding new meaning. Returns empty lists (never raises) when there's nothing.
+
+    The slice ROTATES by date, so the sheet is stable through a session (print it once,
+    reload safely) but different tomorrow. A sheet that never changes is worse than no
+    sheet: the routine card tells the parent "no new material" about the review step,
+    and it would be lying about the writing step too.
+
+    The dictado is taken from AFTER the copia window so she isn't just copying what is
+    already printed above — dictation only tests spelling if the answer isn't visible.
+    Where the story is too short for that, they overlap; the model line is screen-only
+    either way (the parent reads it aloud), so it never prints next to her lines.
+    """
+    band = getattr(getattr(learner, "profile", None), "track_profile", "")
+    shape = SESSION_SHAPE.get(band, _DEFAULT_SHAPE)
+    empty = {"story": None, "copia": [], "dictado": [], "shape": shape}
+
+    if story is None:
+        story = _recent_story_for(learner)
+    if story is None:
+        return empty
+
+    sents = _sentences(story.body)
+    if not sents:
+        return dict(empty, story=story)
+
+    # Rotate the window by day, wrapping, so consecutive sessions get fresh material
+    # out of the same familiar story.
+    start = (on or timezone.localdate()).toordinal() % len(sents)
+
+    def window(begin, count):
+        return [sents[(begin + i) % len(sents)] for i in range(min(count, len(sents)))]
+
+    # Reserve sentences for the dictado BEFORE handing the rest to the copia. Real
+    # stories are short: at 4-6 sentences the copia would eat the whole text and the
+    # dictado window would wrap straight back onto it, printing the answers on the
+    # very page she writes on. Losing a copia line costs nothing (it's handwriting
+    # practice); losing the dictado's whole point costs the exercise.
+    reserve = max(1, shape["dictado_sentences"])
+    copia_count = min(shape["copia_lines"], max(1, len(sents) - reserve))
+    copia = window(start, copia_count)
+    d_start = (start + copia_count) % len(sents)
+
+    if shape["dictado_sentences"]:
+        dictado = window(d_start, shape["dictado_sentences"])
+    else:
+        # Word-level dictado for the youngest: a few real words, de-duped, drawn from
+        # the sentences the copia did NOT take.
+        source = window(d_start, max(1, len(sents) - copia_count))
+        words, seen = [], set()
+        for w in re.findall(r"[^\W\d_]+", " ".join(source), flags=re.UNICODE):
+            key = w.lower()
+            if key not in seen:
+                seen.add(key)
+                words.append(w)
+            if len(words) >= shape["dictado_words"]:
+                break
+        dictado = words
+    return {"story": story, "copia": copia, "dictado": dictado, "shape": shape}
+
+
+# --- Writing-error taxonomy (LGA-95) -----------------------------------------
+
+
+def log_writing_error(learner, category, *, source=None, wrote="", expected="", on=None):
+    """Tag one mistake while marking her paper. Returns the row, or None if the
+    category isn't real — a typo in a caller must not silently pollute the counts
+    that drive remediation."""
+    valid = {c for c, _ in WritingError.CATEGORY_CHOICES}
+    if category not in valid:
+        return None
+    sources = {s for s, _ in WritingError.SOURCE_CHOICES}
+    return WritingError.objects.create(
+        learner=learner,
+        category=category,
+        source=source if source in sources else WritingError.DICTADO,
+        wrote=(wrote or "")[:120],
+        expected=(expected or "")[:120],
+        on_date=on or timezone.localdate(),
+    )
+
+
+def top_error_categories(learner, *, since=None, days=30, limit=3):
+    """The research's "top 3 error types this month", for the parent.
+
+    Ties break by the taxonomy's own order rather than arbitrarily, so the list is
+    stable between page loads — a wobbling "top 3" would be untrustworthy."""
+    since = since or (timezone.localdate() - timedelta(days=days))
+    counts = (
+        WritingError.objects.filter(learner=learner, on_date__gte=since)
+        .values("category")
+        .annotate(n=Count("id"))
+    )
+    labels = dict(WritingError.CATEGORY_CHOICES)
+    rank = {c: i for i, c in enumerate(WritingError.CATEGORY_ORDER)}
+    rows = [
+        {"category": c["category"], "label": labels.get(c["category"], c["category"]),
+         "count": c["n"]}
+        for c in counts
+    ]
+    rows.sort(key=lambda r: (-r["count"], rank.get(r["category"], 99)))
+    return rows[:limit]
+
+
+# Which orthographic contrasts each category wants drilled. Only the ones a
+# Mexican-Spanish learner genuinely cannot hear (seseo + yeísmo) plus the accent
+# rules — a drill for something she can already hear is wasted practice.
+ERROR_DRILL_PATTERNS = {
+    WritingError.ORTHOGRAPHIC: ["b/v", "c/s/z", "g/j", "ll/y", "h muda", "r/rr"],
+    WritingError.ACCENT: ["tilde", "diacrítica", "hiato"],
+}
+
+
+def remediation_focus(learner, *, since=None, days=30):
+    """What the next sheet should target: her top category, plus the specific
+    contrasts to drill for it. Returns None when there's nothing logged yet — the
+    caller falls back to level-scaled material rather than inventing a weakness."""
+    top = top_error_categories(learner, since=since, days=days, limit=1)
+    if not top:
+        return None
+    cat = top[0]["category"]
+    return {
+        "category": cat,
+        "label": top[0]["label"],
+        "count": top[0]["count"],
+        "patterns": ERROR_DRILL_PATTERNS.get(cat, []),
+    }
+
+
+# --- Kaylin's independent track (LGA-98) --------------------------------------
+
+# The research's ladder: start at 3 minutes and build. Capped so a "60 minute
+# free-write" typo can't distort the chart forever.
+FREEWRITE_MINUTES = [3, 5, 8, 10]
+MAX_FREEWRITE_MINUTES = 30
+# Postgres caps PositiveIntegerField at 2**31-1 and SQLite does not, so an
+# unclamped paste is a prod-only 500 that the test suite structurally cannot catch.
+# 50k words in 30 minutes is already absurd; anything above it is a typo.
+MAX_FREEWRITE_WORDS = 50_000
+
+
+def count_words(text):
+    """Words in a free-write. Accent- and ñ-safe, and digits don't inflate the score."""
+    return len(re.findall(r"[^\W\d_]+", text or "", flags=re.UNICODE))
+
+
+def log_free_write(learner, *, minutes=5, text="", words=None, prompt="", on=None):
+    """Record a timed free-write. Word count is the score.
+
+    ``words`` may be given directly for the paper case — she writes by hand and the
+    parent types the count, which the research actively prefers for orthographic
+    memory. When text IS supplied the count is derived, so a typed entry can't be
+    scored wrong."""
+    try:
+        minutes = max(1, min(int(minutes), MAX_FREEWRITE_MINUTES))
+    except (TypeError, ValueError):
+        minutes = 5
+    if text and text.strip():
+        n = min(count_words(text), MAX_FREEWRITE_WORDS)
+    else:
+        try:
+            n = max(0, min(int(words or 0), MAX_FREEWRITE_WORDS))
+        except (TypeError, ValueError):
+            n = 0
+    if not n:
+        return None          # nothing written — don't bank a 0-word row
+    return FreeWrite.objects.create(
+        learner=learner, minutes=minutes, words=n,
+        text=(text or "")[:20000], prompt=(prompt or "")[:200],
+        on_date=on or timezone.localdate(),
+    )
+
+
+def free_write_series(learner, *, limit=12):
+    """Her free-writes oldest-first, for the chart. A rising line is the most
+    motivating artifact we can hand a 12-year-old, and it measures fluency rather
+    than correctness."""
+    rows = list(learner.free_writes.all()[:limit])
+    rows.reverse()
+    best = max((r.words for r in rows), default=0)
+    return {
+        "rows": rows,
+        "best": best,
+        "latest": rows[-1] if rows else None,
+        # Percentage heights for a pure-CSS bar chart — no JS, no chart library.
+        "bars": [
+            {"row": r, "pct": round(r.words / best * 100) if best else 0}
+            for r in rows
+        ],
+        "next_minutes": _next_freewrite_minutes(rows),
+    }
+
+
+def _next_freewrite_minutes(rows):
+    """Nudge the timer up the ladder once she's settled — never down, never skipping.
+
+    Uses a HIGH-WATER MARK, not the latest entry: one short day would otherwise drag
+    the suggestion back down, and an off-ladder value (7) would suggest 8 and skip 5.
+    Always snapped to the ladder so a hand-edited POST can't leave it off-rung."""
+    if not rows:
+        return FREEWRITE_MINUTES[0]
+    high = max(r.minutes for r in rows)
+    # Snap down to the nearest rung she has actually reached.
+    reached = [m for m in FREEWRITE_MINUTES if m <= high] or [FREEWRITE_MINUTES[0]]
+    current = reached[-1]
+    settled = [r for r in rows if r.minutes >= current]
+    if len(settled) >= 3:
+        later = [m for m in FREEWRITE_MINUTES if m > current]
+        if later:
+            return later[0]
+    return current
+
+
+def log_journal_entry(learner, entry, *, prompt="", on=None):
+    """She writes a dialogue-journal turn."""
+    entry = (entry or "").strip()
+    if not entry:
+        return None
+    return JournalEntry.objects.create(
+        learner=learner, entry=entry[:20000], prompt=(prompt or "")[:200],
+        on_date=on or timezone.localdate(),
+    )
+
+
+def reply_to_journal(learner, entry_id, reply):
+    """The parent replies — to the MEANING, not the errors. Scoped to this learner's
+    own entries so a stray id can't answer another child's journal."""
+    reply = (reply or "").strip()
+    obj = learner.journal_entries.filter(pk=entry_id).first()
+    if obj is None or not reply:
+        return None
+    obj.reply = reply[:20000]
+    obj.replied_at = timezone.now()
+    obj.save(update_fields=["reply", "replied_at"])
+    return obj
+
+
+def journal_thread(learner, *, limit=20):
+    """Newest-first journal turns, plus how many are still waiting on the parent."""
+    rows = list(learner.journal_entries.all()[:limit])
+    # Counted over ALL entries, not the display slice — "3 waiting" must not silently
+    # become "20 waiting" just because the page shows 20.
+    awaiting = learner.journal_entries.filter(reply="").count()
+    return {"rows": rows, "awaiting": awaiting}
 
 
 def record_listening(learner, resource, minutes):
@@ -932,13 +1519,30 @@ def add_review_item(learner, target_ref, *, target_kind=ReviewItem.VOCAB,
 def grade_review_item(item, correct, *, now=None):
     """Apply a review grade to a card via its scheduler (LGA-59). ``correct`` comes from
     a parent tap (got-it/missed) or an auto-graded recognition match — the scheduler
-    handles both identically. A miss is non-punitive (Leitner resets to box 1)."""
+    handles both identically. A miss is non-punitive (Leitner resets to box 1).
+    Strong correct vocab grades also credit KnownWord (LGA-89)."""
     now = now or timezone.now()
     sched = schedulers.get_scheduler(item.scheduler)
     item.scheduler_state, item.due = sched.review(item.scheduler_state, correct, now=now)
     item.save(update_fields=["scheduler_state", "due", "updated_at"])
     record_reviews_served(item.learner, now=now)   # count toward the per-day cap (LGA-62)
+    if correct and item.target_kind == ReviewItem.VOCAB:
+        _maybe_credit_known_from_review(item)
     return item
+
+
+def _maybe_credit_known_from_review(item):
+    """Credit KnownWord after a strong SRS hit (LGA-89): FSRS Good, or Leitner box
+    at/above the warm-start threshold (same bar as graduate_to_fsrs)."""
+    if item.scheduler == ReviewItem.FSRS:
+        credit_known_word(item.learner, item.target_ref)
+        return
+    try:
+        box = int((item.scheduler_state or {}).get("box", 1))
+    except (TypeError, ValueError):
+        return
+    if box >= FSRS_WARM_START_BOX:
+        credit_known_word(item.learner, item.target_ref)
 
 
 def auto_grade_recognition(item, chosen, correct, *, now=None):
@@ -1234,3 +1838,296 @@ def create_story_draft(*, theme, level, ai_client=None):
                       "flag_count": len(review["flags"]), "tokens": tokens},
         )
     return obj
+
+
+# --- Camino pathway overlay (LGA-88) ---------------------------------------
+
+# No PATH_LOCKED: the Camino deliberately never locks a stop (LGA-93), so a
+# "locked" constant names a state nothing can produce.
+PATH_AVAILABLE, PATH_COMPLETE = "available", "complete"
+
+
+def pathway_for(learner):
+    """Active Pathway for the learner's age band, or None."""
+    band = getattr(getattr(learner, "profile", None), "track_profile", "")
+    if not band:
+        return None
+    return (
+        Pathway.objects.filter(age_band=band, active=True)
+        .order_by("order", "id")
+        .first()
+    )
+
+
+# A PathwayStep target_ref of "@level" means "wherever she is now" rather than a
+# fixed rung. Without it the seeded stop said "Leer historias L1" forever, so the map
+# still pointed at L1 after she had advanced past it (LGA-100, progressive half).
+DYNAMIC_LEVEL = "@level"
+
+
+def resolve_step_level(learner, step):
+    """The level a STORY_LEVEL stop points at, resolving @level to her ceiling."""
+    ref = (step.target_ref or "").strip()
+    if ref != DYNAMIC_LEVEL:
+        return ref
+    return getattr(getattr(learner, "profile", None), "content_ceiling", "") or ""
+
+
+def phonics_focus(learner, *, band=None, rules=None):
+    """The ONE sound to work on today, advancing as she completes sessions.
+
+    A 9-year-old opening a wall of eight rules works on none of them. The index is the
+    number of DISTINCT DAYS she has ticked the phonics stop, so it moves when she
+    actually does the work — not with the calendar, which would skip sounds on the days
+    she doesn't practise. Wraps, because revisiting a sound is the point of phonics.
+
+    Returns None when there are no rules for her band."""
+    band = band or getattr(getattr(learner, "profile", None), "track_profile", "")
+    rules = rules if rules is not None else phonics_rules(band)
+    if not rules:
+        return None
+    # Prefer the rules written FOR this band. Kaylin's stone says "Acentos", but
+    # cycling all 15 rules meant ten ticked days before the focus reached an accent
+    # rule at all — the stone would have been promising something it wasn't showing.
+    own = [r for r in rules if r.age_band == band]
+    if own:
+        rules = own
+    done = (
+        learner.pathway_checkmarks
+        .filter(step__kind=PathwayStep.PHONICS, on_date__lt=timezone.localdate())
+        .values("on_date").distinct().count()
+    )
+    return rules[done % len(rules)]
+
+
+def _observed_today(learner, on):
+    """Everything the app can SEE this learner do today, fetched once.
+
+    Auto-tick what we can observe; leave the checkbox for what we can't. She should
+    never walk back to the map to record work the app already watched — that gap is
+    why the map read "0 done" while she was doing it. Saying the sounds out loud, or
+    working a paper packet, genuinely cannot be observed, so those stay self-reported.
+
+    Carries the story LEVELS and IDS, not just "she read something": a stop that names
+    L2 must not go green because she read an L1 story."""
+    reads = list(
+        learner.reading_sessions.filter(created_at__date=on)
+        .values_list("story_id", "story__level")
+    )
+    profile = getattr(learner, "profile", None)
+    return {
+        "story_ids": {sid for sid, _ in reads},
+        "levels": {lvl for _, lvl in reads if lvl},
+        "listened": ListeningSession.objects.filter(
+            learner=learner, created_at__date=on).exists(),
+        "reviewed": bool(
+            profile
+            and getattr(profile, "reviews_served_on", None) == on
+            and getattr(profile, "reviews_served_count", 0) > 0
+        ),
+    }
+
+
+def _step_observed(step, observed, *, level=None):
+    """Whether TODAY's observed activity satisfies this specific stop.
+
+    ``level`` is the RESOLVED target level — "@level" must be turned into her actual
+    ceiling first, or a dynamic stop could never be satisfied by anything."""
+    if not observed:
+        return False
+    kind, ref = step.kind, (step.target_ref or "").strip()
+    if kind == PathwayStep.STORY_LEVEL:
+        ref = level if level is not None else ref
+        if not ref:
+            return bool(observed["levels"])
+        # AT OR BELOW the target, matching what content_ceiling means everywhere else
+        # (_servable_stories serves LADDER[:rank+1]) and what the daily plan actually
+        # hands her — which is often a level below her ceiling. Demanding an exact
+        # rung meant she could read the only story offered and the stop stayed grey.
+        cap = profiles.level_rank(ref)
+        return any(profiles.level_rank(lv) <= cap for lv in observed["levels"])
+    if kind == PathwayStep.STORY:
+        if ref.isdigit():
+            return int(ref) in observed["story_ids"]
+        return bool(observed["story_ids"])
+    if kind == PathwayStep.LISTEN:
+        return observed["listened"]
+    if kind == PathwayStep.REVIEW:
+        return observed["reviewed"]
+    return False
+
+
+def _step_complete(learner, step, *, checked_ids=None, observed=None, level=None):
+    """Done TODAY — either she ticked it, or the app watched her do it."""
+    if _step_observed(step, observed, level=level):
+        return True
+    if checked_ids is not None:
+        return step.pk in checked_ids
+    return learner.pathway_checkmarks.filter(
+        step=step, on_date=timezone.localdate()
+    ).exists()
+
+
+def set_pathway_checkmark(learner, step, done, *, on=None):
+    """Toggle the kid's 'Hecho' checkbox for a map stop, for ONE day (LGA-100)."""
+    on = on or timezone.localdate()
+    if done:
+        PathwayCheckmark.objects.get_or_create(learner=learner, step=step, on_date=on)
+        return True
+    PathwayCheckmark.objects.filter(learner=learner, step=step, on_date=on).delete()
+    return False
+
+
+def camino_active_days(learner):
+    """Every local date this learner did SOMETHING on the Camino.
+
+    Counts observed work — reading and listening — as well as her checkboxes.
+    Counting only checkboxes made the streak nearly unreachable: auto-ticking writes
+    no checkmark row, and for the younger band the only self-report stop is the
+    optional "Los sonidos", so a child who read and listened every day scored zero.
+    That is the exact "did the work, got nothing" failure the streak exists to prevent.
+
+    ``.dates()`` truncates in the active timezone, the same one ``localdate()`` and the
+    ``created_at__date`` lookups use, so a story read at 8pm counts for that day."""
+    days = set(learner.pathway_checkmarks.values_list("on_date", flat=True))
+    days.update(learner.reading_sessions.dates("created_at", "day"))
+    days.update(
+        ListeningSession.objects.filter(learner=learner).dates("created_at", "day")
+    )
+    return days
+
+
+def camino_streak(learner, *, on=None):
+    """Consecutive days up to today on which she did something.
+
+    The counterweight to the daily reset. A reset on its own is a treadmill — she does
+    the work and wakes up to "0 of 3" — and the research is explicit about not making
+    a sensitive child feel behind. Today's stops reset; the journey does not.
+
+    Yesterday still counts as unbroken when today hasn't started, so opening the app
+    in the morning never shows the streak already lost."""
+    on = on or timezone.localdate()
+    days = {d for d in camino_active_days(learner) if d <= on}
+    if not days:
+        return 0
+    cursor = on if on in days else on - timedelta(days=1)
+    streak = 0
+    while cursor in days:
+        streak += 1
+        cursor -= timedelta(days=1)
+    return streak
+
+
+def _step_visible(learner, step, *, packets=None):
+    """Hide Kaylin-only tutor steps when the packet isn't for this child, and hide
+    REVIEW stops until there is a review page to send her to.
+
+    A REVIEW stop currently deeplinks back to the plan she just came from, labelled
+    "¡Empezar!" — a stop that goes nowhere and can then be ticked without doing
+    anything. Better absent than lying."""
+    if step.kind == PathwayStep.REVIEW:
+        return False
+    if step.kind != PathwayStep.TUTOR_PACKET:
+        return True
+    ref = (step.target_ref or "").strip()
+    if packets is None:
+        packets = tutor_packets_for(learner.host_student_id)
+    if ref.isdigit():
+        return any(p.pk == int(ref) for p in packets)
+    return bool(packets)
+
+
+def pathway_status(learner, *, on=None):
+    """Ordered Camino stops — never locked (LGA-93).
+
+    Every visible stop is open to tap. ``complete`` comes from the kid's checkbox
+    and/or real activity; ``primary`` is the first incomplete stop (soft hint only).
+    Returns ``{"pathway", "steps", "next", "hint"}``.
+    """
+    pathway = pathway_for(learner)
+    if pathway is None:
+        return {"pathway": None, "steps": [], "next": None, "hint": ""}
+
+    today = on or timezone.localdate()
+    steps = list(pathway.steps.all())
+    checked_ids = set(
+        learner.pathway_checkmarks.filter(step__pathway=pathway, on_date=today)
+        .values_list("step_id", flat=True)
+    )
+    observed = _observed_today(learner, today)
+    # Hoist out of the per-step loop: _step_visible needs this and re-querying inside
+    # the loop made pathway_status linear in the number of tutor steps.
+    packets = tutor_packets_for(learner.host_student_id)
+    out = []
+    next_available = None
+    primary_marked = False
+
+    for step in steps:
+        if not _step_visible(learner, step, packets=packets):
+            continue
+        level = resolve_step_level(learner, step) if (
+            step.kind == PathwayStep.STORY_LEVEL) else None
+        complete = _step_complete(
+            learner, step, checked_ids=checked_ids, observed=observed, level=level)
+        status = PATH_COMPLETE if complete else PATH_AVAILABLE
+
+        is_primary = False
+        if status == PATH_AVAILABLE and not primary_marked:
+            is_primary = True
+            primary_marked = True
+
+        checked = step.pk in checked_ids
+        row = {
+            "step": step,
+            "status": status,
+            # Resolved so the map can say "Leer historias L3" rather than the literal
+            # "@level", and so the title follows her as she advances.
+            "level": level,
+            # Append ONLY for a dynamic step: a literal-ref step already carries its
+            # level in the title, so appending gave "Leer historias L1 L1".
+            "title": (f"{step.title} {level}".strip()
+                      if (step.kind == PathwayStep.STORY_LEVEL and level
+                          and (step.target_ref or "").strip() == DYNAMIC_LEVEL)
+                      else step.title),
+            "primary": is_primary,
+            "checked": checked,
+            "practicar": complete and step.kind in (
+                PathwayStep.STORY, PathwayStep.STORY_LEVEL, PathwayStep.PHONICS,
+                PathwayStep.LISTEN, PathwayStep.TUTOR_PACKET,
+            ),
+        }
+        out.append(row)
+        if is_primary:
+            next_available = row
+
+    done = sum(1 for r in out if r["status"] == PATH_COMPLETE)
+    finished = bool(out) and done == len(out)
+    if finished:
+        hint = "¡Terminaste el camino de hoy! 🎉"
+    elif next_available is not None:
+        hint = f"Después: {next_available['title']}."
+    else:
+        hint = ""
+
+    return {
+        "pathway": pathway,
+        "steps": out,
+        "next": next_available,
+        "hint": hint,
+        "done": done,
+        "total": len(out),
+        "finished": finished,
+        "streak": camino_streak(learner, on=today),
+    }
+
+
+def camino_plan_extras(learner):
+    """Light Camino context for the Hoy page without mutating build_daily_plan."""
+    status = pathway_status(learner)
+    # Use the pause-aware queue (LGA-91 / LGA-62) — not raw due_review_items.
+    due = daily_review_queue(learner)
+    return {
+        "camino_hint": status.get("hint") or "",
+        "review_due": len(due) > 0,
+        "pathway_status": status,
+    }

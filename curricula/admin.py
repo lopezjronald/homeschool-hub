@@ -19,8 +19,8 @@ class LessonProgressAdmin(admin.ModelAdmin):
 
 @admin.register(Curriculum)
 class CurriculumAdmin(admin.ModelAdmin):
-    list_display = ("name", "subject", "grade_level", "parent", "created_at")
-    list_filter = ("subject", "grade_level")
+    list_display = ("name", "subject", "grade_level", "is_active", "parent", "created_at")
+    list_filter = ("subject", "grade_level", "is_active")
     search_fields = ("name", "subject", "parent__username", "parent__email")
     raw_id_fields = ("parent",)
 
@@ -55,5 +55,6 @@ class CurriculumDocumentAdmin(admin.ModelAdmin):
 
 @admin.register(CurriculumPlacement)
 class CurriculumPlacementAdmin(admin.ModelAdmin):
-    list_display = ("child", "curriculum", "current_lesson", "updated_at")
+    list_display = ("child", "curriculum", "current_lesson", "is_active", "updated_at")
+    list_filter = ("is_active",)
     raw_id_fields = ("child", "curriculum", "current_lesson")

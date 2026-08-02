@@ -23,7 +23,9 @@ import re
 
 from django.conf import settings
 
-from . import safety
+from xml.sax.saxutils import escape, quoteattr
+
+from . import pronunciation, safety
 
 WORD_RE = re.compile(r"\S+", re.UNICODE)
 
@@ -165,3 +167,43 @@ def synthesize_story(text, *, voice=None, engine=None, client=None, tail_ms=400)
         "voice": out["voice"],
         "engine": out["engine"],
     }
+
+
+def synthesize_clip(text, *, voice=None, engine=None, client=None):
+    """Synthesize a single utterance as mp3 only — no speech marks (LGA-84).
+
+    Letter names, phonics practice words, and short homework phrases don't need
+    word-level timings. Same PII fence and injectable client as ``synthesize``.
+    Returns ``{"audio": bytes, "voice", "engine"}``.
+    """
+    if not (text or "").strip():
+        raise TTSError("Refusing to synthesize empty text.")
+    safety.assert_no_pii(text, where="tts")
+    voice = voice or settings.LINGUA.get("TTS_VOICE", "Mia")
+    engine = engine or settings.LINGUA.get("TTS_ENGINE", "neural")
+    ai = client or _polly_client()
+    # A phonics word exists to demonstrate ONE sound, so where we have an IPA
+    # transcription we say it explicitly rather than leaving it to Polly — "llama"
+    # was coming out closer to a plain /l/ than the yeísmo /ʝ/ the card teaches.
+    ipa = pronunciation.ipa_for(text)
+    if ipa:
+        # quoteattr, not escape: escape() leaves a double quote untouched, which
+        # would break out of the ph="..." attribute.
+        body = (f"<speak><phoneme alphabet=\"ipa\" ph={quoteattr(ipa)}>"
+                f"{escape(text)}</phoneme></speak>")
+        text_type = "ssml"
+    else:
+        body, text_type = text, "text"
+    try:
+        audio_resp = ai.synthesize_speech(
+            Text=body, VoiceId=voice, Engine=engine,
+            OutputFormat="mp3", TextType=text_type,
+        )
+        audio = audio_resp["AudioStream"].read()
+        if not audio:
+            raise TTSError("Polly returned no audio.")
+    except TTSError:
+        raise
+    except Exception as exc:  # noqa: BLE001 — normalize any boto/IO error
+        raise TTSError(f"Polly synthesis failed: {type(exc).__name__}") from exc
+    return {"audio": audio, "voice": voice, "engine": engine}

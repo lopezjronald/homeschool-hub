@@ -206,6 +206,11 @@ class PhonicsRule(models.Model):
     title = models.CharField(max_length=80)
     tip = models.CharField(max_length=240)
     example = models.CharField(max_length=120, help_text="Practice words for decoding.")
+    age_band = models.CharField(
+        max_length=16, blank=True, choices=profiles.TRACK_CHOICES,
+        help_text="Blank = every band. The accent rules are for the older band only; "
+                  "without this they land on the youngest child's sounds page.",
+    )
     order = models.IntegerField(default=0)
     active = models.BooleanField(default=True)
 
@@ -214,6 +219,183 @@ class PhonicsRule(models.Model):
 
     def __str__(self):
         return f"PhonicsRule<{self.pattern}>"
+
+
+class ClassroomPhrase(models.Model):
+    """One Spanish phrase a non-fluent parent uses to RUN the session (LGA-94).
+
+    The point is not to teach the parent Spanish — it's to let the routine happen in
+    Spanish anyway. He taps, hears a native voice, repeats it. Content-only (no learner
+    FK, D-03); seeded idempotently by ``seed_classroom_phrases`` and voiced through the
+    same content-addressed ``AudioClip`` pipeline as phonics and the alphabet.
+    """
+
+    OPENING = "opening"
+    ASKING = "asking"
+    PRAISE = "praise"
+    REDIRECT = "redirect"
+    CLOSING = "closing"
+    CATEGORY_CHOICES = [
+        (OPENING, "Starting the session"),
+        (ASKING, "Asking about the book"),
+        (PRAISE, "Encouraging"),
+        (REDIRECT, "Nudging back on track"),
+        (CLOSING, "Finishing up"),
+    ]
+    # Display order for the session page — the arc of an actual sitting.
+    CATEGORY_ORDER = [OPENING, ASKING, PRAISE, REDIRECT, CLOSING]
+
+    text = models.CharField(max_length=120, unique=True, help_text="The Spanish phrase.")
+    english = models.CharField(max_length=160, help_text="What it means, for the parent.")
+    category = models.CharField(max_length=16, choices=CATEGORY_CHOICES, default=ASKING)
+    note = models.CharField(
+        max_length=200, blank=True,
+        help_text="Optional coaching note — when to reach for this one.",
+    )
+    order = models.IntegerField(default=0)
+    active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ["order", "id"]
+
+    def __str__(self):
+        return f"ClassroomPhrase<{self.text}>"
+
+
+class WritingError(models.Model):
+    """One mistake the parent tagged while marking a child's writing (LGA-95).
+
+    The research asks for exactly this: track frequency per category per learner so
+    the app can generate targeted remediation and show the parent a "top 3 error types
+    this month". Without it, dictado is just random sentences.
+
+    The categories are the research's taxonomy verbatim. Category 1 is the one that
+    matters most for these girls: Spanish is nearly one-to-one for READING but not for
+    WRITING, and under Mexican Spanish's seseo and yeísmo, casa/caza, b/v and ll/y are
+    homophones — so those spellings can only be learned explicitly. Reading fluency
+    WILL outrun spelling accuracy, and this is where that shows up.
+
+    Learner-scoped and lingua-internal (D-03): no FK to any host model."""
+
+    ORTHOGRAPHIC = "orthographic"
+    ACCENT = "accent"
+    AGREEMENT = "agreement"
+    VERB = "verb"
+    SYNTAX = "syntax"
+    LEXICAL = "lexical"
+    INTERFERENCE = "interference"
+    MECHANICS = "mechanics"
+    CATEGORY_CHOICES = [
+        (ORTHOGRAPHIC, "Spelling — b/v, c/s/z, g/j, ll/y, h muda, r/rr, qu/c/k, x"),
+        (ACCENT, "Accents — missing or misplaced tilde, diacrítica, hiato"),
+        (AGREEMENT, "Agreement — gender, number, article/noun/adjective"),
+        (VERB, "Verbs — tense, mood, person, ser/estar"),
+        (SYNTAX, "Sentence shape — word order, adjective place, personal 'a', por/para"),
+        (LEXICAL, "Wrong word — including false cognates"),
+        (INTERFERENCE, "English creeping in — calques, code-switching"),
+        (MECHANICS, "Mechanics — ¿¡, capitals, dialogue raya, punctuation"),
+    ]
+    # Order shown to the parent while marking: the ones these girls will actually hit
+    # first, not alphabetical.
+    CATEGORY_ORDER = [
+        ORTHOGRAPHIC, ACCENT, AGREEMENT, VERB, MECHANICS, LEXICAL, SYNTAX, INTERFERENCE,
+    ]
+
+    DICTADO = "dictado"
+    COPIA = "copia"
+    FREEWRITE = "freewrite"
+    JOURNAL = "journal"
+    OTHER = "other"
+    SOURCE_CHOICES = [
+        (DICTADO, "Dictado"),
+        (COPIA, "Copia"),
+        (FREEWRITE, "Free write"),
+        (JOURNAL, "Journal"),
+        (OTHER, "Other"),
+    ]
+
+    learner = models.ForeignKey(
+        Learner, on_delete=models.CASCADE, related_name="writing_errors",
+    )
+    category = models.CharField(max_length=16, choices=CATEGORY_CHOICES, db_index=True)
+    source = models.CharField(max_length=16, choices=SOURCE_CHOICES, default=DICTADO)
+    wrote = models.CharField(
+        max_length=120, blank=True, help_text="What she actually wrote (optional).")
+    expected = models.CharField(
+        max_length=120, blank=True, help_text="What it should have been (optional).")
+    on_date = models.DateField(default=timezone.localdate, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-on_date", "-id"]
+        indexes = [models.Index(fields=["learner", "on_date"])]
+
+    def __str__(self):
+        return f"WritingError<learner={self.learner_id} {self.category} {self.on_date}>"
+
+
+class FreeWrite(models.Model):
+    """One timed free-write, scored by WORD COUNT (LGA-98).
+
+    The TPRS fluency routine (Blaine Ray, Ben Slavic, Martina Bex): write as much as
+    you can for N minutes, count the words, chart it. The count is the score — this
+    measures FLUENCY, not correctness, which is the whole point. Correcting a fluency
+    exercise defeats it.
+
+    ``text`` is optional on purpose: the research is emphatic that handwriting beats
+    typing for orthographic memory, so "she wrote it on paper, here are 87 words" is a
+    first-class case, not a degraded one."""
+
+    learner = models.ForeignKey(
+        Learner, on_delete=models.CASCADE, related_name="free_writes",
+    )
+    minutes = models.PositiveIntegerField(default=5)
+    words = models.PositiveIntegerField(default=0)
+    text = models.TextField(blank=True, help_text="Optional — blank when she wrote on paper.")
+    prompt = models.CharField(max_length=200, blank=True)
+    on_date = models.DateField(default=timezone.localdate, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-on_date", "-id"]
+        indexes = [models.Index(fields=["learner", "on_date"])]
+
+    def __str__(self):
+        return f"FreeWrite<learner={self.learner_id} {self.words}w {self.on_date}>"
+
+    @property
+    def words_per_minute(self):
+        return round(self.words / self.minutes, 1) if self.minutes else 0
+
+
+class JournalEntry(models.Model):
+    """A dialogue-journal turn: she writes, the parent writes back (LGA-98).
+
+    The mechanism is that the parent responds to MEANING, not error. That is what
+    lowers the affective filter and builds fluency — a reply that corrects her spelling
+    turns the journal into another marking exercise and kills it. There is deliberately
+    no correction field here; mistakes worth tracking go to WritingError instead."""
+
+    learner = models.ForeignKey(
+        Learner, on_delete=models.CASCADE, related_name="journal_entries",
+    )
+    prompt = models.CharField(max_length=200, blank=True)
+    entry = models.TextField(help_text="What she wrote.")
+    reply = models.TextField(blank=True, help_text="The parent's reply — to the MEANING.")
+    on_date = models.DateField(default=timezone.localdate, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    replied_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-on_date", "-id"]
+        indexes = [models.Index(fields=["learner", "on_date"])]
+
+    def __str__(self):
+        return f"JournalEntry<learner={self.learner_id} {self.on_date}>"
+
+    @property
+    def awaiting_reply(self):
+        return not self.reply.strip()
 
 
 class Theme(models.Model):
@@ -818,3 +1000,207 @@ class KnownWord(models.Model):
 
     def __str__(self):
         return f"KnownWord<learner={self.learner_id} {self.word!r}>"
+
+
+class TutorPacket(models.Model):
+    """Homework / materials from a live tutor (italki, etc.) for the kid portal
+    (LGA-85). Content-only with an optional ``host_student_id`` filter (plain int,
+    NOT an FK — D-03) so a packet can be Kaylin-only without coupling to
+    ``students.Student``. File lives on the default (private) storage — same
+    pattern as host CurriculumDocument."""
+
+    title = models.CharField(max_length=200)
+    source = models.CharField(
+        max_length=120, blank=True,
+        help_text="e.g. 'italki · Juan Cárdenas'.",
+    )
+    body = models.TextField(
+        blank=True,
+        help_text="Practice phrases, one per line. Shown on the packet page and Escuchar.",
+    )
+    file = models.FileField(
+        upload_to="lingua/tutor/%Y/%m/", blank=True, null=True,
+        help_text="Optional teacher handout (DOCX/PDF).",
+    )
+    host_student_id = models.IntegerField(
+        null=True, blank=True, db_index=True,
+        help_text="students.Student.pk when packet is for one child; blank = all learners.",
+    )
+    order = models.IntegerField(default=0)
+    active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["order", "id"]
+
+    def __str__(self):
+        return f"TutorPacket<{self.title}>"
+
+    def phrase_lines(self):
+        """Non-blank practice lines from ``body`` (skip # comment lines)."""
+        lines = []
+        for raw in (self.body or "").splitlines():
+            line = raw.strip()
+            if line and not line.startswith("#"):
+                lines.append(line)
+        return lines
+
+
+class AudioClip(models.Model):
+    """A single baked utterance (word / letter name / phrase) for tap-to-hear
+    (LGA-84 / LGA-86). Content-addressed like StoryAudio: hash of text + voice +
+    engine + provider. No timings — single words/phrases don't need them. Baked
+    at authoring time only (never per request)."""
+
+    text = models.CharField(max_length=240)
+    provider = models.CharField(max_length=16, default="polly")
+    voice = models.CharField(max_length=32)
+    engine = models.CharField(max_length=16, default="neural")
+    content_hash = models.CharField(max_length=64, db_index=True)
+    audio_key = models.CharField(max_length=200, help_text="R2 object key for the mp3.")
+    duration_ms = models.IntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["text"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["text", "voice", "engine", "provider"],
+                name="uniq_clip_text_voice_engine_provider",
+            ),
+        ]
+
+    def __str__(self):
+        return f"AudioClip<{self.text!r}>"
+
+    @property
+    def is_current(self):
+        from . import assets
+        expected = assets.content_hash(
+            self.text, provider=self.provider, voice=self.voice, engine=self.engine,
+        )
+        return self.content_hash == expected
+
+
+class AlphabetTile(models.Model):
+    """One letter or digraph on the Escuchar alphabet chart (LGA-86): A–Z, ñ, ll, rr.
+    ``spoken`` is what Polly says (letter name); ``example`` is an optional practice
+    word shown under the tile. Content-only; audio comes from AudioClip rows."""
+
+    LETTER, DIGRAPH = "letter", "digraph"
+    KIND_CHOICES = [(LETTER, "Letter"), (DIGRAPH, "Digraph")]
+
+    symbol = models.CharField(max_length=4, unique=True, help_text="Displayed glyph, e.g. ñ or ll.")
+    spoken = models.CharField(max_length=40, help_text="What to synthesize, e.g. 'eñe' or 'elle'.")
+    example = models.CharField(max_length=40, blank=True, help_text="Optional example word.")
+    kind = models.CharField(max_length=8, choices=KIND_CHOICES, default=LETTER)
+    order = models.IntegerField(default=0)
+    active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ["order", "symbol"]
+
+    def __str__(self):
+        return f"AlphabetTile<{self.symbol}>"
+
+
+class Pathway(models.Model):
+    """Ordered Camino trail for an age band (LGA-88). Content-only catalog — no host
+    FKs (D-03). One active pathway per band is typical; ``order`` breaks ties."""
+
+    slug = models.SlugField(max_length=64, unique=True)
+    title = models.CharField(max_length=120)
+    age_band = models.CharField(max_length=16, choices=profiles.TRACK_CHOICES)
+    order = models.IntegerField(default=0)
+    active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ["order", "id"]
+        verbose_name_plural = "pathways"
+
+    def __str__(self):
+        return f"Pathway<{self.slug}>"
+
+
+class PathwayStep(models.Model):
+    """One stop on a Pathway (LGA-88). Opaque ``(kind, target_ref)`` like ReviewItem —
+    no FKs to stories/packets so the overlay stays extractable (D-03). Completion is
+    derived in ``pathway_status``, not stored here."""
+
+    STORY, STORY_LEVEL, PHONICS, LISTEN = "story", "story_level", "phonics", "listen"
+    TUTOR_PACKET, REVIEW, LINK = "tutor_packet", "review", "link"
+    KIND_CHOICES = [
+        (STORY, "Story"),
+        (STORY_LEVEL, "Story level"),
+        (PHONICS, "Phonics"),
+        (LISTEN, "Listen"),
+        (TUTOR_PACKET, "Tutor packet"),
+        (REVIEW, "Review"),
+        (LINK, "Link"),
+    ]
+
+    pathway = models.ForeignKey(Pathway, on_delete=models.CASCADE, related_name="steps")
+    order = models.IntegerField(default=0)
+    title = models.CharField(max_length=160)
+    kind = models.CharField(max_length=16, choices=KIND_CHOICES)
+    target_ref = models.CharField(
+        max_length=128, blank=True,
+        help_text="Opaque target (story pk, L1, packet pk, URL name, …).",
+    )
+    pass_rule = models.JSONField(
+        default=dict, blank=True,
+        help_text="Optional completion hints, e.g. {\"min_stories\": 1}.",
+    )
+    optional = models.BooleanField(
+        default=False,
+        help_text="Optional steps never block unlock of later required steps.",
+    )
+
+    class Meta:
+        ordering = ["order", "id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["pathway", "order"], name="uniq_pathway_step_order",
+            ),
+        ]
+
+    def __str__(self):
+        return f"PathwayStep<{self.pathway_id}:{self.order} {self.kind}>"
+
+
+class PathwayCheckmark(models.Model):
+    """Kid self-report that a Camino map stop is done ON A GIVEN DAY (LGA-93/100).
+
+    The map never locks stations; this checkbox is how a stop turns 'Hecho' without an
+    opaque unlock rule the child can't see. It is dated because the Camino is a DAILY
+    walk: without ``on_date`` a tick was permanent, so four ticks filled the map
+    forever and it never said anything again.
+
+    Rows are kept rather than cleared each night — the streak and the charter record
+    both want the history."""
+
+    learner = models.ForeignKey(
+        Learner, on_delete=models.CASCADE, related_name="pathway_checkmarks",
+    )
+    step = models.ForeignKey(
+        PathwayStep, on_delete=models.CASCADE, related_name="checkmarks",
+    )
+    on_date = models.DateField(
+        default=timezone.localdate, db_index=True,
+        help_text="Local date this stop was ticked (the Camino resets daily).",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["learner", "step", "on_date"], name="uniq_pathway_checkmark_day",
+            ),
+        ]
+        indexes = [models.Index(fields=["learner", "on_date"])]
+
+    def __str__(self):
+        return (f"PathwayCheckmark<learner={self.learner_id} "
+                f"step={self.step_id} on={self.on_date}>")

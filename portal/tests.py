@@ -362,6 +362,132 @@ class MarkupTests(TestCase):
         call_command("seed_eiw_violet", "--for-user", "mup", stdout=StringIO())
         self.assertEqual(QuestionSet.objects.count(), before)
 
+    def test_eiw_matching_exercise_is_one_question_not_one_per_row(self):
+        # Lesson 7 is a MATCHING grid: four sentence types beside a lettered answer
+        # bank. Seeded as separate questions, the four ANSWER CHOICES became four
+        # questions of their own, each with its own empty answer box, and the four
+        # sentence types had nothing to choose from.
+        call_command("seed_eiw_violet", "--for-user", "mup", stdout=StringIO())
+        qs = QuestionSet.objects.get(
+            lesson__number=7, title__endswith="Match them up")
+        self.assertEqual(qs.questions.count(), 1)
+        q = qs.questions.get()
+        self.assertEqual(q.response_type, Question.TYPE_MATCHING)
+        data = json.loads(q.passage)
+        self.assertEqual(
+            {d["text"]: d["word"] for d in data["definitions"]},
+            {
+                "Declarative": "Period (.)",
+                "Interrogative": "Question Mark (?)",
+                "Exclamatory": "Exclamation Point (!)",
+                # A command takes a period, or an exclamation point if forceful.
+                "Imperative": "Period (.) OR Exclamation Point (!)",
+            },
+        )
+        # Every answer the child can pick has to be in the pool she picks from.
+        self.assertEqual(
+            sorted(data["words"]),
+            sorted(d["word"] for d in data["definitions"]),
+        )
+        # ...and the pool keeps the workbook's printed A-D order, so a child
+        # working alongside the book sees the same four choices in the same order.
+        self.assertEqual(data["words"], [
+            "Question Mark (?)",                    # A
+            "Period (.) OR Exclamation Point (!)",  # B
+            "Period (.)",                           # C
+            "Exclamation Point (!)",                # D
+        ])
+
+    def test_no_eiw_question_is_really_an_answer_choice(self):
+        # The general shape of the Lesson 7 bug: a lettered option from an answer
+        # bank standing on its own as a question. There is nothing to answer.
+        import re
+        call_command("seed_eiw_violet", "--for-user", "mup", stdout=StringIO())
+        offenders = [
+            f"{q.question_set.title} Q{q.order}: {q.prompt!r}"
+            for q in Question.objects.exclude(prompt="").select_related("question_set")
+            if re.match(r"^[A-D]\.\s", q.prompt.strip())
+        ]
+        self.assertEqual(offenders, [], f"answer choices seeded as questions: {offenders}")
+
+    def _lesson7(self):
+        return QuestionSet.objects.filter(lesson__number=7).first().lesson
+
+    def _superseded_set(self, **sheet_kwargs):
+        """A set this seeder no longer produces, optionally with a sheet on it."""
+        lesson = self._lesson7()
+        old = QuestionSet.objects.create(
+            lesson=lesson, family=self.family, status=QuestionSet.APPROVED,
+            title="Lesson 7 · Types of Sentences and Punctuation Marks — Choose the answer",
+            intro="i", rubric="r",
+        )
+        for i, item in enumerate(
+            ["______ Declarative", "______ Interrogative", "______ Exclamatory",
+             "______ Imperative", "A. Question Mark (?)",
+             "B. Period (.) OR Exclamation Point (!)", "C. Period (.)",
+             "D. Exclamation Point (!)"], start=1,
+        ):
+            Question.objects.create(
+                question_set=old, order=i, category="grammar",
+                response_type=Question.TYPE_TEXT, prompt=item,
+            )
+        if sheet_kwargs is not None:
+            ResponseSheet.objects.create(
+                question_set=old, child=self.violet, **sheet_kwargs)
+        return old
+
+    def test_the_superseded_broken_set_is_actually_removed(self):
+        # Sets are keyed on title, so retitling leaves the superseded one beside
+        # the new one — and the superseded one is the BROKEN one. Recreate the
+        # real prod state (8 text questions + an untouched draft sheet) and prove
+        # the seeder removes it, rather than asserting the absence of something a
+        # fresh test DB never created.
+        call_command("seed_eiw_violet", "--for-user", "mup", stdout=StringIO())
+        old = self._superseded_set(answers={})
+
+        call_command("seed_eiw_violet", "--for-user", "mup", stdout=StringIO())
+
+        self.assertFalse(QuestionSet.objects.filter(pk=old.pk).exists())
+        self.assertTrue(QuestionSet.objects.filter(
+            lesson__number=7, title__endswith="Match them up").exists())
+
+    def test_a_superseded_set_with_saved_answers_is_kept(self):
+        call_command("seed_eiw_violet", "--for-user", "mup", stdout=StringIO())
+        old = self._superseded_set(answers={"1": "her work"})
+        call_command("seed_eiw_violet", "--for-user", "mup", stdout=StringIO())
+        self.assertTrue(QuestionSet.objects.filter(pk=old.pk).exists())
+
+    def test_a_superseded_set_that_was_SUBMITTED_is_kept_even_if_blank(self):
+        # The dangerous case: four of the broken set's eight questions were
+        # unanswerable answer-choices, so a blank submit is exactly what a child
+        # does with it. Lesson completion counts submitted sheets, so deleting one
+        # rolls the lesson back to not-done and moves "What's Next" backwards.
+        call_command("seed_eiw_violet", "--for-user", "mup", stdout=StringIO())
+        old = self._superseded_set(answers={}, status=ResponseSheet.SUBMITTED)
+        call_command("seed_eiw_violet", "--for-user", "mup", stdout=StringIO())
+        self.assertTrue(QuestionSet.objects.filter(pk=old.pk).exists())
+
+    def test_a_teacher_discussion_set_is_never_swept_up(self):
+        # Discussion sets are excluded from the child's portal, so they can never
+        # have a ResponseSheet to protect them — an unscoped sweep would delete
+        # them on every single run.
+        call_command("seed_eiw_violet", "--for-user", "mup", stdout=StringIO())
+        keeper = QuestionSet.objects.create(
+            lesson=self._lesson7(), family=self.family,
+            title="Lesson 7 · Literary Toolbox", intro="i", rubric="r",
+            mode=QuestionSet.MODE_DISCUSSION,
+        )
+        call_command("seed_eiw_violet", "--for-user", "mup", stdout=StringIO())
+        self.assertTrue(QuestionSet.objects.filter(pk=keeper.pk).exists())
+
+    def test_dry_run_reports_the_removal_without_doing_it(self):
+        call_command("seed_eiw_violet", "--for-user", "mup", stdout=StringIO())
+        old = self._superseded_set(answers={})
+        out = StringIO()
+        call_command("seed_eiw_violet", "--for-user", "mup", "--dry-run", stdout=out)
+        self.assertIn("Removed superseded set", out.getvalue())
+        self.assertTrue(QuestionSet.objects.filter(pk=old.pk).exists())
+
     def test_eiw_seed_builds_write_markup_forms(self):
         # "Write sentences… circle/underline X" exercises become write-then-markup
         # boxes: she types the sentence, then draws on it. They keep the writing
@@ -1650,3 +1776,82 @@ class ParentGateTests(TestCase):
         resp = self.client.post(self._gate_url(), data={"password": "s3cret"})
         self.assertContains(resp, "Too many tries")
         self.assertNotIn("_auth_user_id", self.client.session)
+
+
+class PortalOutlineAndDeactivateTests(TestCase):
+    """HH-148 outline+manga nesting; HH-149 deactivate curriculum/placement."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from tutor.models import Material
+
+        cls.parent = User.objects.create_user(username="hh148", email="h148@e.com", password="pw")
+        cls.family = Family.objects.create(name="HH148 Fam")
+        FamilyMembership.objects.create(user=cls.parent, family=cls.family, role="parent")
+        cls.violet = Student.objects.create(
+            parent=cls.parent, first_name="Violet", grade_level="G03", family=cls.family,
+        )
+        cls.kaylin = Student.objects.create(
+            parent=cls.parent, first_name="Kaylin", grade_level="G06", family=cls.family,
+        )
+        cls.math = Curriculum.objects.create(
+            parent=cls.parent, name="Dimensions Math 3A", subject="Math",
+            grade_level="G03", family=cls.family,
+        )
+        ch = Chapter.objects.create(curriculum=cls.math, number=2, title="Mental Math")
+        cls.lesson = Lesson.objects.create(
+            chapter=ch, order=8, number=8, title="Sum and Difference",
+        )
+        cls.manga = Material.objects.create(
+            lesson=cls.lesson, title="Chi Sweet Home Math", skill_type="manga",
+            status=Material.APPROVED, family=cls.family, child=cls.violet,
+        )
+        CurriculumPlacement.objects.create(
+            child=cls.violet, curriculum=cls.math, current_lesson=cls.lesson,
+        )
+        cls.beast = Curriculum.objects.create(
+            parent=cls.parent, name="Beast Academy", subject="Math", grade_level="G03",
+            family=cls.family, is_online=True, website_url="https://beastacademy.com/",
+        )
+        CurriculumPlacement.objects.create(child=cls.violet, curriculum=cls.beast)
+        CurriculumPlacement.objects.create(child=cls.kaylin, curriculum=cls.beast)
+        cls.violet_token = make_portal_token(cls.violet)
+        cls.kaylin_token = make_portal_token(cls.kaylin)
+
+    def test_subject_nests_manga_under_lesson(self):
+        resp = self.client.get(reverse("portal:portal_subject", kwargs={
+            "token": self.violet_token, "curriculum_id": self.math.pk,
+        }))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "Chapter 2")
+        self.assertContains(resp, "Sum and Difference")
+        self.assertContains(resp, "Chi Sweet Home Math")
+        self.assertNotContains(resp, "🦸 Adventures")
+        self.assertContains(resp, "portal-lesson-title")
+        self.assertContains(resp, "portal-manga-row")
+
+    def test_inactive_placement_hides_from_violet_portal_not_kaylin(self):
+        placement = CurriculumPlacement.objects.get(child=self.violet, curriculum=self.beast)
+        placement.is_active = False
+        placement.save(update_fields=["is_active"])
+        v_home = self.client.get(reverse("portal:portal_home", kwargs={"token": self.violet_token}))
+        k_home = self.client.get(reverse("portal:portal_home", kwargs={"token": self.kaylin_token}))
+        self.assertNotContains(v_home, "Beast Academy")
+        self.assertContains(k_home, "Beast Academy")
+        resp = self.client.get(reverse("portal:portal_subject", kwargs={
+            "token": self.violet_token, "curriculum_id": self.beast.pk,
+        }))
+        self.assertEqual(resp.status_code, 404)
+
+    def test_inactive_curriculum_hidden_from_list_unless_toggled(self):
+        self.client.login(username="hh148", password="pw")
+        self.beast.is_active = False
+        self.beast.save(update_fields=["is_active"])
+        hidden = self.client.get(reverse("curricula:curriculum_list"))
+        names = [c.name for c in hidden.context["curricula"]]
+        self.assertNotIn("Beast Academy", names)
+        self.assertIn("Dimensions Math 3A", names)
+        shown = self.client.get(reverse("curricula:curriculum_list") + "?show_deactivated=1")
+        shown_names = [c.name for c in shown.context["curricula"]]
+        self.assertIn("Beast Academy", shown_names)
+        self.assertContains(shown, "Deactivated")

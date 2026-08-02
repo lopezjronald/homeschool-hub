@@ -1,9 +1,13 @@
 from django.contrib import admin
 
 from .models import (
-    AiUsage, ComprehensionCheck, KnownWord, Learner, LearnerProfile, ListeningResource,
-    ListeningSession, MilestoneAward, PhonicsRule, ReadingSession, ReviewItem, Story,
-    StoryAudio, StoryImage, Theme,
+    AiUsage, AlphabetTile, AudioClip, ClassroomPhrase, ComprehensionCheck,
+    KnownWord, Learner,
+    LearnerProfile, ListeningResource, ListeningSession, MilestoneAward, Pathway,
+    PathwayCheckmark, PathwayStep, PhonicsRule, ReadingSession, ReviewItem,
+    FreeWrite, JournalEntry,
+    Story, StoryAudio, StoryImage, Theme, TutorPacket,
+    WritingError,
 )
 
 
@@ -31,6 +35,96 @@ class ThemeAdmin(admin.ModelAdmin):
 class PhonicsRuleAdmin(admin.ModelAdmin):
     list_display = ("pattern", "title", "order", "active")
     list_filter = ("active",)
+
+
+@admin.register(FreeWrite)
+class FreeWriteAdmin(admin.ModelAdmin):
+    list_display = ("learner", "on_date", "minutes", "words", "words_per_minute")
+    list_filter = ("on_date", "minutes")
+    date_hierarchy = "on_date"
+
+
+@admin.register(JournalEntry)
+class JournalEntryAdmin(admin.ModelAdmin):
+    list_display = ("learner", "on_date", "awaiting_reply")
+    list_filter = ("on_date",)
+    search_fields = ("entry", "reply")
+
+
+@admin.register(WritingError)
+class WritingErrorAdmin(admin.ModelAdmin):
+    """Tagged mistakes drive the next sheet's targeting, so a mis-tag is worth being
+    able to fix here rather than living in the counts forever."""
+
+    list_display = ("learner", "category", "source", "wrote", "expected", "on_date")
+    list_filter = ("category", "source", "on_date")
+    search_fields = ("wrote", "expected")
+    date_hierarchy = "on_date"
+
+
+@admin.register(ClassroomPhrase)
+class ClassroomPhraseAdmin(admin.ModelAdmin):
+    """The parent edits their own session script here — reword, reorder, retire.
+    Changing `text` changes the AudioClip content hash, so re-run
+    `clips_build --classroom` afterwards or the phrase goes mute."""
+
+    list_display = ("text", "english", "category", "order", "active")
+    list_filter = ("category", "active")
+    search_fields = ("text", "english")
+    list_editable = ("order", "active")
+
+
+@admin.register(TutorPacket)
+class TutorPacketAdmin(admin.ModelAdmin):
+    list_display = ("title", "source", "host_student_id", "order", "active", "updated_at")
+    list_filter = ("active",)
+    search_fields = ("title", "source", "body")
+
+
+@admin.register(AudioClip)
+class AudioClipAdmin(admin.ModelAdmin):
+    list_display = ("text", "voice", "engine", "provider", "is_current", "updated_at")
+    list_filter = ("provider", "voice", "engine")
+    search_fields = ("text", "content_hash")
+    readonly_fields = ("content_hash", "audio_key", "created_at", "updated_at")
+
+    @admin.display(boolean=True, description="Current")
+    def is_current(self, obj):
+        return obj.is_current
+
+
+@admin.register(AlphabetTile)
+class AlphabetTileAdmin(admin.ModelAdmin):
+    list_display = ("symbol", "spoken", "example", "kind", "order", "active")
+    list_filter = ("kind", "active")
+    search_fields = ("symbol", "spoken", "example")
+
+
+class PathwayStepInline(admin.TabularInline):
+    model = PathwayStep
+    extra = 0
+    ordering = ("order",)
+
+
+@admin.register(Pathway)
+class PathwayAdmin(admin.ModelAdmin):
+    list_display = ("slug", "title", "age_band", "order", "active")
+    list_filter = ("age_band", "active")
+    search_fields = ("slug", "title")
+    inlines = [PathwayStepInline]
+
+
+@admin.register(PathwayStep)
+class PathwayStepAdmin(admin.ModelAdmin):
+    list_display = ("pathway", "order", "title", "kind", "target_ref", "optional")
+    list_filter = ("kind", "optional", "pathway")
+    search_fields = ("title", "target_ref")
+
+
+@admin.register(PathwayCheckmark)
+class PathwayCheckmarkAdmin(admin.ModelAdmin):
+    list_display = ("learner", "step", "created_at")
+    list_filter = ("step__pathway",)
 
 
 @admin.register(AiUsage)

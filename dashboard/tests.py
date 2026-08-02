@@ -57,9 +57,11 @@ class ProgressDashboardTests(TestCase):
         WorkLogEntry.objects.create(parent=cls.other, family=cls.other_family, child=cls.eve, subject="SecretWork", date=cls.today)
 
         # Alice mastery: one Proficient (meets bar), one Beginning (doesn't).
-        e = WorkLogEntry.objects.filter(child=cls.alice).first()
-        MasteryAssessment.objects.create(work_entry=e, rubric="r", answers="a", final_level=mastery.PROFICIENT, status=MasteryAssessment.FINALIZED)
-        MasteryAssessment.objects.create(work_entry=e, rubric="r", answers="a", final_level=mastery.BEGINNING, status=MasteryAssessment.FINALIZED)
+        # One assessment each — two levels means two pieces of work, and a work
+        # entry can only carry one assessment.
+        first, second = WorkLogEntry.objects.filter(child=cls.alice, subject="Math").order_by("pk")[:2]
+        MasteryAssessment.objects.create(work_entry=first, rubric="r", answers="a", final_level=mastery.PROFICIENT, status=MasteryAssessment.FINALIZED)
+        MasteryAssessment.objects.create(work_entry=second, rubric="r", answers="a", final_level=mastery.BEGINNING, status=MasteryAssessment.FINALIZED)
 
         cls.url = reverse("dashboard:dashboard")
 
@@ -109,8 +111,12 @@ class ProgressDashboardTests(TestCase):
         self.assertEqual(resp.context["summary"]["children"], 0)
 
     def test_draft_assessment_not_counted(self):
-        # An unreviewed AI draft must NOT inflate the mastery numbers.
-        e = WorkLogEntry.objects.filter(child=self.alice).first()
+        # An unreviewed AI draft must NOT inflate the mastery numbers. It needs a
+        # work entry of its own — the fixture's two already carry one assessment each.
+        e = WorkLogEntry.objects.create(
+            parent=self.parent, family=self.family, child=self.alice,
+            subject="Math", date=self.today,
+        )
         MasteryAssessment.objects.create(
             work_entry=e, rubric="r", answers="a",
             ai_level=mastery.MASTERED, status=MasteryAssessment.DRAFT,

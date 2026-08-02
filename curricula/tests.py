@@ -495,17 +495,30 @@ class BlueprintTests(TestCase):
         )
         self.assertEqual(opener.code, "Ch 1 Opener")
 
-    def test_every_teaching_lesson_in_chapters_1_to_3_has_objectives(self):
+    def test_no_teaching_lesson_in_any_blueprint_is_graded_blind(self):
         # Objectives are not decoration: tutor.views._entry_objectives feeds them to
         # the AI grader as concept context, so a lesson with none is graded blind.
-        # Openers, practices and reviews carry none by design — they have no new
+        # Openers, practices and reviews carry none by design — they introduce no
         # objective of their own.
+        from curricula.blueprints import BLUEPRINTS
+        blind = []
+        for slug, bp in BLUEPRINTS.items():
+            for ch in bp["chapters"]:
+                for lsn in ch["lessons"]:
+                    if lsn["type"] != Lesson.TYPE_LESSON:
+                        continue
+                    if not (lsn["objectives"] or "").strip():
+                        blind.append(f"{slug} Ch{ch['number']} {lsn['title']}")
+        self.assertEqual(blind, [], f"lessons the grader would judge blind: {blind}")
+
+    def test_objectives_survive_being_applied_to_a_curriculum(self):
+        # The blueprint having them is only half of it — apply_blueprint has to
+        # carry them onto the Lesson rows the grader actually reads.
         apply_blueprint(self.curriculum, get_blueprint("dimensions_math_3a"))
         blind = [
             f"Ch{L.chapter.number} L{L.number} {L.title}"
             for L in Lesson.objects.filter(
                 chapter__curriculum=self.curriculum,
-                chapter__number__in=(1, 2, 3),
                 lesson_type=Lesson.TYPE_LESSON,
             ).select_related("chapter")
             if not (L.objectives or "").strip()

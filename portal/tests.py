@@ -330,8 +330,22 @@ class MarkupTests(TestCase):
         resp = self.client.get(self._url("portal_questions", set_pk=self.qset.pk))
         self.assertContains(resp, "markup-widget")
         self.assertContains(resp, "markup-canvas")
-        self.assertContains(resp, "The dog ran.")
         self.assertContains(resp, "portal-markup")
+        # Every word carries its own box so the strokes drawn over it can be read
+        # back by name. Without this the passage is one blob and a stroke is
+        # coordinates over nothing.
+        for i, word in enumerate(["The", "dog", "ran."]):
+            self.assertContains(
+                resp, f'<span class="markup-word" data-word="{i}">{word}</span>', html=False)
+
+    def test_the_whole_sentence_is_still_readable_on_the_page(self):
+        # Splitting into spans must not change what the child sees: the words
+        # still read as a sentence, separated by spaces.
+        resp = self.client.get(self._url("portal_questions", set_pk=self.qset.pk))
+        import re
+        html = resp.content.decode()
+        passage = re.search(r'<div class="markup-passage">(.*?)</div>', html, re.S).group(1)
+        self.assertEqual(re.sub(r"<[^>]+>", "", passage).strip(), "The dog ran.")
 
     def test_markup_strokes_autosave_and_submit(self):
         strokes = '[{"c":"#333333","w":3,"p":[[0.1,0.5],[0.4,0.5]]}]'
@@ -350,7 +364,30 @@ class MarkupTests(TestCase):
         )
         sheet.refresh_from_db()
         self.assertTrue(sheet.is_submitted)
-        self.assertIn("marked up", sheet.work_entry.description)
+        # A pre-marks answer (a bare stroke array) can only report that she drew —
+        # the word positions it was drawn over are gone — but it must say so in a
+        # way that does not read to the grader as a wrong answer.
+        desc = sheet.work_entry.description
+        self.assertIn('she drew 1 mark(s) on "The dog ran."', desc)
+        self.assertIn("none were machine-readable", desc)
+
+    def test_a_marked_up_sentence_reaches_the_grader_as_words(self):
+        # The point of the whole feature: the grader has to learn WHAT she marked,
+        # not merely that she drew something.
+        answer = json.dumps({
+            "strokes": [{"c": "#333", "w": 3, "p": [[0.1, 0.8], [0.3, 0.8]]}],
+            "marks": [{"i": 0, "word": "The", "kind": "underlined"},
+                      {"i": 1, "word": "dog", "kind": "underlined"}],
+            "unread": 0,
+        })
+        self.client.post(
+            self._url("portal_questions", set_pk=self.qset.pk),
+            data={f"answer_{self.q.pk}": answer},
+        )
+        sheet = ResponseSheet.objects.get(question_set=self.qset, child=self.violet)
+        desc = sheet.work_entry.description
+        self.assertIn('underlined "The", "dog"', desc)
+        self.assertNotIn("could not be read", desc)
 
     def test_eiw_seed_builds_markup_forms(self):
         call_command("seed_eiw_violet", "--for-user", "mup", stdout=StringIO())

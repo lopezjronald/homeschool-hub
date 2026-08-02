@@ -1,4 +1,5 @@
 import json
+import os
 from datetime import timedelta
 from io import StringIO
 from types import SimpleNamespace
@@ -1102,3 +1103,147 @@ class SpendCeilingIsLegibleToUsersTests(TestCase):
         assessment, created = grading.auto_grade_sheet(sheet)
         self.assertIsNone(assessment)
         self.assertFalse(created)
+
+
+class MarkupStrokeReaderTests(TestCase):
+    """The drawn-on sentence, read back as text a grader can mark (HH-154).
+
+    A markup answer used to reach the grader as `annotated: yes` — it knew she
+    had drawn, never what she marked — so all 260 mark-the-sentence exercises
+    were ungradeable. Every word now renders in its own span, so the strokes over
+    it can be named.
+    """
+
+    def _q(self, passage="Seth is a vet."):
+        return Question(response_type=Question.TYPE_MARKUP, passage=passage)
+
+    def _answer(self, marks, unread=0, strokes=None):
+        return json.dumps({
+            "strokes": strokes if strokes is not None else [{"p": [[0, 0], [1, 1]]}],
+            "marks": marks, "unread": unread,
+        })
+
+    def test_words_are_numbered_across_the_whole_passage(self):
+        # The index identifies a word in the passage, not its position on a line —
+        # otherwise a two-line sentence has two word 0s and the marks are ambiguous.
+        lines = self._q("Seth is a vet.\nHe helps pets.").markup_lines
+        self.assertEqual([w["text"] for w in lines[0]], ["Seth", "is", "a", "vet."])
+        self.assertEqual([w["i"] for w in lines[1]], [4, 5, 6])
+
+    def test_the_grader_is_told_which_words_she_marked(self):
+        sheet = ResponseSheet()
+        out = sheet._format_markup(
+            self._answer([{"i": 0, "word": "Seth", "kind": "underlined"},
+                          {"i": 3, "word": "vet.", "kind": "circled"}]),
+            self._q(),
+        )
+        self.assertIn('underlined "Seth"', out)
+        self.assertIn('circled "vet."', out)
+
+    def test_an_unread_stroke_is_reported_as_a_fact_not_a_verdict(self):
+        # The answer is also what the PARENT reads in the work browser and what
+        # lands in the charter report, so it states what happened. Telling the
+        # grader how to treat it belongs in the rubric, not in her answer.
+        sheet = ResponseSheet()
+        out = sheet._format_markup(
+            self._answer([{"i": 0, "word": "Seth", "kind": "underlined"}], unread=2),
+            self._q(),
+        )
+        self.assertIn('underlined "Seth"', out)
+        self.assertIn("not machine-readable", out)
+        self.assertNotIn("wrong", out)
+        self.assertNotIn("do not", out)
+
+    def test_drawing_nothing_readable_says_so_plainly(self):
+        sheet = ResponseSheet()
+        out = sheet._format_markup(self._answer([], unread=1), self._q())
+        self.assertIn("none were machine-readable", out)
+        self.assertNotIn("wrong", out)
+
+    def test_a_junk_unread_count_cannot_break_turning_work_in(self):
+        # answer_display runs inside the transaction that submits the sheet, and
+        # autosave accepts whatever the client posts — so junk here must degrade,
+        # not raise, or the child cannot turn her work in at all.
+        sheet = ResponseSheet()
+        for junk in ('{"strokes": [{"p": []}], "marks": [], "unread": "x"}',
+                     '{"strokes": [{"p": []}], "marks": [], "unread": [1, 2]}',
+                     '{"strokes": "not a list", "marks": null, "unread": null}'):
+            out = sheet._format_markup(junk, self._q())
+            self.assertTrue(out.startswith("["), out)
+
+    def test_an_untouched_sentence_reads_as_nothing_marked(self):
+        sheet = ResponseSheet()
+        self.assertIn("nothing marked", sheet._format_markup("", self._q()))
+
+    def test_answers_saved_before_marks_existed_still_load(self):
+        # Old answers are a bare list of strokes. The word positions they were
+        # drawn over are gone, so they can only report that she drew — but they
+        # must not crash or read as empty.
+        sheet = ResponseSheet()
+        legacy = json.dumps([{"c": "#333", "p": [[0.1, 0.5], [0.4, 0.5]]}])
+        out = sheet._format_markup(legacy, self._q())
+        self.assertIn("she drew 1 mark", out)
+        self.assertIn("none were machine-readable", out)
+
+    def test_a_corrupt_answer_degrades_instead_of_raising(self):
+        sheet = ResponseSheet()
+        self.assertIn("nothing marked", sheet._format_markup("{not json", self._q()))
+
+    def test_the_stroke_reader_itself(self):
+        """Run the JS classifier's own tests through node.
+
+        The geometry is the part that can go subtly wrong — a misread turns a
+        correct answer into a wrong one — so it is tested against realistic word
+        boxes rather than trusted. Kept as JS so the shipped file is what runs.
+        """
+        import shutil
+        import subprocess
+        from django.conf import settings
+
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("node is not installed")
+        script = os.path.join(settings.BASE_DIR, "static", "js", "portal-markup.test.js")
+        result = subprocess.run([node, script], capture_output=True, text=True, timeout=60)
+        self.assertEqual(result.returncode, 0,
+                         f"stroke reader tests failed:\n{result.stdout}\n{result.stderr}")
+        self.assertIn("0 failed", result.stdout)
+
+
+class GraderIsToldTheTaskTests(TestCase):
+    """The rubric sent to the grader (HH-154).
+
+    Markup answers named the marks but the grader was never told what the
+    exercise ASKED for — the instruction lives on the question set's intro and
+    was not being sent — so it was marking an answer whose question it had never
+    seen.
+    """
+
+    def _set(self, intro="Underline the complete subject.", markup=True):
+        from curricula.models import Chapter
+        from .models import QuestionSet
+        user = User.objects.create_user("gt", "gt@e.com", "pw")
+        cur = Curriculum.objects.create(parent=user, name="G", subject="Writing")
+        ch = Chapter.objects.create(curriculum=cur, number=1, title="C")
+        lesson = Lesson.objects.create(chapter=ch, order=1, number=1, title="L")
+        qset = QuestionSet.objects.create(
+            lesson=lesson, title="T", intro=intro, rubric="Base rubric.")
+        Question.objects.create(
+            question_set=qset, order=1, category="editing",
+            response_type=Question.TYPE_MARKUP if markup else Question.TYPE_TEXT,
+            passage="The dog ran.", prompt="" if markup else "Write.")
+        return qset
+
+    def test_the_rubric_carries_what_she_was_asked_to_do(self):
+        rubric = grading._rubric_for(self._set())
+        self.assertIn("Underline the complete subject.", rubric)
+        self.assertIn("Base rubric.", rubric)
+
+    def test_a_markup_set_tells_the_grader_how_to_treat_unread_marks(self):
+        rubric = grading._rubric_for(self._set())
+        self.assertIn("not machine-readable", rubric)
+        self.assertIn("Do NOT count it wrong", rubric)
+
+    def test_a_set_with_no_markup_does_not_carry_the_markup_note(self):
+        rubric = grading._rubric_for(self._set(markup=False))
+        self.assertNotIn("machine-readable", rubric)

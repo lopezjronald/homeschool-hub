@@ -1257,7 +1257,7 @@ class SaxonLessonToolTests(TestCase):
     click that lands one square off — and none of it needs a DOM.
     """
 
-    def _run(self, name):
+    def _run(self, name, env=None):
         import shutil
         import subprocess
         from django.conf import settings
@@ -1266,13 +1266,35 @@ class SaxonLessonToolTests(TestCase):
         if not node:
             self.skipTest("node is not installed")
         script = os.path.join(settings.BASE_DIR, "static", "js", name)
-        result = subprocess.run([node, script], capture_output=True, text=True, timeout=90)
+        child_env = dict(os.environ, **(env or {}))
+        result = subprocess.run([node, script], capture_output=True, text=True,
+                                timeout=90, env=child_env)
         self.assertEqual(result.returncode, 0,
                          f"{name} failed:\n{result.stdout}\n{result.stderr}")
         self.assertIn("0 failed", result.stdout)
+        return result.stdout
 
     def test_the_graph_paper_core(self):
-        self._run("portal-grid.test.js")
+        # Hand the checker the REAL seeded tables. Without this the .test.js file
+        # asserts against its own typed copies of them, and the tool and the
+        # lesson can drift apart in silence — which is how a child ends up being
+        # told her correct answer is wrong.
+        import json
+
+        from tutor.management.commands.seed_saxon_73 import BLOCKS
+        from tutor.models import LessonBlock
+
+        tables = {}
+        for kind, data in BLOCKS:
+            if kind == LessonBlock.KIND_TOOL and data.get("widget") == "grid":
+                rows = (data.get("config") or {}).get("table")
+                if rows:
+                    tables["practice"] = rows
+        self.assertTrue(tables, "lesson 73 no longer ships a plottable table")
+        out = self._run("portal-grid.test.js",
+                        {"SAXON_GRID_TABLES": json.dumps(tables)})
+        self.assertIn("the seeded practice table is the cubic table", out,
+                      "the seeded tables were not actually checked")
 
     def test_the_ratio_bar_and_decimal_slider_cores(self):
         self._run("portal-tools.test.js")
@@ -1317,6 +1339,30 @@ class SaxonLessonSeedTests(TestCase):
         self._seed(73)
         self.assertEqual(Material.objects.filter(lesson__number=73).count(), 1)
         self.assertEqual(LessonBlock.objects.filter(material=m).count(), before)
+
+    def test_changed_content_returns_an_approved_lesson_to_draft(self):
+        """Approval is of specific content, not of a slot.
+
+        The parent approves what the child will see. If a re-seed could rewrite
+        an approved lesson in place, a corrected — or broken — page would reach
+        her carrying an approval she never gave it.
+        """
+        from tutor.models import LessonBlock
+        self._seed(73)
+        m = Material.objects.get(lesson__chapter__curriculum=self.cur, lesson__number=73)
+        m.status = Material.APPROVED
+        m.save(update_fields=["status"])
+
+        # A re-seed that changes nothing must NOT nag him to approve it again.
+        self._seed(73)
+        m.refresh_from_db()
+        self.assertEqual(m.status, Material.APPROVED)
+
+        # A re-seed that changes the content must.
+        LessonBlock.objects.filter(material=m).update(data={"prose": "tampered"})
+        self._seed(73)
+        m.refresh_from_db()
+        self.assertEqual(m.status, Material.DRAFT)
 
     def test_a_shortened_lesson_drops_its_leftover_blocks(self):
         from tutor.models import LessonBlock

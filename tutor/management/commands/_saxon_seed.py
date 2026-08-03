@@ -187,14 +187,19 @@ class SaxonSeedCommand(BaseCommand):
             if updates:
                 material.save(update_fields=updates)
 
-        changed = False
+        # Read what is there BEFORE writing over it. Comparing after the write
+        # compares the new data to itself and never reports a change, which
+        # quietly defeated the re-approval guard below.
+        was = {b.order: (b.kind, b.data)
+               for b in LessonBlock.objects.filter(material=material)}
+        changed = len(was) > len(self.BLOCKS)
         for order, (kind, data) in enumerate(self.BLOCKS, start=1):
-            _, made = LessonBlock.objects.update_or_create(
+            if was.get(order) != (kind, data):
+                changed = True
+            LessonBlock.objects.update_or_create(
                 material=material, order=order,
                 defaults={"kind": kind, "data": data},
             )
-            existing = LessonBlock.objects.get(material=material, order=order)
-            changed = changed or made or existing.data != data or existing.kind != kind
         # A revised lesson may be shorter than the one it replaces.
         LessonBlock.objects.filter(material=material).filter(
             order__gt=len(self.BLOCKS)).delete()

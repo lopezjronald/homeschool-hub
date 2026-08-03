@@ -18,17 +18,113 @@
 (function () {
   "use strict";
 
-  /* ---------- the function families she has to recognise ---------- */
+  /* ---------- the function families she has to recognise ----------
+
+     A family is a SHAPE, not one function. The button says "aˣ (a>1)", so a
+     table of 3ˣ has to be accepted — checking it against 2ˣ alone would tell a
+     child who identified the family correctly that she was wrong. Each family
+     therefore carries a `fit`: given her points, it returns the specific member
+     of the family that passes through them, or null if none does.
+
+     `f` is the parent member — what the memorise-gallery draws when there are no
+     points to fit. */
   var FAMILIES = {
-    "x":     { label: "x",    f: function (x) { return x; } },
-    "x^2":   { label: "x²", f: function (x) { return x * x; } },
-    "x^3":   { label: "x³", f: function (x) { return x * x * x; } },
-    "|x|":   { label: "|x|",  f: function (x) { return Math.abs(x); } },
-    "sqrt":  { label: "√x", f: function (x) { return x < 0 ? null : Math.sqrt(x); } },
-    "1/x":   { label: "1/x",  f: function (x) { return x === 0 ? null : 1 / x; } },
-    "a^x":   { label: "aˣ (a>1)",  f: function (x) { return Math.pow(2, x); } },
-    "a^-x":  { label: "aˣ (0<a<1)", f: function (x) { return Math.pow(0.5, x); } },
+    "x":     { label: "x",    f: function (x) { return x; },
+               shape: function (x) { return x; } },
+    "x^2":   { label: "x²", f: function (x) { return x * x; },
+               shape: function (x) { return x * x; } },
+    "x^3":   { label: "x³", f: function (x) { return x * x * x; },
+               shape: function (x) { return x * x * x; } },
+    "|x|":   { label: "|x|",  f: function (x) { return Math.abs(x); },
+               shape: Math.abs },
+    "sqrt":  { label: "√x", f: function (x) { return x < 0 ? null : Math.sqrt(x); },
+               shape: function (x) { return x < 0 ? null : Math.sqrt(x); } },
+    "1/x":   { label: "1/x",  f: function (x) { return x === 0 ? null : 1 / x; },
+               shape: function (x) { return x === 0 ? null : 1 / x; } },
+    "a^x":   { label: "aˣ (a>1)",  f: function (x) { return Math.pow(2, x); },
+               base: function (b) { return b > 1; } },
+    "a^-x":  { label: "aˣ (0<a<1)", f: function (x) { return Math.pow(0.5, x); },
+               base: function (b) { return b > 0 && b < 1; } },
   };
+
+  /* The worst a candidate misses any of her points by, or Infinity if it is
+     undefined anywhere she plotted. */
+  function maxError(f, pts) {
+    var worst = 0;
+    for (var i = 0; i < pts.length; i++) {
+      var y = f(pts[i][0]);
+      if (y === null || !isFinite(y)) return Infinity;
+      var e = Math.abs(y - pts[i][1]);
+      if (e > worst) worst = e;
+    }
+    return worst;
+  }
+
+  /* Fit a member of `key`'s family to her points, or return null.
+
+     Families built on a parent shape allow a vertical stretch — y = a·shape(x)
+     with a > 0. A stretch keeps the shape she memorised; a negative a would flip
+     it upside down, which is a DIFFERENT shape and should not be confirmed as
+     this one. Exponentials instead fit the base, which is the parameter their
+     own button names.
+
+     Candidates come from her points rather than from algebra: with at most a
+     dozen dots, trying each implied parameter and checking all the points is
+     both exact and obviously correct. */
+  function bestFit(key, points, tolerance) {
+    var fam = FAMILIES[key];
+    if (!fam) return null;
+    var pts = dedupe(points);
+    if (!pts.length) return null;
+    var tol = tolerance == null ? 0.5 : tolerance;
+    var best = null, i, j;
+
+    function consider(f) {
+      var err = maxError(f, pts);
+      if (err <= tol && (!best || err < best.err)) best = { f: f, err: err };
+    }
+
+    if (fam.base) {
+      // y = b^x. Two points with positive y pin b down; try every pair, since
+      // a lattice point rounded to y = 0 carries no ratio information.
+      var usable = pts.filter(function (p) { return p[1] > 0; });
+      for (i = 0; i < usable.length; i++) {
+        for (j = 0; j < usable.length; j++) {
+          var dx = usable[j][0] - usable[i][0];
+          if (!dx) continue;
+          var b = Math.pow(usable[j][1] / usable[i][1], 1 / dx);
+          if (!isFinite(b) || b <= 0 || !fam.base(b)) continue;
+          consider((function (bb) {
+            return function (x) { return Math.pow(bb, x); };
+          })(b));
+        }
+      }
+      return best;
+    }
+
+    var candidates = [1];
+    for (i = 0; i < pts.length; i++) {
+      var s = fam.shape(pts[i][0]);
+      if (s === null || !isFinite(s) || s === 0) continue;
+      candidates.push(pts[i][1] / s);
+    }
+    for (i = 0; i < candidates.length; i++) {
+      var a = candidates[i];
+      if (!isFinite(a) || a <= 0) continue;
+      consider((function (aa) {
+        return function (x) {
+          var v = fam.shape(x);
+          return v === null ? null : aa * v;
+        };
+      })(a));
+    }
+    return best;
+  }
+
+  function fitFamily(key, points, tolerance) {
+    var b = bestFit(key, points, tolerance);
+    return b ? b.f : null;
+  }
 
   var VIEW = { xmin: -6, xmax: 6, ymin: -6, ymax: 6 };
 
@@ -70,14 +166,20 @@
   function matchingFamilies(points, tolerance) {
     var pts = dedupe(points);
     if (!pts.length) return [];
-    var tol = tolerance == null ? 0.5 : tolerance;
-    return Object.keys(FAMILIES).filter(function (key) {
-      var f = FAMILIES[key].f;
-      return pts.every(function (p) {
-        var y = f(p[0]);
-        return y !== null && isFinite(y) && Math.abs(y - p[1]) <= tol;
-      });
+    var fits = [];
+    Object.keys(FAMILIES).forEach(function (key) {
+      var b = bestFit(key, pts, tolerance);
+      if (b) fits.push({ key: key, err: b.err });
     });
+
+    /* An EXACT fit beats a rounded one. Tolerance is here only to rescue the
+       families that cannot land on the lattice at all; when a family passes
+       through every point dead on, the near-misses are not the intended answer.
+       Without this rule the |x| table also "fits" y = 0.5x², which sits exactly
+       half a square away at x = ±1 — and the V-versus-parabola distinction is
+       the entire point of that part of the lesson. */
+    var exact = fits.filter(function (t) { return t.err < 1e-9; });
+    return (exact.length ? exact : fits).map(function (t) { return t.key; });
   }
 
   /* Enough points to tell the families apart? Not a count — a question about
@@ -91,17 +193,22 @@
 
   /* A polyline for the family across the visible window, in grid units.
      Returns SEGMENTS — 1/x is two separate curves and must not be joined across
-     the asymptote, and sqrt simply does not exist left of zero. */
-  function sampleCurve(key, view, stepsPerUnit) {
+     the asymptote, and sqrt simply does not exist left of zero.
+
+     When her points are supplied, draw the member of the family that FITS THEM,
+     not the parent. Telling her "yes, that's aˣ" and then drawing a 2ˣ curve
+     that sails past her 3ˣ dots would contradict the answer we just gave her. */
+  function sampleCurve(key, view, stepsPerUnit, points) {
     var fam = FAMILIES[key];
     if (!fam) return [];
     view = view || VIEW;
+    var f = (points && points.length && fitFamily(key, points)) || fam.f;
     var step = 1 / (stepsPerUnit || 16);
     var segments = [];
     var current = [];
     for (var x = view.xmin; x <= view.xmax + 1e-9; x += step) {
       var gx = Math.round(x * 1e6) / 1e6;
-      var y = fam.f(gx);
+      var y = f(gx);
       var ok = y !== null && isFinite(y) && y >= view.ymin && y <= view.ymax;
       if (ok) {
         current.push([gx, y]);
@@ -144,6 +251,7 @@
     isDecisive: isDecisive,
     dedupe: dedupe,
     sampleCurve: sampleCurve,
+    fitFamily: fitFamily,
     transform: transform,
   };
   if (typeof module !== "undefined" && module.exports) module.exports = core;
@@ -232,9 +340,9 @@
         }));
       });
     }
-    function drawCurve(key) {
+    function drawCurve(key, fitTo) {
       while (curveLayer.firstChild) curveLayer.removeChild(curveLayer.firstChild);
-      sampleCurve(key, view).forEach(function (seg) {
+      sampleCurve(key, view, null, fitTo).forEach(function (seg) {
         curveLayer.appendChild(el("polyline", {
           points: seg.map(function (q) { return X(q[0]) + "," + Y(q[1]); }).join(" "),
           fill: "none", stroke: "#1E7A50", "stroke-width": 3, opacity: 0.85,
@@ -335,7 +443,9 @@
           pick.querySelectorAll(".lesson-choice").forEach(function (o) {
             o.classList.remove("is-picked", "is-right");
           });
-          drawCurve(key);
+          // Pass her points so the curve drawn is the family member that fits
+          // them — in a reference gallery there are none, so it draws the parent.
+          drawCurve(key, cfg.reference ? null : points);
           b.classList.add("is-picked");
           // A reference gallery has nothing to check against — it exists to be
           // looked at, and telling her to "plot the table first" when the block

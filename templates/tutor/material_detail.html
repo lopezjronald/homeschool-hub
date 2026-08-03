@@ -107,9 +107,11 @@
 {% endblock %}
 
 {% block extra_js %}
-{# He approves what she sees — which means the tools have to WORK here, not be
-   blank divs. The graph tool is the piece most likely to mislead her, so it is
-   the piece he most needs to try. #}
+{% comment %}
+  He approves what she sees — which means the tools have to WORK here, not be
+  blank divs. The graph tool is the piece most likely to mislead her, so it is
+  the piece he most needs to try.
+{% endcomment %}
 {% if material.has_blocks %}
   <script src="{% static 'js/portal-stepper.js' %}"></script>
   <script src="{% static 'js/portal-grid.js' %}"></script>

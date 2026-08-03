@@ -5,7 +5,7 @@
    points, or an answer marked wrong when it was right — so it is tested directly.
    The DOM half only reads rectangles. */
 const { snapToLattice, matchingFamilies, isDecisive, dedupe, sampleCurve,
-        transform, FAMILIES, VIEW, SIZE, PAD } = require("./portal-grid.js");
+        fitFamily, transform, FAMILIES, VIEW, SIZE, PAD } = require("./portal-grid.js");
 
 let pass = 0, fail = 0;
 function check(name, got, want) {
@@ -135,6 +135,69 @@ check("the full square table IS decisive",
 check("duplicate points collapse", dedupe([[0,0],[1,1],[1,1]]), [[0,0],[1,1]]);
 check("a duplicate cannot make an ambiguous plot look decisive",
   isDecisive([[0,0],[1,1],[1,1]], "x^2"), false);
+
+
+/* ---- families are shapes, not single functions (review finding 3) ---- */
+
+// A family button says "a^x (a>1)". If the checker only knows 2^x it marks a
+// child who identified the family correctly as wrong.
+check("a table of 3^x is accepted as the a>1 family",
+  matchingFamilies([[0,1],[1,3],[2,9]]).indexOf("a^x") >= 0, true);
+check("...and is not also called a shrinking exponential",
+  matchingFamilies([[0,1],[1,3],[2,9]]).indexOf("a^-x") >= 0, false);
+check("a table of (1/3)^x is accepted as the 0<a<1 family",
+  matchingFamilies([[0,1],[-1,3],[-2,9]]).indexOf("a^-x") >= 0, true);
+
+check("a vertical stretch keeps the shape: y = 2x^2 is still x^2",
+  matchingFamilies([[-2,8],[-1,2],[0,0],[1,2],[2,8]]).indexOf("x^2") >= 0, true);
+// y = -x^2 opens downward. Confirming that as "x^2" would undo the whole point
+// of the memorise gallery, which is that the shape IS the answer.
+check("an upside-down parabola is NOT the x^2 family",
+  matchingFamilies([[-2,-4],[-1,-1],[0,0],[1,-1],[2,-4]]).indexOf("x^2") >= 0, false);
+check("y = 2x is the linear family",
+  matchingFamilies([[-2,-4],[0,0],[2,4]]).indexOf("x") >= 0, true);
+
+check("fitFamily returns null for an unknown key", fitFamily("nope", CUBE), null);
+check("fitFamily returns null with no points", fitFamily("x^2", []), null);
+
+/* Confirming "yes, that's a^x" and then drawing 2^x sailing past her 3^x dots
+   would contradict the answer we just gave her. */
+function curveHits(key, pts, view) {
+  const all = sampleCurve(key, view, 32, pts).reduce((a, s) => a.concat(s), []);
+  return pts.every(p => all.some(q =>
+    Math.abs(q[0] - p[0]) < 0.05 && Math.abs(q[1] - p[1]) < 0.25));
+}
+check("the drawn curve passes through the points it was fitted to",
+  curveHits("a^x", [[0,1],[1,3],[2,9]], {xmin:-4,xmax:4,ymin:-2,ymax:10}), true);
+check("...and for a stretched parabola too",
+  curveHits("x^2", [[-2,8],[-1,2],[0,0],[1,2],[2,8]], {xmin:-4,xmax:4,ymin:-2,ymax:10}), true);
+check("with no points the gallery still draws the parent 2^x",
+  (function () {
+    const all = sampleCurve("a^x", {xmin:-3,xmax:3,ymin:-1,ymax:9}, 16)
+      .reduce((a, s) => a.concat(s), []);
+    const at2 = all.filter(q => Math.abs(q[0] - 2) < 0.02)[0];
+    return !!at2 && Math.abs(at2[1] - 4) < 0.1;
+  })(), true);
+
+/* ---- the checker and the seeded lesson must not drift apart ----
+
+   SQUARE and CUBE above were typed here by hand, which is exactly how a checker
+   and the content it checks come to disagree. tutor.tests.SaxonGridToolTests
+   passes the REAL seeded tables in through the environment; when it does, those
+   are what get asserted. Running this file bare still works - it just checks the
+   hand-typed copies, and the Django run is the one that gates a deploy. */
+const seeded = process.env.SAXON_GRID_TABLES;
+if (seeded) {
+  const tables = JSON.parse(seeded);
+  check("the seeded practice table is the cubic table this file asserts",
+    tables.practice, CUBE);
+  check("the seeded practice table is decisive for x^3",
+    isDecisive(tables.practice, "x^3"), true);
+  Object.keys(tables).forEach(function (name) {
+    check("every seeded table fits a family the tool offers: " + name,
+      matchingFamilies(tables[name]).length > 0, true);
+  });
+}
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

@@ -1589,7 +1589,15 @@ class SaxonWorkedExampleArithmeticTests(TestCase):
         return mod.BLOCKS
 
     def _math_lines(self, lesson):
-        """Every equation shown to the child, wherever it lives in the lesson."""
+        """Every equation shown to the child, wherever it lives in the lesson.
+
+        Includes the `right` line of an error block. Those carry the lesson's full
+        authority — they are labelled "this is the correct way" — and were the
+        least-guarded mathematics in the ticket.
+
+        Deliberately EXCLUDES `wrong`: those are false on purpose, and a balance
+        test would fail on exactly the lines that are supposed to be broken.
+        """
         lines = []
         for _kind, data in self._blocks(lesson):
             if data.get("math"):
@@ -1597,6 +1605,9 @@ class SaxonWorkedExampleArithmeticTests(TestCase):
             for step in (data.get("steps") or []):
                 if isinstance(step, dict) and step.get("math"):
                     lines.append(step["math"])
+            for item in (data.get("items") or []):
+                if isinstance(item, dict) and item.get("right"):
+                    lines.append(item["right"])
         return lines
 
     def _value(self, text):
@@ -1635,7 +1646,17 @@ class SaxonWorkedExampleArithmeticTests(TestCase):
         return re.sub(r"[×x]\s*10([⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻⁽⁾]+)", repl, text)
 
     def _sides(self, statement):
-        return [self._value(self._powers(p)) for p in statement.split("=")]
+        """Every value the statement asserts equal.
+
+        A side may offer alternatives ("32 x 10^2 or 0.32 x 10^4"). Both are
+        claimed equal to the other side, so both are returned and both are
+        checked — that is what the line actually promises the child.
+        """
+        values = []
+        for part in statement.split("="):
+            for alt in part.split(" or "):
+                values.append(self._value(self._powers(alt)))
+        return values
 
     def test_every_equation_in_lessons_71_and_72_balances(self):
         import re
@@ -1686,6 +1707,73 @@ class SaxonWorkedExampleArithmeticTests(TestCase):
         apple_pct, oranges = nums
         self.assertEqual(f"{oranges * 100 // (100 - apple_pct)} pieces of fruit",
                          d["answer"])
+
+    def test_every_worked_answer_appears_in_the_step_that_produces_it(self):
+        """The steps and the answer must not tell her different numbers.
+
+        A review mutated `H = 30` to `H = 35` in the steps while leaving the
+        answer as "30 grams" — a lesson that contradicts itself mid-page, which
+        is worse for a child than one that is plainly wrong.
+
+        A block may carry several answers (72.3-72.4 works four problems and
+        lists all four results). Where the counts line up, each answer is matched
+        against ITS OWN step rather than all of them against the last one.
+        """
+        import re
+
+        from tutor.models import LessonBlock
+
+        def shows(haystack, needle):
+            flat = " ".join(haystack.split())
+            needle = " ".join(needle.split())
+            if re.fullmatch(r"[\d.]+", needle):
+                # A bare number must be the whole number, not a piece of a
+                # bigger one: "30" must not be satisfied by "270".
+                return re.search(rf"(?<![\d.]){re.escape(needle)}(?![\d.])", flat)
+            return needle in flat
+
+        checked = 0
+        for lesson in (71, 72):
+            for kind, data in self._blocks(lesson):
+                if kind != LessonBlock.KIND_WORKED or not data.get("answer"):
+                    continue
+                steps = [st for st in data["steps"]
+                         if isinstance(st, dict) and st.get("math")]
+                if not steps:
+                    continue
+                chunks = [c.strip() for c in data["answer"].split("·") if c.strip()]
+                # Strip a trailing unit phrase: "30 grams of hydrogen" -> "30".
+                cores = [re.sub(r"(\s+[A-Za-z]+)+$", "", c).strip() for c in chunks]
+                if len(cores) > 1 and len(cores) == len(steps):
+                    pairs = list(zip(cores, steps))
+                else:
+                    pairs = [(cores[0], steps[-1])]
+                for core, step in pairs:
+                    if not core:
+                        continue
+                    checked += 1
+                    self.assertTrue(
+                        shows(step["math"], core),
+                        f"{data['number']}: the answer says {core!r} but the step "
+                        f"that should produce it says {step['math']!r}")
+        self.assertGreaterEqual(checked, 6, f"only {checked} answers were checked")
+
+    def test_the_ratio_box_total_row_is_the_sum_of_its_parts(self):
+        """The caption calls the total row 'the whole lesson'. It has to be right."""
+        from tutor.models import LessonBlock
+        table = next(d for k, d in self._blocks(71)
+                     if k == LessonBlock.KIND_TABLE and d.get("headers") == ["", "Ratio", "Actual"])
+        parts, total = [], None
+        for row in table["rows"]:
+            name, ratio = row["cells"][0], row["cells"][1]
+            if name.upper() == "TOTAL":
+                total = int(ratio)
+            else:
+                parts.append(int(ratio))
+        self.assertIsNotNone(total, "the ratio box lost its total row")
+        self.assertEqual(total, sum(parts),
+                         f"the box says the total is {total}, but {parts} sum to "
+                         f"{sum(parts)}")
 
     def test_lesson_71s_stepped_example_lands_on_the_right_total(self):
         import re

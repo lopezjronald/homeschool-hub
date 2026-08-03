@@ -145,7 +145,7 @@ BLOCKS = [
             {"label": "(8 × 10⁴) ÷ (2 × 10⁻²)",
              "text": "Divide the fronts, **subtract** the exponents. Careful: "
                      "4 − (−2) = 6.",
-             "math": "4 × 10⁶"},
+             "math": "(8 × 10⁴) ÷ (2 × 10⁻²) = 4 × 10⁶"},
             {"label": "(6 × 10⁸) ÷ (3 × 10¹¹)",
              "math": "2 × 10⁸⁻¹¹ = 2 × 10⁻³"},
         ],

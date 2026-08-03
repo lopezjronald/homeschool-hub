@@ -4,8 +4,8 @@
    The arithmetic is the part that can be subtly wrong — a curve that misses her
    points, or an answer marked wrong when it was right — so it is tested directly.
    The DOM half only reads rectangles. */
-const { snapToLattice, matchingFamilies, sampleCurve, FAMILIES, VIEW } =
-  require("./portal-grid.js");
+const { snapToLattice, matchingFamilies, sampleCurve, transform,
+        FAMILIES, VIEW, SIZE, PAD } = require("./portal-grid.js");
 
 let pass = 0, fail = 0;
 function check(name, got, want) {
@@ -63,6 +63,45 @@ check("the drawn family really does pass through the plotted points", onCurve, t
 // ---- every family offered in a lesson can be drawn ----
 check("all eight families sample to at least one segment",
   Object.keys(FAMILIES).filter(k => sampleCurve(k, VIEW).length === 0), []);
+
+
+// ---- the click-lands-where-she-aimed transform ----
+// Appended after the fact because a real browser could not be laid out in this
+// environment to check hit-testing by hand. A round-trip proves the same thing
+// and proves it for every point, not the three I would have clicked.
+
+function roundTripsCleanly(view) {
+  const tf = transform(view);
+  const v = tf.view;
+  for (let gx = v.xmin; gx <= v.xmax; gx++) {
+    for (let gy = v.ymin; gy <= v.ymax; gy++) {
+      const [px, py] = tf.toBoard(gx, gy);
+      const [bx, by] = tf.toGrid(px, py);
+      const [sx, sy] = snapToLattice(bx, by, v);
+      if (sx !== gx || sy !== gy) return `(${gx}, ${gy}) came back as (${sx}, ${sy})`;
+    }
+  }
+  return "ok";
+}
+
+check("every lattice point survives grid → board → grid → snap (default view)",
+  roundTripsCleanly(), "ok");
+check("...and on Lesson 73's taller window for the x³ table",
+  roundTripsCleanly({ xmin: -5, xmax: 5, ymin: -9, ymax: 9 }), "ok");
+check("...and on a wide, short window",
+  roundTripsCleanly({ xmin: -12, xmax: 12, ymin: -3, ymax: 3 }), "ok");
+
+// A click in the middle of a square still resolves to that square's corner point.
+const tf = transform();
+const [cx, cy] = tf.toBoard(2, 3);
+check("a click a third of a square off still snaps to the intended point",
+  snapToLattice(...tf.toGrid(cx + 9, cy - 9)), [2, 3]);
+
+// The corners of the board map to the corners of the window.
+check("the top-left of the board is the top-left of the window",
+  snapToLattice(...tf.toGrid(PAD, PAD)), [-6, 6]);
+check("the bottom-right of the board is the bottom-right of the window",
+  snapToLattice(...tf.toGrid(SIZE - PAD, SIZE - PAD)), [6, -6]);
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

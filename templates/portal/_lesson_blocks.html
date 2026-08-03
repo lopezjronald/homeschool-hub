@@ -1,5 +1,5 @@
 {% load tutor_extras %}
-{# A taught lesson, rendered from LessonBlock rows.
+{% comment %} A taught lesson, rendered from LessonBlock rows.
 
    Everything here is escaped except the prose fields, which go through
    markdownify_inline — already the kid-facing authored-markup channel used by
@@ -9,7 +9,8 @@
 
    The order of kinds below mirrors the lesson template the course standardised
    on: why it exists, then the ideas, then the recipe, then examples, then the
-   mistakes. #}
+   mistakes.
+{% endcomment %}
 <div class="lesson">
 {% for b in blocks %}
 
@@ -47,8 +48,9 @@
     </section>
 
   {% elif b.kind == "say" %}
-    {# The words to say out loud. This is what made the lesson teachable for a
-       parent who said "I didn't know how to really teach that." #}
+    {% comment %} The words to say out loud. This is what made the lesson teachable for a
+       parent who said "I didn't know how to really teach that."
+{% endcomment %}
     <div class="lesson-say">
       <b>Say it like this:</b> {{ b.data.text }}
     </div>
@@ -109,8 +111,9 @@
     </section>
 
   {% elif b.kind == "translation" %}
-    {# Saxon's shorthand decoded. Nothing new is happening; it's the same recipe
-       in symbols — and saying so is worth a whole section. #}
+    {% comment %} Saxon's shorthand decoded. Nothing new is happening; it's the same recipe
+       in symbols — and saying so is worth a whole section.
+{% endcomment %}
     <section class="lesson-section">
       <span class="lesson-tag">Translation</span>
       <h2>{{ b.data.title }}</h2>
@@ -175,8 +178,9 @@
     <section class="lesson-section lesson-section--tool">
       {% if b.data.title %}<h2>{{ b.data.title }}</h2>{% endif %}
       {% if b.data.intro %}<p>{{ b.data.intro|markdownify_inline }}</p>{% endif %}
-      {# json_script is Django's safe way to hand structured config to JS — it
-         escapes for a script context, so no quoting games in an attribute. #}
+      {% comment %} json_script is Django's safe way to hand structured config to JS — it
+         escapes for a script context, so no quoting games in an attribute.
+{% endcomment %}
       {{ b.data.config|json_script:b.config_dom_id }}
       <div class="lesson-tool" data-tool="{{ b.data.widget }}" data-config-id="{{ b.config_dom_id }}"></div>
       {% if b.data.after %}<p class="lesson-after">{{ b.data.after|markdownify_inline }}</p>{% endif %}

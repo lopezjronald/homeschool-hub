@@ -1892,3 +1892,93 @@ class PortalOutlineAndDeactivateTests(TestCase):
         shown_names = [c.name for c in shown.context["curricula"]]
         self.assertIn("Beast Academy", shown_names)
         self.assertContains(shown, "Deactivated")
+
+
+class OnlineSubjectWithInAppLessonsTests(TestCase):
+    """An online subject that ALSO has lessons here (HH-155).
+
+    Kaylin's Saxon runs on DIVE — the video, the practice set and the progress
+    tracking all live there — but the explainers live in this app. A card that
+    jumps straight out to DIVE would leave them permanently unreachable, which is
+    exactly what happened before this.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        from curricula.models import Chapter, Curriculum, CurriculumPlacement, Lesson
+        from students.models import Student
+        from tutor.models import Material
+        cls.Material = Material
+        cls.parent = User.objects.create_user("dv", "dv@e.com", "pw")
+        cls.family = Family.objects.create(name="DIVE Fam")
+        FamilyMembership.objects.create(user=cls.parent, family=cls.family, role="parent")
+        cls.kid = Student.objects.create(parent=cls.parent, first_name="Kaylin",
+                                         grade_level="G07", family=cls.family)
+
+        def course(name, **kw):
+            cur = Curriculum.objects.create(
+                parent=cls.parent, family=cls.family, name=name, subject="Math", **kw)
+            ch = Chapter.objects.create(curriculum=cur, number=1, title="C")
+            lesson = Lesson.objects.create(chapter=ch, order=1, number=1, title="L")
+            CurriculumPlacement.objects.create(
+                child=cls.kid, curriculum=cur, current_lesson=lesson)
+            return cur, lesson
+
+        # Purely external — nothing of ours in it.
+        cls.beast, _ = course("Beast Academy", is_online=True,
+                              website_url="https://beastacademy.com/")
+        # External, but we have a lesson for it.
+        cls.saxon, saxon_lesson = course("Saxon Pre-Algebra (DIVE)", is_online=True,
+                                         website_url="https://diveintomath.com/")
+        Material.objects.create(
+            lesson=saxon_lesson, title="Nonlinear functions",
+            skill_type=Material.SKILL_LESSON, student_content="x",
+            status=Material.APPROVED, child=cls.kid, family=cls.family)
+
+    def _home(self):
+        from portal.tokens import make_portal_token
+        return self.client.get(f"/portal/{make_portal_token(self.kid)}/").content.decode()
+
+    def _cards(self):
+        from portal.views import _subject_cards
+        return {c["curriculum"].name: c for c in _subject_cards(self.kid)}
+
+    def test_a_purely_external_subject_still_launches_straight_out(self):
+        self.assertTrue(self._cards()["Beast Academy"]["launches_out"])
+        self.assertIn("https://beastacademy.com/", self._home())
+
+    def test_an_external_subject_with_lessons_opens_the_subject_page_instead(self):
+        card = self._cards()["Saxon Pre-Algebra (DIVE)"]
+        self.assertFalse(card["launches_out"])
+        self.assertTrue(card["curriculum"].is_external)   # still an online subject
+        html = self._home()
+        self.assertIn(f"/subject/{self.saxon.pk}/", html)
+
+    def test_the_DIVE_button_is_still_on_the_subject_page(self):
+        # Losing the launch-out would be worse than the bug it fixes: the video
+        # and her progress tracking both live there.
+        from portal.tokens import make_portal_token
+        html = self.client.get(
+            f"/portal/{make_portal_token(self.kid)}/subject/{self.saxon.pk}/"
+        ).content.decode()
+        self.assertIn("https://diveintomath.com/", html)
+        self.assertIn("Nonlinear functions", html)
+
+    def test_a_lesson_built_from_blocks_renders_for_the_child(self):
+        from tutor.models import LessonBlock, Material
+        from portal.tokens import make_portal_token
+        m = Material.objects.get(title="Nonlinear functions")
+        LessonBlock.objects.create(material=m, order=1, kind=LessonBlock.KIND_SAY,
+                                   data={"text": "Say this out loud."})
+        LessonBlock.objects.create(
+            material=m, order=2, kind=LessonBlock.KIND_TOOL,
+            data={"widget": "grid", "config": {"choices": ["x^2"]}})
+        html = self.client.get(
+            f"/portal/{make_portal_token(self.kid)}/materials/{m.pk}/"
+        ).content.decode()
+        self.assertIn("Say this out loud.", html)
+        self.assertIn('data-tool="grid"', html)
+        # The tool config crosses to JS through json_script, never an attribute.
+        self.assertIn('type="application/json"', html)
+        # And the plain-text fallback must NOT also render.
+        self.assertNotIn("white-space: pre-wrap", html)

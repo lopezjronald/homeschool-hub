@@ -579,6 +579,14 @@ def _subject_cards(student):
             # Online subjects (Beast Academy, DIVE…) launch out to the website.
             "is_external": curriculum.is_external,
             "launch_url": curriculum.website_url if curriculum.is_external else "",
+            # …unless we ALSO have lessons for it. Saxon runs on DIVE — the video,
+            # the practice set and the progress tracking all live there — but the
+            # explainers live here, and a card that jumps straight out to DIVE
+            # would leave them unreachable. When both exist the card opens the
+            # subject page, which keeps the launch-out button at the top.
+            "launches_out": curriculum.is_external and not (
+                sets_total or materials_by_curr.get(cid)
+            ),
         })
 
     cards.sort(key=lambda c: (c["curriculum"].subject or "", c["curriculum"].name))

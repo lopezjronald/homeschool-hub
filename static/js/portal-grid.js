@@ -83,11 +83,35 @@
     return segments.filter(function (s) { return s.length > 1; });
   }
 
+  var SIZE = 440, PAD = 8;
+
+  /* The board <-> grid transform, as pure functions.
+
+     This is the arithmetic that decides whether a click lands where she aimed,
+     so it lives in the tested core rather than inside the DOM code. A round-trip
+     (grid -> board -> grid -> snap) must return the point it started from; if it
+     does not, every dot lands one square off and nothing else will tell us. */
+  function transform(view) {
+    view = Object.assign({}, VIEW, view || {});
+    var uxs = (SIZE - 2 * PAD) / (view.xmax - view.xmin);
+    var uys = (SIZE - 2 * PAD) / (view.ymax - view.ymin);
+    return {
+      view: view,
+      toBoard: function (gx, gy) {
+        return [PAD + (gx - view.xmin) * uxs, SIZE - PAD - (gy - view.ymin) * uys];
+      },
+      toGrid: function (px, py) {
+        return [view.xmin + (px - PAD) / uxs, view.ymin + (SIZE - PAD - py) / uys];
+      },
+    };
+  }
+
   var core = {
-    FAMILIES: FAMILIES, VIEW: VIEW,
+    FAMILIES: FAMILIES, VIEW: VIEW, SIZE: SIZE, PAD: PAD,
     snapToLattice: snapToLattice,
     matchingFamilies: matchingFamilies,
     sampleCurve: sampleCurve,
+    transform: transform,
   };
   if (typeof module !== "undefined" && module.exports) module.exports = core;
   if (typeof window !== "undefined") window.portalGridCore = core;
@@ -95,16 +119,13 @@
 
   /* ---------------------------- the widget ---------------------------- */
 
-  var SIZE = 440, PAD = 8;
-
   function build(host, cfg) {
-    var view = Object.assign({}, VIEW, cfg.view || {});
-    var uxs = (SIZE - 2 * PAD) / (view.xmax - view.xmin);
-    var uys = (SIZE - 2 * PAD) / (view.ymax - view.ymin);
-    var X = function (gx) { return PAD + (gx - view.xmin) * uxs; };
-    var Y = function (gy) { return SIZE - PAD - (gy - view.ymin) * uys; };
-    var gX = function (px) { return view.xmin + (px - PAD) / uxs; };
-    var gY = function (py) { return view.ymin + (SIZE - PAD - py) / uys; };
+    var tf = transform(cfg.view);
+    var view = tf.view;
+    var X = function (gx) { return tf.toBoard(gx, 0)[0]; };
+    var Y = function (gy) { return tf.toBoard(0, gy)[1]; };
+    var gX = function (px) { return tf.toGrid(px, 0)[0]; };
+    var gY = function (py) { return tf.toGrid(0, py)[1]; };
 
     var svgns = "http://www.w3.org/2000/svg";
     function el(name, attrs) {
@@ -190,6 +211,11 @@
 
     function at(evt) {
       var r = svg.getBoundingClientRect();
+      // A zero-size rect means the board is not laid out — inside a closed
+      // <details>, a hidden tab, or simply not yet painted. Dividing by it gives
+      // NaN, and a NaN point renders as an invisible dot that silently breaks
+      // every later answer check. Refuse the event instead.
+      if (!r.width || !r.height) return null;
       var px = (evt.clientX - r.left) / r.width * SIZE;
       var py = (evt.clientY - r.top) / r.height * SIZE;
       return [gX(px), gY(py)];
@@ -200,6 +226,7 @@
       e.preventDefault();
       svg.setPointerCapture(e.pointerId);
       var raw = at(e);
+      if (!raw) return;
       if (mode === "pen") { penning = [raw]; strokes.push(penning); return; }
       var snap = snapToLattice(raw[0], raw[1], view);
       var hit = -1;
@@ -213,10 +240,11 @@
       readout.textContent = "(" + snap[0] + ", " + snap[1] + ")";
     });
     svg.addEventListener("pointermove", function (e) {
-      if (penning) { penning.push(at(e)); drawInk(); return; }
+      var moved = at(e);
+      if (!moved) return;
+      if (penning) { penning.push(moved); drawInk(); return; }
       if (dragging === null) return;
-      var raw = at(e);
-      var snap = snapToLattice(raw[0], raw[1], view);
+      var snap = snapToLattice(moved[0], moved[1], view);
       points[dragging] = snap;
       drawDots();
       readout.textContent = "(" + snap[0] + ", " + snap[1] + ")";

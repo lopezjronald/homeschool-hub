@@ -24,7 +24,7 @@
   {% if subjects %}
     <div class="portal-subjects">
       {% for subject in subjects %}
-        {% if subject.is_external %}
+        {% if subject.launches_out %}
           <a href="{{ subject.launch_url }}" target="_blank" rel="noopener noreferrer"
              class="portal-subject-card">
             <div class="portal-subject-emoji">{{ subject.emoji }}</div>

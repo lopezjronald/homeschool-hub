@@ -32,8 +32,8 @@ from django.test import Client
 from curricula.blueprints import BLUEPRINTS
 from curricula.models import Curriculum, CurriculumPlacement, Lesson
 from students.models import Student
-from tutor.models import (MangaPanel, MasteryAssessment, Material, Question,
-                          QuestionSet, ResponseSheet)
+from tutor.models import (LessonBlock, MangaPanel, MasteryAssessment, Material,
+                          Question, QuestionSet, ResponseSheet)
 
 
 class Command(BaseCommand):
@@ -51,6 +51,7 @@ class Command(BaseCommand):
         self._check_blueprints()
         self._check_questions()
         self._check_manga()
+        self._check_lesson_blocks()
         self._check_integrity()
         self._check_portal(options.get("student"))
 
@@ -186,6 +187,43 @@ class Command(BaseCommand):
                           f"a parent has to approve it before the child sees it")
         self.say(f"   {Material.objects.filter(skill_type=Material.SKILL_MANGA).count()} "
                  f"manga materials checked")
+
+    def _check_lesson_blocks(self):
+        """A taught lesson is only as good as the blocks it renders.
+
+        An unknown kind falls through every branch of _lesson_blocks.html and
+        renders as NOTHING — a blank stretch of page with no error anywhere. The
+        seeder validates at write time; this catches anything that reached the
+        database another way.
+        """
+        self.say("— taught lessons —")
+        from tutor.management.commands._saxon_seed import REQUIRED_KEYS, _unplottable
+
+        known = dict(LessonBlock.KIND_CHOICES)
+        lessons = Material.objects.filter(skill_type=Material.SKILL_LESSON)
+        for m in lessons.select_related("lesson__chapter"):
+            blocks = list(LessonBlock.objects.filter(material=m).order_by("order"))
+            where = f"Ch{m.lesson.chapter.number} L{m.lesson.number}" if m.lesson else "?"
+            if not blocks:
+                self.problem(f"lesson '{m.title[:40]}' ({where}) has no blocks — the "
+                             f"child would see an empty page")
+                continue
+            for b in blocks:
+                if b.kind not in known:
+                    self.problem(f"lesson '{m.title[:30]}' block {b.order}: unknown "
+                                 f"kind {b.kind!r} — it renders as nothing")
+                    continue
+                for key in REQUIRED_KEYS.get(b.kind, ()):
+                    if not (b.data or {}).get(key):
+                        self.problem(f"lesson '{m.title[:30]}' block {b.order} "
+                                     f"({b.kind}): missing {key!r}")
+                if b.kind == LessonBlock.KIND_TOOL:
+                    for msg in _unplottable(b.order, (b.data or {}).get("config") or {}):
+                        self.problem(f"lesson '{m.title[:30]}' {msg}")
+            if m.status != Material.APPROVED:
+                self.note(f"lesson '{m.title[:40]}' ({where}) is "
+                          f"{m.get_status_display()} — a parent has to approve it")
+        self.say(f"   {lessons.count()} taught lessons checked")
 
     def _check_integrity(self):
         self.say("— data —")

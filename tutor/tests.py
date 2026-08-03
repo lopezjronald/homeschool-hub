@@ -1247,3 +1247,139 @@ class GraderIsToldTheTaskTests(TestCase):
     def test_a_set_with_no_markup_does_not_carry_the_markup_note(self):
         rubric = grading._rubric_for(self._set(markup=False))
         self.assertNotIn("machine-readable", rubric)
+
+
+class SaxonLessonToolTests(TestCase):
+    """The Saxon lesson tools' pure cores (HH-155).
+
+    Kept as JS so the file that ships is the file that is tested. The arithmetic
+    is the part that can be subtly wrong — a curve that misses her points, or a
+    click that lands one square off — and none of it needs a DOM.
+    """
+
+    def _run(self, name):
+        import shutil
+        import subprocess
+        from django.conf import settings
+
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("node is not installed")
+        script = os.path.join(settings.BASE_DIR, "static", "js", name)
+        result = subprocess.run([node, script], capture_output=True, text=True, timeout=90)
+        self.assertEqual(result.returncode, 0,
+                         f"{name} failed:\n{result.stdout}\n{result.stderr}")
+        self.assertIn("0 failed", result.stdout)
+
+    def test_the_graph_paper_core(self):
+        self._run("portal-grid.test.js")
+
+    def test_the_ratio_bar_and_decimal_slider_cores(self):
+        self._run("portal-tools.test.js")
+
+
+class SaxonLessonSeedTests(TestCase):
+    """Seeding a Saxon lesson, and the guards that stop a broken one shipping."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from curricula.services import apply_blueprint, get_blueprint
+        from students.models import Student
+        cls.parent = User.objects.create_user("sxp", "sxp@e.com", "pw")
+        cls.kid = Student.objects.create(parent=cls.parent, first_name="Kaylin",
+                                         grade_level="G07")
+        cls.cur = Curriculum.objects.create(
+            parent=cls.parent, name="Saxon Pre-Algebra (DIVE)", subject="Math",
+            grade_level="G07")
+        apply_blueprint(cls.cur, get_blueprint("saxon_prealgebra_dive"))
+
+    def _seed(self, lesson):
+        call_command(f"seed_saxon_{lesson}", "--curriculum", str(self.cur.pk),
+                     stdout=StringIO())
+
+    def test_each_lesson_seeds_a_material_made_of_blocks(self):
+        from tutor.models import LessonBlock
+        for n in (71, 72, 73):
+            self._seed(n)
+            m = Material.objects.get(lesson__chapter__curriculum=self.cur,
+                                     lesson__number=n)
+            self.assertEqual(m.skill_type, Material.SKILL_LESSON)
+            self.assertTrue(m.has_blocks)
+            self.assertGreater(LessonBlock.objects.filter(material=m).count(), 8)
+            # Seeds as DRAFT: a parent approves before a child sees it.
+            self.assertEqual(m.status, Material.DRAFT)
+
+    def test_seeding_twice_does_not_duplicate_or_grow(self):
+        from tutor.models import LessonBlock
+        self._seed(73)
+        m = Material.objects.get(lesson__chapter__curriculum=self.cur, lesson__number=73)
+        before = LessonBlock.objects.filter(material=m).count()
+        self._seed(73)
+        self.assertEqual(Material.objects.filter(lesson__number=73).count(), 1)
+        self.assertEqual(LessonBlock.objects.filter(material=m).count(), before)
+
+    def test_a_shortened_lesson_drops_its_leftover_blocks(self):
+        from tutor.models import LessonBlock
+        self._seed(73)
+        m = Material.objects.get(lesson__chapter__curriculum=self.cur, lesson__number=73)
+        LessonBlock.objects.create(material=m, order=99, kind=LessonBlock.KIND_MATH,
+                                   data={"display": "left over"})
+        self._seed(73)
+        self.assertFalse(LessonBlock.objects.filter(material=m, order=99).exists())
+
+    def test_every_lesson_teaches_the_parent_too(self):
+        # The parent asked for this because he "didn't know how to really teach
+        # that" — the guide is the deliverable, not a footnote.
+        for n in (71, 72, 73):
+            self._seed(n)
+            m = Material.objects.get(lesson__chapter__curriculum=self.cur,
+                                     lesson__number=n)
+            self.assertIn("Teach it out loud", m.parent_content)
+            self.assertIn("What to watch her do", m.parent_content)
+
+
+class SaxonBlockValidationTests(TestCase):
+    """The seeder refuses anything the template could not render (HH-155)."""
+
+    def _validate(self, blocks):
+        from django.core.management.base import CommandError
+        from tutor.management.commands._saxon_seed import validate_blocks
+        with self.assertRaises(CommandError) as ctx:
+            validate_blocks(blocks)
+        return str(ctx.exception)
+
+    def test_an_unknown_block_kind_is_refused(self):
+        # It would fall through every branch of the template and render as
+        # nothing at all — a blank space on a child's screen, no error anywhere.
+        from tutor.models import LessonBlock
+        self.assertIn("unknown kind", self._validate([("hologram", {})]))
+
+    def test_a_block_missing_its_content_is_refused(self):
+        from tutor.models import LessonBlock
+        msg = self._validate([(LessonBlock.KIND_PURPOSE, {"title": "Why"})])
+        self.assertIn("missing 'paragraphs'", msg)
+
+    def test_a_table_point_off_the_grid_is_refused(self):
+        # The cruellest failure in the set: she reads "plot (2, 8)", finds no row
+        # 8 on the paper, and concludes she has misunderstood the lesson.
+        from tutor.models import LessonBlock
+        msg = self._validate([(LessonBlock.KIND_TOOL, {
+            "widget": "grid",
+            "config": {"view": {"xmin": -6, "xmax": 6, "ymin": -6, "ymax": 6},
+                       "table": [[2, 8]]},
+        })])
+        self.assertIn("(2, 8)", msg)
+        self.assertIn("only shows", msg)
+
+    def test_a_widget_that_does_not_exist_is_refused(self):
+        from tutor.models import LessonBlock
+        msg = self._validate([(LessonBlock.KIND_TOOL,
+                               {"widget": "hologram", "config": {}})])
+        self.assertIn("no such widget", msg)
+
+    def test_the_real_lessons_all_validate(self):
+        from tutor.management.commands._saxon_seed import validate_blocks
+        for mod in ("seed_saxon_71", "seed_saxon_72", "seed_saxon_73"):
+            blocks = __import__(f"tutor.management.commands.{mod}",
+                                fromlist=["BLOCKS"]).BLOCKS
+            validate_blocks(blocks)      # must not raise

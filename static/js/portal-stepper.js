@@ -4,9 +4,9 @@
    from the Lesson 70 page he liked: one beat per click, so a worked example
    arrives at the speed of the person reading it rather than all at once.
 
-   Deliberately degrades: with JS off, `.lesson-stepper-step` is hidden by CSS
-   but `@media print` reveals every step, so a printed lesson is complete. The
-   first step is revealed on load so the block never looks empty. */
+   Progressive enhancement, not graceful degradation: the steps are all visible
+   until this script marks the container, so a reader with JS off gets the whole
+   worked example rather than an equation and two dead buttons. */
 (function () {
   "use strict";
 
@@ -16,6 +16,9 @@
     var reset = root.querySelector("[data-stepper-reset]");
     if (!steps.length || !next) return;
 
+    // Only now does the CSS start hiding steps — before this line the whole
+    // worked example is on the page, which is what a reader with no JS gets.
+    root.classList.add("is-stepped");
     var shown = 1;
 
     function render() {

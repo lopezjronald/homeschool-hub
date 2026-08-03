@@ -4,8 +4,8 @@
    The arithmetic is the part that can be subtly wrong — a curve that misses her
    points, or an answer marked wrong when it was right — so it is tested directly.
    The DOM half only reads rectangles. */
-const { snapToLattice, matchingFamilies, sampleCurve, transform,
-        FAMILIES, VIEW, SIZE, PAD } = require("./portal-grid.js");
+const { snapToLattice, matchingFamilies, isDecisive, dedupe, sampleCurve,
+        transform, FAMILIES, VIEW, SIZE, PAD } = require("./portal-grid.js");
 
 let pass = 0, fail = 0;
 function check(name, got, want) {
@@ -102,6 +102,39 @@ check("the top-left of the board is the top-left of the window",
   snapToLattice(...tf.toGrid(PAD, PAD)), [-6, 6]);
 check("the bottom-right of the board is the bottom-right of the window",
   snapToLattice(...tf.toGrid(SIZE - PAD, SIZE - PAD)), [6, -6]);
+
+// ---- a child can only plot whole numbers, so the check must allow for that ----
+// Demanding exact equality told a child who had plotted sqrt PERFECTLY that her
+// curve "misses some of your points". She placed every dot on the nearest
+// intersection, which is the best any plot on graph paper can do.
+check("a correctly plotted sqrt table is accepted",
+  matchingFamilies([[0,0],[1,1],[2,1],[4,2],[9,3]]).includes("sqrt"), true);
+check("a correctly plotted 1/x table is accepted",
+  matchingFamilies([[-2,-1],[-1,-1],[1,1],[2,1]]).includes("1/x"), true);
+check("a correctly plotted 2^x table is accepted",
+  matchingFamilies([[-1,1],[0,1],[1,2],[2,4]]).includes("a^x"), true);
+check("a correctly plotted 0.5^x table is accepted",
+  matchingFamilies([[-2,4],[-1,2],[0,1],[1,1]]).includes("a^-x"), true);
+check("tolerance does not make x^2 fit a cubic table",
+  matchingFamilies([[-2,-8],[-1,-1],[0,0],[1,1],[2,8]]).includes("x^2"), false);
+
+// ---- "enough points" is about ambiguity, not a count ----
+// On a small grid the only three plottable x^3 points are (-1,-1) (0,0) (1,1),
+// which fit the straight line equally well. Counting to three said "Yes, and
+// only that one fits" to a child who had picked the wrong family.
+check("three points that fit two families are not decisive",
+  isDecisive([[-1,-1],[0,0],[1,1]], "x^3"), false);
+check("...and the line is not decisive there either",
+  isDecisive([[-1,-1],[0,0],[1,1]], "x"), false);
+check("the full cubic table IS decisive",
+  isDecisive([[-2,-8],[-1,-1],[0,0],[1,1],[2,8]], "x^3"), true);
+check("the full square table IS decisive",
+  isDecisive([[-2,4],[-1,1],[0,0],[1,1],[2,4]], "x^2"), true);
+
+// ---- dragging one dot onto another must not manufacture evidence ----
+check("duplicate points collapse", dedupe([[0,0],[1,1],[1,1]]), [[0,0],[1,1]]);
+check("a duplicate cannot make an ambiguous plot look decisive",
+  isDecisive([[0,0],[1,1],[1,1]], "x^2"), false);
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

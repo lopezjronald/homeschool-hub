@@ -46,6 +46,16 @@ KNOWN_WIDGETS = {"grid", "ratiobar", "scislide"}
 DEFAULT_VIEW = {"xmin": -6, "xmax": 6, "ymin": -6, "ymax": 6}
 
 
+# What each widget actually needs to build itself. Without this a typo in a
+# config key passes validation and the child gets a blank section — the very
+# failure the validator exists to prevent.
+WIDGET_KEYS = {
+    "grid": ("view",),
+    "ratiobar": ("parts",),
+    "scislide": ("mantissa", "exponent"),
+}
+
+
 def _unplottable(i, config):
     """Points a child is asked to plot that fall outside the grid she is given.
 
@@ -53,18 +63,35 @@ def _unplottable(i, config):
     finds no row 8 on the paper, and concludes she has misunderstood the lesson.
     The grid clamps to its edges, so the dot would land on 6 and every later
     answer check would then disagree with her for a reason she cannot see.
+
+    Checks BOTH keys: `table` is the list she is asked to plot herself, `points`
+    is a list drawn for her. Either one off the grid is the same problem.
+
+    Never raises. audit_content calls this over live rows, and one malformed row
+    must not abort the standing sweep.
     """
-    table = config.get("table")
-    if not table:
-        return []
     view = dict(DEFAULT_VIEW, **(config.get("view") or {}))
     out = []
-    for x, y in table:
-        if not (view["xmin"] <= x <= view["xmax"] and view["ymin"] <= y <= view["ymax"]):
-            out.append(
-                f"block {i}: the table asks for ({x}, {y}) but the grid only shows "
-                f"x {view['xmin']}..{view['xmax']}, y {view['ymin']}..{view['ymax']}"
-            )
+    for key in ("table", "points"):
+        rows = config.get(key)
+        if not rows:
+            continue
+        if not isinstance(rows, (list, tuple)):
+            out.append(f"block {i}: {key!r} is not a list of points")
+            continue
+        for row in rows:
+            if (not isinstance(row, (list, tuple)) or len(row) != 2
+                    or not all(isinstance(n, (int, float)) and not isinstance(n, bool)
+                               for n in row)):
+                out.append(f"block {i}: {key!r} has a bad point {row!r}")
+                continue
+            x, y = row
+            if not (view["xmin"] <= x <= view["xmax"]
+                    and view["ymin"] <= y <= view["ymax"]):
+                out.append(
+                    f"block {i}: {key} asks for ({x}, {y}) but the grid only shows "
+                    f"x {view['xmin']}..{view['xmax']}, y {view['ymin']}..{view['ymax']}"
+                )
     return out
 
 
@@ -87,7 +114,12 @@ def validate_blocks(blocks):
                 json.dumps(data.get("config"))
             except (TypeError, ValueError) as exc:
                 problems.append(f"block {i}: config is not JSON ({exc})")
-            problems += _unplottable(i, data.get("config") or {})
+            config = data.get("config") or {}
+            for key in WIDGET_KEYS.get(data.get("widget"), ()):
+                if config.get(key) is None:
+                    problems.append(f"block {i}: {data.get('widget')} needs "
+                                    f"config[{key!r}] and it is missing")
+            problems += _unplottable(i, config)
     if problems:
         raise CommandError("Lesson blocks are not renderable:\n  " + "\n  ".join(problems))
 
@@ -155,16 +187,30 @@ class SaxonSeedCommand(BaseCommand):
             if updates:
                 material.save(update_fields=updates)
 
+        changed = False
         for order, (kind, data) in enumerate(self.BLOCKS, start=1):
-            LessonBlock.objects.update_or_create(
+            _, made = LessonBlock.objects.update_or_create(
                 material=material, order=order,
                 defaults={"kind": kind, "data": data},
             )
+            existing = LessonBlock.objects.get(material=material, order=order)
+            changed = changed or made or existing.data != data or existing.kind != kind
         # A revised lesson may be shorter than the one it replaces.
         LessonBlock.objects.filter(material=material).filter(
             order__gt=len(self.BLOCKS)).delete()
 
-        verb = "Created" if created else ("Updated" if updates else "Refreshed")
+        # Revised content on an APPROVED lesson goes back to DRAFT. A parent
+        # approved the words that were there; replacing them — including fixing a
+        # mathematical error — is a new thing for him to look at, and the rest of
+        # the app enforces that everywhere else.
+        if changed and material.status == Material.APPROVED and not created:
+            material.status = Material.DRAFT
+            material.save(update_fields=["status"])
+            self.stdout.write(self.style.WARNING(
+                "Content changed — set back to Draft for re-approval."
+            ))
+
+        verb = "Created" if created else ("Updated" if updates or changed else "Refreshed")
         self.stdout.write(self.style.SUCCESS(
             f"{verb}: {lesson.code} '{material.title}' — {len(self.BLOCKS)} blocks "
             f"({material.get_status_display()})."

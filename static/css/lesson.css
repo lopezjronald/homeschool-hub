@@ -159,18 +159,28 @@
   margin: 0.3rem 0 0.9rem;
 }
 .lesson-stepper-steps { list-style: none; padding: 0; margin: 0; }
+/* Visible by DEFAULT. The script adds .is-stepped to the container and takes
+   over; if it never runs — JS off, a 404 on the file — the worked example is
+   simply all there. It used to hide itself and leave two dead buttons. */
 .lesson-stepper-step {
   padding: 0.7rem 0.85rem;
   border-left: 3px solid var(--lesson-rule);
   margin-bottom: 0.5rem;
+  transition: opacity 0.3s ease;
+}
+.lesson-stepper.is-stepped .lesson-stepper-step {
   opacity: 0;
   max-height: 0;
   overflow: hidden;
-  transition: opacity 0.3s ease;
+  padding-top: 0;
+  padding-bottom: 0;
+  margin-bottom: 0;
 }
-.lesson-stepper-step.is-on {
+.lesson-stepper.is-stepped .lesson-stepper-step.is-on {
   opacity: 1;
   max-height: 40rem;
+  padding: 0.7rem 0.85rem;
+  margin-bottom: 0.5rem;
   border-left-color: var(--lesson-move);
   background: var(--lesson-wash);
 }

@@ -78,8 +78,12 @@ BLOCKS = [
         "title": "The family album",
         "intro": "Tap each shape to draw it. Look at what the left side does.",
         "widget": "grid",
+        # `reference` — this one is a gallery, not an exercise. Without it, every
+        # tap answered "plot the points from the table first" for a block that
+        # has no table.
         "config": {"view": {"xmin": -6, "xmax": 6, "ymin": -6, "ymax": 6},
-                   "choices": SEVEN, "label": "the seven function shapes"},
+                   "choices": SEVEN, "reference": True,
+                   "label": "the seven function shapes"},
         "after": "`x` is the straight one you already know. `x²` makes a U. `x³` "
                  "makes an S. `|x|` makes a sharp V. `√x` only exists on the right. "
                  "`1/x` is two pieces that never touch the axes. `aˣ` creeps along "
@@ -130,7 +134,7 @@ BLOCKS = [
         "widget": "grid",
         # y runs to +-9 because the table reaches -8 and 8. A 6-high grid would
         # have asked her to plot a point that is not on the paper.
-        "config": {"view": {"xmin": -5, "xmax": 5, "ymin": -9, "ymax": 9},
+        "config": {"view": {"xmin": -9, "xmax": 9, "ymin": -9, "ymax": 9},
                    "choices": SEVEN, "table": [[-2, -8], [-1, -1], [0, 0], [1, 1], [2, 8]],
                    "label": "plot the table and name the family"},
         "after": "Table: **(-2, -8)  (-1, -1)  (0, 0)  (1, 1)  (2, 8)**. "
@@ -275,8 +279,9 @@ what memorizes it; owning one someone else made does nothing.
 Give her a table that fits **more than one** family — say just (0, 0) and (1, 1),
 which fits x, x², x³, |x| and √x all at once — and ask which it is. The right
 answer is *"you can't tell yet, give me another point."* That is a genuinely
-valuable thing for a 12-year-old to be able to say, and the tool agrees with her:
-it reports every family that fits rather than guessing one.
+valuable thing for a 12-year-old to be able to say, and the tool backs her up: if
+her points still fit several families it names them and asks for another point,
+rather than picking one and calling her wrong.
 
 ## Where this sits
 

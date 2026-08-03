@@ -43,19 +43,50 @@
     ];
   }
 
-  /* Which families pass through EVERY one of these points exactly?
-     Returns a list, because a small table can be ambiguous — (0,0) and (1,1) fit
-     x, x^2, x^3, |x| and sqrt all at once, and pretending otherwise would mark a
-     right answer wrong. */
-  function matchingFamilies(points) {
-    if (!points || !points.length) return [];
+  /* Duplicate points are the same claim made twice. Counting them twice would
+     let a child drag one dot onto another and satisfy a "you plotted enough
+     points" check with two real points and a copy. */
+  function dedupe(points) {
+    var seen = {}, out = [];
+    (points || []).forEach(function (p) {
+      var k = p[0] + "," + p[1];
+      if (!seen[k]) { seen[k] = 1; out.push(p); }
+    });
+    return out;
+  }
+
+  /* Which families are consistent with these plotted points?
+
+     TOLERANCE, not equality. She can only place a dot on a whole-number
+     intersection, so for sqrt, 1/x and the exponentials the best she can
+     possibly do is the NEAREST lattice point — sqrt(2) = 1.414 becomes (2, 1).
+     Demanding exactness told a child who had plotted sqrt perfectly that her
+     curve "misses some of your points". Half a lattice step is the right bar
+     because half a step is the most her plotting can be off by.
+
+     Returns a LIST, because a small table is often ambiguous: (0,0) and (1,1)
+     alone fit x, x^2, x^3, |x| and sqrt at once. Naming one of them would mark
+     four correct answers wrong. */
+  function matchingFamilies(points, tolerance) {
+    var pts = dedupe(points);
+    if (!pts.length) return [];
+    var tol = tolerance == null ? 0.5 : tolerance;
     return Object.keys(FAMILIES).filter(function (key) {
       var f = FAMILIES[key].f;
-      return points.every(function (p) {
+      return pts.every(function (p) {
         var y = f(p[0]);
-        return y !== null && Math.abs(y - p[1]) < 1e-9;
+        return y !== null && isFinite(y) && Math.abs(y - p[1]) <= tol;
       });
     });
+  }
+
+  /* Enough points to tell the families apart? Not a count — a question about
+     whether the plot still fits more than one answer. Three points sounds like
+     plenty and is not: on a small grid the only three plottable x^3 points are
+     (-1,-1), (0,0) and (1,1), which fit the straight line just as well. */
+  function isDecisive(points, key) {
+    var fits = matchingFamilies(points);
+    return fits.length === 1 && fits[0] === key;
   }
 
   /* A polyline for the family across the visible window, in grid units.
@@ -110,6 +141,8 @@
     FAMILIES: FAMILIES, VIEW: VIEW, SIZE: SIZE, PAD: PAD,
     snapToLattice: snapToLattice,
     matchingFamilies: matchingFamilies,
+    isDecisive: isDecisive,
+    dedupe: dedupe,
     sampleCurve: sampleCurve,
     transform: transform,
   };
@@ -222,6 +255,7 @@
     }
 
     var dragging = null, penning = null;
+    var pickRow = null;      // set below when the lesson offers family choices
     svg.addEventListener("pointerdown", function (e) {
       e.preventDefault();
       svg.setPointerCapture(e.pointerId);
@@ -272,6 +306,12 @@
     });
     button("Undo", "lesson-btn lesson-btn--ghost", function () {
       if (mode === "pen") strokes.pop(); else points.pop();
+      // The drawn curve and the verdict were about the OLD set of points.
+      while (curveLayer.firstChild) curveLayer.removeChild(curveLayer.firstChild);
+      if (pickRow) pickRow.querySelectorAll(".lesson-choice").forEach(function (o) {
+        o.classList.remove("is-picked", "is-right");
+      });
+      readout.textContent = "";
       drawDots(); drawInk();
     });
     button("Clear", "lesson-btn lesson-btn--ghost", function () {
@@ -285,6 +325,7 @@
     if (cfg.choices && cfg.choices.length) {
       var pick = document.createElement("div");
       pick.className = "lesson-tool-controls";
+      pickRow = pick;
       cfg.choices.forEach(function (key) {
         var fam = FAMILIES[key];
         if (!fam) return;
@@ -295,14 +336,39 @@
             o.classList.remove("is-picked", "is-right");
           });
           drawCurve(key);
-          var fits = matchingFamilies(points);
-          var right = fits.indexOf(key) >= 0 && points.length >= 3;
-          b.classList.add(right ? "is-right" : "is-picked");
-          readout.textContent = right
-            ? "Yes — that curve goes through every one of your points."
-            : (points.length < 3
-                ? "Plot the points from the table first, then pick a shape."
-                : "That curve misses some of your points. Look at the left-hand side.");
+          b.classList.add("is-picked");
+          // A reference gallery has nothing to check against — it exists to be
+          // looked at, and telling her to "plot the table first" when the block
+          // has no table is just wrong.
+          if (cfg.reference) {
+            readout.textContent = FAMILIES[key].label + " — look at what the left side does.";
+            return;
+          }
+          var plotted = dedupe(points);
+          if (plotted.length < 2) {
+            readout.textContent = "Plot the points from the table first, then pick a shape.";
+            return;
+          }
+          var fits = matchingFamilies(plotted);
+          if (fits.indexOf(key) < 0) {
+            // Do NOT hint at the left-hand side here: that is the x2-vs-x3 tell
+            // and it is misleading for sqrt or 1/x, which fail for other reasons.
+            readout.textContent = "That curve doesn't pass through all your points. "
+              + "Check each one against the table.";
+            return;
+          }
+          if (fits.length > 1) {
+            // Honest, and the more useful answer: her points genuinely do not
+            // rule the others out yet.
+            readout.textContent = "That fits — but so would "
+              + fits.filter(function (k) { return k !== key; })
+                    .map(function (k) { return FAMILIES[k].label; }).join(", ")
+              + ". Plot another point to tell them apart.";
+            return;
+          }
+          b.classList.remove("is-picked");
+          b.classList.add("is-right");
+          readout.textContent = "Yes — and only that one fits your points.";
         });
         pick.appendChild(b);
       });

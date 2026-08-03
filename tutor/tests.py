@@ -1383,3 +1383,100 @@ class SaxonBlockValidationTests(TestCase):
             blocks = __import__(f"tutor.management.commands.{mod}",
                                 fromlist=["BLOCKS"]).BLOCKS
             validate_blocks(blocks)      # must not raise
+
+
+class SaxonLessonMathTests(TestCase):
+    """The mathematics in the lessons themselves (HH-155).
+
+    Written after a review swapped the x² and x³ tables in Lesson 73 and all 306
+    tests still passed. Nothing asserted a single number in any lesson — for
+    content whose whole purpose is being correct in front of a child.
+    """
+
+    def _blocks(self, lesson):
+        mod = __import__(f"tutor.management.commands.seed_saxon_{lesson}",
+                         fromlist=["BLOCKS"])
+        return mod.BLOCKS
+
+    def _grid_tools(self, lesson):
+        from tutor.models import LessonBlock
+        return [d for kind, d in self._blocks(lesson)
+                if kind == LessonBlock.KIND_TOOL and d.get("widget") == "grid"]
+
+    # The families, mirrored from portal-grid.js. If these drift apart the tool
+    # and the content disagree, which is exactly how a right answer gets marked
+    # wrong — so the test that pins the content uses the same definitions.
+    FAMILIES = {
+        "x": lambda x: x,
+        "x^2": lambda x: x * x,
+        "x^3": lambda x: x ** 3,
+        "|x|": abs,
+    }
+
+    def test_every_table_a_child_is_asked_to_plot_is_a_real_function(self):
+        for tool in self._grid_tools(73):
+            table = tool["config"].get("table")
+            if not table:
+                continue
+            fits = [name for name, f in self.FAMILIES.items()
+                    if all(abs(f(x) - y) < 1e-9 for x, y in table)]
+            self.assertTrue(fits, f"{table} is not any function family at all")
+
+    def test_the_practice_table_is_the_cubic_the_reveal_claims(self):
+        # The reveal block tells her the answer. If the table were swapped, the
+        # lesson would be confidently wrong at her.
+        from tutor.models import LessonBlock
+        table = None
+        for tool in self._grid_tools(73):
+            if tool["config"].get("table"):
+                table = tool["config"]["table"]
+        self.assertIsNotNone(table)
+        self.assertTrue(all(abs(x ** 3 - y) < 1e-9 for x, y in table),
+                        f"the practice table {table} is not x³")
+        self.assertFalse(all(abs(x * x - y) < 1e-9 for x, y in table),
+                         "the practice table is ALSO x² — it cannot discriminate")
+        reveal = [d for k, d in self._blocks(73) if k == LessonBlock.KIND_REVEAL]
+        self.assertTrue(any("x³" in (d.get("answer") or "") for d in reveal))
+
+    def test_the_x2_vs_x3_comparison_table_is_arithmetically_right(self):
+        from tutor.models import LessonBlock
+        table = next(d for k, d in self._blocks(73)
+                     if k == LessonBlock.KIND_TABLE and d.get("headers") == ["x", "x²", "x³"])
+        for row in table["rows"]:
+            x, sq, cu = (int(c) for c in row["cells"])
+            self.assertEqual(sq, x * x, f"x={x}: x² column says {sq}")
+            self.assertEqual(cu, x ** 3, f"x={x}: x³ column says {cu}")
+
+    def test_every_plottable_table_fits_on_the_grid_it_ships_with(self):
+        for lesson in (71, 72, 73):
+            for tool in self._grid_tools(lesson):
+                cfg = tool["config"]
+                view = cfg.get("view") or {}
+                for x, y in cfg.get("table") or []:
+                    self.assertTrue(view["xmin"] <= x <= view["xmax"], f"({x},{y}) off grid")
+                    self.assertTrue(view["ymin"] <= y <= view["ymax"], f"({x},{y}) off grid")
+
+    def test_the_ratio_bar_reaches_the_number_the_lesson_asks_for(self):
+        # Lesson 71's tool asks her to slide until Red reads 60. If the target
+        # were not a whole multiple of the ratio part, it could never land.
+        from tutor.models import LessonBlock
+        tool = next(d for k, d in self._blocks(71)
+                    if k == LessonBlock.KIND_TOOL and d.get("widget") == "ratiobar")
+        cfg = tool["config"]
+        part = next(p for p in cfg["parts"] if p["name"] == cfg["target"]["name"])
+        target = cfg["target"]["actual"]
+        self.assertEqual(target % part["ratio"], 0,
+                         f"{target} is not a whole multiple of {part['ratio']}")
+        self.assertLessEqual(target // part["ratio"], cfg["maxScale"],
+                             "the slider cannot reach the target")
+        # And the total the lesson claims (140) is what the tool would show.
+        scale = target // part["ratio"]
+        self.assertEqual(sum(p["ratio"] for p in cfg["parts"]) * scale, 140)
+
+    def test_the_decimal_slider_starts_from_the_number_the_lesson_works(self):
+        from tutor.models import LessonBlock
+        tool = next(d for k, d in self._blocks(72)
+                    if k == LessonBlock.KIND_TOOL and d.get("widget") == "scislide")
+        cfg = tool["config"]
+        # Example 72.1a is 3.2 x 10^3 — the tool should be showing that number.
+        self.assertAlmostEqual(cfg["mantissa"] * 10 ** cfg["exponent"], 3200.0, places=6)

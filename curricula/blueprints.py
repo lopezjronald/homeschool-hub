@@ -500,9 +500,157 @@ ESSENTIALS_IN_WRITING_3 = {
 }
 
 
+# ---------------------------------------------------------------------------
+# DIVE / Saxon Pre-Algebra — Kaylin's course, from Lesson 71 on.
+#
+# Saxon has no chapters: it is a flat run of numbered lessons, each introducing
+# one idea and then mixing it into every later problem set. So the chapters here
+# are synthetic, grouped by ten — and numbered as (lesson - 1) // 10 + 1 so that
+# lessons 1-70, if they are ever added, become chapters 1-7 without renumbering
+# anything or colliding with unique_chapter_number_per_curriculum.
+#
+# `number` is the printed Saxon lesson number and `order` is its position within
+# its ten, so Lesson.code reads "Ch 8, L71".
+#
+# No chapter openers: _op() exists for Singapore Math's opener pages, Saxon has
+# none, and openers are excluded from progress counts.
+#
+# Titles are transcribed from the family's purchased DIVE lesson PDFs
+# ((c) 2021 DIVE, LLC) for private use.
+# ---------------------------------------------------------------------------
+
+# {printed lesson number: (title, objective)}
+_SAXON_LESSONS = {
+    71: ("Proportion Word Problems, Part II: Ratios Involving Totals, Including Percent",
+         "Solve proportion word problems where the ratio parts must first be added to "
+         "give a total, including problems stated in percents."),
+    72: ("Operations with Scientific Notation",
+         "Add, subtract, multiply and divide numbers in scientific notation, and write "
+         "every answer in standard scientific notation form."),
+    73: ("Functions with Graphing: Nonlinear Functions",
+         "Recognize the graph shapes of the basic function families, and identify which "
+         "function a table of ordered pairs represents."),
+    74: ("Data Interpretation and Representation with Charts",
+         "Read and build charts and graphs, and choose a representation that suits the "
+         "data being shown."),
+    75: ("The Binary Numeral System; Pixels",
+         "Convert between binary and decimal, and explain how binary values describe "
+         "pixels on a screen."),
+    76: ("Functions with Graphing: Domain and Range from Graphs; Dividing Terms and Canceling",
+         "Read the domain and range of a function from its graph, and divide algebraic "
+         "terms by canceling common factors."),
+    77: ("More on Linear Functions: Creating a Linear Equation to Solve a Problem",
+         "Write a linear equation that models a described situation, then use it to "
+         "answer the question asked."),
+    78: ("Simplifying More Complex Operations with Exponents; Evaluating Scientific Formulas",
+         "Simplify expressions combining several exponent rules, and evaluate a "
+         "scientific formula by substituting given values."),
+    79: ("More on Linear Functions: Creating a Linear Equation from a Graph",
+         "Read the slope and y-intercept off a graphed line and write its equation in "
+         "slope-intercept form."),
+    80: ("More on Linear Functions: Horizontal and Vertical Lines",
+         "Graph and write equations for horizontal and vertical lines, and explain why a "
+         "vertical line has no defined slope."),
+    81: ("Logic: Converse, Inverse and Contrapositive; What is Calculus?",
+         "Form the converse, inverse and contrapositive of a conditional statement and "
+         "judge each one's truth; describe in plain terms what calculus studies."),
+    82: ("Two Step Equations, Inequalities",
+         "Solve two-step equations and inequalities, remembering to reverse the "
+         "inequality sign when multiplying or dividing by a negative."),
+    83: ("More on Linear Functions: Linear Inequalities",
+         "Graph a linear inequality in two variables, choosing a solid or dashed "
+         "boundary line and shading the correct side."),
+    84: ("Systems of Equations; More on Roots and Radical Signs",
+         "Solve a system of two linear equations, and simplify expressions containing "
+         "roots and radical signs."),
+    85: ("Addition and Subtraction with Mixed Measures; Simplifying Complex Fractions",
+         "Add and subtract mixed measures with regrouping between units, and simplify a "
+         "fraction whose numerator or denominator is itself a fraction."),
+    86: ("Trigonometry Basics",
+         "Identify the opposite, adjacent and hypotenuse sides of a right triangle and "
+         "use sine, cosine and tangent ratios."),
+    87: ("Word Problems and Data from a Chart; Bits, Bytes and Binary Numbers",
+         "Answer word problems using data read from a chart, and convert between bits, "
+         "bytes and the values they can hold."),
+    88: ("Logic: The Syllogism; Surface Area",
+         "Test whether a syllogism is valid, and find the surface area of prisms, "
+         "cylinders and other solids."),
+    89: ("Infinitesimals and the Limit",
+         "Describe what happens to a quantity as it approaches a value without reaching "
+         "it, and read limit notation."),
+    90: ("The Derivative and Slope; Solving Multivariable Equations",
+         "Explain the derivative as the slope of a curve at a point, and solve an "
+         "equation for one variable in terms of the others."),
+    91: ("Calculus and the Trinity; Area and Volume Conversions",
+         "Convert between units of area and of volume using squared and cubed unit "
+         "multipliers."),
+    92: ("More on Derivatives and Tangent Lines; Calculus and the Study of Speed",
+         "Relate a tangent line to a derivative, and describe speed as the rate at which "
+         "distance changes."),
+    93: ("Interest Rate, Savings and Debt",
+         "Compute simple and compound interest, and explain how interest works for and "
+         "against you in savings and debt."),
+    94: ("The Integral and Counting Squares; Imaginary Numbers",
+         "Estimate the area under a curve by counting squares, and simplify expressions "
+         "containing the square root of a negative number."),
+    95: ("Mean, Median, Mode and Range",
+         "Find the mean, median, mode and range of a data set, and say which measure "
+         "best describes it."),
+    96: ("Probability: Compound Events",
+         "Find the probability of compound events, distinguishing independent from "
+         "dependent events."),
+    97: ("Linear Regression and Best Fit",
+         "Draw a line of best fit through scattered data and use it to make a "
+         "prediction."),
+    98: ("Sequences and Series",
+         "Identify arithmetic and geometric sequences, find a term from the pattern, and "
+         "tell a sequence from a series."),
+    99: ("Sigma Means Sum",
+         "Read and evaluate a sum written in sigma notation."),
+    100: ("Matrices",
+          "Read a matrix by its rows and columns, and add, subtract and scalar-multiply "
+          "matrices."),
+}
+
+
+def _saxon_chapters():
+    """Group the flat Saxon lessons into chapters of ten.
+
+    Only lessons present in _SAXON_LESSONS are emitted, so the course can grow
+    lesson by lesson as the PDFs arrive without inventing titles — and
+    `audit_content` compares the blueprint against the database, so an invented
+    lesson would be reported as drift.
+    """
+    chapters = {}
+    for num in sorted(_SAXON_LESSONS):
+        title, objective = _SAXON_LESSONS[num]
+        chapter_number = (num - 1) // 10 + 1
+        low = (chapter_number - 1) * 10 + 1
+        chapter = chapters.setdefault(chapter_number, {
+            "number": chapter_number,
+            "title": f"Lessons {low}-{low + 9}",
+            "lessons": [],
+        })
+        chapter["lessons"].append(
+            _ls(len(chapter["lessons"]) + 1, num, f"Lesson {num}: {title}", objective)
+        )
+    return [chapters[n] for n in sorted(chapters)]
+
+
+SAXON_PREALGEBRA_DIVE = {
+    "slug": "saxon_prealgebra_dive",
+    "name": "Saxon Pre-Algebra (DIVE)",
+    "subject": "Math",
+    "grade_level": "G07",
+    "source": "DIVE Pre-Algebra lesson guides ((c) 2021 DIVE, LLC), used with Saxon Math",
+    "chapters": _saxon_chapters(),
+}
+
+
 BLUEPRINTS = {
     DIMENSIONS_MATH_3A["slug"]: DIMENSIONS_MATH_3A,
     BLACKBIRD_I_AM_DAVID["slug"]: BLACKBIRD_I_AM_DAVID,
     BLACKBIRD_A_MOUSE_CALLED_WOLF["slug"]: BLACKBIRD_A_MOUSE_CALLED_WOLF,
     ESSENTIALS_IN_WRITING_3["slug"]: ESSENTIALS_IN_WRITING_3,
+    SAXON_PREALGEBRA_DIVE["slug"]: SAXON_PREALGEBRA_DIVE,
 }

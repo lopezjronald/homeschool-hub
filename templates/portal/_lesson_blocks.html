@@ -1,0 +1,196 @@
+{% load tutor_extras %}
+{# A taught lesson, rendered from LessonBlock rows.
+
+   Everything here is escaped except the prose fields, which go through
+   markdownify_inline — already the kid-facing authored-markup channel used by
+   portal_questions.html. There is no |safe in this codebase and this template
+   does not introduce one: the richness comes from the block structure, not from
+   storing HTML.
+
+   The order of kinds below mirrors the lesson template the course standardised
+   on: why it exists, then the ideas, then the recipe, then examples, then the
+   mistakes. #}
+<div class="lesson">
+{% for b in blocks %}
+
+  {% if b.kind == "masthead" %}
+    <header class="lesson-masthead">
+      {% if b.data.eyebrow %}<p class="lesson-eyebrow">{{ b.data.eyebrow }}</p>{% endif %}
+      <h1 class="lesson-title">{{ b.data.title }}</h1>
+      {% if b.data.thesis %}<p class="lesson-thesis">{{ b.data.thesis|markdownify_inline }}</p>{% endif %}
+      {% if b.data.formula %}<p class="lesson-formula">{{ b.data.formula }}</p>{% endif %}
+      {% if b.data.roles %}
+        <div class="lesson-roles">
+          {% for r in b.data.roles %}
+            <div class="lesson-role lesson-role--{{ r.tone }}">
+              <h3>{{ r.name }}</h3>
+              <p>{{ r.text }}</p>
+            </div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    </header>
+
+  {% elif b.kind == "purpose" %}
+    {# Why anyone does this, before a single symbol. The part the video skipped. #}
+    <section class="lesson-section lesson-section--purpose">
+      <span class="lesson-tag">Why this exists</span>
+      <h2>{{ b.data.title }}</h2>
+      {% for p in b.data.paragraphs %}<p>{{ p|markdownify_inline }}</p>{% endfor %}
+    </section>
+
+  {% elif b.kind == "idea" %}
+    <section class="lesson-section lesson-section--{{ b.data.tone|default:'plain' }}">
+      <span class="lesson-tag">Idea {{ b.data.n }} of {{ b.data.of }}</span>
+      <h2>{{ b.data.title }}</h2>
+      {% for p in b.data.paragraphs %}<p>{{ p|markdownify_inline }}</p>{% endfor %}
+    </section>
+
+  {% elif b.kind == "say" %}
+    {# The words to say out loud. This is what made the lesson teachable for a
+       parent who said "I didn't know how to really teach that." #}
+    <div class="lesson-say">
+      <b>Say it like this:</b> {{ b.data.text }}
+    </div>
+
+  {% elif b.kind == "steps" %}
+    <section class="lesson-section">
+      <span class="lesson-tag">{{ b.data.tag|default:"The recipe" }}</span>
+      <h2>{{ b.data.title }}</h2>
+      <ol class="lesson-recipe">
+        {% for st in b.data.steps %}
+          <li>
+            <strong>{{ st.label }}</strong>
+            {% if st.detail %} {{ st.detail|markdownify_inline }}{% endif %}
+            {% if st.math %}<span class="lesson-inline-math">{{ st.math }}</span>{% endif %}
+          </li>
+        {% endfor %}
+      </ol>
+      {% if b.data.after %}<p class="lesson-after">{{ b.data.after|markdownify_inline }}</p>{% endif %}
+    </section>
+
+  {% elif b.kind == "worked_example" %}
+    <section class="lesson-section lesson-section--worked">
+      <span class="lesson-tag">Worked example {{ b.data.number }}</span>
+      <h2>{{ b.data.question }}</h2>
+      <ol class="lesson-worked">
+        {% for st in b.data.steps %}
+          <li>
+            {% if st.label %}<span class="lesson-worked-label">{{ st.label }}</span>{% endif %}
+            {% if st.text %}<span class="lesson-worked-text">{{ st.text|markdownify_inline }}</span>{% endif %}
+            {% if st.math %}<span class="lesson-math">{{ st.math }}</span>{% endif %}
+          </li>
+        {% endfor %}
+      </ol>
+      {% if b.data.answer %}<p class="lesson-answer">{{ b.data.answer }}</p>{% endif %}
+    </section>
+
+  {% elif b.kind == "stepper" %}
+    {# The closest thing to a lecture she can pause: one beat per click. #}
+    <section class="lesson-section lesson-section--worked">
+      <span class="lesson-tag">Step through it</span>
+      <h2>{{ b.data.title }}</h2>
+      <div class="lesson-stepper" data-stepper="{{ b.order }}">
+        {% if b.data.equation %}<p class="lesson-stepper-eq">{{ b.data.equation }}</p>{% endif %}
+        <ol class="lesson-stepper-steps">
+          {% for st in b.data.steps %}
+            <li class="lesson-stepper-step" data-step="{{ forloop.counter }}">
+              <span class="lesson-stepper-n">{{ st.label }}</span>
+              <span class="lesson-stepper-body">{{ st.text|markdownify_inline }}</span>
+              {% if st.math %}<span class="lesson-math">{{ st.math }}</span>{% endif %}
+            </li>
+          {% endfor %}
+        </ol>
+        <div class="lesson-stepper-controls">
+          <button type="button" class="lesson-btn" data-stepper-next>Next step</button>
+          <button type="button" class="lesson-btn lesson-btn--ghost" data-stepper-reset>Start over</button>
+        </div>
+      </div>
+    </section>
+
+  {% elif b.kind == "translation" %}
+    {# Saxon's shorthand decoded. Nothing new is happening; it's the same recipe
+       in symbols — and saying so is worth a whole section. #}
+    <section class="lesson-section">
+      <span class="lesson-tag">Translation</span>
+      <h2>{{ b.data.title }}</h2>
+      {% if b.data.intro %}<p>{{ b.data.intro|markdownify_inline }}</p>{% endif %}
+      <table class="lesson-table">
+        <thead><tr><th>symbol</th><th>plain English</th><th>this example</th></tr></thead>
+        <tbody>
+          {% for r in b.data.rows %}
+            <tr><td class="lesson-mono">{{ r.symbol }}</td><td>{{ r.plain }}</td><td class="lesson-mono">{{ r.example }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% if b.data.after %}<p class="lesson-after">{{ b.data.after|markdownify_inline }}</p>{% endif %}
+    </section>
+
+  {% elif b.kind == "errors" %}
+    <section class="lesson-section lesson-section--errors">
+      <span class="lesson-tag">Error patterns</span>
+      <h2>{{ b.data.title|default:"The mistakes almost everyone makes" }}</h2>
+      <ul class="lesson-traps">
+        {% for e in b.data.items %}
+          <li>
+            <strong>{{ e.name }}</strong>
+            {% if e.wrong %}<span class="lesson-wrong">{{ e.wrong }}</span>{% endif %}
+            {% if e.right %}<span class="lesson-right">{{ e.right }}</span>{% endif %}
+            {% if e.note %}<span class="lesson-trap-note">{{ e.note|markdownify_inline }}</span>{% endif %}
+          </li>
+        {% endfor %}
+      </ul>
+    </section>
+
+  {% elif b.kind == "table" %}
+    <div class="lesson-table-wrap">
+      {% if b.data.caption %}<p class="lesson-table-caption">{{ b.data.caption }}</p>{% endif %}
+      <table class="lesson-table">
+        {% if b.data.headers %}
+          <thead><tr>{% for h in b.data.headers %}<th>{{ h }}</th>{% endfor %}</tr></thead>
+        {% endif %}
+        <tbody>
+          {% for row in b.data.rows %}
+            <tr class="{% if row.emphasis %}is-emphasis{% endif %}">
+              {% for cell in row.cells %}<td>{{ cell }}</td>{% endfor %}
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% if b.data.note %}<p class="lesson-table-note">{{ b.data.note|markdownify_inline }}</p>{% endif %}
+    </div>
+
+  {% elif b.kind == "math" %}
+    <p class="lesson-math lesson-math--display">{{ b.data.display }}</p>
+    {% if b.data.note %}<p class="lesson-math-note">{{ b.data.note|markdownify_inline }}</p>{% endif %}
+
+  {% elif b.kind == "reveal" %}
+    {# Native <details>: predict first, then check. Works with JS off. #}
+    <details class="lesson-reveal">
+      <summary>{{ b.data.prompt }}</summary>
+      <div class="lesson-reveal-body">{{ b.data.answer|markdownify_inline }}</div>
+    </details>
+
+  {% elif b.kind == "tool" %}
+    <section class="lesson-section lesson-section--tool">
+      {% if b.data.title %}<h2>{{ b.data.title }}</h2>{% endif %}
+      {% if b.data.intro %}<p>{{ b.data.intro|markdownify_inline }}</p>{% endif %}
+      {# json_script is Django's safe way to hand structured config to JS — it
+         escapes for a script context, so no quoting games in an attribute. #}
+      {{ b.data.config|json_script:b.config_dom_id }}
+      <div class="lesson-tool" data-tool="{{ b.data.widget }}" data-config-id="{{ b.config_dom_id }}"></div>
+      {% if b.data.after %}<p class="lesson-after">{{ b.data.after|markdownify_inline }}</p>{% endif %}
+    </section>
+
+  {% elif b.kind == "recap" %}
+    <section class="lesson-section lesson-section--recap">
+      <h2>{{ b.data.title|default:"Remember this" }}</h2>
+      <ul class="lesson-recap">
+        {% for item in b.data.items %}<li>{{ item|markdownify_inline }}</li>{% endfor %}
+      </ul>
+    </section>
+
+  {% endif %}
+
+{% endfor %}
+</div>

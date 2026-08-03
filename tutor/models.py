@@ -119,11 +119,13 @@ class Material(models.Model):
     SKILL_COMIC = "comic"
     SKILL_FLASHCARDS = "flashcards"
     SKILL_DRILL = "drill"
+    SKILL_LESSON = "lesson"
     SKILL_CHOICES = [
         (SKILL_MANGA, "Manga"),
         (SKILL_COMIC, "Comic"),
         (SKILL_FLASHCARDS, "Flashcards"),
         (SKILL_DRILL, "Drill"),
+        (SKILL_LESSON, "Illustrated lesson"),
     ]
 
     # How manga dialogue is laid out. "band" keeps every speech line in a
@@ -211,6 +213,91 @@ class Material(models.Model):
     def has_pages(self):
         """True once the material has illustrated panels (a real visual manga)."""
         return self.panels.exists()
+
+    @property
+    def has_blocks(self):
+        """True once the material is built from lesson blocks (see LessonBlock)."""
+        return self.blocks.exists()
+
+
+class LessonBlock(models.Model):
+    """One piece of a taught lesson — a heading, a worked example, a tool.
+
+    The structural twin of MangaPanel, and for the same reason. A Material's
+    ``student_content`` renders ESCAPED (there is no ``|safe`` anywhere in this
+    codebase, deliberately), so a rich lesson cannot be stored as HTML and handed
+    to a child. Instead the lesson is stored as ordered rows of typed data and the
+    template supplies the markup — the same trade manga panels make.
+
+    ``kind`` is a closed vocabulary and ``data`` is its payload. The seeding
+    command validates both, so an unknown kind fails loudly at seed time rather
+    than rendering as nothing on a child's screen.
+
+    The shape follows the lesson template this course standardised on: say WHY it
+    exists before any symbol, number the ideas, give the parent the words to say,
+    show the recipe, work examples, translate the textbook's shorthand, then name
+    the mistakes everyone makes.
+    """
+
+    KIND_MASTHEAD = "masthead"          # the one formula, roles colour-coded
+    KIND_PURPOSE = "purpose"            # why anyone does this, in plain words
+    KIND_IDEA = "idea"                  # "Idea 1 of 2" — a numbered section
+    KIND_SAY = "say"                    # "Say it to her like this:"
+    KIND_STEPS = "steps"                # the recipe, numbered
+    KIND_WORKED = "worked_example"      # a worked example, statically laid out
+    KIND_STEPPER = "stepper"            # a worked example you click through
+    KIND_TRANSLATION = "translation"    # textbook shorthand -> plain English
+    KIND_ERRORS = "errors"              # wrong line above right line
+    KIND_TABLE = "table"                # ratio box, percent box, x-y table
+    KIND_MATH = "math"                  # one centred equation
+    KIND_REVEAL = "reveal"              # <details> — predict, then check
+    KIND_TOOL = "tool"                  # an interactive widget
+    KIND_RECAP = "recap"                # the closing rule
+
+    KIND_CHOICES = [
+        (KIND_MASTHEAD, "Masthead"),
+        (KIND_PURPOSE, "Why this exists"),
+        (KIND_IDEA, "Idea"),
+        (KIND_SAY, "Say it like this"),
+        (KIND_STEPS, "The recipe"),
+        (KIND_WORKED, "Worked example"),
+        (KIND_STEPPER, "Step-through example"),
+        (KIND_TRANSLATION, "Translation"),
+        (KIND_ERRORS, "Error patterns"),
+        (KIND_TABLE, "Table"),
+        (KIND_MATH, "Equation"),
+        (KIND_REVEAL, "Predict then check"),
+        (KIND_TOOL, "Interactive tool"),
+        (KIND_RECAP, "Recap"),
+    ]
+
+    material = models.ForeignKey(
+        Material, on_delete=models.CASCADE, related_name="blocks",
+    )
+    order = models.PositiveIntegerField()
+    kind = models.CharField(max_length=20, choices=KIND_CHOICES)
+    data = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        ordering = ["order"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["material", "order"], name="unique_lesson_block_order",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.material.title} — block {self.order} ({self.kind})"
+
+    @property
+    def config_dom_id(self):
+        """Element id for this block's json_script config payload.
+
+        A property rather than template string-building because Django template
+        filters take one argument and cannot concatenate; json_script needs the id
+        handed to it whole.
+        """
+        return f"tool-config-{self.pk}"
 
 
 class MangaPanel(models.Model):

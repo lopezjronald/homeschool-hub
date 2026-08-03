@@ -1106,3 +1106,78 @@ class LessonChecklistFloorTests(TestCase):
         # ...and the pointer lesson itself is NOT ticked (it's the one still to do)
         self.assertNotIn(f'name="done" value="{pointer.pk}" checked', flat)
         self.assertIn(f'name="done" value="{pointer.pk}"', flat)   # but it is on the page
+
+
+class SaxonPreAlgebraBlueprintTests(TestCase):
+    """The Saxon course is a flat run of numbered lessons grouped into synthetic
+    chapters of ten (HH-155)."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.parent = User.objects.create_user("sx", "sx@e.com", "pw")
+        cls.cur = Curriculum.objects.create(
+            parent=cls.parent, name="Saxon Pre-Algebra (DIVE)", subject="Math",
+            grade_level="G07",
+        )
+
+    def test_chapters_are_numbered_so_earlier_lessons_can_be_added_later(self):
+        # chapter = (lesson - 1) // 10 + 1, so 71-80 is Ch8. If lessons 1-70 are
+        # ever added they become Ch1-7 with no renumbering and no collision with
+        # unique_chapter_number_per_curriculum.
+        bp = get_blueprint("saxon_prealgebra_dive")
+        by_number = {ch["number"]: ch for ch in bp["chapters"]}
+        self.assertEqual(sorted(by_number), [8, 9, 10])
+        self.assertEqual([l["number"] for l in by_number[8]["lessons"]],
+                         list(range(71, 81)))
+        self.assertEqual([l["number"] for l in by_number[10]["lessons"]],
+                         list(range(91, 101)))
+
+    def test_lesson_code_shows_the_printed_saxon_number(self):
+        apply_blueprint(self.cur, get_blueprint("saxon_prealgebra_dive"))
+        lesson = Lesson.objects.get(chapter__curriculum=self.cur, number=71)
+        self.assertEqual(lesson.chapter.number, 8)
+        self.assertEqual(lesson.order, 1)          # first within its ten
+        self.assertEqual(lesson.code, "Ch 8, L71")
+
+    def test_every_lesson_has_an_objective(self):
+        # tutor.views._entry_objectives feeds these to the AI grader, so a lesson
+        # without one is graded blind.
+        bp = get_blueprint("saxon_prealgebra_dive")
+        blind = [l["title"] for ch in bp["chapters"] for l in ch["lessons"]
+                 if not (l["objectives"] or "").strip()]
+        self.assertEqual(blind, [])
+
+    def test_there_are_no_chapter_openers(self):
+        # Saxon has no opener pages, and openers are excluded from progress.
+        bp = get_blueprint("saxon_prealgebra_dive")
+        kinds = {l["type"] for ch in bp["chapters"] for l in ch["lessons"]}
+        self.assertEqual(kinds, {Lesson.TYPE_LESSON})
+
+    def test_applying_it_is_idempotent(self):
+        bp = get_blueprint("saxon_prealgebra_dive")
+        apply_blueprint(self.cur, bp)
+        before = Lesson.objects.filter(chapter__curriculum=self.cur).count()
+        apply_blueprint(self.cur, bp)
+        self.assertEqual(Lesson.objects.filter(chapter__curriculum=self.cur).count(), before)
+        self.assertEqual(before, 30)
+
+    def test_a_later_lesson_can_be_added_without_disturbing_the_others(self):
+        # The course grows as the PDFs arrive: adding a row and re-running must
+        # not renumber or delete anything already there.
+        from curricula.blueprints import _SAXON_LESSONS, _saxon_chapters
+        apply_blueprint(self.cur, get_blueprint("saxon_prealgebra_dive"))
+        first = Lesson.objects.get(chapter__curriculum=self.cur, number=71)
+
+        _SAXON_LESSONS[101] = ("A Later Lesson", "Do a later thing.")
+        try:
+            grown = dict(get_blueprint("saxon_prealgebra_dive"))
+            grown["chapters"] = _saxon_chapters()
+            apply_blueprint(self.cur, grown)
+        finally:
+            del _SAXON_LESSONS[101]
+
+        self.assertEqual(Lesson.objects.filter(chapter__curriculum=self.cur).count(), 31)
+        first.refresh_from_db()
+        self.assertEqual((first.chapter.number, first.order), (8, 1))
+        self.assertTrue(Lesson.objects.filter(
+            chapter__curriculum=self.cur, chapter__number=11, number=101).exists())

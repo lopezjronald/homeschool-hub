@@ -1,7 +1,8 @@
 {% extends "portal/base_portal.html" %}
 {% load static %}
 {% block title %}{{ material.title }} · Steadfast Scholars{% endblock %}
-{% block extra_css %}<link href="{% static 'css/manga.css' %}" rel="stylesheet">{% endblock %}
+{% block extra_css %}<link href="{% static 'css/manga.css' %}" rel="stylesheet">
+<link href="{% static 'css/lesson.css' %}" rel="stylesheet">{% endblock %}
 
 {% block content %}
 <div class="container">
@@ -23,7 +24,9 @@
             </div>
           {% endif %}
 
-          {% if material.has_pages %}
+          {% if material.has_blocks %}
+            {% include "portal/_lesson_blocks.html" with blocks=material.blocks.all %}
+          {% elif material.has_pages %}
             <div class="manga-page manga-page--{{ material.manga_text_layout }}">
               {% for panel in material.panels.all %}
                 <figure class="manga-panel manga-span-{{ panel.span }}">
@@ -68,4 +71,13 @@
     </div>
   </div>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+{% if material.has_blocks %}
+  <script src="{% static 'js/portal-stepper.js' %}"></script>
+  <script src="{% static 'js/portal-grid.js' %}"></script>
+  <script src="{% static 'js/portal-ratiobar.js' %}"></script>
+  <script src="{% static 'js/portal-scislide.js' %}"></script>
+{% endif %}
 {% endblock %}

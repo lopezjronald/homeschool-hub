@@ -1,0 +1,289 @@
+/* Taught lessons — the Saxon Pre-Algebra explainers (HH-155).
+
+   A port of the single-file Lesson 70 page the parent liked, onto the app's own
+   tokens. Two colours carry MEANING throughout and must stay consistent across
+   every lesson, because the child learns to read them:
+
+       --lesson-start   the thing you start from   (b, the total, the base)
+       --lesson-move    the thing you do to it     (m, the ratio, the exponent)
+
+   Everything else is deliberately quiet so those two read loudly. */
+
+.lesson {
+  --lesson-start: #14568C;
+  --lesson-move: #C2571A;
+  --lesson-ink: #1E2A24;
+  --lesson-soft: #5A6A60;
+  --lesson-rule: #DDE5D7;
+  --lesson-wash: #EEF3E9;
+  --lesson-card: #FCFDFA;
+  --lesson-mono: ui-monospace, "JetBrains Mono", Menlo, Consolas, monospace;
+  color: var(--lesson-ink);
+  font-size: 1.02rem;
+  line-height: 1.65;
+}
+
+/* ---------- masthead ---------- */
+.lesson-masthead {
+  background: var(--lesson-card);
+  border: 1.5px solid var(--lesson-ink);
+  border-radius: 4px;
+  padding: 1.4rem 1.25rem 1.3rem;
+  box-shadow: 5px 5px 0 rgba(30, 42, 36, 0.10);
+}
+.lesson-eyebrow {
+  font-family: var(--lesson-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--lesson-soft);
+  margin: 0 0 0.5rem;
+}
+.lesson-title { font-size: clamp(1.5rem, 5vw, 2.1rem); line-height: 1.15; margin: 0 0 0.7rem; }
+.lesson-thesis { margin: 0; color: var(--lesson-soft); }
+.lesson-formula {
+  margin: 1.1rem 0 0;
+  text-align: center;
+  font-family: var(--lesson-mono);
+  font-weight: 700;
+  font-size: clamp(1.8rem, 9vw, 3rem);
+}
+.lesson-roles { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; margin-top: 1rem; }
+.lesson-role { border-top: 3px solid var(--lesson-rule); padding-top: 0.6rem; }
+.lesson-role--start { border-color: var(--lesson-start); }
+.lesson-role--start h3 { color: var(--lesson-start); }
+.lesson-role--move { border-color: var(--lesson-move); }
+.lesson-role--move h3 { color: var(--lesson-move); }
+.lesson-role h3 { font-size: 0.95rem; margin: 0 0 0.2rem; }
+.lesson-role p { margin: 0; font-size: 0.94rem; color: var(--lesson-soft); }
+@media (max-width: 480px) { .lesson-roles { grid-template-columns: 1fr; } }
+
+/* ---------- sections ---------- */
+.lesson-section {
+  background: var(--lesson-card);
+  border: 1px solid var(--lesson-rule);
+  border-left: 4px solid var(--lesson-ink);
+  border-radius: 4px;
+  padding: 1.3rem 1.2rem;
+  margin-top: 1.3rem;
+  box-shadow: 3px 3px 0 rgba(30, 42, 36, 0.06);
+}
+.lesson-section--purpose { border-left-color: var(--lesson-start); }
+.lesson-section--start { border-left-color: var(--lesson-start); }
+.lesson-section--move { border-left-color: var(--lesson-move); }
+.lesson-section--errors { border-left-color: #A3341C; }
+.lesson-section--recap { border-left-color: var(--lesson-move); background: var(--lesson-wash); }
+.lesson-section h2 { font-size: clamp(1.15rem, 4vw, 1.5rem); line-height: 1.25; margin: 0 0 0.7rem; }
+.lesson-tag {
+  font-family: var(--lesson-mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--lesson-soft);
+  display: block;
+  margin-bottom: 0.35rem;
+}
+.lesson-after { color: var(--lesson-soft); margin-top: 0.8rem; }
+
+/* ---------- "say it like this" ---------- */
+.lesson-say {
+  background: var(--lesson-wash);
+  border-radius: 4px;
+  padding: 0.8rem 0.9rem;
+  margin: 0.9rem 0;
+  font-size: 1.02rem;
+  line-height: 1.5;
+}
+.lesson-say b { color: var(--lesson-ink); }
+
+/* ---------- the recipe ---------- */
+.lesson-recipe { counter-reset: r; list-style: none; padding: 0; margin: 0.9rem 0 0; }
+.lesson-recipe li {
+  counter-increment: r;
+  position: relative;
+  padding: 0 0 1rem 2.6rem;
+  border-left: 1px dashed #9FB79A;
+}
+.lesson-recipe li:last-child { border-left-color: transparent; padding-bottom: 0; }
+.lesson-recipe li::before {
+  content: counter(r);
+  position: absolute;
+  left: -0.95rem;
+  top: -0.15rem;
+  width: 1.85rem;
+  height: 1.85rem;
+  border-radius: 50%;
+  background: var(--lesson-ink);
+  color: #fff;
+  font-family: var(--lesson-mono);
+  font-weight: 700;
+  font-size: 0.85rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ---------- worked examples ---------- */
+.lesson-worked { list-style: none; padding: 0; margin: 0.6rem 0 0; }
+.lesson-worked li { padding: 0.5rem 0; border-bottom: 1px solid var(--lesson-rule); }
+.lesson-worked li:last-child { border-bottom: 0; }
+.lesson-worked-label {
+  display: block;
+  font-family: var(--lesson-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--lesson-soft);
+}
+.lesson-worked-text { display: block; }
+.lesson-answer {
+  margin-top: 0.9rem;
+  font-weight: 700;
+  font-size: 1.1rem;
+  color: var(--lesson-start);
+}
+
+/* ---------- equations ---------- */
+.lesson-math { font-family: var(--lesson-mono); font-weight: 700; display: block; margin-top: 0.25rem; }
+.lesson-math--display { text-align: center; font-size: 1.25rem; margin: 1rem 0; }
+.lesson-math-note, .lesson-table-note { color: var(--lesson-soft); font-size: 0.94rem; }
+.lesson-inline-math { font-family: var(--lesson-mono); font-weight: 700; }
+.lesson-mono { font-family: var(--lesson-mono); }
+
+/* ---------- the step-through lecture ---------- */
+.lesson-stepper-eq {
+  font-family: var(--lesson-mono);
+  font-weight: 700;
+  font-size: clamp(1.2rem, 5vw, 1.7rem);
+  text-align: center;
+  margin: 0.3rem 0 0.9rem;
+}
+.lesson-stepper-steps { list-style: none; padding: 0; margin: 0; }
+.lesson-stepper-step {
+  padding: 0.7rem 0.85rem;
+  border-left: 3px solid var(--lesson-rule);
+  margin-bottom: 0.5rem;
+  opacity: 0;
+  max-height: 0;
+  overflow: hidden;
+  transition: opacity 0.3s ease;
+}
+.lesson-stepper-step.is-on {
+  opacity: 1;
+  max-height: 40rem;
+  border-left-color: var(--lesson-move);
+  background: var(--lesson-wash);
+}
+.lesson-stepper-n {
+  display: block;
+  font-family: var(--lesson-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--lesson-soft);
+  margin-bottom: 0.2rem;
+}
+.lesson-stepper-controls { display: flex; gap: 0.6rem; justify-content: center; margin-top: 0.9rem; flex-wrap: wrap; }
+.lesson-btn {
+  font-weight: 700;
+  font-size: 0.95rem;
+  padding: 0.6rem 1.15rem;
+  border-radius: 4px;
+  cursor: pointer;
+  border: 1.5px solid var(--lesson-ink);
+  background: var(--lesson-ink);
+  color: #fff;
+}
+.lesson-btn--ghost { background: transparent; color: var(--lesson-ink); }
+.lesson-btn:disabled { opacity: 0.35; cursor: default; }
+.lesson-btn:focus-visible { outline: 3px solid var(--lesson-move); outline-offset: 2px; }
+
+/* ---------- tables (ratio box, percent box, x-y) ---------- */
+.lesson-table-wrap { margin: 1.1rem 0; }
+.lesson-table-caption { font-weight: 700; margin-bottom: 0.35rem; }
+.lesson-table { border-collapse: collapse; width: 100%; font-family: var(--lesson-mono); font-size: 0.92rem; }
+.lesson-table th, .lesson-table td { border: 1px solid var(--lesson-rule); padding: 0.45rem 0.5rem; text-align: center; }
+.lesson-table th { background: var(--lesson-wash); font-size: 0.78rem; letter-spacing: 0.04em; }
+/* The total row is the whole point of Lesson 71 — it must look like it. */
+.lesson-table tr.is-emphasis td { background: var(--lesson-wash); font-weight: 700; border-top: 2px solid var(--lesson-start); }
+
+/* ---------- error patterns ---------- */
+.lesson-traps { list-style: none; padding: 0; margin: 0; }
+.lesson-traps li { padding: 0.75rem 0; border-bottom: 1px solid var(--lesson-rule); }
+.lesson-traps li:last-child { border-bottom: 0; }
+.lesson-wrong, .lesson-right { display: block; font-family: var(--lesson-mono); font-size: 0.9rem; }
+.lesson-wrong { color: #A3341C; }
+.lesson-right { color: var(--lesson-start); }
+.lesson-trap-note { display: block; color: var(--lesson-soft); font-size: 0.94rem; margin-top: 0.2rem; }
+
+/* ---------- predict, then check ---------- */
+.lesson-reveal {
+  border: 1px dashed #9FB79A;
+  border-radius: 4px;
+  padding: 0.7rem 0.9rem;
+  margin: 0.8rem 0;
+  background: #fff;
+}
+.lesson-reveal summary { cursor: pointer; font-weight: 700; }
+.lesson-reveal-body { margin-top: 0.6rem; padding-top: 0.6rem; border-top: 1px dashed #9FB79A; }
+
+/* ---------- recap ---------- */
+.lesson-recap { margin: 0; padding-left: 1.1rem; }
+.lesson-recap li { margin-bottom: 0.35rem; }
+
+/* ---------- interactive tools ---------- */
+.lesson-tool { margin: 0.9rem 0; }
+.lesson-tool .lesson-board { display: block; width: 100%; max-width: 26rem; margin: 0 auto; height: auto; touch-action: none; }
+.lesson-tool-readout {
+  text-align: center;
+  font-family: var(--lesson-mono);
+  font-weight: 700;
+  font-size: 1.05rem;
+  min-height: 1.6rem;
+  margin-top: 0.4rem;
+}
+.lesson-tool-controls { display: flex; gap: 0.5rem; justify-content: center; margin-top: 0.6rem; flex-wrap: wrap; }
+.lesson-choice {
+  font-family: var(--lesson-mono);
+  font-weight: 700;
+  font-size: 0.95rem;
+  padding: 0.5rem 0.8rem;
+  border: 1.5px solid var(--lesson-ink);
+  border-radius: 4px;
+  background: #fff;
+  cursor: pointer;
+}
+.lesson-choice.is-picked { background: var(--lesson-move); border-color: var(--lesson-move); color: #fff; }
+.lesson-choice.is-right { background: var(--lesson-start); border-color: var(--lesson-start); color: #fff; }
+
+/* ---------- the shape gallery ---------- */
+.lesson-gallery { display: grid; grid-template-columns: repeat(auto-fit, minmax(8.5rem, 1fr)); gap: 0.8rem; margin-top: 0.8rem; }
+.lesson-gallery figure { margin: 0; text-align: center; }
+.lesson-gallery figcaption { font-family: var(--lesson-mono); font-weight: 700; font-size: 0.85rem; margin-top: 0.2rem; }
+
+@media (prefers-reduced-motion: reduce) {
+  .lesson * { transition: none !important; animation: none !important; }
+}
+@media print {
+  .lesson-stepper-controls, .lesson-tool-controls { display: none; }
+  .lesson-stepper-step { opacity: 1; max-height: none; }
+  .lesson-reveal-body { display: block; }
+  .lesson-section { break-inside: avoid; box-shadow: none; }
+}
+
+/* ---------- Lesson 71: the ratio bar ---------- */
+.ratiobar-row { display: grid; grid-template-columns: 4.5rem 1fr 5.5rem; align-items: center; gap: 0.5rem; margin-bottom: 0.4rem; }
+.ratiobar-row.is-total { border-top: 2px solid var(--lesson-start); padding-top: 0.4rem; margin-top: 0.4rem; font-weight: 700; }
+.ratiobar-label { font-family: var(--lesson-mono); font-size: 0.85rem; }
+.ratiobar-track { background: var(--lesson-wash); border-radius: 3px; height: 1.5rem; overflow: hidden; }
+.ratiobar-fill { display: block; height: 100%; transition: width 0.18s ease; }
+.ratiobar-value { font-family: var(--lesson-mono); font-size: 0.85rem; text-align: right; }
+.ratiobar-scale { width: 100%; margin-top: 0.8rem; accent-color: var(--lesson-move); }
+
+/* ---------- Lesson 72: sliding the decimal ---------- */
+.scislide-display { text-align: center; font-family: var(--lesson-mono); font-weight: 700; font-size: clamp(1.5rem, 7vw, 2.3rem); margin: 0.4rem 0 0; }
+.scislide-display.is-standard .scislide-mantissa { color: var(--lesson-start); }
+.scislide-display:not(.is-standard) .scislide-mantissa { color: var(--lesson-move); }
+/* The value line never changes — that is the entire point, so it is styled to be
+   noticed sitting still while everything above it moves. */
+.scislide-truth { text-align: center; font-family: var(--lesson-mono); color: var(--lesson-soft); margin: 0.2rem 0 0; }

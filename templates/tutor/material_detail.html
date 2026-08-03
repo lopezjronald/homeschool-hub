@@ -69,7 +69,11 @@
             </div>
           {% else %}
             <h6 class="text-muted">For the student</h6>
+            {% if material.has_blocks %}
+            {% include "portal/_lesson_blocks.html" with blocks=material.blocks.all %}
+          {% else %}
             <div class="p-3 bg-body-tertiary rounded" style="white-space: pre-wrap;">{{ material.student_content }}</div>
+          {% endif %}
           {% endif %}
         </div>
       </div>

@@ -1758,6 +1758,40 @@ class SaxonWorkedExampleArithmeticTests(TestCase):
                         f"that should produce it says {step['math']!r}")
         self.assertGreaterEqual(checked, 6, f"only {checked} answers were checked")
 
+    def test_every_proportion_lesson_71_solves_is_solved_correctly(self):
+        """a/b = c/X  ->  X = n must actually have n = b*c/a.
+
+        The balance test cannot see these: both sides hold the unknown, so it
+        skips them. But solving a proportion IS Lesson 71, and its error block
+        states the correct answer with full authority — a wrong number there
+        teaches the very mistake the block exists to prevent.
+
+        Only a line whose LAST segment is the bare statement "X = n" counts. The
+        cross-multiply line ends "3 × T = 7 × 60", which states a step and not an
+        answer; reading an answer out of it found 7 and called the lesson wrong.
+        """
+        import re
+
+        setup = re.compile(r"(\d+)\s*/\s*(\d+)\s*=\s*(\d+)\s*/\s*([A-Za-z])")
+        checked = 0
+        for line in self._math_lines(71):
+            found = setup.search(line)
+            if not found:
+                continue
+            a, b, c, var = found.groups()
+            last = re.split(r"->|→", line)[-1]
+            answer = re.fullmatch(r"\s*" + re.escape(var) + r"\s*=\s*(\d+)\s*", last)
+            if not answer:
+                continue
+            a, b, c = int(a), int(b), int(c)
+            stated = int(answer.group(1))
+            checked += 1
+            self.assertEqual(
+                stated, b * c // a,
+                f"{line!r} says the answer is {stated}, but "
+                f"{a}/{b} = {c}/{var} gives {b * c / a:g}")
+        self.assertGreaterEqual(checked, 1, "no proportion was checked at all")
+
     def test_the_ratio_box_total_row_is_the_sum_of_its_parts(self):
         """The caption calls the total row 'the whole lesson'. It has to be right."""
         from tutor.models import LessonBlock

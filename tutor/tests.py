@@ -1364,6 +1364,46 @@ class SaxonLessonSeedTests(TestCase):
         m.refresh_from_db()
         self.assertEqual(m.status, Material.DRAFT)
 
+    def test_rewritten_intro_or_guide_also_needs_re_approval(self):
+        """The blocks are not the only thing the child reads.
+
+        title and student_intro are rendered at the top of her page and
+        parent_content IS the teaching guide. A review found all three could be
+        rewritten in place while an APPROVED lesson stayed approved.
+        """
+        from tutor.management.commands import seed_saxon_73 as mod
+        self._seed(73)
+        m = Material.objects.get(lesson__chapter__curriculum=self.cur, lesson__number=73)
+        m.status = Material.APPROVED
+        m.save(update_fields=["status"])
+
+        original = mod.Command.STUDENT_INTRO
+        try:
+            mod.Command.STUDENT_INTRO = "Words the parent has never seen."
+            self._seed(73)
+        finally:
+            mod.Command.STUDENT_INTRO = original
+        m.refresh_from_db()
+        self.assertEqual(m.student_intro, "Words the parent has never seen.")
+        self.assertEqual(m.status, Material.DRAFT)
+
+    def test_broken_widget_config_is_reported_not_crashed(self):
+        """audit_content sweeps live rows; one malformed row must not abort it."""
+        from django.core.management.base import CommandError
+
+        from tutor.management.commands._saxon_seed import _unplottable, validate_blocks
+        from tutor.models import LessonBlock
+
+        # Never raises, whatever shape the row is.
+        for config in ({"view": "big"}, {"view": []}, "not a dict", {"table": "nope"},
+                       {"view": {"xmin": None}}, {"table": [[1]]}):
+            self.assertIsInstance(_unplottable(1, config), list)
+
+        # And validate_blocks names the problem rather than throwing AttributeError.
+        with self.assertRaises(CommandError):
+            validate_blocks([(LessonBlock.KIND_TOOL,
+                              {"widget": "grid", "config": "not a dict"})])
+
     def test_a_shortened_lesson_drops_its_leftover_blocks(self):
         from tutor.models import LessonBlock
         self._seed(73)
@@ -1526,3 +1566,151 @@ class SaxonLessonMathTests(TestCase):
         cfg = tool["config"]
         # Example 72.1a is 3.2 x 10^3 — the tool should be showing that number.
         self.assertAlmostEqual(cfg["mantissa"] * 10 ** cfg["exponent"], 3200.0, places=6)
+
+
+class SaxonWorkedExampleArithmeticTests(TestCase):
+    """Every equation the lessons show a child must actually be true (HH-155).
+
+    A review mutated five numbers across Lessons 71 and 72 — turning 9H = 270
+    into H = 35, and 2 x 10^-3 into 2 x 10^3 — and the whole suite still passed.
+    These lessons are almost entirely worked arithmetic, so nothing about them
+    was guarded at all.
+
+    The equations are parsed and EVALUATED rather than compared to copies of
+    themselves. A test that holds the expected answer as a literal is only
+    testing that someone typed the same thing twice.
+    """
+
+    SUPER = str.maketrans("⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻⁽⁾", "0123456789+-()")
+
+    def _blocks(self, lesson):
+        mod = __import__(f"tutor.management.commands.seed_saxon_{lesson}",
+                         fromlist=["BLOCKS"])
+        return mod.BLOCKS
+
+    def _math_lines(self, lesson):
+        """Every equation shown to the child, wherever it lives in the lesson."""
+        lines = []
+        for _kind, data in self._blocks(lesson):
+            if data.get("math"):
+                lines.append(data["math"])
+            for step in (data.get("steps") or []):
+                if isinstance(step, dict) and step.get("math"):
+                    lines.append(step["math"])
+        return lines
+
+    def _value(self, text):
+        """The number a side of an equation comes out to, or None if it isn't one.
+
+        Returns None for anything holding a variable or a unit word, so `3T` and
+        `140 hats` are skipped rather than guessed at.
+        """
+        import re
+
+        s = text.translate(self.SUPER)
+        s = (s.replace("×", "*").replace("÷", "/").replace("−", "-")
+              .replace("–", "-").replace("·", "*").replace(",", ""))
+        s = s.strip().rstrip(".")
+        # A trailing UNIT is separated by a space ("140 hats"); a variable is not
+        # ("3T"). Strip the first, keep the second so it disqualifies the side.
+        s = re.sub(r"\s+[A-Za-z]+$", "", s).strip()
+        if not s or re.search(r"[A-Za-z]", s):
+            return None
+        # implicit multiplication: (5)(3)
+        s = re.sub(r"\)\s*\(", ")*(", s)
+        if not re.fullmatch(r"[\d\s.+\-*/()]+", s):
+            return None
+        try:
+            return eval(s, {"__builtins__": {}}, {})  # noqa: S307 - digits only
+        except (SyntaxError, ZeroDivisionError, TypeError, NameError):
+            return None
+
+    def _powers(self, text):
+        """Rewrite `4.1 × 10⁴` as `4.1 * 10**4` before any other normalising."""
+        import re
+
+        def repl(m):
+            return f"*10**({m.group(1).translate(self.SUPER)})"
+
+        return re.sub(r"[×x]\s*10([⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻⁽⁾]+)", repl, text)
+
+    def _sides(self, statement):
+        return [self._value(self._powers(p)) for p in statement.split("=")]
+
+    def test_every_equation_in_lessons_71_and_72_balances(self):
+        import re
+
+        checked = 0
+        for lesson in (71, 72):
+            for line in self._math_lines(lesson):
+                for statement in re.split(r"→|⇒", line):
+                    if "=" not in statement:
+                        continue
+                    values = [v for v in self._sides(statement) if v is not None]
+                    if len(values) < 2:
+                        continue
+                    checked += 1
+                    for v in values[1:]:
+                        self.assertAlmostEqual(
+                            v, values[0], places=6,
+                            msg=f"L{lesson}: {statement.strip()!r} does not balance")
+        # If the parser silently stopped understanding the notation this test
+        # would pass by checking nothing at all.
+        self.assertGreaterEqual(checked, 8, f"only {checked} equations were checked")
+
+    def test_lesson_71s_answers_follow_from_its_own_questions(self):
+        """Recompute each answer from the numbers the question states.
+
+        Both halves are pinned: change a number in the question and the expected
+        inputs no longer match; change the answer and the arithmetic no longer
+        matches.
+        """
+        import re
+
+        from tutor.models import LessonBlock
+        worked = {d["number"]: d for k, d in self._blocks(71)
+                  if k == LessonBlock.KIND_WORKED}
+
+        # 71.2 — oxygen : hydrogen by mass, over a stated TOTAL mass of water.
+        d = worked["71.2"]
+        nums = [int(n) for n in re.findall(r"\d+", d["question"])]
+        self.assertEqual(nums, [8, 1, 270], "the 71.2 question changed")
+        oxygen, hydrogen, total = nums
+        self.assertEqual(f"{total * hydrogen // (oxygen + hydrogen)} grams of hydrogen",
+                         d["answer"])
+
+        # 71.3 — a percent, its complement, and the count of the OTHER part.
+        d = worked["71.3"]
+        nums = [int(n) for n in re.findall(r"\d+", d["question"])]
+        self.assertEqual(nums, [20, 32], "the 71.3 question changed")
+        apple_pct, oranges = nums
+        self.assertEqual(f"{oranges * 100 // (100 - apple_pct)} pieces of fruit",
+                         d["answer"])
+
+    def test_lesson_71s_stepped_example_lands_on_the_right_total(self):
+        import re
+
+        from tutor.models import LessonBlock
+        stepper = next(d for k, d in self._blocks(71) if k == LessonBlock.KIND_STEPPER)
+        red, blue = 3, 4
+        self.assertIn(f"{red} : {blue}", stepper["equation"])
+        reds = int(re.search(r"(\d+)\s*reds", stepper["equation"]).group(1))
+        total = reds * (red + blue) // red
+        self.assertIn(f"{total} hats", stepper["steps"][-1]["math"])
+
+    def test_lesson_72s_stated_answers_equal_their_own_questions(self):
+        """Each worked answer, evaluated, must equal its question evaluated."""
+        from tutor.models import LessonBlock
+        checked = 0
+        for kind, data in self._blocks(72):
+            if kind != LessonBlock.KIND_WORKED or not data.get("answer"):
+                continue
+            want = self._value(self._powers(data["question"]))
+            got = self._value(self._powers(data["answer"]))
+            if want is None or got is None:
+                continue
+            checked += 1
+            self.assertAlmostEqual(
+                got, want, delta=abs(want) * 1e-9,
+                msg=f"{data['number']}: {data['question']} != {data['answer']}")
+        self.assertGreaterEqual(checked, 2, f"only {checked} answers were checked")

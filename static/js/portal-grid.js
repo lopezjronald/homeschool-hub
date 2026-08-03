@@ -221,6 +221,21 @@
     return segments.filter(function (s) { return s.length > 1; });
   }
 
+  /* Which values get a number printed against them.
+
+     Two rules, both learned the hard way. Anchor on ZERO, not on the left edge:
+     starting at Math.ceil(min) and stepping 2 across -9..9 labels only the odd
+     values, so on the practice grid three of the five points she is told to plot
+     had neither coordinate marked and she had to count bare gridlines. And keep
+     step 1 while the numbers still fit, because a label she has to count from is
+     not a label. */
+  function axisTicks(min, max) {
+    var step = (max - min) <= 20 ? 1 : Math.ceil((max - min) / 20);
+    var ticks = [];
+    for (var t = Math.ceil(min / step) * step; t <= max; t += step) ticks.push(t);
+    return ticks;
+  }
+
   var SIZE = 440, PAD = 8;
 
   /* The board <-> grid transform, as pure functions.
@@ -252,6 +267,7 @@
     dedupe: dedupe,
     sampleCurve: sampleCurve,
     fitFamily: fitFamily,
+    axisTicks: axisTicks,
     transform: transform,
   };
   if (typeof module !== "undefined" && module.exports) module.exports = core;
@@ -294,18 +310,23 @@
                                stroke: "#1E2A24", "stroke-width": 2 }));
     g.appendChild(el("line", { x1: X(0), y1: Y(view.ymin), x2: X(0), y2: Y(view.ymax),
                                stroke: "#1E2A24", "stroke-width": 2 }));
-    for (var t = Math.ceil(view.xmin); t <= view.xmax; t += 2) {
-      if (t === 0) continue;
+    axisTicks(view.xmin, view.xmax).forEach(function (t) {
+      if (t === 0) return;
       var tx = el("text", { x: X(t), y: Y(0) + 14, "font-size": 11, fill: "#5A6A60",
                             "text-anchor": "middle", "font-family": "monospace" });
       tx.textContent = t; g.appendChild(tx);
-    }
-    for (var u = Math.ceil(view.ymin); u <= view.ymax; u += 2) {
-      if (u === 0) continue;
+    });
+    axisTicks(view.ymin, view.ymax).forEach(function (u) {
+      if (u === 0) return;
       var ty = el("text", { x: X(0) - 7, y: Y(u) + 4, "font-size": 11, fill: "#5A6A60",
                             "text-anchor": "end", "font-family": "monospace" });
       ty.textContent = u; g.appendChild(ty);
-    }
+    });
+    // The origin, once, tucked into the lower-left quadrant so it sits beside
+    // both axes instead of on top of either.
+    var zero = el("text", { x: X(0) - 7, y: Y(0) + 14, "font-size": 11, fill: "#5A6A60",
+                            "text-anchor": "end", "font-family": "monospace" });
+    zero.textContent = "0"; g.appendChild(zero);
     svg.appendChild(g);
 
     var curveLayer = el("g", {});
@@ -412,20 +433,25 @@
       penBtn.textContent = mode === "pen" ? "● Plotting points" : "✏️ Pen";
       readout.textContent = mode === "pen" ? "sketch freely" : "click to plot";
     });
-    button("Undo", "lesson-btn lesson-btn--ghost", function () {
-      if (mode === "pen") strokes.pop(); else points.pop();
-      // The drawn curve and the verdict were about the OLD set of points.
+    /* The drawn curve and the verdict were about the points that were there.
+       Leaving "x³" lit up green over a board she has just emptied tells her the
+       answer is confirmed when nothing has been checked. */
+    function forgetVerdict() {
       while (curveLayer.firstChild) curveLayer.removeChild(curveLayer.firstChild);
       if (pickRow) pickRow.querySelectorAll(".lesson-choice").forEach(function (o) {
         o.classList.remove("is-picked", "is-right");
       });
       readout.textContent = "";
+    }
+    button("Undo", "lesson-btn lesson-btn--ghost", function () {
+      if (mode === "pen") strokes.pop(); else points.pop();
+      forgetVerdict();
       drawDots(); drawInk();
     });
     button("Clear", "lesson-btn lesson-btn--ghost", function () {
       points = []; strokes = [];
-      while (curveLayer.firstChild) curveLayer.removeChild(curveLayer.firstChild);
-      drawDots(); drawInk(); readout.textContent = "";
+      forgetVerdict();
+      drawDots(); drawInk();
     });
     host.appendChild(ctl);
 

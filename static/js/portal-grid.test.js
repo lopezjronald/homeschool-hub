@@ -5,7 +5,7 @@
    points, or an answer marked wrong when it was right — so it is tested directly.
    The DOM half only reads rectangles. */
 const { snapToLattice, matchingFamilies, isDecisive, dedupe, sampleCurve,
-        fitFamily, transform, FAMILIES, VIEW, SIZE, PAD } = require("./portal-grid.js");
+        fitFamily, axisTicks, transform, FAMILIES, VIEW, SIZE, PAD } = require("./portal-grid.js");
 
 let pass = 0, fail = 0;
 function check(name, got, want) {
@@ -178,6 +178,22 @@ check("with no points the gallery still draws the parent 2^x",
     const at2 = all.filter(q => Math.abs(q[0] - 2) < 0.02)[0];
     return !!at2 && Math.abs(at2[1] - 4) < 0.1;
   })(), true);
+
+/* ---- she must be able to READ the coordinates she is asked to plot ---- */
+
+// The practice grid is -9..9. Stepping 2 from Math.ceil(min) labelled only the
+// odd values, so (-2,-8), (0,0) and (2,8) - three of the five points the lesson
+// tells her to plot - had neither coordinate marked on the board.
+check("every point of the seeded cubic table lands on a labelled line",
+  CUBE.every(p => axisTicks(-9, 9).indexOf(p[0]) >= 0
+                  && axisTicks(-9, 9).indexOf(p[1]) >= 0), true);
+check("the origin is a tick", axisTicks(-9, 9).indexOf(0) >= 0, true);
+check("ticks are anchored on zero, not on the left edge",
+  axisTicks(-9, 9)[0], -9);
+check("a wide window thins the labels instead of crowding them",
+  axisTicks(-50, 50).length <= 21, true);
+check("...and still includes zero when it thins",
+  axisTicks(-50, 50).indexOf(0) >= 0, true);
 
 /* ---- the checker and the seeded lesson must not drift apart ----
 

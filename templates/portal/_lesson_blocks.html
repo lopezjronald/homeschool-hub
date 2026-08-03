@@ -3,9 +3,14 @@
 
    Everything here is escaped except the prose fields, which go through
    markdownify_inline — already the kid-facing authored-markup channel used by
-   portal_questions.html. There is no |safe in this codebase and this template
-   does not introduce one: the richness comes from the block structure, not from
-   storing HTML.
+   portal_questions.html.
+
+   READ THIS BEFORE WIDENING WHAT WRITES A LessonBlock. markdownify_inline ends
+   in mark_safe() with no sanitiser, so every prose slot below is an HTML sink.
+   That is safe TODAY only because the seed commands are the sole writer — there
+   is no admin registration, no view and no AI path that can create or edit a
+   block. The moment one of those exists, the prose fields need sanitising; the
+   escaped fields (title, math, answer, table cells) and json_script do not.
 
    The order of kinds below mirrors the lesson template the course standardised
    on: why it exists, then the ideas, then the recipe, then examples, then the

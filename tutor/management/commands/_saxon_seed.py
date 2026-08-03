@@ -70,7 +70,15 @@ def _unplottable(i, config):
     Never raises. audit_content calls this over live rows, and one malformed row
     must not abort the standing sweep.
     """
-    view = dict(DEFAULT_VIEW, **(config.get("view") or {}))
+    if not isinstance(config, dict):
+        return [f"block {i}: config is not a mapping"]
+    raw_view = config.get("view") or {}
+    if not isinstance(raw_view, dict):
+        return [f"block {i}: 'view' is not a mapping"]
+    view = dict(DEFAULT_VIEW, **raw_view)
+    if not all(isinstance(view.get(k), (int, float)) and not isinstance(view.get(k), bool)
+               for k in ("xmin", "xmax", "ymin", "ymax")):
+        return [f"block {i}: 'view' does not describe a grid"]
     out = []
     for key in ("table", "points"):
         rows = config.get(key)
@@ -115,6 +123,11 @@ def validate_blocks(blocks):
             except (TypeError, ValueError) as exc:
                 problems.append(f"block {i}: config is not JSON ({exc})")
             config = data.get("config") or {}
+            if not isinstance(config, dict):
+                # Reported, not raised as AttributeError: this function's whole
+                # job is to name what is wrong with the content.
+                problems.append(f"block {i}: config is not a mapping")
+                continue
             for key in WIDGET_KEYS.get(data.get("widget"), ()):
                 if config.get(key) is None:
                     problems.append(f"block {i}: {data.get('widget')} needs "
@@ -192,7 +205,11 @@ class SaxonSeedCommand(BaseCommand):
         # quietly defeated the re-approval guard below.
         was = {b.order: (b.kind, b.data)
                for b in LessonBlock.objects.filter(material=material)}
-        changed = len(was) > len(self.BLOCKS)
+        # `updates` counts too. title and student_intro are rendered at the top of
+        # the child's page and parent_content IS the teaching guide — a rewrite of
+        # any of them is new words she would otherwise read under an approval he
+        # gave to the old ones.
+        changed = bool(updates) or len(was) > len(self.BLOCKS)
         for order, (kind, data) in enumerate(self.BLOCKS, start=1):
             if was.get(order) != (kind, data):
                 changed = True

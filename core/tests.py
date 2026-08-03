@@ -1672,6 +1672,48 @@ class AuditContentCommandTests(TestCase):
     def test_a_clean_setup_reports_no_problems(self):
         self.assertIn("No problems", self._run())
 
+    def test_a_deactivated_placement_is_not_audited(self):
+        """The audit must walk what the child can REACH, not what rows exist.
+
+        A deactivated placement on a sibling's curriculum made the audit open
+        that sibling's material, get the 404 the permission check is supposed to
+        produce, and report it as breakage — turning a correct refusal into a
+        red PROBLEM on every run. portal/views.py has filtered is_active since
+        HH-149; this walk has to filter it the same way.
+        """
+        from curricula.models import Chapter, Curriculum, CurriculumPlacement, Lesson
+        from students.models import Student
+        from tutor.models import Material
+
+        sibling = Student.objects.create(parent=self.parent, first_name="Rae")
+        other = Curriculum.objects.create(
+            parent=self.parent, name="Rae Only", subject="Math", grade_level="G07")
+        ch = Chapter.objects.create(curriculum=other, number=1, title="One")
+        lesson = Lesson.objects.create(chapter=ch, order=1, number=1, title="L1")
+        CurriculumPlacement.objects.create(child=sibling, curriculum=other)
+        from tutor.models import LessonBlock
+        m = Material.objects.create(
+            lesson=lesson, child=sibling, title="Rae's own material",
+            skill_type=Material.SKILL_LESSON, status=Material.APPROVED,
+            student_intro="hi", student_content="hi", parent_content="hi")
+        LessonBlock.objects.create(material=m, order=1,
+                                   kind=LessonBlock.KIND_MASTHEAD,
+                                   data={"title": "Rae's masthead"})
+
+        # Rae reaches her own material; that page is hers and must still be walked.
+        self.assertIn("Rae (#2)         6/6 pages OK", self._run())
+
+        # Now give Nia a DEACTIVATED placement pointing at Rae's curriculum. It
+        # must change nothing: Nia's page count stays put and the 404 the
+        # permission check would raise is never provoked.
+        CurriculumPlacement.objects.create(
+            child=self.child, curriculum=other, is_active=False)
+
+        out = self._run()
+        self.assertIn("Nia (#1)         5/5 pages OK", out,
+                      "the audit opened a page the child cannot reach")
+        self.assertIn("No problems", out)
+
     def test_it_exits_nonzero_when_something_is_broken(self):
         from tutor.models import QuestionSet
         QuestionSet.objects.create(

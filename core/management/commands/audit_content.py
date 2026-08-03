@@ -260,7 +260,14 @@ class Command(BaseCommand):
             # Name AND pk: two children can share a first name, and a duplicate row
             # otherwise reads as the same problem reported twice.
             who = f"{s.first_name} (#{s.pk})"
-            placements = CurriculumPlacement.objects.filter(child=s).select_related("curriculum")
+            # ACTIVE placements only, exactly as portal/views.py:_subject_cards
+            # filters them. Auditing more than the child can reach turns correct
+            # refusals into reported breakage: a deactivated placement on another
+            # child's curriculum made this walk open that child's material and
+            # flag the 404 — which was the permission check working.
+            placements = (CurriculumPlacement.objects
+                          .filter(child=s, is_active=True, curriculum__is_active=True)
+                          .select_related("curriculum"))
             if not placements:
                 self.problem(f"{who} has no curriculum placements — their portal is empty")
             for pl in placements:

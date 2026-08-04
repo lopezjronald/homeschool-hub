@@ -297,3 +297,61 @@
 /* The value line never changes — that is the entire point, so it is styled to be
    noticed sitting still while everything above it moves. */
 .scislide-truth { text-align: center; font-family: var(--lesson-mono); color: var(--lesson-soft); margin: 0.2rem 0 0; }
+
+/* ---- Lesson 74: charts ------------------------------------------------- */
+.lesson-chart {
+  display: block;
+  width: 100%;
+  max-width: 460px;
+  height: auto;
+  margin: 0 auto;
+  background: #FBFDFA;
+  border: 1px solid var(--lesson-rule, #DCE6D6);
+  border-radius: 8px;
+}
+
+/* ---- Lesson 75: the binary place-value switches ------------------------ */
+.lesson-binary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+  margin: 12px 0;
+}
+.lesson-bit {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-width: 74px;
+  padding: 10px 8px;
+  font: inherit;
+  color: #3A4A40;
+  background: #FBFDFA;
+  border: 2px solid var(--lesson-rule, #DCE6D6);
+  border-radius: 8px;
+  cursor: pointer;
+}
+.lesson-bit:hover { border-color: var(--lesson-start, #14568C); }
+.lesson-bit:focus-visible {
+  outline: 3px solid var(--lesson-move, #C2571A);
+  outline-offset: 2px;
+}
+/* ON is carried by more than colour: the digit itself changes 0 -> 1, which is
+   the actual content and is what a colour-blind reader or a screen reader uses. */
+.lesson-bit.is-on {
+  color: #FFFFFF;
+  background: var(--lesson-start, #14568C);
+  border-color: var(--lesson-start, #14568C);
+}
+.lesson-bit-digit {
+  font-size: 1.5rem;
+  font-weight: 700;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  line-height: 1.1;
+}
+.lesson-bit-place {
+  font-size: 0.7rem;
+  opacity: 0.8;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}

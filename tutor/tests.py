@@ -1299,6 +1299,9 @@ class SaxonLessonToolTests(TestCase):
     def test_the_ratio_bar_and_decimal_slider_cores(self):
         self._run("portal-tools.test.js")
 
+    def test_the_chart_and_binary_cores(self):
+        self._run("portal-chart.test.js")
+
 
 def saxon_lesson_numbers():
     """Every Saxon lesson that has a seed command, found by looking.
@@ -1919,3 +1922,83 @@ class SaxonBatchSeedCommandTests(TestCase):
                      .values_list("lesson__number", flat=True))
         self.assertEqual(seeded, {71, 73}, "the runner seeded the wrong lessons")
         self.assertIn("Seeded 2 lesson(s)", out.getvalue())
+
+
+class LessonToolTemplateContractTests(TestCase):
+    """Every widget must find the config the template hands it (HH-155).
+
+    A new widget read `data-config` while the template has always emitted
+    `data-config-id`. Nothing failed: the script simply found nothing and left an
+    empty div, so the child would have got a blank space where the interactive
+    part of her lesson should be. That is the exact failure the seed validator
+    was built to prevent, arriving through a door it does not watch.
+    """
+
+    def _render(self, widget, config):
+        from django.template.loader import render_to_string
+
+        from curricula.models import Chapter, Curriculum, Lesson
+        from tutor.models import LessonBlock, Material
+        lesson = Lesson.objects.create(
+            chapter=Chapter.objects.create(
+                curriculum=Curriculum.objects.create(
+                    parent=User.objects.create_user(
+                        f"tc{widget}", f"tc{widget}@e.com", "pw"),
+                    name="C", subject="Math", grade_level="G07"),
+                number=1, title="One"),
+            order=1, number=1, title="L")
+        m = Material.objects.create(lesson=lesson, title="T",
+                                    skill_type=Material.SKILL_LESSON,
+                                    student_intro="i", student_content="i",
+                                    parent_content="p")
+        block = LessonBlock.objects.create(
+            material=m, order=1, kind=LessonBlock.KIND_TOOL,
+            data={"widget": widget, "config": config})
+        html = render_to_string("portal/_lesson_blocks.html", {"blocks": [block]})
+        return html, block
+
+    def test_every_known_widget_is_handed_a_config_it_can_find(self):
+        import re
+
+        from tutor.management.commands._saxon_seed import KNOWN_WIDGETS
+
+        for widget in sorted(KNOWN_WIDGETS):
+            html, block = self._render(widget, {"probe": widget})
+            self.assertIn(f'data-tool="{widget}"', html)
+            # The id on the host must be the id of a script that is really there.
+            m = re.search(r'data-config-id="([^"]+)"', html)
+            self.assertIsNotNone(m, f"{widget}: no config id on the host element")
+            self.assertIn(f'id="{m.group(1)}"', html,
+                          f"{widget}: the host points at a config that is not on the page")
+            self.assertEqual(m.group(1), block.config_dom_id)
+
+    def test_the_scripts_read_the_attribute_the_template_writes(self):
+        """Read the JS itself, because this is a cross-file contract.
+
+        Nothing else in the suite can see it: the template test above proves the
+        attribute is written, the node tests prove the maths, and neither one
+        notices that the two halves disagree about the name.
+        """
+        import os
+        import re
+
+        from django.conf import settings
+
+        js_dir = os.path.join(settings.BASE_DIR, "static", "js")
+        checked = 0
+        for name in sorted(os.listdir(js_dir)):
+            if not re.fullmatch(r"portal-\w+\.js", name):
+                continue
+            with open(os.path.join(js_dir, name), encoding="utf-8") as fh:
+                src = fh.read()
+            # A LESSON widget is one that mounts on .lesson-tool[data-tool=...].
+            # portal-markup.js has a [data-tool=undo] button and is not one.
+            if ".lesson-tool[data-tool=" not in src:
+                continue
+            checked += 1
+            self.assertIn("dataset.configId", src,
+                          f"{name} does not read the id the template writes")
+            self.assertNotIn('getAttribute("data-config")', src,
+                             f"{name} reads an attribute the template never writes")
+        self.assertGreaterEqual(checked, 5,
+                                f"only {checked} widget modules were checked")

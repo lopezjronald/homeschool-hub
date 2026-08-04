@@ -23,7 +23,25 @@ check("the axis top is never below the tallest value",
 check("...and lands on a readable round number", C.niceMax(FISH), 6000);
 check("a lone value still gets a sane axis", C.niceMax([37]) >= 37, true);
 check("an all-zero dataset does not divide by zero", C.niceMax([0, 0]), 1);
-check("gridlines run from 0 to the top", C.ticks(6000, 5), [0, 1200, 2400, 3600, 4800, 6000]);
+/* The gridlines a child is told to read.
+
+   Lesson 74 says August's 4,000 "lands exactly on a line" and June "sits about
+   halfway between 0 and 2,000". Cutting a nice-looking maximum into five equal
+   pieces gave 1,200 / 2,400 / 3,600 — neither line existed, so the page
+   contradicted the very habit the lesson makes its headline ("find the scale
+   FIRST"). Choose the STEP, then the top. */
+check("gridlines land on numbers a person would choose",
+  C.ticks(C.niceScale(FISH).max, C.niceScale(FISH).step), [0, 2000, 4000, 6000]);
+check("...so August's 4,000 really is ON a line",
+  C.ticks(C.niceScale(FISH).max, C.niceScale(FISH).step).includes(4000), true);
+check("...and June's 1,000 really is halfway to a line",
+  C.ticks(C.niceScale(FISH).max, C.niceScale(FISH).step).includes(2000), true);
+check("a scruffy dataset still gets round gridlines",
+  C.ticks(C.niceScale([37, 12]).max, C.niceScale([37, 12]).step), [0, 10, 20, 30, 40]);
+check("the top is never below the tallest value",
+  C.niceScale([4730]).max >= 4730, true);
+check("the top is a whole number of steps",
+  C.niceScale([4730]).max % C.niceScale([4730]).step, 0);
 
 // ---- bars ----
 const bars = C.barLayout(FISH, C.niceMax(FISH));

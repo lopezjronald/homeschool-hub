@@ -24,25 +24,43 @@
      Never below it — a bar drawn past the top of its own axis is a chart that
      lies. Rounds up to 1, 2 or 5 times a power of ten so the gridlines land on
      numbers a child can read (2,000 / 4,000 / 6,000), not on 4,730. */
-  function niceMax(values) {
+  /* Choose the STEP first, then the top — not the other way round.
+
+     Picking a nice-looking maximum and then cutting it into five equal pieces is
+     the trap: 6,000 in five parts is 1,200 / 2,400 / 3,600, and a child told to
+     "find the scale first" finds a scale that cannot show her the numbers the
+     lesson is talking about. Lesson 74 says August's 4,000 "lands exactly on a
+     line" and June sits "halfway between 0 and 2,000"; with 1,200-steps neither
+     line exists and the page contradicts itself.
+
+     So: round the rough gap UP to 1, 2, 2.5 or 5 times a power of ten, then take
+     the top to the next whole step. Gridlines are numbers a person would choose. */
+  function niceScale(values, gaps) {
     var top = 0;
     (values || []).forEach(function (v) { if (v > top) top = v; });
-    if (!(top > 0)) return 1;
-    var mag = Math.pow(10, Math.floor(Math.log(top) / Math.LN10));
-    // A coarse ladder (1, 2, 5, 10) sent 6,000 all the way up to 10,000, which
-    // wastes most of the plot and stops matching the graph the lesson prints.
-    var steps = [1, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10];
-    for (var i = 0; i < steps.length; i++) {
-      if (top <= steps[i] * mag + 1e-9) return steps[i] * mag;
-    }
-    return 10 * mag;
+    var want = gaps || 5;
+    if (!(top > 0)) return { max: 1, step: 1 };
+    var rough = top / want;
+    var mag = Math.pow(10, Math.floor(Math.log(rough) / Math.LN10));
+    var step = null;
+    [1, 2, 2.5, 5, 10].forEach(function (s) {
+      if (step === null && s * mag >= rough - 1e-9) step = s * mag;
+    });
+    if (step === null) step = 10 * mag;
+    return { max: Math.ceil(top / step - 1e-9) * step, step: step };
   }
 
-  /* Gridline values from 0 to max, at most `count` gaps. */
-  function ticks(max, count) {
-    var n = count || 5;
+  /* The top of the axis: never below the tallest value, always a whole number of
+     gridline steps. A bar drawn past the top of its own axis is a chart that lies. */
+  function niceMax(values, gaps) {
+    return niceScale(values, gaps).max;
+  }
+
+  /* Gridline values from 0 up to max, one per step. */
+  function ticks(max, step) {
     var out = [];
-    for (var i = 0; i <= n; i++) out.push(max * i / n);
+    if (!(step > 0)) return [0];
+    for (var v = 0; v <= max + 1e-9; v += step) out.push(Math.round(v * 1e6) / 1e6);
     return out;
   }
 
@@ -146,6 +164,7 @@
     W: W, H: H, niceMax: niceMax, ticks: ticks, plotBox: plotBox,
     barLayout: barLayout, pointLayout: pointLayout, pieSlices: pieSlices,
     slicePath: slicePath, pictoCounts: pictoCounts, slopeBetween: slopeBetween,
+    niceScale: niceScale,
   };
 
   if (typeof module !== "undefined" && module.exports) module.exports = core;
@@ -168,7 +187,8 @@
     var labels = (cfg.data || []).map(function (d) { return d.label; });
     var values = (cfg.data || []).map(function (d) { return Number(d.value) || 0; });
     var kinds = cfg.kinds && cfg.kinds.length ? cfg.kinds : ["bar"];
-    var max = niceMax(values);
+    var scale = niceScale(values);
+    var max = scale.max;
 
     var svg = el("svg", {
       viewBox: "0 0 " + W + " " + H, class: "lesson-chart",
@@ -183,7 +203,7 @@
     function axes(showY) {
       var box = plotBox();
       if (showY) {
-        ticks(max, 5).forEach(function (t) {
+        ticks(max, scale.step).forEach(function (t) {
           var y = box.y + box.h - (t / max) * box.h;
           svg.appendChild(el("line", { x1: box.x, y1: y, x2: box.x + box.w, y2: y,
                                        stroke: "#DCE6D6", "stroke-width": 1 }));

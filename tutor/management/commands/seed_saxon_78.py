@@ -105,9 +105,10 @@ BLOCKS = [
         "n": 2, "of": 3, "tone": "move",
         "title": "The power outside touches everything inside",
         "paragraphs": [
-            "Picture the bracket as a bag. `(3xy⁻²/t⁴)⁻³` says the whole bag gets "
-            "used −3 times. Nothing in the bag sits that out — not the 3, not the x, "
-            "not the `t⁴` underneath.",
+            "Picture the bracket as a bag. In `(3xy⁻²/t⁴)⁻³` the −3 is stamped on "
+            "the **outside** of the bag, and the stamp reaches every single thing "
+            "inside it. Nothing in the bag sits that out — not the 3, not the x, not "
+            "the `t⁴` underneath.",
             "For each item in the bag you **multiply** its exponent by the outside "
             "power. Everything already has an exponent even when you cannot see one: "
             "a bare `3` is `3¹`, a bare `x` is `x¹`. Write those 1s in with a pencil "
@@ -166,7 +167,12 @@ BLOCKS = [
              "math": "(3√x)² = (3x^(1/2))² = 3²x¹ = 9x"},
             {"label": "b) same move, different fraction",
              "text": "This time the variable carries a one-third power. Nothing else "
-                     "changes: the outside 2 still multiplies every exponent inside."},
+                     "changes: the outside 2 still multiplies every exponent inside. "
+                     "**One honest note:** your book prints part b as a picture, and "
+                     "that picture did not come through when this page was made. It is "
+                     "written here as `(3x^(1/3))²` to match part a. Check your book — "
+                     "if there is no 3 in front, your answer is `x^(2/3)` with no 9. "
+                     "The method is identical either way; only the 9 changes."},
             {"label": "b) a fraction in the exponent is a finished answer",
              "text": "2 × (1/3) = 2/3. It does not tidy into a whole number, and it "
                      "is not supposed to — leave it as 2/3. The 3 out front still "
@@ -241,7 +247,8 @@ BLOCKS = [
              "text": "`d/r = t` and `t = d/r` say exactly the same thing. Saxon "
                      "writes the unknown on the left because it reads better and it "
                      "is easier to spot. **That is the only reason.** It is not a "
-                     "step in the maths.",
+                     "step in the maths. You have done this flip before: it is the "
+                     "same move you made in Lesson 50 building the Celsius formula.",
              "math": "t = d / r"},
             {"label": "Step 3 · now the numbers go in",
              "text": "Now, and not before. Miles on the top, miles-per-hour "
@@ -285,6 +292,13 @@ BLOCKS = [
                      "just under a kilogram sounds about right for a metal that "
                      "heavy.",
              "math": "M₂ = 19.3 × 50 = 965 g"},
+            {"label": "Saxon's footnote — the same formula asked backwards",
+             "text": "Suppose you were handed the mass and asked for the **volume** "
+                     "instead. You would still cross-multiply, and it would still give "
+                     "you `M₁V₂ = M₂V₁`. The only difference is what you do next: "
+                     "divide both sides by `M₁` to get `V₂` on its own. Same formula, "
+                     "same cross-multiply, one extra division. Keep that in your "
+                     "pocket — the problem at the bottom of this page is exactly it."},
         ],
         "answer": "965 g",
     }),
@@ -317,16 +331,20 @@ BLOCKS = [
     }),
 
     (B.KIND_REVEAL, {
-        "prompt": "Your turn. Copper has a density of 8.96 g/mL. What volume does 75 "
-                  "g of copper take up? Round to 1 decimal place.",
-        "answer": "**8.4 mL.** Set it up the same way as 78.4, remembering the "
-                  "invisible 1: `8.96/1 = 75/V₂`. Cross-multiply and you get "
-                  "`8.96 × V₂ = 75`, so `V₂ = 75 ÷ 8.96 = 8.370…`, which rounds to "
-                  "**8.4 mL**.\n\nNotice this one asks for the *bottom* of the "
+        "prompt": "Your turn. Aluminium has a density of 2.7 g/mL. What volume does "
+                  "45 g of aluminium take up? Round to 1 decimal place.",
+        "answer": "**16.7 mL.** Set it up the same way as 78.4, remembering the "
+                  "invisible 1: `2.7/1 = 45/V₂`. Cross-multiply and you get "
+                  "`2.7 × V₂ = 45`, so `V₂ = 45 ÷ 2.7 = 16.666…`, which rounds to "
+                  "**16.7 mL**.\n\nNotice this one asks for the *bottom* of the "
                   "fraction rather than the top, so after cross-multiplying you have "
-                  "to divide. Sanity check: copper is nearly nine times as dense as "
-                  "water, so 75 g of it should be a small lump — about a tablespoon "
-                  "and a half. 8.4 mL is exactly that.",
+                  "to divide — that is Saxon's footnote from 78.4.\n\nSanity check: "
+                  "aluminium is about 2.7 times as dense as water. 45 g of *water* "
+                  "would fill 45 mL, so the same mass of aluminium has to fit in "
+                  "roughly a third of that room — somewhere near 17 mL. That is what "
+                  "we got. If you had come out with 121.5 mL, which is 45 × 2.7, you "
+                  "multiplied where you needed to divide.\n\nThen do problem 5 in your "
+                  "practice set on your own. It is this exact shape with copper.",
     }),
 
     (B.KIND_ERRORS, {
@@ -363,14 +381,16 @@ BLOCKS = [
              "note": "Correct algebra, unfinished answer — and Saxon marks it wrong. "
                      "If it is a **number** raised to a power, work it out: "
                      "3 × 3 × 3 = 27. Letters keep their powers; numbers do not."},
-            {"name": "Substituting before the letter you want is on its own.",
-             "wrong": "t = 400 × 60 = 24,000 hours",
-             "right": "t = 400 / 60  →  t ≈ 6.7 hours",
+            {"name": "Undoing a multiplication by multiplying again.",
+             "wrong": "400 = 60t  →  t = 400 × 60 = 24,000 hours",
+             "right": "400 = 60t  →  t = 400 / 60 = 40 / 6  →  t ≈ 6.7 hours",
              "note": "Whatever is tied to t by multiplication comes off by "
                      "**division**. Say it out loud: *sixty times what is four "
                      "hundred?* Nobody would answer twenty-four thousand — but the "
                      "symbols hide it, which is why the sentence version is worth "
-                     "saying."},
+                     "saying. Note what is **not** the mistake here: putting the "
+                     "numbers in first is perfectly allowed, and 78.4 does exactly "
+                     "that."},
             {"name": "Forgetting the invisible 1 under the density.",
              "wrong": "M₂ = 19.3 / 50 = 0.386 g",
              "right": "M₂ = 19.3 × 50 = 965 g",
@@ -440,6 +460,21 @@ allowed, and the lesson deliberately shows one of each: **rearrange first**
 (78.3 — divide by r, get `t = d/r`, then put the numbers in) or **substitute
 first** (78.4 — put the numbers in, then cross-multiply).
 
+## Two things to check against the printed book
+
+**Example 78.2b.** The DIVE guide prints both parts of 78.2 as images, and the
+text that survives pins only the outside power (2) and the resulting exponent
+(2/3) — *"2(1/3)=2/3"*. It does **not** pin the coefficient. Part a is safe
+(`3²x¹ = 9x` forces `(3√x)²`), so this page writes b as `(3x^(1/3))²` to match,
+giving `9x^(2/3)`. If your book shows no 3 in front of part b, the answer is
+`x^(2/3)` and the 9 is ours, not Saxon's. Her page says so too, in her own words
+— she is told to check, not told to trust us.
+
+**The problem at the bottom of her page** is aluminium, not the copper in her
+practice set. That is deliberate: practice problem 5 is the same shape, and
+working it here would have handed her the answer. She should do the aluminium one
+on the page and then problem 5 on her own paper.
+
 ## Teach it out loud in five minutes
 
 Say these in this order, and ask the question at each step. Paper and pencil, not
@@ -479,8 +514,10 @@ the screen — the screen is for afterwards.
   **−8** instead of **1/8**. Ask her which floor it lives on, not what sign it is.
 - **Stopping at `3³`:** answer left as **`t¹²x⁻³y⁶/3³`**. Right algebra, wrong
   form, no marks. Rule 2.
-- **Substituting before isolating:** `400 = 60t` turned into
-  **`t = 400 × 60 = 24,000 hours`**. Multiplication comes off by division.
+- **Undoing a multiplication by multiplying again:** `400 = 60t` turned into
+  **`t = 400 × 60 = 24,000 hours`**. Multiplication comes off by division. Be
+  careful how you name this one to her: substituting the numbers in first is
+  *not* the error — Saxon does it on purpose in 78.4. The error is the operation.
 - **The invisible 1 in the density dropped:** `M₂ = 19.3 ÷ 50 = **0.386 g**`
   instead of `19.3 × 50 = **965 g**`. 19.3 g/mL means 19.3 grams per *one*
   millilitre — the 1 has to be written down before cross-multiplying.
@@ -509,11 +546,16 @@ without being asked? That habit is the whole lesson.
 ## Extend it
 
 Give her `(2x³/y)⁰` and let her stare at it. The answer is **1** — the entire bag
-is raised to the zero power. It is a fair question and it is a lovely moment.
+is raised to the zero power, and anything *except zero* raised to the zero power
+is 1. (Worth saying the caveat out loud, because the page is scrupulous about it
+everywhere else: the bracket itself has to be nonzero, which here means x ≠ 0.)
+It is a fair question and it is a lovely moment.
 
 Then hand her the density formula backwards: *"a gold ring displaces 0.5 mL of
 water. What does it weigh?"* Same formula, but she has to notice which slot the
-0.5 goes in. Real problems arrive in the wrong order like that.
+0.5 goes in. The answer is `19.3 × 0.5 =` **9.65 g** — a shade under the mass of
+two US nickels, which are 5 g each. Real problems arrive in the wrong order like
+that.
 
 If she wants the science half to mean something: look up the density of water
 (1 g/mL) and of ice (about 0.92), and let her explain, out loud, why ice floats.

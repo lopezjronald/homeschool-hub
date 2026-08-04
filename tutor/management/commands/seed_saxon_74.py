@@ -18,7 +18,15 @@ It is RECOVERED, not invented, from the lesson's own pie graph: 74.4 says Octobe
 is 33.3% of the catch, and October is 6,000, so the five months total 18,000, so
 July = 18,000 - (1,000 + 4,000 + 5,000 + 6,000) = 2,000. Every other number the
 lesson states then falls out of the same table, including the 1,250 fish/month of
-Example 74.5.
+Example 74.5. Because that one number is reconstructed rather than read, the page
+SAYS SO — see the tool block's `after` and the parent guide. A child who finds a
+different July in her book should trust the book, not this page.
+
+THE SCATTERPLOT'S AXIS. Src:96-97 says out loud "we changed from the name of the
+month to a number", and 74.5 then has her write (1, 1000) and (5, 6000). So the
+scatterplot passes `scatterLabels` — Month 1 … Month 5 — and is the ONLY one of
+the five costumes whose x-axis is renumbered. Without it there is no 5 on the
+page for her to point at.
 
 Digitized from the family's purchased DIVE lesson guide ((c) 2021 DIVE, LLC) for
 private use. Practice problems are reworded rather than transcribed.
@@ -47,7 +55,7 @@ BLOCKS = [
                   "The numbers stay put; only the picture changes. So the real "
                   "question is never \"what does this chart say?\" but **\"is this "
                   "the right chart for this data?\"**",
-        "formula": "chart  =  a picture of numbers",
+        "formula": "chart  =  tables, graphs and diagrams — data made visible",
         "roles": [
             {"tone": "start", "name": "the data",
              "text": "The actual measurements. These never change, no matter which "
@@ -71,6 +79,15 @@ BLOCKS = [
             "out — and a pattern is something you can act on. The fisherman can now "
             "guess what November will bring. Nothing was added to the numbers. They "
             "were just put somewhere your eyes could do the work.",
+            "Saxon's word for every one of these pictures is **chart**. It is a "
+            "wide word on purpose: **tables, graphs and diagrams** all count. A "
+            "chart is anything that represents data on a flat surface — paper, a "
+            "poster, a slide on a screen.",
+            "And representing is *all* a chart does. A car's speedometer measures "
+            "your speed, records it and shows it to you, all at once — that is why "
+            "it gets a different name, an **instrument**. A chart never measures "
+            "anything. Somebody else did the measuring; **a chart's only job is to "
+            "represent the data.**",
             "Which is also why the *choice* of chart matters so much. Saxon makes "
             "this the point of the whole lesson: it takes **one** set of data and "
             "draws it five ways, so you can watch some pictures tell the truth "
@@ -86,7 +103,9 @@ BLOCKS = [
             "the **same five numbers**. Nothing is added and nothing is taken away.",
             "A **pictograph** counts in pictures — one little block stands for 1,000 "
             "fish, so you count blocks and multiply. A **bar graph** turns each "
-            "number into a height. A **line graph** joins the dots. A **pie graph** "
+            "number into a height; Saxon's other name for it is a **histogram**, "
+            "and that is the word your practice set uses, so keep both. "
+            "A **line graph** joins the dots. A **pie graph** "
             "turns each number into a slice of one whole. A **scatterplot** drops the "
             "bars and keeps only the dots.",
             "Click through all five and watch what each one makes easy — and what "
@@ -108,18 +127,30 @@ BLOCKS = [
         "widget": "chart",
         # `trend` draws the dashed line through the first and last dot on the
         # scatterplot — the exact line Example 74.5 asks her to find the slope of.
+        # `scatterLabels` renumbers ONLY the scatterplot's x-axis, because that is
+        # the one chart Saxon renames (src:96-97) and 74.5 needs a 5 to point at.
         "config": {
             "data": FISH,
             "kinds": ["pictograph", "bar", "line", "pie", "scatter"],
             "per": 1000,
             "unit": "fish",
             "trend": True,
+            "scatterLabels": ["Month 1", "Month 2", "Month 3", "Month 4", "Month 5"],
             "label": "one fish-catch dataset drawn five ways",
         },
         "after": "The data, in words: **June 1,000 · July 2,000 · August 4,000 · "
                  "September 5,000 · October 6,000.** All five months together come "
                  "to **18,000 fish** — which is the number the pie graph is quietly "
-                 "dividing up.",
+                 "dividing up.\n\n"
+                 "Two honest notes before you start. **One:** the lesson prints "
+                 "June, August, September and October in words, but it never writes "
+                 "July down — July only appears inside a picture. The 2,000 above "
+                 "was worked back out of the pie graph (October is 33.3%, so the "
+                 "whole is 18,000, so July has to be 2,000). If the July bar in "
+                 "your DIVE book says something else, **your book wins** — show it "
+                 "to your parent. **Two:** the pictograph's key underneath prints "
+                 "as `one block = 1000 fish`. That is 1,000 — the comma is just "
+                 "missing.",
     }),
 
     (B.KIND_STEPS, {
@@ -161,9 +192,11 @@ BLOCKS = [
                      "each.",
              "math": "4 × 1,000 = 4,000 fish"},
             {"label": "Now the bar graph — measure August, estimate June",
-             "text": "August lands exactly on a line: 4,000. June does not — it sits "
-                     "about **halfway between 0 and 2,000**, so 1,000 is a fair "
-                     "estimate. Then it is one subtraction.",
+             "text": "The lines up the side are 0, 2,000, 4,000 and 6,000 — the "
+                     "graph writes those last three as **2k, 4k and 6k**, and `k` "
+                     "means thousand. August lands exactly on a line: 4,000. June "
+                     "does not — it sits about **halfway between 0 and 2,000**, so "
+                     "1,000 is a fair estimate. Then it is one subtraction.",
              "math": "4,000 - 1,000 = 3,000 fish"},
         ],
         "answer": "4,000 fish · 3,000 more fish",
@@ -184,10 +217,15 @@ BLOCKS = [
              "math": "6,000 - 5,000 = 1,000 fish"},
             {"label": "The pie graph asks a different kind of question",
              "text": "A pie slice is not a count — it is a **share of the whole**. "
-                     "The whole is all 18,000 fish. One third of 18,000 is 6,000, and "
-                     "6,000 is October. Read the other way round: October's slice is "
-                     "33.3% of the pie, and 33.3% is basically one third.",
-             "math": "6,000 / 18,000 = 1 / 3 = 33.3% → October"},
+                     "So read the labels, not the fish. October's slice says "
+                     "**33.3%**, and 33.3% is basically one third. That is the "
+                     "answer, and it took no arithmetic at all.\n\n"
+                     "You can check it from the other end when you happen to know "
+                     "the whole: the whole here is 18,000 fish, one third of 18,000 "
+                     "is 6,000, and 6,000 is October's catch. But most pie graphs "
+                     "print percentages and no total — so the label is the route "
+                     "you can always take.",
+             "math": "33.3%  ≈  1/3   →   October"},
         ],
         "answer": "1,000 fish · October",
     }),
@@ -198,7 +236,7 @@ BLOCKS = [
         "rows": [
             {"cells": ["pictograph", "counting in friendly chunks",
                        "half a picture is half the value, not a whole one"]},
-            {"cells": ["bar graph", "comparing amounts side by side",
+            {"cells": ["bar graph (histogram)", "comparing amounts side by side",
                        "values between gridlines have to be estimated"]},
             {"cells": ["line graph", "showing change over time",
                        "it implies values BETWEEN the labels — often a lie"],
@@ -226,10 +264,10 @@ BLOCKS = [
              "example": "4 pictures means 4,000 fish"},
             {"symbol": "(Month, Fish catch)",
              "plain": "the axes, named — the same idea as (x, y)",
-             "example": "(5, 6000) is October, 6,000 fish"},
+             "example": "on the scatterplot, Month 5 is October: (5, 6000)"},
             {"symbol": "33.3%",
              "plain": "a share of the whole, not a count",
-             "example": "33.3% of 18,000 = 6,000"},
+             "example": "about one third of the pie — October's slice"},
             {"symbol": "Δy",
              "plain": "the CHANGE in the up-and-down value",
              "example": "6,000 - 1,000 = 5,000"},
@@ -325,9 +363,12 @@ BLOCKS = [
             {"name": "Rounding a half picture away.",
              "wrong": "3½ planes → 300,000 tourists",
              "right": "3½ planes = 3 × 100,000 + 50,000 = 350,000 tourists",
-             "note": "Practice problem 1 has exactly this shape: whole planes are "
-                     "100,000 tourists each, so **half a plane is 50,000**. A half "
-                     "symbol is half the key's value — never a whole one, never zero."},
+             "note": "Practice problem 1 uses this same key: whole planes are "
+                     "100,000 tourists each, so **half a plane is 50,000**. The 3½ "
+                     "above is an example to show you the move — it is **not** "
+                     "February's count. Go and count February's planes yourself, "
+                     "half ones included. A half symbol is half the key's value — "
+                     "never a whole one, never zero."},
             {"name": "Reading a pie slice as a count.",
              "wrong": "October's slice says 33.3 → 33 fish",
              "right": "18,000 / 3 = 6,000 fish",
@@ -336,7 +377,7 @@ BLOCKS = [
                      "18,000 fish."},
             {"name": "Counting the dots instead of the gaps in the run.",
              "wrong": "Months 1 to 5, so Δx = 5",
-             "right": "Δy / Δx = 5,000 / 4 = 1,250",
+             "right": "Δx = 5 - 1 = 4 → Δy / Δx = 5,000 / 4 = 1,250",
              "note": "Five fence posts, four gaps. Using 5 gives 1,000 fish/month — "
                      "wrong, and plausible enough that nobody catches it. Count the "
                      "**jumps between** the points."},
@@ -393,6 +434,24 @@ The data, so you have it in front of you:
 | September | 5,000 | 27.8% |
 | October | 6,000 | 33.3% |
 | **total** | **18,000** | **100%** |
+
+**One caveat on that table, so you are not blindsided.** The lesson's *words*
+state only four of those months — June 1,000 (74.2), August 4,000 (74.1),
+September 5,000 and October 6,000 (74.3). **July lives only in the printed
+figures**, which this page could not read. It was recovered, not invented: 74.4
+says October is 33.3% of the catch and October is 6,000, so the whole is 18,000,
+so July must be 2,000 — and no other value fits (July = 3,000 would put October
+at 31.6%, not 33.3%). The 18,000 total depends on the same step. If the July bar
+in her book disagrees, **the book is right and this page is wrong** — the numbers
+that matter for the graded work (the 3,000 in 74.2, the 1,000 in 74.3, and the
+1,250 slope in 74.5) do not use July at all, so nothing downstream breaks. The
+child's page carries this warning too, in its own words.
+
+A second small thing: the **scatterplot** is the only one of the five charts
+whose bottom axis is renumbered — Month 1 through Month 5 instead of June
+through October. That is Saxon's own move, stated in 74.5 ("we changed from the
+name of the month to a number"), and it is what lets her write the ordered pair
+(5, 6000). The other four charts keep the month names.
 
 The last example (74.5) is the one worth your time. It looks like a new topic and
 it is not: **it is the slope you already taught her**, with Month on the bottom

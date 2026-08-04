@@ -340,12 +340,28 @@
     readout.setAttribute("aria-live", "polite");
     host.appendChild(readout);
 
-    var points = (cfg.points || []).slice();
+    /* GIVEN points versus HER points.
+
+       When a lesson pre-draws a figure for her to READ — Lesson 79 hands her a
+       line and asks for its equation — those dots are the question, not her
+       answer. Clicking one used to delete it, and Undo/Clear wiped the lot with
+       no way back, so a stray tap destroyed the only line she had. `locked`
+       keeps them out of everything that edits. */
+    var given = cfg.locked ? (cfg.points || []).slice() : [];
+    var points = cfg.locked ? [] : (cfg.points || []).slice();
     var strokes = [];
     var mode = "plot";
 
     function drawDots() {
       while (dotLayer.firstChild) dotLayer.removeChild(dotLayer.firstChild);
+      given.forEach(function (p) {
+        // Hollow, so "the ones that were already here" reads as different from
+        // "the ones I put here" without relying on colour alone.
+        dotLayer.appendChild(el("circle", {
+          cx: X(p[0]), cy: Y(p[1]), r: 6, fill: "#FFFFFF",
+          stroke: "#14568C", "stroke-width": 3,
+        }));
+      });
       points.forEach(function (p) {
         dotLayer.appendChild(el("circle", { cx: X(p[0]), cy: Y(p[1]), r: 6, fill: "#14568C" }));
       });
@@ -471,7 +487,7 @@
           });
           // Pass her points so the curve drawn is the family member that fits
           // them — in a reference gallery there are none, so it draws the parent.
-          drawCurve(key, cfg.reference ? null : points);
+          drawCurve(key, cfg.reference ? null : given.concat(points));
           b.classList.add("is-picked");
           // A reference gallery has nothing to check against — it exists to be
           // looked at, and telling her to "plot the table first" when the block
@@ -480,7 +496,7 @@
             readout.textContent = FAMILIES[key].label + " — look at what the left side does.";
             return;
           }
-          var plotted = dedupe(points);
+          var plotted = dedupe(given.concat(points));
           if (plotted.length < 2) {
             readout.textContent = "Plot the points from the table first, then pick a shape.";
             return;

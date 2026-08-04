@@ -12,7 +12,9 @@ The figures in the DIVE guide are pictures this file cannot see, so every graph 
 Examples 76.1 and 76.2 is rewritten from the guide's own SOLUTION text into words
 that stand on their own: which parent shape it is, where its ends sit, and whether
 each end is a filled or a hollow dot. No picture is described that was not
-described first by the source.
+described first by the source — and where the source gives only part of a
+coordinate (76.2b names the V's depth, `f(x) = 0`, but never its x), the page says
+so on the child's side rather than filling the gap with a plausible number.
 
 Digitized from the family's purchased DIVE lesson guide ((c) 2021 DIVE, LLC) for
 private use.
@@ -27,6 +29,12 @@ from ._saxon_seed import SaxonSeedCommand
 # The parent shapes from Lesson 73 that have something interesting to say about
 # domain and range. `a^x` is here on purpose: Practice Set 76.2 hands her a curve
 # that "never touches or crosses the x-axis", and this is that curve.
+#
+# `1/x` is the odd one out and is labelled as such in the block's `after` text:
+# Lesson 76A states it is about CONTINUOUS functions, and 1/x is the broken one
+# (that was Lesson 66A). It stays because it is the clearest picture of a domain
+# with a hole in it — but she is told plainly that it is a visitor, not a 76A
+# problem, so a gap in the domain does not turn up unannounced on her page.
 SHAPES = ["x", "x^2", "sqrt", "|x|", "1/x", "a^x"]
 
 BLOCKS = [
@@ -182,7 +190,7 @@ BLOCKS = [
                      "ends, and the ends are drawn differently: one is filled in and "
                      "one is hollow. That difference is the entire question."},
             {"label": "Step 1 · sweep left to right",
-             "text": "The leftmost point sits above x = −2. The rightmost sits above "
+             "text": "The leftmost point sits at x = −2. The rightmost sits at "
                      "x = 4. So the inputs run from −2 to 4 and no further."},
             {"label": "Step 2 · read the two dots",
              "text": "Left end **filled** — −2 is in. Right end **hollow** — 4 is out. "
@@ -201,9 +209,13 @@ BLOCKS = [
 
     (B.KIND_WORKED, {
         "number": "76.2b",
-        "question": "A V-shaped graph. Its bottom point sits at (0, 0). Its left end "
-                    "is a hollow dot at (−4, 5); its right end is a filled dot at "
-                    "(4, 4). Find the domain and range.",
+        "question": "A V-shaped graph. Its left end is a hollow dot at (−4, 5); its "
+                    "right end is a filled dot at (4, 4). Between those two ends it "
+                    "dives down to a bottom point at f(x) = 0. Find the domain and "
+                    "range. (Your DIVE page shows this as a picture. The picture also "
+                    "shows exactly where sideways the bottom point sits — but you "
+                    "never need that number, because the bottom only tells you how "
+                    "**low** the graph gets.)",
         "steps": [
             {"label": "Sweep left to right",
              "text": "Leftmost x is −4 and it is **hollow**, so −4 is left out. "
@@ -212,8 +224,10 @@ BLOCKS = [
             {"label": "Sweep bottom to top",
              "text": "Do not read the ends only. Between them the graph dives all the "
                      "way down to its point at f(x) = 0 — that is the lowest output "
-                     "there is, and in this course the **vertex counts**. The highest "
-                     "output is 5, up at the hollow end, so 5 is left out.",
+                     "there is, and in this course the **vertex counts**. Now the top: "
+                     "the two ends are at 5 and at 4, so, as Saxon puts it, *pick the "
+                     "larger of the two positive endpoints*, f(x) = 5. That end is "
+                     "hollow, so 5 itself is left out.",
              "math": "range: 0 ≤ f(x) < 5"},
         ],
         "answer": "domain: −4 < x ≤ 4 · range: 0 ≤ f(x) < 5",
@@ -232,12 +246,17 @@ BLOCKS = [
                    "choices": SHAPES, "reference": True,
                    "label": "parent function shapes, for reading domain and range"},
         "after": "Answers, in the order of the buttons. **x**: domain all R, range all "
-                 "R. **x²**: domain all R, range R≥0. **√x**: domain R≥0, range R≥0. "
-                 "**|x|**: domain all R, range R≥0 — and note the sharp vertex at the "
-                 "bottom is included. **1/x**: every real number *except* 0, for both "
-                 "— it never touches either axis. **aˣ**: domain all R, but the range "
-                 "is only the numbers **above** zero, because the curve creeps toward "
-                 "the x-axis forever and never lands on it.",
+                 "R. **x²**: domain all R, range R≥0. **√x**: domain R≥0, range R≥0 — "
+                 "it runs off two edges and *still* is not all R, because it starts at "
+                 "zero. **|x|**: domain all R, range R≥0 — and note the sharp vertex "
+                 "at the bottom is included. **1/x**: every real number *except* 0, "
+                 "for both — it never touches either axis. That one is a visitor from "
+                 "Lesson 66A: it is the broken kind of graph, and Lesson 76 is about "
+                 "the unbroken kind, so nothing on your practice set will look like "
+                 "it. It is here because it is the clearest picture of a domain with a "
+                 "hole in it. **aˣ**: domain all R, but the range is only the numbers "
+                 "**above** zero, because the curve creeps toward the x-axis forever "
+                 "and never lands on it.",
     }),
 
     (B.KIND_REVEAL, {
@@ -246,9 +265,11 @@ BLOCKS = [
         "answer": "Because the range is everything the graph **reaches**, not just "
                   "what is happening at its two ends. Between those ends the V dives "
                   "down to its point at zero, so it passes through every output from "
-                  "0 up to 5 on the way. And zero itself is included: **for graphs in "
-                  "this course, the vertex — the bottom of a V or a U — counts as part "
-                  "of the range.** That is a house rule worth writing on your paper.",
+                  "0 up to 5 on the way. And zero itself is included: **the vertex — "
+                  "the bottom of a V or a U — counts as part of the range.** The graph "
+                  "genuinely touches that point, so its output is genuinely an output. "
+                  "Saxon says it out loud for this course so that you never have to "
+                  "argue it. Worth writing on your paper.",
     }),
 
     (B.KIND_TABLE, {
@@ -260,13 +281,22 @@ BLOCKS = [
             {"cells": ["hollow dot", "that value is NOT included", "<  or  >"],
              "emphasis": True},
             {"cells": ["the graph touches the edge of the grid",
-                       "it keeps going that way forever", "all R (no endpoint at all)"]},
+                       "it keeps going that way forever",
+                       "no endpoint on that side — write nothing there"]},
+            {"cells": ["it runs off BOTH sides that way",
+                       "nothing is left out in that direction", "all R"]},
             {"cells": ["the bottom of a V or a U",
                        "the lowest output the graph reaches", "≤ — the vertex counts"]},
         ],
-        "note": "The last row is a **house rule** for this course, not a law of "
-                "mathematics: Shormann Pre-Algebra includes the vertex in the range. "
-                "Write it on your paper so you are not deciding it fresh every time.",
+        "note": "Rows 3 and 4 are two different things, and mixing them up is the "
+                "quickest way to get 76.1b wrong. The square root curve runs off the "
+                "grid on the right and off the top — forever both ways — but it still "
+                "**starts** at zero, so its domain is R≥0, not all R. You only write "
+                "`all R` when there is no endpoint at *either* end. About the last "
+                "row: including the vertex is not a trick, it is simply true — the "
+                "bottom of the V is a point the graph really touches, so its output "
+                "belongs in the range. Saxon states it on the page so you never have "
+                "to decide it fresh.",
     }),
 
     (B.KIND_IDEA, {
@@ -311,8 +341,9 @@ BLOCKS = [
              "math": "4a²b/ab = 4 × (a × ab)/ab = 4a"},
             {"label": "Now everything matches, so add",
              "text": "All three terms are plain a terms. Add the numbers in front and "
-                     "keep the a.",
-             "math": "3a + 6a + 4a = 13a"},
+                     "keep the a. Saxon adds them two at a time, and writing that "
+                     "middle step is how your DIVE solution shows it.",
+             "math": "3a + 6a + 4a = 9a + 4a = 13a"},
         ],
         "answer": "13a",
     }),
@@ -365,11 +396,13 @@ BLOCKS = [
                      "reaches it. In this course the vertex is included, so it takes "
                      "the ≤."},
             {"name": "Stopping the domain at the edge of the paper.",
-             "wrong": "domain: −6 ≤ x ≤ 6",
-             "right": "domain = all R",
+             "wrong": "76.1a (the straight line) domain: −6 ≤ x ≤ 6",
+             "right": "76.1a (the straight line) domain = all R",
              "note": "The grid has edges; the function does not. If the curve is still "
                      "going when it leaves the picture, it goes forever. Only a dot "
-                     "stops a graph."},
+                     "stops a graph. Careful, though: `all R` is right here because "
+                     "**both** ends run off. In 76.1b only the right end runs off, so "
+                     "that domain is R≥0."},
             {"name": "Canceling a term instead of a factor.",
              "wrong": "4a²b/ab = 4ab",
              "right": "4a²b/ab = 4a",
@@ -390,7 +423,8 @@ BLOCKS = [
         "items": [
             "**Domain is sideways. Range is up and down.** Same question, two "
             "directions.",
-            "Touches the edge of the grid → it goes on **forever** → all R that way.",
+            "Touches the edge of the grid → it goes on **forever** that way → no "
+            "endpoint on that side. Only when **both** sides run off is it `all R`.",
             "**Filled dot = in = ≤.  Hollow dot = out = <.**",
             "The range is everything the graph *reaches*, not just its two ends — and "
             "the **vertex counts**.",
@@ -417,16 +451,30 @@ you can — they have nothing to do with each other.
 *reading*. Sweep left to right: that is the **domain** (the inputs). Sweep bottom to
 top: that is the **range** (the outputs). The only judgement calls are at the ends:
 
-- The graph **touches an edge of the grid** → it goes on forever that way → `all R`.
+- The graph **touches an edge of the grid** → it goes on forever that way → there
+  is no endpoint on *that side*. `all R` is only correct when **both** sides run
+  off. Watch this one: the square root curve in 76.1b runs off two edges and is
+  still `R≥0`, because it starts at zero. A cheat sheet that says "edge → all R"
+  will hand her the wrong answer on the second example of the lesson.
 - The graph **stops at a filled dot** → that value is included → `≤` or `≥`.
 - The graph **stops at a hollow dot** → that value is left out → `<` or `>`.
-- **House rule for this course:** the vertex — the bottom of a V or a U — is
-  *included* in the range. Saxon says so explicitly. Write it on her paper.
+- **The vertex** — the bottom of a V or a U — is *included* in the range. It is a
+  point the graph really touches, so this is not a convention so much as a
+  reminder; Saxon states it on the page. Write it on her paper.
 
 The three parent shapes from Example 76.1, which she already knows by face from
 Lesson 73: a straight line gives `domain = range = all R`; the square root curve
 gives `domain = range = R≥0`; the parabola lifted to sit on y = 2 gives
 `domain = all R` but `range = R≥2`.
+
+**One thing this page cannot show her.** The examples in the DIVE guide are
+pictures, and this file was written from the guide's solution text, so every graph
+here is described in words rather than drawn. Where the words are all that exist,
+the page says so instead of inventing a coordinate — in 76.2b, for instance, the
+guide states only how *low* the V goes (`f(x) = 0`), never where sideways its
+point sits, so the page gives the height and tells her the missing number is not
+needed. If her printed figure disagrees with a description here, **her figure
+wins**; the answers are the guide's own either way.
 
 **76B — canceling.** Terms that look different can be the same kind of thing once
 you cancel. `3a + 6ab²/b² + 4a²b/ab` becomes `3a + 6a + 4a`, which is **13a**. The
@@ -468,8 +516,11 @@ Say these, in this order, and ask the question at each step.
   applied the hollow-circle logic to a place where there is no circle at all.
 - **Range read from the two ends only.** For 76.2b she writes `4 ≤ f(x) < 5`, using
   the two endpoint heights and forgetting the graph dives to 0 between them.
-- **Domain stopped at the edge of the paper** — `−6 ≤ x ≤ 6` instead of `all R`.
-  The grid has edges; the function doesn't.
+- **Domain stopped at the edge of the paper** — for 76.1a she writes `−6 ≤ x ≤ 6`
+  instead of `all R`. The grid has edges; the function doesn't. The opposite slip
+  is just as common once she learns that rule: she writes `all R` for the square
+  root curve because it also runs off the grid. Ask her the same question at
+  *each* end separately.
 - **Canceling a term, not a factor** — `4a²b/ab = 4ab`. And its cousin, adding
   exponents while adding like terms: `3a² + 4a² = 7a⁴` instead of `7a²`.
 
@@ -495,7 +546,9 @@ Draw her a graph with a *break* in it — a curve that exists from −5 to −1 
 from 1 to 5, with nothing in between — and ask for the domain. The honest answer is
 two pieces joined by "or", and having to say that out loud teaches her what the
 domain actually is better than any continuous graph can. (Lesson 66A did the
-discontinuous case; this lesson deliberately stayed continuous.)
+discontinuous case; this lesson deliberately stayed continuous. The `1/x` button in
+the shape gallery is the only broken graph on the page, and it is labelled as a
+visitor from 66A so she does not expect one on her practice set.)
 
 Then, for the second half, hand her `5x²y/xy + 3x` and let her discover that it is
 `8x`. Nothing new — but it is the first time canceling has paid her back with a

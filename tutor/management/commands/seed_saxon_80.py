@@ -17,6 +17,15 @@ as endpoint COORDINATES that give Saxon's own answers — AE and LJ horizontal, 
 vertical — and 80.2 / 80.3 describe their graphs in words, keeping the source's
 numbers (y = 4, x = 1, x = -2, Choice B) exactly.
 
+Every one of those restatements is DISCLOSED on the child's page and again in the
+parent guide, because her DIVE paper still has the pictures. In particular 80.1
+keeps Saxon's actual instruction ("observe") as the primary move and uses the
+subtraction only as a check — practice problem 180 is a bare lettered diagram
+with no coordinates to subtract, so a lesson that taught subtraction as *the*
+method would teach a method she cannot run on the very next problem. And 80.3
+does not invent choices A, C and D: the source states only that the answer is
+Choice B, so the lesson describes the graph to look for and lets her match it.
+
 Digitized from the family's purchased DIVE lesson guide ((c) 2021 DIVE, LLC) for
 private use. Practice problems are reworded rather than transcribed.
 
@@ -100,8 +109,10 @@ BLOCKS = [
             "triangle Δ just means **the change in**.",
             "Take any two points on a flat line, say (−4, 3) and (4, 3). Both are at "
             "height 3, so the change in y is **zero**. The change in x is 8. Zero "
-            "divided by eight is zero — and zero divided by *anything* is zero. So "
-            "every horizontal line has slope **0**.",
+            "divided by eight is zero — and zero divided by any *other* number is zero "
+            "too. So every horizontal line has slope **0**. (Say *other*, not "
+            "*anything*. The bottom of a fraction is never allowed to be zero, and the "
+            "next page is about exactly that.)",
             "Now watch what that does to `y = mx + b`. If m is 0, then `mx` is `0·x`, "
             "which is 0 no matter what x is. The whole first term disappears and you "
             "are left with `y = b`. The line **is** its own height, and b is the "
@@ -112,16 +123,20 @@ BLOCKS = [
     (B.KIND_MATH, {
         "display": "m  =  Δy / Δx  =  0 / Δx  =  0",
         "note": "Read it left to right: the change in y is 0, so the whole fraction is "
-                "0, so the slope is 0. The bottom number never mattered — **zero over "
-                "anything is zero.**",
+                "0, so the slope is 0. It never mattered *how big* the bottom number "
+                "was — **zero over any other number is zero.** Only zero underneath "
+                "would break it, and that cannot happen on a flat line with two "
+                "different points on it.",
     }),
 
     (B.KIND_IDEA, {
         "n": 3, "of": 3, "tone": "move",
         "title": "Vertical: the slope is undefined, so we don't use y = mx + b at all",
         "paragraphs": [
-            "Do the same thing to an upright line. Take (2, 5) and (2, −3). The change "
-            "in y is 8. The change in x is **zero** — you never moved across.",
+            "Do the same thing to an upright line. Take (2, 5) and (2, −3). Use the "
+            "convention from the card — second minus first — so the change in y is "
+            "`(−3) − 5 = −8`. Eight units of height; the minus sign only says which "
+            "way. The change in x is **zero** — you never moved across.",
             "Now the zero is on the **bottom** of the fraction: `m = Δy / 0`. And you "
             "cannot divide by zero. Not \"it equals zero,\" not \"it equals infinity\" "
             "— there is no answer at all. Mathematicians call that **undefined**, and "
@@ -155,22 +170,39 @@ BLOCKS = [
              "math": "flat → y = 4        upright → x = 1"},
         ],
         "after": "Saxon says it in one sentence, and it is worth memorising word for "
-                 "word: *equations for horizontal and vertical lines equal the value "
-                 "where they cross the axis.*",
+                 "word — including the words in brackets: *equations for horizontal "
+                 "and vertical lines equal the value where they cross the x (vertical) "
+                 "or y (horizontal) axis.* Those brackets are the half that tells you "
+                 "which axis: the **vertical** line crosses the **x**-axis, the "
+                 "**horizontal** line crosses the **y**-axis. Drop them and the "
+                 "sentence stops answering the question you actually have.",
     }),
 
     (B.KIND_WORKED, {
         "number": "80.1",
-        "question": "Four lines are drawn through these pairs of endpoints. Which are "
-                    "horizontal, which are vertical, and which are oblique? "
+        "question": "Identify which lines are a) horizontal and b) vertical. Name each "
+                    "line by its two outside points. **In your book this one is a "
+                    "picture** — a page of lettered lines with no numbers anywhere on "
+                    "it. That picture could not be copied here, so each line is given "
+                    "below by its two end points instead. On your DIVE page you will be "
+                    "looking, not subtracting. "
                     "A(−4, 3) to E(4, 3) · L(−3, −4) to J(5, −4) · "
                     "B(2, 5) to K(2, −3) · C(−5, −2) to D(3, 4)",
         "steps": [
-            {"label": "Ask what refuses to change",
-             "text": "For each pair, subtract to find Δy (how far up) and Δx (how far "
-                     "across). Whichever one comes out **0** names the line. You may "
-                     "write a line's name in either order — AE and EA are the same "
-                     "line."},
+            {"label": "Look at each line first — that is Saxon's whole method",
+             "text": "Saxon's instruction here is one word: **observe**. A horizontal "
+                     "line is flat; on the page it runs left to right. A vertical line "
+                     "is upright; it runs straight up and down. On a diagram you do not "
+                     "calculate anything — you look, and you name the line by its two "
+                     "outside points. You may write a line's name in either order: "
+                     "Saxon's own example is that the oblique line **LE** can also be "
+                     "written **EL**."},
+            {"label": "Then check what you saw, using the numbers",
+             "text": "You have end points here, so you can also *prove* what you just "
+                     "saw. Subtract to find Δy (how far up) and Δx (how far across). "
+                     "Whichever one comes out **0** names the line. The numbers should "
+                     "agree with your eyes every time — and on the diagram in your "
+                     "book, your eyes are all you get."},
             {"label": "AE and LJ — the y never moves",
              "text": "Both ends of AE sit at height 3. Both ends of LJ sit at "
                      "height −4. Neither one ever leaves its height, so both are flat.",
@@ -189,8 +221,10 @@ BLOCKS = [
 
     (B.KIND_WORKED, {
         "number": "80.2",
-        "question": "Write the equation of each line. a) A flat line that crosses the "
-                    "y-axis at 4. b) An upright line that crosses the x-axis at 1.",
+        "question": "Write the equation of each line. Saxon prints two small graphs "
+                    "here; they are in your book, and below they are described in "
+                    "words instead. a) A flat line that crosses the y-axis at 4. "
+                    "b) An upright line that crosses the x-axis at 1.",
         "steps": [
             {"label": "a) which letter is stuck?",
              "text": "It is flat, so every point on it is at the same height. The "
@@ -213,10 +247,12 @@ BLOCKS = [
         "title": "Example 80.3 — which graph is x = −2?",
         "equation": "x  =  −2",
         "steps": [
-            {"label": "Look first",
-             "text": "You are given four graphs and asked which one this equation "
-                     "belongs to. Do not look at the pictures yet. Read the "
-                     "**equation** — it already tells you everything."},
+            {"label": "Start from the equation, not the choices",
+             "text": "Saxon's page offers four little graphs, labelled A, B, C and D. "
+                     "They are in your book — they are not reprinted here, so keep the "
+                     "book open beside you. That turns out not to matter, because you "
+                     "can work out exactly what the right graph must look like before "
+                     "you look at a single one of them. Read the **equation** first."},
             {"label": "Step 1 · which letter is nailed down?",
              "text": "The equation mentions **x** and nothing else. So x is stuck at "
                      "−2, and y is never mentioned, which means y is free to be "
@@ -226,12 +262,15 @@ BLOCKS = [
              "text": "Every point that fits has an x of −2 and any y you like. Say a "
                      "few out loud. They stack into a single column — an upright line.",
              "math": "(−2, −3)   (−2, 0)   (−2, 4)   (−2, 5)"},
-            {"label": "Step 3 · now pick the picture",
-             "text": "You want the graph that goes straight up and down and crosses "
-                     "the x-axis two units **left** of the origin. Rule the others "
-                     "out on purpose: an upright line at +2 is on the wrong side, a "
-                     "flat line through −2 has the letters swapped, and a slanted "
-                     "line is oblique. That leaves **Choice B**.",
+            {"label": "Step 3 · now look at your book and pick the picture",
+             "text": "You are hunting for one thing: a line that goes **straight up "
+                     "and down** and crosses the x-axis two units **left** of the "
+                     "origin. Anything flat is out. Anything slanted is out. An "
+                     "upright line on the right-hand side is out. Check the four "
+                     "graphs against that description and only one survives — Saxon's "
+                     "answer is **Choice B**. If the letters on your page happen to "
+                     "sit in a different order, trust the description you built, not "
+                     "the letter.",
              "math": "vertical, x-intercept −2   →   Choice B"},
         ],
     }),
@@ -254,7 +293,8 @@ BLOCKS = [
             {"symbol": "x = c", "plain": "x is always c, whatever y does",
              "example": "x = 1"},
             {"symbol": "x-intercept",
-             "plain": "where a line crosses the x-axis",
+             "plain": "where a function crosses the x-axis — *function* is Saxon's "
+                      "own word in the definition",
              "example": "x = 1 crosses at (1, 0)"},
             {"symbol": "y-intercept",
              "plain": "where a line crosses the y-axis",
@@ -265,9 +305,11 @@ BLOCKS = [
              "plain": "not a number at all — the arithmetic cannot be done",
              "example": "5 ÷ 0"},
         ],
-        "after": "A vertical line has **no y-intercept** — it may never cross the "
-                 "y-axis at all. That is exactly why Saxon defines it by its "
-                 "*x*-intercept instead.",
+        "after": "A vertical line has **no y-intercept**. Saxon states that flatly, "
+                 "with no hedging, and it is exactly why he defines the line by its "
+                 "*x*-intercept instead. (The one line that argues back is `x = 0` — "
+                 "it *is* the y-axis. Saxon does not stop for that, and neither should "
+                 "you today.)",
     }),
 
     (B.KIND_ERRORS, {
@@ -338,22 +380,35 @@ BLOCKS = [
     (B.KIND_TOOL, {
         "title": "Graph paper — build the lines yourself and read off their equations",
         "intro": "Tap the grid to drop a point; tap a point again to take it away. "
-                 "Plot the five points listed underneath, then look for what all five "
-                 "have in common.",
+                 "There are two sets of five points underneath. Plot a set, then look "
+                 "for what all five have in common — and answer out loud before you "
+                 "read any further down.",
         "widget": "grid",
         # No `choices` here on purpose. The family buttons offer x, x², √x and the
         # rest — curved function families, none of which is a horizontal or a
         # vertical line. Offering them would let a correct answer be marked wrong,
         # which is the one thing this tool must never do.
+        #
+        # `table` is NOT read by portal-grid.js (the widget draws only `points`).
+        # It is here so the seed validator and audit_content can prove that every
+        # point she is told to plot actually fits on the grid she is given. The
+        # points she plots come from the prose in `after`, so the two must be
+        # edited together — changing this list alone changes nothing on her page.
+        # `locked` is deliberately absent: she is meant to build these lines, not
+        # read a figure handed to her.
         "config": {"view": {"xmin": -6, "xmax": 6, "ymin": -6, "ymax": 6},
                    "table": [[-4, 3], [-2, 3], [0, 3], [3, 3], [5, 3]],
                    "label": "graph paper for horizontal and vertical lines"},
-        "after": "First table: **(−4, 3)  (−2, 3)  (0, 3)  (3, 3)  (5, 3)**. Every "
-                 "single y is 3, so the equation is **y = 3** — and sure enough the "
-                 "row of dots crosses the y-axis at 3.\n\n"
-                 "Now press **Clear** and plot **(2, −4)  (2, −1)  (2, 0)  (2, 3)  "
-                 "(2, 5)**. This time every x is 2, so the equation is **x = 2**. Say "
-                 "its slope out loud before you move on.",
+        "after": "**First line.** Plot **(−4, 3)  (−2, 3)  (0, 3)  (3, 3)  (5, 3)**. "
+                 "Look at what every one of those y values is doing, then say the "
+                 "equation out loud — and say where the row of dots crosses the "
+                 "y-axis.\n\n"
+                 "**Second line.** Press **Clear** and plot **(2, −4)  (2, −1)  "
+                 "(2, 0)  (2, 3)  (2, 5)**. Say that equation out loud too, and its "
+                 "slope, before you move on.\n\n"
+                 "*Check yourself only after you have said both:* the first is "
+                 "**y = 3**, slope **0**. The second is **x = 2**, slope "
+                 "**undefined**.",
     }),
 
     (B.KIND_RECAP, {
@@ -365,8 +420,9 @@ BLOCKS = [
             "Zero on **top** of the fraction gives 0. Zero **underneath** gives "
             "undefined. That one difference is the entire lesson.",
             "*Equations for horizontal and vertical lines equal the value where they "
-            "cross the axis.* Read the number, write the stuck letter in front of it, "
-            "stop.",
+            "cross the x (vertical) or y (horizontal) axis.* Keep the brackets — they "
+            "are the part that names the axis. Read the number, write the stuck letter "
+            "in front of it, stop.",
             "`y = mx + b` belongs to **oblique** (slanted) lines. A vertical line has "
             "no m, so it never gets that form.",
         ],
@@ -396,7 +452,9 @@ and the relief is that they need *less* machinery, not more.
 
 Saxon's own one-line summary is the thing to memorise, and it covers both cases at
 once: *equations for horizontal and vertical lines equal the value where they cross
-the axis.*
+the x (vertical) or y (horizontal) axis.* Make her keep the parenthetical. Without
+it the sentence says only "the axis", which is precisely the ambiguity that causes
+the most common error in the whole lesson.
 
 This is the piece the video skipped: she does not need the slope-intercept
 *technique* today. She needs to identify which coordinate is frozen and read one
@@ -411,8 +469,11 @@ most of the work.
    end to that end. How far UP did you go?"** — wait for "none." *"That zero is the
    slope. Flat lines have a slope of zero."*
 2. Write `m = Δy / Δx` and put a **0** on top with any number underneath.
-   **"What's zero divided by eight?"** — zero. *"And zero divided by anything else?"*
-   Still zero. *"So it doesn't even matter how long the line is."*
+   **"What's zero divided by eight?"** — zero. *"And zero divided by any other
+   number?"* Still zero. *"So it doesn't even matter how long the line is."* If she
+   asks about zero divided by **zero** — and a child who is reasoning will — the
+   honest answer is that it is undefined as well: the bottom is never allowed to be
+   zero, whatever is sitting on top. Say "any other number", not "anything".
 3. Now the key question: **"If m is zero, what does the `mx` part of `y = mx + b`
    turn into?"** — nothing. *"So the equation collapses to `y = b`. The line is just
    its own height."*
@@ -473,7 +534,34 @@ Watch her **hands**, not her answer.
 - For a stretch: **"Is `x = 2` even a function?"** It is not — one x with endlessly
   many y values. That connects straight back to the domain-and-range work in the
   review lessons, and it is a satisfying thing for a 12-year-old to be able to
-  argue.
+  argue. **Warn her before she argues it at the book.** Saxon's lesson title is
+  "More on Linear *Functions*: Horizontal and Vertical Lines", and its own
+  definition reads "x-intercept: the location where a *function* crosses the
+  x-axis. For vertical lines, they are defined by their x-intercept" — so the book
+  is calling vertical lines functions. That is the loose everyday usage of the
+  word. Strictly, a function gives one y for each x, and a vertical line gives
+  endlessly many. Both sentences are worth her having; she should know which one is
+  the book's and which one is the rule.
+
+## What this page could not copy — read this before she starts
+
+All three of Saxon's examples are pictures, and pictures are the one thing this
+page cannot reproduce. Keep her book open next to it.
+
+- **Example 80.1** is a lettered diagram with **no numbers on it at all**. Saxon's
+  instruction is literally to *observe* which lines are flat and which are upright.
+  This page restates it as end-point coordinates so there is something to point at,
+  and the answers are Saxon's own (AE and LJ horizontal, BK vertical). The page
+  keeps *observe* as the method and uses the subtraction only as a check —
+  deliberately, because **practice problem 180 is the same bare diagram** and there
+  will be nothing there to subtract. If she starts hunting for coordinates on 180,
+  say: "there aren't any — just look at it."
+- **Example 80.2** is two small graphs. They are described in words here.
+- **Example 80.3** is four graphs labelled A–D. Only the answer, Choice B, is in
+  the digitized text — nothing says what A, C and D show. So the page teaches her
+  to build the description first ("upright, crossing the x-axis two left of the
+  origin") and then match it against the four pictures in her book. Do not let
+  anyone, including you, invent what the other three graphs are.
 
 ## Where this sits
 

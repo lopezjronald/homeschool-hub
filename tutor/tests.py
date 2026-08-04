@@ -1621,13 +1621,21 @@ class SaxonWorkedExampleArithmeticTests(TestCase):
         authority — they are labelled "this is the correct way" — and were the
         least-guarded mathematics in the ticket.
 
+        Includes a reveal's `answer`. A reveal is the block that says "here is the
+        answer" after she has tried it herself, so it is about as authoritative as
+        a page gets — and it was guarded by nothing at all.
+
         Deliberately EXCLUDES `wrong`: those are false on purpose, and a balance
         test would fail on exactly the lines that are supposed to be broken.
+
+        Prose is safe to feed in. A side holding words evaluates to None and is
+        skipped, so only genuinely arithmetic claims are checked.
         """
         lines = []
         for _kind, data in self._blocks(lesson):
-            if data.get("math"):
-                lines.append(data["math"])
+            for key in ("math", "answer", "display"):
+                if isinstance(data.get(key), str) and data[key]:
+                    lines.append(data[key])
             for step in (data.get("steps") or []):
                 if isinstance(step, dict) and step.get("math"):
                     lines.append(step["math"])

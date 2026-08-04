@@ -220,12 +220,19 @@
                                    stroke: "#1E2A24", "stroke-width": 2 }));
     }
 
-    function xLabels(positions) {
+    /* The axis labels, which are not always the month names.
+
+       Saxon calls this out by name for the scatterplot: "Notice also we changed
+       from the name of the month to a number." The lesson then has her write
+       (1, 1000) and (5, 6000) — so if this axis still said "June" there would be
+       no 5 anywhere on the page for her to point at. */
+    function xLabels(positions, over) {
       var box = plotBox();
+      var text = over || labels;
       positions.forEach(function (cx, i) {
         var t = el("text", { x: cx, y: box.y + box.h + 16, "font-size": 11,
                              fill: "#5A6A60", "text-anchor": "middle" });
-        t.textContent = labels[i];
+        t.textContent = text[i];
         svg.appendChild(t);
       });
     }
@@ -266,7 +273,7 @@
                                      stroke: PALETTE[1], "stroke-width": 2,
                                      "stroke-dasharray": "6 4" }));
       }
-      xLabels(pts.map(function (p) { return p.x; }));
+      xLabels(pts.map(function (p) { return p.x; }), cfg.scatterLabels);
     }
 
     function drawPie() {

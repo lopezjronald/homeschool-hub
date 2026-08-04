@@ -2,10 +2,10 @@
 Equation to Solve a Problem. Reviews Lessons 68, 70, 73, 74.
 
 The hook Saxon itself names: in Lesson 68 the POINTS came from the equation; from
-Lesson 74 onward the EQUATION comes from the points. This is the first lesson
-where she builds the rule rather than being handed it — so the lesson is really
-about the two numbers that make a line, which is the exact part the video left
-her father unable to teach.
+Lesson 74 onward the EQUATION comes from the points. Lesson 74 already had her
+spot a linear trend and ESTIMATE its slope — this lesson finishes that job. She
+graphs the data first (Saxon's own first instruction for Ex. 77.2), then pins b
+and m down exactly, which is the part the video left her father unable to teach.
 
 No new rules or definitions in the source. Everything here is y = mx + b said
 slowly, plus substitution she has already been shown at the kitchen table.
@@ -24,14 +24,16 @@ BLOCKS = [
     (B.KIND_MASTHEAD, {
         "eyebrow": "Saxon · Lesson 77 · Pre-Algebra",
         "title": "This time you build the equation",
-        "thesis": "Every graphing lesson so far handed you the equation and asked "
-                  "for points. **Today the points come first**, and the equation is "
-                  "the thing you make.",
+        "thesis": "Lessons 68 and 70 handed you the equation and asked for points. "
+                  "Lesson 74 handed you data and asked you to *estimate* the slope. "
+                  "**Today you graph the points and pin the equation down exactly.**",
         "formula": "y  =  0.1065x − 21.122",
         "roles": [
             {"tone": "start", "name": "b — where it starts",
-             "text": "The height of the line when x is 0. Read it straight off the "
-                     "table; there is nothing to calculate."},
+             "text": "The height of the line when x is 0. In the equation above it is "
+                     "the −21.122 already sitting on the end. When you are given a "
+                     "table instead, it is the y in the x = 0 row — nothing to "
+                     "calculate either way."},
             {"tone": "move", "name": "m — how fast it climbs",
              "text": "How much y moves every time x moves 1. Up, divided by across."},
         ],
@@ -40,19 +42,25 @@ BLOCKS = [
     (B.KIND_PURPOSE, {
         "title": "Why anyone builds an equation out of data",
         "paragraphs": [
-            "Somebody hangs weights on a spring and writes down how far it stretches. "
-            "200 grams. 400 grams. 600 grams. Then the question arrives: *what about "
-            "700?* Nobody hung 700 grams. Nobody measured it.",
+            "Somebody hangs masses on a spring and writes down how far it stretches "
+            "each time — Saxon's experiment went all the way past a thousand grams. "
+            "Then the question arrives: *what about 700?* Nobody hung 700 grams. "
+            "Nobody measured it.",
             "You have two choices. Go and hang a 700 gram weight — or notice that the "
             "stretch is climbing at a **steady rate**, write down the rule it is "
             "climbing by, and let the rule answer for you.",
             "That rule is a linear equation. Weather, medicine doses, fuel, prices — "
             "people build an equation from the measurements they *have* so it can "
             "tell them about the ones they don't. Building it is the whole lesson.",
-            "The spring at the top of this lesson gave the equation "
-            "`y = 0.1065x − 21.122`, where x is the mass in grams and y is how far "
+            "The spring experiment gave the equation `y = 0.1065x − 21.122`, printed "
+            "at the top of this page, where x is the mass in grams and y is how far "
             "the spring stretched in millimetres. Every number on this page comes "
             "from that one line, or from a table of five points further down.",
+            "One honest note. Your book prints that experiment as a picture — the "
+            "real measurements scattered as dots, with the computer's line drawn "
+            "through them. That picture is not on this page. You do not need it: the "
+            "equation it produced is written above, and the equation is what every "
+            "spring question here uses.",
         ],
     }),
 
@@ -67,14 +75,20 @@ BLOCKS = [
             "Turn that around. Someone hands you the measurements and you work out "
             "the equation. The **equation comes out of the points**. Saxon says this "
             "outright, and it is the whole reason this lesson exists.",
+            "You have already done half of this. In **Lesson 74** you spotted a linear "
+            "trend in data and *estimated* its slope. Today you finish the job: you "
+            "graph the points, and you get both numbers exactly instead of estimating "
+            "one of them.",
             "One honest warning that comes with real data: it will not sit exactly on "
             "your line. Some measurements land a little above, some a little below. "
             "That is not you doing it wrong — that is what measuring is like. The "
-            "line follows the *trend*. (Lesson 97 teaches the proper way to fit one; "
-            "the spring equation here was made by a computer.)",
+            "line follows the *trend*, and Saxon has a word for a line drawn that "
+            "way: a **trendline**. Learn the word here, because the practice set uses "
+            "it without explaining it. (Lesson 97 teaches the proper way to fit one; "
+            "the spring trendline here was made by a computer.)",
             "The five-point table in this lesson is different: Saxon promises it fits "
-            "**exactly**. So when you check your equation against it, every point "
-            "should land dead on.",
+            "**exactly** — it is not a trendline. So when you check your equation "
+            "against it, every point should land dead on.",
         ],
     }),
 
@@ -111,15 +125,25 @@ BLOCKS = [
     }),
 
     (B.KIND_STEPS, {
-        "tag": "The recipe", "title": "Four moves, every time",
+        "tag": "The recipe", "title": "Five moves, every time",
         "steps": [
-            {"label": "Read b off the table.",
-             "detail": "Find the row where **x is 0** and take its y. Both tables in "
-                       "this lesson hand it to you. Write `b = ` and the number "
-                       "before you do anything else."},
+            {"label": "Graph the points.",
+             "detail": "Saxon asks for this **first**, before any arithmetic. Draw "
+                       "your axes, put every (x, y) pair on the paper, and lay a "
+                       "ruler along them. Skipping it is tempting and it is a trap — "
+                       "your practice set says *graph the data*, and the picture "
+                       "hands you both numbers a second time as a check."},
+            {"label": "Read b off the graph, or off the table.",
+             "detail": "On the graph it is where your line crosses the up-and-down "
+                       "axis. On a table it is the row where **x is 0** — if there is "
+                       "one, take its y and you are done. (When you are handed the "
+                       "equation instead, b is already the number on the end.) Write "
+                       "`b = ` and the number before you do anything else."},
             {"label": "Pick two points and measure the climb.",
              "detail": "Any two will do when the data fits exactly. How far **up** "
-                       "from the first to the second, and how far **across**?",
+                       "from the first to the second, and how far **across**? Or read "
+                       "it off your graph — step across, count up. Saxon offers both "
+                       "routes, so do one and check with the other.",
              "math": "m = Δy / Δx"},
             {"label": "Write the equation with your two numbers in it.",
              "detail": "The climb goes in front of the x. The start goes on the end.",
@@ -181,34 +205,75 @@ BLOCKS = [
         "steps": [
             {"label": "Look first",
              "text": "Five points and no equation anywhere. Saxon says this one fits "
-                     "**exactly** — every point sits on the line — so any two of them "
-                     "will give you the same slope."},
-            {"label": "Step 1 · read b off the table",
-             "text": "Look for the row where x is 0. Its y is 2. That is the height "
-                     "the line starts at, so b is 2. You calculated nothing.",
+                     "**exactly** — every point sits on the line, so it is not a "
+                     "trendline — which means any two of them will give you the same "
+                     "slope."},
+            {"label": "Step 1 · graph the data",
+             "text": "This is Saxon's actual first instruction, and it comes before "
+                     "any arithmetic. Draw your axes, plot all five dots, and lay a "
+                     "ruler along them. Two of them land halfway between gridlines — "
+                     "(−1, 1.5) and (3, 3.5) go halfway up the square. There is a "
+                     "board below with these five already on it if you want to see "
+                     "the line first."},
+            {"label": "Step 2 · read b",
+             "text": "Look for the row where x is 0. Its y is 2 — and on your graph "
+                     "that is exactly where the line crosses the up-and-down axis. "
+                     "That is the height the line starts at, so b is 2. You "
+                     "calculated nothing.",
              "math": "b = 2"},
-            {"label": "Step 2 · how far up?",
+            {"label": "Step 3 · how far up?",
              "text": "Take (0, 2) and (3, 3.5). The y went from 2 up to 3.5. That "
                      "rise is Δy — 'delta y', meaning the change in y.",
              "math": "Δy = 3.5 − 2 = 1.5"},
-            {"label": "Step 3 · how far across?",
+            {"label": "Step 4 · how far across?",
              "text": "Over the same two points, the x went from 0 across to 3.",
              "math": "Δx = 3 − 0 = 3"},
-            {"label": "Step 4 · divide, up over across",
+            {"label": "Step 5 · divide, up over across",
              "text": "The line climbs 1.5 for every 3 across — so half a step up for "
                      "every one step across.",
              "math": "m = 1.5 / 3 = 0.5"},
-            {"label": "Step 5 · write it",
+            {"label": "Step 6 · the graph says the same thing",
+             "text": "Saxon gives a second route to the slope, and it is worth doing "
+                     "as a check. Put your finger on the line you drew and step **2 "
+                     "across**. You land **1 up**. Rise over run, read straight off "
+                     "the picture, is one half.",
+             "math": "rise / run = 1 / 2 = 0.5"},
+            {"label": "Step 7 · write it",
              "text": "The climb multiplies the x. The start gets added on.",
              "math": "y = 0.5x + 2"},
-            {"label": "Step 6 · check it on a row you did not use",
+            {"label": "Step 8 · check it on a row you did not use",
              "text": "Try (8, 6), which you never touched. Put in 8 and see whether 6 "
                      "comes out. It does — the equation is right.",
              "math": "0.5 × 8 + 2 = 6"},
-            {"label": "Step 7 · now answer what was asked",
+            {"label": "Step 9 · now answer what was asked",
              "text": "The question wanted f(7). Put 7 where the x is.",
              "math": "f(7) = 0.5 × 7 + 2 = 3.5 + 2 = 5.5"},
         ],
+    }),
+
+    (B.KIND_TOOL, {
+        "title": "The graph Saxon asks you to draw",
+        "intro": "Example 77.2's five points, already on the board as hollow dots so "
+                 "a stray tap cannot knock one off. Do this on your own paper as "
+                 "well — your practice set says *graph the data*, not *calculate the "
+                 "data*. Switch to the ✏️ Pen and draw one straight line through all "
+                 "five. Then look for two things: where your line crosses the "
+                 "up-and-down axis, and what happens when you walk 2 across.",
+        "widget": "grid",
+        # `points` + `locked`, not `table`: this is the GIVEN figure, drawn for her
+        # to read. Two of the five sit on half-values, and a click snaps to whole
+        # numbers — asking her to place them here would mark correct work wrong.
+        # The x and y spans are both 14, so the squares stay square and rise/run
+        # can honestly be read off the picture.
+        "config": {"view": {"xmin": -4, "xmax": 10, "ymin": -6, "ymax": 8},
+                   "points": [[-2, 1], [-1, 1.5], [0, 2], [3, 3.5], [8, 6]],
+                   "locked": True,
+                   "label": "Example 77.2's five data points, to draw a line through"},
+        "after": "Two things to see. Your line crosses the up-and-down axis at **2** — "
+                 "there is b, with no arithmetic at all. And from any point on it, 2 "
+                 "across is 1 up, so rise over run is 1/2, which is **0.5** — the "
+                 "same m you calculated from (0, 2) and (3, 3.5). The picture and the "
+                 "arithmetic agree, and that agreement is the check.",
     }),
 
     (B.KIND_TRANSLATION, {
@@ -264,25 +329,28 @@ BLOCKS = [
              "wrong": "a point misses the line → \"my equation must be wrong\"",
              "right": "a point misses the line → that is what real data does",
              "note": "For the spring data, points above and below the line are "
-                     "**normal** — the line follows the trend. For the five-point "
-                     "table it is different: that one is exact, so a miss really does "
-                     "mean a mistake. Know which kind you are holding."},
+                     "**normal** — that line is a *trendline*, and a trendline only "
+                     "follows the pattern. For the five-point table it is different: "
+                     "that one is exact, so a miss really does mean a mistake. Know "
+                     "which kind you are holding."},
         ],
     }),
 
     (B.KIND_TABLE, {
         "caption": "Example 77.2's points, with the climb between each pair",
-        "headers": ["x", "y", "across (Δx)", "up (Δy)", "Δy / Δx"],
+        "headers": ["x", "y", "up (Δy)", "across (Δx)", "Δy / Δx"],
         "rows": [
             {"cells": ["-2", "1", "—", "—", "—"]},
-            {"cells": ["-1", "1.5", "1", "0.5", "0.5"]},
-            {"cells": ["0", "2", "1", "0.5", "0.5"], "emphasis": True},
-            {"cells": ["3", "3.5", "3", "1.5", "0.5"]},
-            {"cells": ["8", "6", "5", "2.5", "0.5"]},
+            {"cells": ["-1", "1.5", "0.5", "1", "0.5"]},
+            {"cells": ["0", "2", "0.5", "1", "0.5"], "emphasis": True},
+            {"cells": ["3", "3.5", "1.5", "3", "0.5"]},
+            {"cells": ["8", "6", "2.5", "5", "0.5"]},
         ],
-        "note": "Read down the last column: **0.5 every single time**, whichever pair "
-                "you use. That unchanging number is what makes it a straight line, "
-                "and it is m. The shaded row is the one that hands you b for free.",
+        "note": "The columns are in the order the fraction is written — **up first, "
+                "then across** — because that is the order you have to keep. Read "
+                "down the last column: **0.5 every single time**, whichever pair you "
+                "use. That unchanging number is what makes it a straight line, and it "
+                "is m. The shaded row is the one that hands you b for free.",
     }),
 
     (B.KIND_MATH, {
@@ -293,12 +361,13 @@ BLOCKS = [
     }),
 
     (B.KIND_REVEAL, {
-        "prompt": "Same spring, same equation, but an 850 g mass. How far does it "
+        "prompt": "Same spring, same equation, but a 500 g mass. How far does it "
                   "stretch? (Round to 3 d.p. — work it out before you open this.)",
-        "answer": "**69.403 mm.** Put 850 where the x is: `0.1065 × 850 = 90.525`, "
-                  "then `90.525 − 21.122 = 69.403`. Multiply first, subtract second, "
-                  "and finish with the unit — *69.403* on its own is not an answer, "
-                  "*69.403 mm* is.",
+        "answer": "**32.128 mm.** Put 500 where the x is: `0.1065 × 500 = 53.25`, "
+                  "then `53.25 − 21.122 = 32.128`. Multiply first, subtract second, "
+                  "and finish with the unit — *32.128* on its own is not an answer, "
+                  "*32.128 mm* is. Your practice set asks the same thing about an "
+                  "850 g mass. Same two moves, and that one is yours to do.",
     }),
 
     (B.KIND_RECAP, {
@@ -306,34 +375,46 @@ BLOCKS = [
         "items": [
             "**The points came first this time.** You are building the equation, not "
             "using one you were handed.",
+            "**Graph the data before you calculate anything.** Saxon asks for the "
+            "picture first, and the picture gives you b (where the line crosses) and "
+            "m (walk across, count up) a second time, as a check.",
             "Two numbers make a line: **b**, where it starts (the y when x is 0), and "
             "**m**, how fast it climbs (Δy / Δx — up over across).",
             "Write them into `y = mx + b`. The climb multiplies the x; the start is "
             "added on.",
             "Check your equation on a point you did not use.",
             "`f(700)` means **put 700 where the x is**. Multiply first, then subtract.",
-            "Real data only *follows* the line. An exact table sits *on* it. Say the "
-            "unit either way.",
+            "Real data only *follows* the line — a line drawn that way is a "
+            "**trendline**. An exact table sits *on* the line. Say the unit either "
+            "way.",
         ],
     }),
 ]
 
 STUDENT_INTRO = (
     "Watch DIVE Lecture 77 first. If it didn't quite click, this is here to fix "
-    "that. Everything you've graphed until now started with an equation and ended "
-    "with points — this one goes the other way. You get the points, and you build "
-    "the equation, out of just two numbers you can find on the table."
+    "that. In Lesson 68 you started with an equation and ended with points; in "
+    "Lesson 74 you spotted a trend in data and estimated its slope. Today you "
+    "finish that: you graph the points first, then build the exact equation out of "
+    "two numbers the picture and the table both give you."
 )
 
 PARENT_CONTENT = """## The big idea
 
-Two numbers describe any straight line, and this lesson is her first time
-**finding them instead of being given them**.
+Two numbers describe any straight line. She has met them before — **Lesson 74 had
+her spot a linear trend and *estimate* the slope** — and this lesson is where she
+graphs the data and pins both numbers down exactly. If she says "we did this in
+74," she is right, and saying so back to her is worth more than a correction.
 
-- **b — where it starts.** The y value when x is 0. If the table has an x = 0 row,
-  that row *is* b. No calculation.
+- **Graph the points first.** This is Saxon's own first instruction for Ex. 77.2
+  and it is easy to skip, because the arithmetic works without it. Don't let her:
+  practice problem 2 says *graph the data*, and the picture is a free second route
+  to both numbers.
+- **b — where it starts.** The y value when x is 0. On the graph, where the line
+  crosses the vertical axis. If the table has an x = 0 row, that row *is* b. No
+  calculation.
 - **m — how fast it climbs.** Change in y divided by change in x, from any two
-  points. Up over across.
+  points. Up over across. Or off the graph: step across, count up.
 - Write them into `y = mx + b`, check on a point you didn't use, then answer the
   question — which is almost always *find f(something)*, i.e. substitute.
 
@@ -341,10 +422,14 @@ The two examples in the source:
 
 - **Ex. 77.1** — the spring. `y = 0.1065x − 21.122`. `f(700) = 0.1065 × 700 −
   21.122 = 74.55 − 21.122` = **53.428 mm**. She is *given* the equation here; the
-  only skill is substituting, which you have already taught her.
-- **Ex. 77.2** — five points, `(−2, 1) (−1, 1.5) (0, 2) (3, 3.5) (8, 6)`. The
-  (0, 2) row gives b = 2. Using (0, 2) and (3, 3.5): Δy = 1.5, Δx = 3, so
-  m = 0.5. The equation is **y = 0.5x + 2**, and `f(7) = 3.5 + 2` = **5.5**.
+  only skill is substituting, which you have already taught her. Saxon calls this
+  fitted line a **trendline** — the word turns up cold in practice problem 2, so
+  use it out loud today.
+- **Ex. 77.2** — five points, `(−2, 1) (−1, 1.5) (0, 2) (3, 3.5) (8, 6)`. Graph
+  them first. The (0, 2) row gives b = 2. Using (0, 2) and (3, 3.5): Δy = 1.5,
+  Δx = 3, so m = 0.5. Saxon then gives the alternative straight off the picture:
+  rise/run = 1/2 = 0.5. The equation is **y = 0.5x + 2**, and `f(7) = 3.5 + 2` =
+  **5.5**. This table is exact, *not* a trendline — every point lands dead on.
 
 Saxon's own hook, and the thing to say to her: in Lesson 68 the *points* were made
 from the equation; from Lesson 74 on, the *equation* is made from the points.
@@ -362,14 +447,21 @@ Say these in this order, and ask the one question at each step before moving on.
    is a staircase and m is the size of its step."*
 3. Point at where the staircase begins, on the left edge. **"How high is it before
    you've gone anywhere at all?"** *"That's b. The height when x is nothing."*
-4. Now the real table. Show her the five points and ask **only** this: **"Which
-   row gives you b with no work at all?"** Wait. Let it be uncomfortable. You want
-   her to find the x = 0 row herself, because that is the move she'll reuse for
-   the rest of algebra.
+4. Now the real table, and **graph paper before pencil-and-arithmetic**. Have her
+   plot all five points and lay a ruler along them. Two of them, (−1, 1.5) and
+   (3, 3.5), sit halfway up a square — that's worth saying out loud so she doesn't
+   think she's misread the table. Then ask **only** this: **"Which row gives you b
+   with no work at all?"** Wait. Let it be uncomfortable. You want her to find the
+   x = 0 row herself, because that is the move she'll reuse for the rest of
+   algebra.
 5. **"Pick any two rows. How far up? How far across?"** She gets 0.5. Then: **"Now
    pick a different two."** She gets 0.5 again. That surprise is the lesson — the
    climb is the same everywhere, which is exactly what "straight" means.
-6. *"So write it: y = 0.5x + 2."* Then hand it back to what you already taught
+6. Back to her graph: **"Put your finger on the line and go 2 across. How far up?"**
+   One. Rise over run = 1/2 = 0.5, the same answer from the picture instead of the
+   table. That is Saxon's own alternative, and it is the moment the two halves of
+   the lesson lock together.
+7. *"So write it: y = 0.5x + 2."* Then hand it back to what you already taught
    her: **"Now what's f(7)?"** She knows this part. Let her finish strong.
 
 ## The classic mix-ups, with what she'll actually write
@@ -394,6 +486,10 @@ Say these in this order, and ask the one question at each step before moving on.
 
 Watch her **hands**, not her answer.
 
+- **Does she draw the graph at all?** The arithmetic works without it, so she will
+  be tempted to skip straight to the table — and then practice problem 2, which
+  says *graph the data*, will feel like a different question. If she skips it, she
+  also loses the rise-over-run check that catches a flipped fraction.
 - On the slope: does her finger land on two rows and physically count across, then
   up? Or does she stare at the numbers and try to do it in her head? The counting
   is the skill. In-the-head is where the flipped fraction comes from.
@@ -428,9 +524,21 @@ the exact reverse of today), 73 (function families and `f(x)` notation) and 74
 (spotting a linear trend in data and estimating its slope). If she is lost, **74
 is the one to go back to** — Lesson 77 is Lesson 74 finished.
 
-Note for you: the source shows the spring data as a scatter graph with a computer-
-fitted trendline. Everything on her page comes from the equation and the printed
-table instead, so nothing depends on being able to see that picture.
+Two notes for you.
+
+The source shows the spring data as a scatter graph with a computer-fitted
+trendline. That picture is **not** reproduced on her page, and her page says so in
+one sentence rather than pretending otherwise. Nothing on the page depends on it —
+every spring number comes from the printed equation. Ex. 77.2's five points, which
+she *is* asked to graph, are on the page twice: as a board with the five dots
+already placed (hollow, so a stray tap can't delete one), and as the table. She
+should still plot them on her own paper — the board exists so she can see the line
+before she has drawn it, not instead of drawing it.
+
+The "predict, then check" box uses a **500 g** mass, not the 850 g of practice
+problem 1. Same equation, same two moves, so it rehearses the method without
+handing her the answer to an assigned problem. Practice problem 1's answer, if you
+want it to check her work: 0.1065 × 850 = 90.525, minus 21.122 = **69.403 mm**.
 
 **Proficient** looks like: finds b from the table, gets m right with the recipe in
 front of her, writes `y = mx + b` and substitutes correctly.

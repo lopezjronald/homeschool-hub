@@ -1633,7 +1633,9 @@ class SaxonWorkedExampleArithmeticTests(TestCase):
         """
         lines = []
         for _kind, data in self._blocks(lesson):
-            for key in ("math", "answer", "display"):
+            # "formula" is the masthead — the single most visible equation on
+            # the page, and it was swept by nothing.
+            for key in ("math", "answer", "display", "formula"):
                 if isinstance(data.get(key), str) and data[key]:
                     lines.append(data[key])
             for step in (data.get("steps") or []):
@@ -1679,18 +1681,66 @@ class SaxonWorkedExampleArithmeticTests(TestCase):
 
         return re.sub(r"[×x]\s*10([⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻⁽⁾]+)", repl, text)
 
-    def _sides(self, statement):
+    def _sides(self, statement, binary=False):
         """Every value the statement asserts equal.
 
         A side may offer alternatives ("32 x 10^2 or 0.32 x 10^4"). Both are
         claimed equal to the other side, so both are returned and both are
         checked — that is what the line actually promises the child.
+
+        With binary=True, a side that is a bare run of 0s and 1s is read in base
+        two. Only used as a second attempt, so ordinary decimals like 100 and 101
+        keep their obvious meaning everywhere else.
         """
+        import re
+
         values = []
         for part in statement.split("="):
             for alt in part.split(" or "):
-                values.append(self._value(self._powers(alt)))
+                bare = alt.strip()
+                if binary and re.fullmatch(r"[01]{2,}", bare):
+                    values.append(float(int(bare, 2)))
+                else:
+                    values.append(self._value(self._powers(alt)))
         return values
+
+    def _balances(self, statement, slack):
+        """Do all the sides of this statement come out the same?
+
+        A numeral written only in 0s and 1s is ambiguous in a course that teaches
+        binary: Lesson 75's "1011 = 8 + 2 + 1 = 11" is true with the left side in
+        base two and false with it in base ten. Such a side is allowed EITHER
+        reading, anchored to the sides that are not ambiguous ("8 + 2 + 1" can
+        only mean eleven). That turns what would be a false alarm into a real
+        check of the conversion.
+
+        If every side is ambiguous there is nothing to anchor to, and base ten is
+        used — the ordinary meaning.
+        """
+        import re
+
+        tol = max(slack, 1e-9)
+        anchors, ambiguous = [], []
+        for part in statement.split("="):
+            for alt in part.split(" or "):
+                bare = alt.strip()
+                v = self._value(self._powers(alt))
+                if v is None:
+                    continue
+                if re.fullmatch(r"[01]{2,}", bare):
+                    ambiguous.append((v, float(int(bare, 2))))
+                else:
+                    anchors.append(v)
+
+        if len(anchors) + len(ambiguous) < 2:
+            return True                      # nothing to compare
+        if not anchors:
+            anchors = [ambiguous[0][0]]
+            ambiguous = ambiguous[1:]
+        if any(abs(a - anchors[0]) > tol for a in anchors):
+            return False
+        return all(any(abs(r - anchors[0]) <= tol for r in readings)
+                   for readings in ambiguous)
 
     def _rounding_slack(self, statement):
         """How far two sides may differ before they disagree.
@@ -1725,10 +1775,9 @@ class SaxonWorkedExampleArithmeticTests(TestCase):
                         continue
                     checked += 1
                     slack = self._rounding_slack(statement)
-                    for v in values[1:]:
-                        self.assertAlmostEqual(
-                            v, values[0], delta=max(slack, 1e-9),
-                            msg=f"L{lesson}: {statement.strip()!r} does not balance")
+                    self.assertTrue(
+                        self._balances(statement, slack),
+                        f"L{lesson}: {statement.strip()!r} does not balance")
         # If the parser silently stopped understanding the notation this test
         # would pass by checking nothing at all.
         self.assertGreaterEqual(checked, 8, f"only {checked} equations were checked")

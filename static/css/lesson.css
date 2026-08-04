@@ -276,7 +276,16 @@
 }
 @media print {
   .lesson-stepper-controls, .lesson-tool-controls { display: none; }
-  .lesson-stepper-step { opacity: 1; max-height: none; }
+  /* Must out-specify `.lesson-stepper.is-stepped .lesson-stepper-step` (0,3,0),
+     or printing a worked example yields only the steps she happened to have
+     clicked open. Padding and margin are restored too — the hiding rule zeroes
+     them, so opacity alone brings back invisible text in a collapsed box. */
+  .lesson-stepper.is-stepped .lesson-stepper-step {
+    opacity: 1;
+    max-height: none;
+    padding: revert;
+    margin: revert;
+  }
   .lesson-reveal-body { display: block; }
   .lesson-section { break-inside: avoid; box-shadow: none; }
 }

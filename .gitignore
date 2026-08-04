@@ -33,3 +33,6 @@ nul
 
 # Digitised DIVE lesson guides - the family's purchased copy, not ours to publish.
 saxon_source/
+
+# Adversarial review transcripts — working notes, not part of the app.
+reviews.tmp.md

@@ -1300,6 +1300,29 @@ class SaxonLessonToolTests(TestCase):
         self._run("portal-tools.test.js")
 
 
+def saxon_lesson_numbers():
+    """Every Saxon lesson that has a seed command, found by looking.
+
+    The sweeping tests below used to carry a hardcoded (71, 72, 73). Adding a
+    lesson then silently added UNCHECKED mathematics — the arithmetic guards
+    would keep passing while covering nothing new, which is the worst kind of
+    green. Discovery means a lesson is covered the moment its seeder exists.
+    """
+    import os
+    import re
+
+    here = os.path.join(os.path.dirname(__file__), "management", "commands")
+    found = sorted(
+        int(m.group(1))
+        for name in os.listdir(here)
+        for m in [re.fullmatch(r"seed_saxon_(\d+)\.py", name)]
+        if m
+    )
+    if not found:                       # a rename would otherwise mute every sweep
+        raise AssertionError("no seed_saxon_<n>.py commands found")
+    return found
+
+
 class SaxonLessonSeedTests(TestCase):
     """Seeding a Saxon lesson, and the guards that stop a broken one shipping."""
 
@@ -1321,7 +1344,7 @@ class SaxonLessonSeedTests(TestCase):
 
     def test_each_lesson_seeds_a_material_made_of_blocks(self):
         from tutor.models import LessonBlock
-        for n in (71, 72, 73):
+        for n in saxon_lesson_numbers():
             self._seed(n)
             m = Material.objects.get(lesson__chapter__curriculum=self.cur,
                                      lesson__number=n)
@@ -1416,7 +1439,7 @@ class SaxonLessonSeedTests(TestCase):
     def test_every_lesson_teaches_the_parent_too(self):
         # The parent asked for this because he "didn't know how to really teach
         # that" — the guide is the deliverable, not a footnote.
-        for n in (71, 72, 73):
+        for n in saxon_lesson_numbers():
             self._seed(n)
             m = Material.objects.get(lesson__chapter__curriculum=self.cur,
                                      lesson__number=n)
@@ -1534,7 +1557,7 @@ class SaxonLessonMathTests(TestCase):
             self.assertEqual(cu, x ** 3, f"x={x}: x³ column says {cu}")
 
     def test_every_plottable_table_fits_on_the_grid_it_ships_with(self):
-        for lesson in (71, 72, 73):
+        for lesson in saxon_lesson_numbers():
             for tool in self._grid_tools(lesson):
                 cfg = tool["config"]
                 view = cfg.get("view") or {}
@@ -1662,7 +1685,7 @@ class SaxonWorkedExampleArithmeticTests(TestCase):
         import re
 
         checked = 0
-        for lesson in (71, 72):
+        for lesson in saxon_lesson_numbers():
             for line in self._math_lines(lesson):
                 for statement in re.split(r"→|⇒", line):
                     if "=" not in statement:
@@ -1733,7 +1756,7 @@ class SaxonWorkedExampleArithmeticTests(TestCase):
             return needle in flat
 
         checked = 0
-        for lesson in (71, 72):
+        for lesson in saxon_lesson_numbers():
             for kind, data in self._blocks(lesson):
                 if kind != LessonBlock.KIND_WORKED or not data.get("answer"):
                     continue
@@ -1836,3 +1859,63 @@ class SaxonWorkedExampleArithmeticTests(TestCase):
                 got, want, delta=abs(want) * 1e-9,
                 msg=f"{data['number']}: {data['question']} != {data['answer']}")
         self.assertGreaterEqual(checked, 2, f"only {checked} answers were checked")
+
+
+class SaxonBatchSeedCommandTests(TestCase):
+    """The runner that makes deploying thirty lessons one command (HH-155)."""
+
+    def test_it_understands_the_selection_forms(self):
+        from tutor.management.commands.seed_saxon import parse_selection
+        avail = [71, 72, 73, 74, 75]
+        self.assertEqual(parse_selection("all", avail), avail)
+        self.assertEqual(parse_selection("72-74", avail), [72, 73, 74])
+        self.assertEqual(parse_selection("75,71", avail), [71, 75])
+        self.assertEqual(parse_selection("73", avail), [73])
+        # A range and a list together, deduplicated and ordered.
+        self.assertEqual(parse_selection("71-73,72,75", avail), [71, 72, 73, 75])
+
+    def test_asking_for_a_lesson_with_no_seeder_is_an_error(self):
+        """Silently skipping it would leave a lesson missing from a deploy.
+
+        The failure mode this prevents: 'seed_saxon --lesson 74-100' on a branch
+        where half those files do not exist yet, reporting success.
+        """
+        from django.core.management.base import CommandError
+
+        from tutor.management.commands.seed_saxon import parse_selection
+        with self.assertRaises(CommandError) as ctx:
+            parse_selection("71-80", [71, 72, 73])
+        for missing in ("74", "75", "80"):
+            self.assertIn(missing, str(ctx.exception))
+
+    def test_it_rejects_nonsense_rather_than_seeding_nothing(self):
+        from django.core.management.base import CommandError
+
+        from tutor.management.commands.seed_saxon import parse_selection
+        for bad in ("seventy-four", "80-74", "71..73"):
+            with self.assertRaises(CommandError):
+                parse_selection(bad, [71, 72, 73])
+
+    def test_discovery_finds_the_lessons_that_exist(self):
+        from tutor.management.commands.seed_saxon import available_lessons
+        self.assertEqual(available_lessons(), saxon_lesson_numbers())
+
+    def test_it_actually_seeds_the_range_it_was_given(self):
+        from curricula.models import Curriculum
+        from curricula.services import apply_blueprint, get_blueprint
+        from tutor.models import Material
+
+        parent = User.objects.create_user("sxb", "sxb@e.com", "pw")
+        cur = Curriculum.objects.create(
+            parent=parent, name="Saxon Pre-Algebra (DIVE)", subject="Math",
+            grade_level="G07")
+        apply_blueprint(cur, get_blueprint("saxon_prealgebra_dive"))
+
+        out = StringIO()
+        call_command("seed_saxon", "--curriculum", str(cur.pk),
+                     "--lesson", "71,73", stdout=out)
+        seeded = set(Material.objects
+                     .filter(lesson__chapter__curriculum=cur)
+                     .values_list("lesson__number", flat=True))
+        self.assertEqual(seeded, {71, 73}, "the runner seeded the wrong lessons")
+        self.assertIn("Seeded 2 lesson(s)", out.getvalue())

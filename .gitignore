@@ -30,3 +30,6 @@ nul
 .env
 .mcp.json
 
+
+# Digitised DIVE lesson guides - the family's purchased copy, not ours to publish.
+saxon_source/

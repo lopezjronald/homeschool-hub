@@ -1692,6 +1692,25 @@ class SaxonWorkedExampleArithmeticTests(TestCase):
                 values.append(self._value(self._powers(alt)))
         return values
 
+    def _rounding_slack(self, statement):
+        """How far two sides may differ before they disagree.
+
+        Saxon rounds all the time — "Round to 2 d.p." — so 45 / 2.7 = 16.7 is a
+        correct line that an exact check calls broken. Demanding exactness does
+        not make the lessons more correct; it makes rounded lines impossible to
+        write in a checkable form, which is how the guard gets dodged.
+
+        So: half a unit in the last place of the LEAST precise number written in
+        the statement, which is exactly what rounding to that place promises. An
+        all-integer statement gets no slack at all.
+        """
+        import re
+
+        decimals = [len(m.group(1)) for m in re.finditer(r"\d+\.(\d+)", statement)]
+        if not decimals:
+            return 0.0
+        return 0.5 * 10 ** (-min(decimals))
+
     def test_every_equation_in_lessons_71_and_72_balances(self):
         import re
 
@@ -1705,9 +1724,10 @@ class SaxonWorkedExampleArithmeticTests(TestCase):
                     if len(values) < 2:
                         continue
                     checked += 1
+                    slack = self._rounding_slack(statement)
                     for v in values[1:]:
                         self.assertAlmostEqual(
-                            v, values[0], places=6,
+                            v, values[0], delta=max(slack, 1e-9),
                             msg=f"L{lesson}: {statement.strip()!r} does not balance")
         # If the parser silently stopped understanding the notation this test
         # would pass by checking nothing at all.

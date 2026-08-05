@@ -25,7 +25,8 @@ from . import (
 )
 from .models import (
     AiUsage, AlphabetTile, AudioClip, AuditEvent, BookLogEntry, ClassroomPhrase,
-    ComprehensionCheck, KnownWord, Learner, LibraryBook, ListeningResource,
+    ComprehensionCheck, KnownWord, Learner, LibraryBook, ListeningPick,
+    ListeningResource,
     ListeningSession, MilestoneAward, Pathway, PathwayCheckmark, PathwayStep,
     PhonicsRule, ReadingSession, ReviewItem, Story, StoryAudio,
     FreeWrite, JournalEntry,
@@ -1010,6 +1011,93 @@ def phonics_rules_with_audio(*, band=None, voice=None, engine=None):
 def listening_resources(age_band):
     """Active curated listening items for a band, ordered (F-02/N-02, LGA-55/56)."""
     return list(ListeningResource.objects.filter(age_band=age_band, active=True))
+
+
+def listening_shelves(age_band):
+    """The channels and playlists for a band — always shown, never rotated out.
+
+    A channel is an endless well, so "she already watched it" is not a fact that
+    can be true of one. These stay on the page permanently, which also means a
+    rotted video link never leaves her with an empty page (LGA-102).
+    """
+    return [r for r in listening_resources(age_band) if r.kind == ListeningResource.SHELF]
+
+
+def _listening_seen(learner):
+    """{resource_id: last_seen_datetime} for everything this learner has met.
+
+    "Met" is either logging minutes for it OR opening it — the two are separate
+    buttons, and a video she watched without logging must not come back tomorrow
+    as if it were new.
+
+    NULLs are dropped, and that is load-bearing: ``ListeningSession.resource`` is
+    SET_NULL, so a deleted curated item leaves rows with ``resource_id = None``.
+    Feeding None into an exclusion set makes ``NOT IN (NULL, 3)`` evaluate to NULL
+    for every row — the whole catalogue disappears and the page silently goes
+    empty. ``build_daily_plan`` defends the same shape with ``discard(None)``.
+    """
+    seen = {}
+    rows = (ListeningSession.objects.filter(learner=learner, resource__isnull=False)
+            .values("resource").annotate(last=Max("created_at")))
+    for row in rows:
+        seen[row["resource"]] = row["last"]
+    picks = (ListeningPick.objects.filter(learner=learner)
+             .values("resource").annotate(last=Max("created_at")))
+    for row in picks:
+        prior = seen.get(row["resource"])
+        if prior is None or row["last"] > prior:
+            seen[row["resource"]] = row["last"]
+    seen.pop(None, None)
+    return seen
+
+
+def listening_choices(learner, *, count=3):
+    """A short menu of videos to pick from — unseen first (LGA-102).
+
+    Returns ``[{"resource", "seen", "last"}, ...]``, at most ``count``.
+
+    The parent asked for "3 choices, and don't show her that one again." What this
+    does is ROTATE, not delete: a watched video drops to the back of the queue and
+    only returns once the fresh ones run out, badged so she knows it is a repeat.
+    Removing it permanently would contradict N-01 — rereading (and re-watching)
+    known material IS the comprehensible-input lever, and it is why ``pick_reread``
+    exists on the reading side.
+
+    Ordering is the curator's (``Meta.ordering``), not random, so two page loads in
+    one sitting show the same three. Rotation is driven by what she has consumed,
+    not by a clock.
+
+    When everything has been seen it recycles the LEAST-RECENTLY-SEEN rather than
+    returning nothing — the same refusal to dead-end an engaged learner that
+    ``build_daily_plan`` makes.
+    """
+    if count <= 0:
+        return []
+    band = learner.profile.track_profile
+    videos = [r for r in listening_resources(band) if r.kind == ListeningResource.VIDEO]
+    if not videos:
+        return []
+
+    seen = _listening_seen(learner)
+    fresh = [r for r in videos if r.pk not in seen]
+    picked = [{"resource": r, "seen": False, "last": None} for r in fresh[:count]]
+    if len(picked) >= count:
+        return picked
+
+    # Top up with the ones she has met, oldest first. pk breaks ties so equal
+    # timestamps do not order arbitrarily per-database.
+    repeats = sorted((r for r in videos if r.pk in seen),
+                     key=lambda r: (seen[r.pk], r.pk))
+    for r in repeats[:count - len(picked)]:
+        picked.append({"resource": r, "seen": True, "last": seen[r.pk]})
+    return picked
+
+
+def record_listening_pick(learner, resource):
+    """She opened this one. Not minutes, not a Camino tick — just "seen" (LGA-102)."""
+    if resource is None:
+        return None
+    return ListeningPick.objects.create(learner=learner, resource=resource)
 
 
 def tutor_packets_for(host_student_id):

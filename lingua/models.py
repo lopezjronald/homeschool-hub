@@ -889,9 +889,21 @@ class ListeningResource(models.Model):
     host ``activities.ExternalActivity``, so the module stays extractable (D-03/D-04).
     Nothing copyrighted is stored — only a link + metadata (embed/link out)."""
 
+    # A single VIDEO can be "already watched"; a SHELF (channel/playlist) cannot —
+    # it is an endless well, so it never rotates out and is always on the page
+    # (LGA-102). The default is VIDEO because that is the rotatable thing; the
+    # 0033 migration stamps the existing channel/playlist rows as SHELF.
+    VIDEO = "video"
+    SHELF = "shelf"
+    KIND_CHOICES = [
+        (VIDEO, "One video — can be watched and rotated out"),
+        (SHELF, "Channel or playlist — an endless well, always shown"),
+    ]
+
     title = models.CharField(max_length=200)
     provider = models.CharField(max_length=120, blank=True, help_text="e.g. 'Dreaming Spanish'.")
     url = models.URLField(help_text="Curated YouTube video/playlist/channel URL.")
+    kind = models.CharField(max_length=8, choices=KIND_CHOICES, default=VIDEO)
     age_band = models.CharField(max_length=16, choices=profiles.TRACK_CHOICES)
     level = models.CharField(max_length=4, choices=profiles.LEVEL_CHOICES)
     visual_support = models.BooleanField(
@@ -929,6 +941,43 @@ class ListeningSession(models.Model):
 
     def __str__(self):
         return f"ListeningSession<learner={self.learner_id} min={self.minutes}>"
+
+
+class ListeningPick(models.Model):
+    """She opened this video — which is a different fact from having logged minutes
+    for it (LGA-102).
+
+    "Ver ▶" and "Anotar" are two separate actions on the listening page, so a child
+    can watch something and never log it. Without this row that video still counts
+    as unwatched and comes back tomorrow, which is the exact thing the rotation is
+    supposed to stop.
+
+    Deliberately NOT a 0-minute ``ListeningSession``: those feed the hero metric,
+    the Camino LISTEN stone and the streak, all through bare ``.exists()`` calls, so
+    reusing them would let a click on "Ver" tick a stone she never earned. Opening a
+    video should not tick anything — that is what gives her a reason to press
+    "Anotar".
+
+    Not unique per (learner, resource): repeat opens are real, and the recycling
+    order uses ``Max(created_at)``, mirroring ``pick_reread``.
+    """
+
+    learner = models.ForeignKey(
+        Learner, on_delete=models.CASCADE, related_name="listening_picks",
+    )
+    # CASCADE, unlike ListeningSession.resource: a pick carries no minutes worth
+    # preserving, so when a curated item is dropped its picks go with it.
+    resource = models.ForeignKey(
+        "ListeningResource", on_delete=models.CASCADE, related_name="picks",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [models.Index(fields=["learner", "created_at"])]
+
+    def __str__(self):
+        return f"ListeningPick<learner={self.learner_id} resource={self.resource_id}>"
 
 
 class ReviewItem(models.Model):

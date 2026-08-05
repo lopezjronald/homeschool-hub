@@ -301,10 +301,14 @@ def lingua_listen(request, token):
     same 'minutes of input' hero metric as reading. Provisions the learner on entry."""
     student = _resolve_student(token)
     learner = _lingua_learner(student)
+    band = learner.profile.track_profile
     return render(request, "portal/lingua_listen.html", {
         **_station_ctx(learner, PathwayStep.LISTEN),
         "student": student, "token": token,
-        "resources": lingua_services.listening_resources(learner.profile.track_profile),
+        # Three to choose from, unseen first (LGA-102), plus the channels, which
+        # never rotate out and so are never an empty page.
+        "choices": lingua_services.listening_choices(learner),
+        "shelves": lingua_services.listening_shelves(band),
         "alphabet": lingua_services.alphabet_tiles_with_audio(),
         "phrases": lingua_services.practice_phrases_for(student.pk),
         "totals": lingua_services.reading_totals(learner),
@@ -338,6 +342,45 @@ def lingua_tutor_packet(request, token, packet_id):
     })
 
 
+def _listening_resource_for(learner, raw_id):
+    """Resolve a posted resource id, scoped to THIS learner's band.
+
+    Scoped, not just `active=True`: without the band filter a posted id from the
+    other child's band logs against it and pollutes her rotation — a sibling with
+    the portal link open is the realistic way that happens, not an attacker.
+    Returns None for junk, which the callers already treat as "no resource".
+    """
+    try:
+        pk = int(raw_id)
+    except (TypeError, ValueError):
+        return None
+    return lingua_services.ListeningResource.objects.filter(
+        pk=pk, active=True, age_band=learner.profile.track_profile).first()
+
+
+def lingua_listen_open(request, token, resource_id):
+    """She opened this video — record the pick, then send her to YouTube (LGA-102).
+
+    The pick is what stops a video she watched but never logged from coming back
+    tomorrow as if it were new. It does NOT tick the Camino stone and adds no
+    minutes: opening is not listening, and leaving the stone unearned is what
+    gives her a reason to come back and press "Anotar".
+
+    A GET that writes, deliberately: keeping it an anchor preserves the new-tab
+    open with rel="noopener", which a form POST targeting _blank would not. The
+    write is an idempotent-in-spirit "she looked at this" marker in a tokenless
+    single-family portal, so the usual objection (a crawler firing it) costs
+    nothing worse than one video moving down her queue.
+    """
+    student = _resolve_student(token)
+    learner = _lingua_learner(student)
+    resource = _listening_resource_for(learner, resource_id)
+    if resource is None:
+        raise Http404("No such listening resource for this learner.")
+    lingua_services.record_listening_pick(learner, resource)
+    return redirect(resource.url)
+
+
 @csrf_exempt
 @require_POST
 def lingua_listen_log(request, token):
@@ -346,12 +389,7 @@ def lingua_listen_log(request, token):
     logs the minutes (resource is optional). Redirects back to the listening page."""
     student = _resolve_student(token)
     learner = _lingua_learner(student)
-    resource = None
-    try:
-        resource = lingua_services.ListeningResource.objects.filter(
-            pk=int(request.POST.get("resource_id", "")), active=True).first()
-    except (TypeError, ValueError):
-        resource = None
+    resource = _listening_resource_for(learner, request.POST.get("resource_id"))
     try:
         minutes = int(request.POST.get("minutes", 0))
     except (TypeError, ValueError):

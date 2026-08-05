@@ -70,12 +70,58 @@
     </div>
   {% endif %}
 
-  <h2 class="portal-section-title mb-3">Videos</h2>
-  {% if resources %}
+  {% comment %}
+    Three to choose from, not the whole catalogue (LGA-102). "Ver" goes through the
+    open view so the pick is recorded — otherwise a video she watched but did not
+    log comes back tomorrow as if it were new, which is the whole complaint.
+    A repeat is labelled rather than hidden: re-watching is the listening half of
+    the reread lever (N-01), so nothing ever leaves the pool for good.
+  {% endcomment %}
+  <h2 class="portal-section-title mb-3">Elige un video</h2>
+  {% if choices %}
     <div class="portal-subjects">
-      {% for r in resources %}
+      {% for item in choices %}
       <div class="portal-subject-card" style="flex-wrap: wrap;">
-        <div class="portal-subject-emoji">🎬</div>
+        <div class="portal-subject-emoji">{% if item.seen %}⭐{% else %}🎬{% endif %}</div>
+        <div class="portal-subject-body">
+          <div class="portal-subject-name">{{ item.resource.title }}</div>
+          <div class="portal-next-line">
+            <span class="portal-next-label">{{ item.resource.provider }}</span>
+            {% if item.resource.visual_support %}con dibujos{% endif %}
+            &middot; ~{{ item.resource.minutes }} min
+            {% if item.seen %}&middot; <strong>otra vez</strong>{% endif %}
+          </div>
+        </div>
+        <a href="{% url 'portal:lingua_listen_open' token=token resource_id=item.resource.id %}"
+           target="_blank" rel="noopener noreferrer" class="portal-subject-go">Ver ▶</a>
+        {# Minutes check-in: tokenless POST, minutes clamped server-side (LGA-55). #}
+        <form method="post" action="{% url 'portal:lingua_listen_log' token=token %}"
+              class="d-flex align-items-center gap-2 mt-2" style="flex-basis: 100%;">
+          <input type="hidden" name="resource_id" value="{{ item.resource.id }}">
+          <label class="small text-muted mb-0" for="min-{{ item.resource.id }}">Escuché</label>
+          <input type="number" min="1" max="600" name="minutes" id="min-{{ item.resource.id }}"
+                 value="{{ item.resource.minutes }}" class="form-control form-control-sm" style="width: 5rem;">
+          <span class="small text-muted">min</span>
+          <button type="submit" class="btn btn-outline-primary" style="min-height:44px;">Anotar</button>
+        </form>
+      </div>
+      {% endfor %}
+    </div>
+  {% else %}
+    <div class="alert alert-info">Pronto habrá videos para escuchar. 🌱</div>
+  {% endif %}
+
+  {% comment %}
+    The channels and playlists. Endless wells, so they never rotate out — and they
+    are the backstop that keeps this page from ever being empty when a single
+    video link rots.
+  {% endcomment %}
+  {% if shelves %}
+    <h2 class="portal-section-title mb-3 mt-4">Más para ver</h2>
+    <div class="portal-subjects">
+      {% for r in shelves %}
+      <div class="portal-subject-card" style="flex-wrap: wrap;">
+        <div class="portal-subject-emoji">📺</div>
         <div class="portal-subject-body">
           <div class="portal-subject-name">{{ r.title }}</div>
           <div class="portal-next-line">
@@ -85,12 +131,11 @@
         </div>
         {# Curated link opens YouTube in a new tab; a parent supervises (no embed = no CSP hole). #}
         <a href="{{ r.url }}" target="_blank" rel="noopener noreferrer" class="portal-subject-go">Ver ▶</a>
-        {# Minutes check-in: tokenless POST, minutes clamped server-side (LGA-55). #}
         <form method="post" action="{% url 'portal:lingua_listen_log' token=token %}"
               class="d-flex align-items-center gap-2 mt-2" style="flex-basis: 100%;">
           <input type="hidden" name="resource_id" value="{{ r.id }}">
-          <label class="small text-muted mb-0" for="min-{{ r.id }}">Escuché</label>
-          <input type="number" min="1" max="600" name="minutes" id="min-{{ r.id }}"
+          <label class="small text-muted mb-0" for="min-s{{ r.id }}">Escuché</label>
+          <input type="number" min="1" max="600" name="minutes" id="min-s{{ r.id }}"
                  value="{{ r.minutes }}" class="form-control form-control-sm" style="width: 5rem;">
           <span class="small text-muted">min</span>
           <button type="submit" class="btn btn-outline-primary" style="min-height:44px;">Anotar</button>
@@ -98,8 +143,6 @@
       </div>
       {% endfor %}
     </div>
-  {% else %}
-    <div class="alert alert-info">Pronto habrá videos para escuchar. 🌱</div>
   {% endif %}
 
   {% include "portal/_station_done.html" %}

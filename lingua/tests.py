@@ -31,7 +31,8 @@ from . import storage as lingua_storage
 from .integrations import directory
 from .models import (
     AiUsage, AlphabetTile, AudioClip, AuditEvent, BookLogEntry, ComprehensionCheck,
-    KnownWord, Learner, LearnerProfile, LibraryBook, ListeningResource,
+    KnownWord, Learner, LearnerProfile, LibraryBook, ListeningPick,
+    ListeningResource,
     ListeningSession, MilestoneAward, Pathway, PathwayCheckmark, PathwayStep,
     PhonicsRule, ReadingSession, ReviewItem, Story, StoryAudio,
     StoryImage, StoryRecording, Theme, TutorPacket,
@@ -7417,3 +7418,241 @@ class NoDeadCaminoCodeTests(TestCase):
         for name in ("record_station_visit", "_has_station_visit",
                      "_stories_read_at_level"):
             self.assertFalse(hasattr(services, name), f"{name} survived")
+
+
+class ListeningRotationTests(TestCase):
+    """Three choices, and the one she watched does not come back tomorrow (LGA-102).
+
+    The parent asked for "3 choices, and do not show her that video again". What
+    ships ROTATES rather than deletes — a watched video goes to the back and returns
+    labelled, because re-watching comprehended material is the listening half of the
+    reread lever (N-01), not a bug.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        from portal.tokens import make_portal_token
+        cls.parent = User.objects.create_user("rot_parent", email="rot@e.com", password="pw")
+        cls.student = Student.objects.create(parent=cls.parent, first_name="Rota")
+        cls.learner = Learner.create_for_host_student(cls.student.pk, profiles.KIDS_EARLY)
+        cls.token = make_portal_token(cls.student)
+        cls.videos = [
+            ListeningResource.objects.create(
+                title=f"Video {n}", url=f"https://www.youtube.com/watch?v=vid{n}",
+                age_band=profiles.KIDS_EARLY, level="L1", minutes=4, order=n,
+                kind=ListeningResource.VIDEO)
+            for n in range(1, 6)
+        ]
+        cls.shelf = ListeningResource.objects.create(
+            title="Un canal", url="https://www.youtube.com/channel/UCabc",
+            age_band=profiles.KIDS_EARLY, level="L1", minutes=10, order=1,
+            kind=ListeningResource.SHELF)
+        cls.other_band = ListeningResource.objects.create(
+            title="Para la mayor", url="https://www.youtube.com/watch?v=older",
+            age_band=profiles.KIDS_OLDER, level="L2", minutes=8, order=1,
+            kind=ListeningResource.VIDEO)
+
+    def _titles(self, choices):
+        return [c["resource"].title for c in choices]
+
+    # ---- the menu itself ----
+
+    def test_she_gets_three_choices_not_the_whole_catalogue(self):
+        self.assertEqual(len(services.listening_choices(self.learner)), 3)
+
+    def test_a_video_she_logged_minutes_for_drops_out(self):
+        services.record_listening(self.learner, self.videos[0], 5)
+        self.assertNotIn("Video 1", self._titles(services.listening_choices(self.learner)))
+
+    def test_a_video_she_opened_without_logging_also_drops_out(self):
+        """The failure the whole ticket exists to fix.
+
+        Ver and Anotar are separate buttons. Counting only minutes means a video
+        she watched and never logged comes back tomorrow as if it were new.
+        """
+        services.record_listening_pick(self.learner, self.videos[0])
+        self.assertNotIn("Video 1", self._titles(services.listening_choices(self.learner)))
+
+    def test_shelves_are_never_offered_as_choices(self):
+        # A channel is an endless well; "already watched" cannot be true of one.
+        for _ in range(6):
+            self.assertNotIn("Un canal", self._titles(services.listening_choices(self.learner)))
+
+    def test_shelves_never_rotate_out_however_much_she_watches(self):
+        for _ in range(5):
+            services.record_listening(self.learner, self.shelf, 10)
+        shelves = services.listening_shelves(profiles.KIDS_EARLY)
+        self.assertIn("Un canal", [s.title for s in shelves])
+
+    def test_the_other_bands_videos_are_never_offered(self):
+        for _ in range(3):
+            self.assertNotIn("Para la mayor",
+                             self._titles(services.listening_choices(self.learner)))
+
+    def test_two_page_loads_in_one_sitting_show_the_same_three(self):
+        # Kills order_by("?") — a menu that reshuffles under her is not a menu.
+        self.assertEqual(self._titles(services.listening_choices(self.learner)),
+                         self._titles(services.listening_choices(self.learner)))
+
+    def test_asking_for_no_choices_returns_none(self):
+        self.assertEqual(services.listening_choices(self.learner, count=0), [])
+
+    # ---- the two ways this silently breaks ----
+
+    def test_a_deleted_resource_does_not_blank_the_whole_menu(self):
+        """ListeningSession.resource is SET_NULL.
+
+        A session left pointing at nothing puts None in the exclusion set, and
+        NOT IN (NULL, 3) is NULL for every row — the entire catalogue vanishes and
+        she gets an empty page with no error anywhere.
+        """
+        doomed = ListeningResource.objects.create(
+            title="Se fue", url="https://www.youtube.com/watch?v=gone",
+            age_band=profiles.KIDS_EARLY, level="L1", minutes=3, order=99,
+            kind=ListeningResource.VIDEO)
+        services.record_listening(self.learner, doomed, 5)
+        doomed.delete()
+        self.assertEqual(len(services.listening_choices(self.learner)), 3)
+
+    def test_when_she_has_seen_everything_it_recycles_oldest_first(self):
+        """Never dead-end her with an empty page — recycle, and say it is a repeat."""
+        now = timezone.now()
+        for offset, video in enumerate(self.videos):
+            session = services.record_listening(self.learner, video, 4)
+            # Video 1 watched longest ago, Video 5 most recently.
+            ListeningSession.objects.filter(pk=session.pk).update(
+                created_at=now - timedelta(days=10 - offset))
+
+        choices = services.listening_choices(self.learner)
+        self.assertEqual(len(choices), 3, "she was dead-ended instead of recycled")
+        self.assertEqual(self._titles(choices), ["Video 1", "Video 2", "Video 3"])
+        self.assertTrue(all(c["seen"] for c in choices),
+                        "a repeat must be labelled, not passed off as new")
+
+    def test_a_part_watched_pool_fills_up_with_repeats_not_blanks(self):
+        for video in self.videos[:4]:
+            services.record_listening(self.learner, video, 4)
+        choices = services.listening_choices(self.learner)
+        self.assertEqual(len(choices), 3)
+        self.assertFalse(choices[0]["seen"], "the one unseen video must come first")
+        self.assertEqual(choices[0]["resource"].title, "Video 5")
+
+    # ---- the classifier ----
+
+    def test_the_classifier_tells_a_video_from_a_channel(self):
+        from lingua.listening import SHELF, VIDEO, classify_url
+        for url in ("https://www.youtube.com/watch?v=abc",
+                    "https://youtu.be/abc",
+                    "https://www.youtube.com/shorts/abc",
+                    "https://www.youtube.com/watch?v=abc&list=PLxyz"):
+            self.assertEqual(classify_url(url), VIDEO, url)
+        for url in ("https://www.youtube.com/channel/UCabc",
+                    "https://www.youtube.com/playlist?list=PLxyz",
+                    "https://www.youtube.com/@someone",
+                    "", None):
+            self.assertEqual(classify_url(url), SHELF, url)
+
+    def test_the_classifier_matches_the_copy_inside_the_migration(self):
+        """The migration carries its own copy on purpose — keep them agreeing."""
+        import importlib
+
+        from lingua.listening import classify_url
+        migration = importlib.import_module("lingua.migrations.0033_listening_rotation")
+        for url in ("https://www.youtube.com/watch?v=abc", "https://youtu.be/abc",
+                    "https://www.youtube.com/channel/UCabc",
+                    "https://www.youtube.com/playlist?list=PLx", "", None):
+            self.assertEqual(classify_url(url), migration._classify(url), url)
+
+    def test_the_seed_classifies_channels_as_shelves(self):
+        """The model default is VIDEO, which is wrong for every channel in the seed.
+
+        Seeding after the migration means RunPython never sees these rows, so the
+        seed itself has to classify — it failed exactly that way in development.
+        """
+        from io import StringIO
+
+        from django.core.management import call_command
+        call_command("seed_listening", stdout=StringIO())
+        channels = ListeningResource.objects.filter(url__contains="/channel/")
+        self.assertTrue(channels.exists())
+        for resource in channels:
+            self.assertEqual(resource.kind, ListeningResource.SHELF, resource.url)
+        for resource in ListeningResource.objects.filter(url__contains="/playlist?"):
+            self.assertEqual(resource.kind, ListeningResource.SHELF, resource.url)
+
+    def test_every_band_has_at_least_one_video_to_rotate(self):
+        """A band with no single videos has nothing to rotate — the whole feature
+        collapses to the old "here are three channels forever" page for that child.
+
+        Deliberately ZERO, not "enough": the mechanism is correct with a thin pool
+        (it recycles sooner, labelled) so a strict count would be a red suite about
+        a curation backlog rather than a defect. `seed_listening` warns about thin
+        bands instead, where the person who can fix it will see it.
+        """
+        from io import StringIO
+
+        from django.core.management import call_command
+        call_command("seed_listening", stdout=StringIO())
+        for band in (profiles.KIDS_EARLY, profiles.KIDS_OLDER):
+            self.assertTrue(
+                ListeningResource.objects.filter(
+                    age_band=band, kind=ListeningResource.VIDEO, active=True).exists(),
+                f"{band} has no single videos at all — add some with "
+                f"`manage.py add_listening_video --band {band} <url>`")
+
+    def test_seeding_warns_when_a_band_is_too_thin_to_rotate(self):
+        """The curation backlog surfaces where it can be acted on, not as a red suite."""
+        from io import StringIO
+
+        from django.core.management import call_command
+        out = StringIO()
+        call_command("seed_listening", stdout=out)
+        text = out.getvalue()
+        thin = [b for b in (profiles.KIDS_EARLY, profiles.KIDS_OLDER)
+                if ListeningResource.objects.filter(
+                    age_band=b, kind=ListeningResource.VIDEO, active=True).count() < 8]
+        for band in thin:
+            self.assertIn(band, text,
+                          "a band too thin to rotate for a week said nothing about it")
+
+    # ---- opening a video is not listening to it ----
+
+    def test_opening_records_the_pick_and_sends_her_to_youtube(self):
+        url = reverse("portal:lingua_listen_open", args=[self.token, self.videos[0].pk])
+        resp = self.client.get(url)
+        self.assertEqual(resp.status_code, 302)
+        self.assertEqual(resp["Location"], self.videos[0].url)
+        self.assertEqual(ListeningPick.objects.filter(learner=self.learner).count(), 1)
+
+    def test_opening_the_other_bands_video_is_refused(self):
+        url = reverse("portal:lingua_listen_open", args=[self.token, self.other_band.pk])
+        self.assertEqual(self.client.get(url).status_code, 404)
+        self.assertEqual(ListeningPick.objects.count(), 0)
+
+    def test_logging_minutes_against_the_other_band_is_refused(self):
+        """A sibling with the portal link open must not pollute her rotation."""
+        self.client.post(reverse("portal:lingua_listen_log", args=[self.token]),
+                         {"resource_id": self.other_band.pk, "minutes": "9"})
+        self.assertFalse(ListeningSession.objects.filter(resource=self.other_band).exists())
+
+    def test_a_pick_does_not_tick_the_camino_stone(self):
+        """Opening is not listening. The stone stays unearned, which is the point —
+        it is what gives her a reason to come back and log the minutes."""
+        services.record_listening_pick(self.learner, self.videos[0])
+        self.assertFalse(ListeningSession.objects.filter(learner=self.learner).exists())
+
+    def test_a_pick_adds_no_minutes_to_the_hero_metric(self):
+        before = services.reading_totals(self.learner)["minutes"]
+        services.record_listening_pick(self.learner, self.videos[0])
+        self.assertEqual(services.reading_totals(self.learner)["minutes"], before)
+
+    # ---- the page ----
+
+    def test_the_page_shows_three_videos_and_the_channels(self):
+        resp = self.client.get(reverse("portal:lingua_listen", args=[self.token]))
+        html = resp.content.decode()
+        self.assertEqual(html.count("Elige un video"), 1)
+        self.assertIn("Un canal", html)
+        self.assertNotIn("Para la mayor", html, "the other band's video leaked")
+        shown = sum(1 for v in self.videos if v.title in html)
+        self.assertEqual(shown, 3, f"{shown} videos on the page, expected 3")

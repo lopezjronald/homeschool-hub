@@ -26,6 +26,7 @@ from . import (
 from .models import (
     AiUsage, AlphabetTile, AudioClip, AuditEvent, BookLogEntry, ClassroomPhrase,
     ComprehensionCheck, KnownWord, Learner, LibraryBook, ListeningPick,
+    TravelPhrase,
     ListeningResource,
     ListeningSession, MilestoneAward, Pathway, PathwayCheckmark, PathwayStep,
     PhonicsRule, ReadingSession, ReviewItem, Story, StoryAudio,
@@ -60,6 +61,31 @@ def get_or_create_learner(host_student_id, track_profile):
         return Learner.objects.get(host_student_id=host_student_id)
 
 
+def adult_learner_for_user(host_user_id):
+    """The parent's own Learner, or None (LGA-103).
+
+    Read-only on purpose — a GET must never provision. Every co-parent, teacher or
+    grandparent who clicks the nav pill would otherwise get a Learner row, and
+    ``lingua_prune_orphans`` cannot see adult rows to clean them up. Starting is an
+    explicit act; see ``start_adult_learner``.
+    """
+    if host_user_id is None:
+        return None
+    return Learner.objects.filter(host_user_id=host_user_id).first()
+
+
+def start_adult_learner(host_user_id, **overrides):
+    """Provision the parent's own Learner. Idempotent (LGA-103)."""
+    existing = adult_learner_for_user(host_user_id)
+    if existing:
+        return existing
+    try:
+        return Learner.create_for_host_user(host_user_id, profiles.ADULT, **overrides)
+    except IntegrityError:
+        # Same double-submit race as the child path; host_user_id is unique.
+        return Learner.objects.get(host_user_id=host_user_id)
+
+
 def delete_learner_for_student(host_student_id):
     """Purge the lingua Learner (+ cascaded lingua rows) for a host Student that
     was deleted. Idempotent — safe to call when no Learner exists.
@@ -68,6 +94,11 @@ def delete_learner_for_student(host_student_id):
     explicitly from its delete path; ``lingua_prune_orphans`` is the scheduled
     backstop for any inline call that didn't run. Returns the rows-deleted count.
     """
+    if host_student_id is None:
+        # `.filter(host_student_id=None)` compiles to `IS NULL`, which now matches
+        # every ADULT learner (LGA-103) — a caller passing None to purge "nobody"
+        # would delete the parent's whole history instead. Refuse rather than guess.
+        return 0
     deleted, _ = Learner.objects.filter(host_student_id=host_student_id).delete()
     # TutorPacket carries host_student_id as a plain int too (D-03), so nothing
     # cascades it. Left behind it keeps the tutor's name, the child's homework text
@@ -257,7 +288,12 @@ def log_book(learner, *, book=None, title="", author="", read_on=None,
         logged_by=logged_by if logged_by in dict(BookLogEntry.BY_CHOICES) else BookLogEntry.KID,
     )
     sink = worklog_sink if worklog_sink is not None else get_worklog_sink()
-    if sink is not None:
+    # An ADULT learner has no Student row, so there is nothing on the host to mirror
+    # into — and mirroring is exactly what would put Dad's reading in the children's
+    # Work Log and from there into charter paperwork (LGA-103). The host adapter
+    # happens to no-op on a None id today, but D-04 forbids relying on the adapter's
+    # internals, so the decision is made here where it can be read.
+    if sink is not None and learner.host_student_id is not None:
         try:
             rec = sink.record_book(
                 host_student_id=learner.host_student_id, title=entry.title,
@@ -1106,11 +1142,38 @@ def record_listening_pick(learner, resource):
     return ListeningPick.objects.create(learner=learner, resource=resource)
 
 
+def travel_phrases_with_audio(*, voice=None, engine=None):
+    """The adult's travel phrases, grouped into the arc of an actual trip (LGA-103).
+
+    Same shape and same graceful degradation as ``classroom_phrases_with_audio``: a
+    phrase with no baked clip still appears and is still readable, it just is not
+    tappable.
+    """
+    rows = list(TravelPhrase.objects.filter(active=True))
+    urls = _clip_lookup([p.text for p in rows], voice=voice, engine=engine)
+    labels = dict(TravelPhrase.CATEGORY_CHOICES)
+    by_cat = {}
+    for p in rows:
+        by_cat.setdefault(p.category, []).append(
+            {"phrase": p, "audio_url": urls.get(p.text)}
+        )
+    return [
+        {"key": key, "label": labels.get(key, key), "phrases": by_cat[key]}
+        for key in TravelPhrase.CATEGORY_ORDER
+        if by_cat.get(key)
+    ]
+
+
 def tutor_packets_for(host_student_id):
     """Active tutor packets visible to a host student (LGA-85).
 
     A packet with ``host_student_id`` NULL is shared; otherwise it must match.
+
+    None in, nothing out: an ADULT learner has no student id (LGA-103), and the
+    NULL-is-shared rule would otherwise hand him the children's homework packets.
     """
+    if host_student_id is None:
+        return []
     return list(
         TutorPacket.objects.filter(active=True).filter(
             Q(host_student_id__isnull=True) | Q(host_student_id=host_student_id)
@@ -1204,7 +1267,8 @@ def bake_audio_clip(text, *, voice=None, engine=None, provider="polly",
     return obj, action
 
 
-def clip_texts_to_bake(*, phonics=False, alphabet=False, phrases=False, classroom=False):
+def clip_texts_to_bake(*, phonics=False, alphabet=False, phrases=False, classroom=False,
+                       travel=False):
     """Collect unique texts that need AudioClip rows (authoring inventory)."""
     texts = []
     if phonics:
@@ -1221,6 +1285,13 @@ def clip_texts_to_bake(*, phonics=False, alphabet=False, phrases=False, classroo
     if classroom:
         texts.extend(
             ClassroomPhrase.objects.filter(active=True).values_list("text", flat=True)
+        )
+    if travel:
+        # Native audio is the pronunciation model for the adult too — the research
+        # is explicit that the risk of a non-fluent parent is his ACCENT becoming
+        # the children's model, and the mitigation is that he hears it first.
+        texts.extend(
+            TravelPhrase.objects.filter(active=True).values_list("text", flat=True)
         )
     # Preserve order, drop dupes / blanks
     seen, out = set(), []

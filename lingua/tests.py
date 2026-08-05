@@ -7769,3 +7769,391 @@ class ListeningLinkCheckTests(TestCase):
         self.assertFalse(gone.active, "a deleted video stayed switched on")
         self.assertTrue(embed_off.active,
                         "an embedding-disabled video was switched off — the link works")
+
+
+class AdultLearnerTests(TestCase):
+    """The parent as a learner, with no Student row (LGA-103).
+
+    The whole point of "no Student row" is that he stays out of the kids' roster,
+    out of portal tokens and out of charter records. Most of that is free — those
+    all resolve through directory.family_children(), which only returns Students —
+    but three code paths assumed host_student_id was always present, and each was a
+    real bug. They are pinned here.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.parent = User.objects.create_user("dad", email="dad@e.com", password="pw")
+        cls.child_user = User.objects.create_user("mum", email="mum@e.com", password="pw")
+        cls.student = Student.objects.create(parent=cls.parent, first_name="Nena")
+        cls.kid = Learner.create_for_host_student(cls.student.pk, profiles.KIDS_EARLY)
+
+    # ---- identity ----
+
+    def test_an_adult_learner_has_no_student_row(self):
+        adult = Learner.create_for_host_user(self.parent.pk)
+        self.assertIsNone(adult.host_student_id)
+        self.assertEqual(adult.host_user_id, self.parent.pk)
+        self.assertTrue(adult.is_adult_learner)
+        self.assertFalse(self.kid.is_adult_learner)
+        self.assertEqual(adult.profile.track_profile, profiles.ADULT)
+
+    def test_the_host_reference_is_still_not_a_foreign_key(self):
+        """D-03 is load-bearing and the new column must not quietly break it."""
+        from django.db import models as dj_models
+        for name in ("host_student_id", "host_user_id"):
+            field = Learner._meta.get_field(name)
+            self.assertIsInstance(field, dj_models.IntegerField)
+            self.assertNotIsInstance(field, dj_models.ForeignKey)
+
+    def test_a_learner_must_be_exactly_one_of_child_or_adult(self):
+        from django.db import IntegrityError, transaction
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                Learner.objects.create()
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                Learner.objects.create(host_student_id=555, host_user_id=555)
+
+    def test_several_adults_can_coexist(self):
+        """`unique` on a NULLable column: NULLs are distinct on both backends.
+
+        If they were not, the second adult would collide with the first on a NULL
+        host_student_id and no second parent could ever start.
+        """
+        a = Learner.create_for_host_user(self.parent.pk)
+        b = Learner.create_for_host_user(self.child_user.pk)
+        self.assertIsNone(a.host_student_id)
+        self.assertIsNone(b.host_student_id)
+        self.assertEqual(Learner.objects.filter(host_student_id__isnull=True).count(), 2)
+
+    def test_starting_twice_does_not_make_two(self):
+        first = services.start_adult_learner(self.parent.pk)
+        second = services.start_adult_learner(self.parent.pk)
+        self.assertEqual(first.pk, second.pk)
+
+    def test_looking_up_never_provisions(self):
+        """A GET must not create rows — see the view docstring for why."""
+        self.assertIsNone(services.adult_learner_for_user(self.parent.pk))
+        self.assertEqual(Learner.objects.filter(host_user_id__isnull=False).count(), 0)
+
+    # ---- the three guards, each a real bug ----
+
+    def test_the_scheduled_orphan_sweep_never_deletes_the_adult(self):
+        """The highest-severity item in the whole ticket.
+
+        lingua_prune_orphans runs unattended on Heroku Scheduler. An adult has
+        host_student_id NULL, and `None not in existing_student_ids` is always true
+        — so without the filter the first nightly run would classify the parent's
+        learner as an orphan and delete it, cascading his entire history. Quietly.
+        """
+        from io import StringIO
+
+        from django.core.management import call_command
+        adult = services.start_adult_learner(self.parent.pk)
+        call_command("lingua_prune_orphans", stdout=StringIO(), stderr=StringIO())
+        self.assertTrue(Learner.objects.filter(pk=adult.pk).exists(),
+                        "the scheduled sweep deleted the parent's learner")
+
+    def test_the_orphan_sweep_still_removes_a_real_orphan(self):
+        from io import StringIO
+
+        from django.core.management import call_command
+        orphan = Learner.create_for_host_student(987654, profiles.KIDS_EARLY)
+        call_command("lingua_prune_orphans", stdout=StringIO(), stderr=StringIO())
+        self.assertFalse(Learner.objects.filter(pk=orphan.pk).exists(),
+                         "the sweep stopped doing its actual job")
+
+    def test_purging_a_student_never_purges_every_adult(self):
+        """`.filter(host_student_id=None)` compiles to IS NULL, which now matches
+        every adult — a caller passing None would wipe the parent's history."""
+        adult = services.start_adult_learner(self.parent.pk)
+        self.assertEqual(services.delete_learner_for_student(None), 0)
+        self.assertTrue(Learner.objects.filter(pk=adult.pk).exists())
+        # ...and the real path still works.
+        services.delete_learner_for_student(self.student.pk)
+        self.assertFalse(Learner.objects.filter(pk=self.kid.pk).exists())
+
+    def test_an_adult_book_log_never_reaches_the_work_log(self):
+        """This is the line that keeps him out of charter records.
+
+        The host adapter happens to no-op on a None id today, but D-04 forbids
+        depending on the adapter's internals — the decision is made in lingua.
+        """
+        calls = []
+
+        class RecordingSink:
+            def record_book(self, **kw):
+                calls.append(kw)
+                return 123
+
+        adult = services.start_adult_learner(self.parent.pk)
+        services.log_book(adult, title="Cien años de soledad",
+                          worklog_sink=RecordingSink())
+        self.assertEqual(calls, [], "the parent's reading was mirrored to the Work Log")
+
+        # A child's book still mirrors — the guard must not break the real path.
+        services.log_book(self.kid, title="Brandon Brown", worklog_sink=RecordingSink())
+        self.assertEqual(len(calls), 1)
+
+    def test_an_adult_is_never_served_the_childrens_homework(self):
+        """A NULL host_student_id means "shared" for TutorPacket, so None in would
+        return every shared packet — i.e. the girls' homework on Dad's page."""
+        from lingua.models import TutorPacket
+        TutorPacket.objects.create(title="Shared homework", active=True)
+        self.assertTrue(services.tutor_packets_for(self.student.pk))
+        self.assertEqual(services.tutor_packets_for(None), [])
+
+    def test_the_adult_is_invisible_to_the_family_directory(self):
+        """The payoff of choosing "no Student row" — rosters, portal tokens and
+        charter records all resolve through here, so he is skipped for free."""
+        services.start_adult_learner(self.parent.pk)
+        family = getattr(self.student, "family", None)
+        children = directory.family_children(getattr(family, "pk", None))
+        self.assertNotIn(self.parent.pk, [c["pk"] for c in children])
+
+    # ---- the page ----
+
+    def test_the_page_needs_a_login(self):
+        resp = self.client.get(reverse("lingua:mi_espanol"))
+        self.assertEqual(resp.status_code, 302)
+        self.assertIn("/login", resp["Location"])
+
+    def test_a_get_shows_the_start_button_and_creates_nothing(self):
+        self.client.force_login(self.parent)
+        resp = self.client.get(reverse("lingua:mi_espanol"))
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn("Empezar", resp.content.decode())
+        self.assertEqual(Learner.objects.filter(host_user_id__isnull=False).count(), 0)
+
+    def test_starting_is_an_explicit_post(self):
+        self.client.force_login(self.parent)
+        self.client.post(reverse("lingua:mi_espanol"), {"action": "start"})
+        adult = services.adult_learner_for_user(self.parent.pk)
+        self.assertIsNotNone(adult)
+        self.assertEqual(adult.profile.track_profile, profiles.ADULT)
+
+    def test_the_learner_comes_from_the_session_user_not_a_parameter(self):
+        """Structural: there is no code path from a portal token to a User, so a
+        posted or querystring id must never be able to select whose page this is."""
+        other = services.start_adult_learner(self.child_user.pk)
+        self.client.force_login(self.parent)
+        resp = self.client.get(reverse("lingua:mi_espanol"),
+                               {"learner": other.pk, "for": other.pk, "user": self.child_user.pk})
+        self.assertEqual(resp.status_code, 200)
+        # Still not provisioned for the logged-in parent, and certainly not showing
+        # the other person's page.
+        self.assertIn("Empezar", resp.content.decode())
+
+    def test_logging_minutes_needs_no_resource(self):
+        self.client.force_login(self.parent)
+        self.client.post(reverse("lingua:mi_espanol"), {"action": "start"})
+        self.client.post(reverse("lingua:mi_espanol"),
+                         {"action": "log_listening", "minutes": "25"})
+        adult = services.adult_learner_for_user(self.parent.pk)
+        self.assertEqual(services.reading_totals(adult)["listening_minutes"], 25)
+
+    def test_minutes_cannot_be_logged_before_starting(self):
+        self.client.force_login(self.parent)
+        self.client.post(reverse("lingua:mi_espanol"),
+                         {"action": "log_listening", "minutes": "25"})
+        self.assertEqual(ListeningSession.objects.count(), 0)
+
+
+class TravelPhraseTests(TestCase):
+    """The adult phrasebook (LGA-103)."""
+
+    def test_the_seed_covers_every_situation_and_is_idempotent(self):
+        from io import StringIO
+
+        from django.core.management import call_command
+        from lingua.models import TravelPhrase
+        call_command("seed_travel_phrases", stdout=StringIO())
+        first = TravelPhrase.objects.count()
+        self.assertGreater(first, 40)
+        for category in TravelPhrase.CATEGORY_ORDER:
+            self.assertTrue(
+                TravelPhrase.objects.filter(category=category).exists(),
+                f"no phrases for {category} — a person standing in that situation "
+                f"finds an empty section")
+        call_command("seed_travel_phrases", stdout=StringIO())
+        self.assertEqual(TravelPhrase.objects.count(), first)
+
+    def test_the_same_sentence_can_belong_to_two_situations(self):
+        """Unique per category, not globally: "¿Dónde está el baño?" is a
+        directions question and a restaurant question, and a person looks in
+        whichever one they are standing in."""
+        from lingua.models import TravelPhrase
+        TravelPhrase.objects.create(text="¿Dónde está el baño?",
+                                    english="Where is the bathroom?",
+                                    category=TravelPhrase.DIRECTIONS)
+        TravelPhrase.objects.create(text="¿Dónde está el baño?",
+                                    english="Where is the bathroom?",
+                                    category=TravelPhrase.RESTAURANT)
+        self.assertEqual(TravelPhrase.objects.filter(text="¿Dónde está el baño?").count(), 2)
+
+    def test_the_same_sentence_twice_in_one_situation_is_refused(self):
+        from django.db import IntegrityError, transaction
+
+        from lingua.models import TravelPhrase
+        TravelPhrase.objects.create(text="Gracias.", english="Thanks.",
+                                    category=TravelPhrase.SMALLTALK)
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                TravelPhrase.objects.create(text="Gracias.", english="Thanks.",
+                                            category=TravelPhrase.SMALLTALK)
+
+    def test_travel_phrases_never_leak_onto_the_childrens_session_page(self):
+        """The reason this is a separate table.
+
+        classroom_phrases_with_audio renders EVERY active row, so had these been
+        extra ClassroomPhrase categories they would appear on the kids' page —
+        pharmacy and emergency phrases included.
+        """
+        from io import StringIO
+
+        from django.core.management import call_command
+        from lingua.models import TravelPhrase
+        call_command("seed_travel_phrases", stdout=StringIO())
+        classroom_texts = {
+            item["phrase"].text
+            for group in services.classroom_phrases_with_audio()
+            for item in group["phrases"]
+        }
+        travel_texts = set(TravelPhrase.objects.values_list("text", flat=True))
+        self.assertFalse(classroom_texts & travel_texts)
+
+    def test_a_phrase_with_no_audio_is_still_readable(self):
+        """Same graceful degradation as the reader (LGA-54): unbaked means not
+        tappable, never missing."""
+        from io import StringIO
+
+        from django.core.management import call_command
+        call_command("seed_travel_phrases", stdout=StringIO())
+        groups = services.travel_phrases_with_audio()
+        self.assertTrue(groups)
+        every = [i for g in groups for i in g["phrases"]]
+        self.assertTrue(all(i["phrase"].text for i in every))
+        self.assertTrue(all(i["audio_url"] is None for i in every))
+
+    def test_the_groups_follow_the_arc_of_a_trip(self):
+        from io import StringIO
+
+        from django.core.management import call_command
+        from lingua.models import TravelPhrase
+        call_command("seed_travel_phrases", stdout=StringIO())
+        keys = [g["key"] for g in services.travel_phrases_with_audio()]
+        self.assertEqual(keys, [k for k in TravelPhrase.CATEGORY_ORDER if k in keys])
+
+    def test_the_travel_audio_flag_collects_the_phrases(self):
+        from io import StringIO
+
+        from django.core.management import call_command
+        call_command("seed_travel_phrases", stdout=StringIO())
+        texts = services.clip_texts_to_bake(travel=True)
+        self.assertTrue(texts)
+        # ...and does not sweep them in by default.
+        self.assertEqual(services.clip_texts_to_bake(classroom=True), [])
+
+
+class AdultConversationHandoffTests(TestCase):
+    """The AI conversation link is an outbound href and nothing more (LGA-103).
+
+    The research is unambiguous that generative voice tutors are not appropriate
+    for these children, and every such product's own terms exclude under-18s. The
+    guarantee here is structural rather than a permission check: no conversation
+    code exists in this codebase, so there is nothing for a child to reach even if
+    every gate failed.
+    """
+
+    def test_the_service_is_named_in_settings_and_nowhere_else(self):
+        """A config value, not a URL hardcoded across the app.
+
+        Written as an assertion about the codebase rather than about one template,
+        because that is the shape actually built — and writing the test first
+        revealed the difference. One place to change it, one place to switch it off
+        (set it empty and the section disappears).
+        """
+        import os
+
+        from django.conf import settings
+        host = (settings.LINGUA.get("ADULT_CONVERSATION_URL") or "").split("//")[-1]
+        host = host.split("/")[0]
+        self.assertTrue(host, "no conversation service configured")
+
+        hits = []
+        for app in ("lingua", "portal", "templates", "homeschool_hub"):
+            base = os.path.join(settings.BASE_DIR, app)
+            for root, _dirs, files in os.walk(base):
+                if "__pycache__" in root or "migrations" in root:
+                    continue
+                for name in files:
+                    if not name.endswith((".py", ".html", ".js")):
+                        continue
+                    path = os.path.join(root, name)
+                    with open(path, encoding="utf-8", errors="replace") as fh:
+                        if host in fh.read():
+                            hits.append(os.path.relpath(path, settings.BASE_DIR))
+        self.assertEqual(
+            [h.replace("\\", "/") for h in hits], ["homeschool_hub/settings.py"],
+            f"the conversation service is hardcoded in {hits} — it belongs in "
+            f"settings only, so there is one place to change or disable it")
+
+    def test_switching_it_off_removes_the_section_entirely(self):
+        from django.test import override_settings
+
+        from django.conf import settings
+        parent = User.objects.create_user("noai", email="noai@e.com", password="pw")
+        self.client.force_login(parent)
+        services.start_adult_learner(parent.pk)
+        cfg = dict(settings.LINGUA, ADULT_CONVERSATION_URL="")
+        with override_settings(LINGUA=cfg):
+            html = self.client.get(reverse("lingua:mi_espanol")).content.decode()
+        self.assertNotIn("Para conversar", html)
+
+    def test_the_adult_page_neither_captures_voice_nor_calls_an_ai(self):
+        """The structural guarantee, stated narrowly enough to be TRUE.
+
+        A blanket "this codebase captures no voice" would be false: LGA-73 ships a
+        private, parent-only, opt-in read-aloud recorder that is never sent to any
+        AI — a deliberate documented exception to D-55. The claim that holds is
+        about THIS page: the conversation handoff is an outbound anchor, so the app
+        neither records anything for it nor talks to a model on anyone's behalf.
+        That is why D-52 (no child data to AI) and D-54 (AI disclosure) do not
+        attach here — the app is not the thing running the conversation.
+        """
+        import os
+
+        from django.conf import settings
+        banned = ("MediaRecorder", "getUserMedia", "speech", "get_ai_client",
+                  "generate(")
+        targets = [
+            os.path.join(settings.BASE_DIR, "lingua", "templates", "lingua",
+                         "mi_espanol.html"),
+        ]
+        for path in targets:
+            with open(path, encoding="utf-8", errors="replace") as fh:
+                body = fh.read()
+            for token in banned:
+                self.assertNotIn(token, body, f"{os.path.basename(path)} -> {token}")
+
+        # The view function itself, read from source rather than guessed at.
+        import inspect
+
+        from lingua import views
+        source = inspect.getsource(views.mi_espanol)
+        for token in ("get_ai_client", "MediaRecorder", "recording"):
+            self.assertNotIn(token, source, f"mi_espanol view references {token}")
+
+    def test_the_conversation_link_is_absent_from_every_child_facing_template(self):
+        import os
+
+        from django.conf import settings
+        host = (settings.LINGUA.get("ADULT_CONVERSATION_URL") or "").split("//")[-1]
+        host = host.split("/")[0]
+        portal = os.path.join(settings.BASE_DIR, "templates", "portal")
+        for root, _dirs, files in os.walk(portal):
+            for name in files:
+                with open(os.path.join(root, name), encoding="utf-8", errors="replace") as fh:
+                    self.assertNotIn(host, fh.read(),
+                                     f"{name} offers a child an AI conversation link")

@@ -24,8 +24,10 @@ class Command(BaseCommand):
                             help="Bake TutorPacket practice lines (LGA-86).")
         parser.add_argument("--classroom", action="store_true",
                             help="Bake the parent's ClassroomPhrase session lines (LGA-94).")
+        parser.add_argument("--travel", action="store_true",
+                            help="Bake the adult TravelPhrase phrasebook (LGA-103).")
         parser.add_argument("--all", action="store_true",
-                            help="Shorthand for --phonics --alphabet --phrases --classroom.")
+                            help="Shorthand for every category above.")
         parser.add_argument("--voice", default=None, help="Polly voice (default: settings).")
         parser.add_argument("--engine", default=None, help="Polly engine (default: settings).")
         parser.add_argument("--link-only", action="store_true",
@@ -38,13 +40,16 @@ class Command(BaseCommand):
         alphabet = options["alphabet"] or options["all"]
         phrases = options["phrases"] or options["all"]
         classroom = options["classroom"] or options["all"]
-        if not (phonics or alphabet or phrases or classroom):
+        travel = options["travel"] or options["all"]
+        if not (phonics or alphabet or phrases or classroom or travel):
             raise CommandError(
-                "Pass --phonics, --alphabet, --phrases, --classroom, and/or --all."
+                "Pass --phonics, --alphabet, --phrases, --classroom, --travel, "
+                "and/or --all."
             )
 
         texts = services.clip_texts_to_bake(
             phonics=phonics, alphabet=alphabet, phrases=phrases, classroom=classroom,
+            travel=travel,
         )
         if not texts:
             self.stdout.write("No matching texts to bake (seed phonics/alphabet/packets first).")

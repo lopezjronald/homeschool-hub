@@ -24,7 +24,16 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
-        learners = list(Learner.objects.values_list("pk", "host_student_id"))
+        # STUDENT-BACKED learners only. An adult learner (LGA-103) has
+        # host_student_id NULL, and `None not in existing_student_ids` is always
+        # true — so without this filter every scheduled run would classify the
+        # parent's own learner as an orphan and delete it, cascading his entire
+        # history. This command runs unattended on Heroku Scheduler, so that would
+        # have happened quietly, overnight, once.
+        learners = list(
+            Learner.objects.filter(host_student_id__isnull=False)
+            .values_list("pk", "host_student_id")
+        )
         if not learners:
             self.stdout.write("No learners.")
             return

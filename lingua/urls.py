@@ -16,6 +16,9 @@ urlpatterns = [
     path("writing/", views.writing_track, name="writing"),
     path("writing/free-write/", views.writing_free_write, name="writing_free_write"),
     path("writing/journal/", views.writing_journal, name="writing_journal"),
+    # "Mi español": the parent's own track, aimed at travelling (LGA-103). The only
+    # page in lingua about the adult rather than the children.
+    path("mi-espanol/", views.mi_espanol, name="mi_espanol"),
     path("library/", views.library_list, name="library_list"),
     path("library/mark-read/", views.library_mark_read, name="mark_read"),
     # The parent reading log lives in the Work Log now; keep the name so stale

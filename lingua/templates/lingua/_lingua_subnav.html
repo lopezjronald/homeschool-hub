@@ -20,4 +20,9 @@
        {% if active == 'library' %}aria-current="page"{% endif %}
        href="{% url 'lingua:library_list' %}">Spanish books</a>
   </li>
+  <li class="nav-item">
+    <a class="nav-link{% if active == 'mi_espanol' %} active{% endif %}"
+       {% if active == 'mi_espanol' %}aria-current="page"{% endif %}
+       href="{% url 'lingua:mi_espanol' %}">Mi español</a>
+  </li>
 </ul>

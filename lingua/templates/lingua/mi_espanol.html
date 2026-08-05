@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}Mi español · Lingua{% endblock %}
+{% block content %}
+<div class="container py-4 ses">
+
+  {% include "lingua/_lingua_subnav.html" with active='mi_espanol' %}
+
+  <h1 class="h4 mb-1">Mi español</h1>
+  <p class="text-muted mb-3">
+    Your own track — aimed at holding your own on a trip. The phrases are the point;
+    tap one and hear it before you say it.
+  </p>
+
+  {% if not learner %}
+    {% comment %}
+      A GET never provisions. Every co-parent, grandparent or teacher who clicks the
+      nav pill would otherwise get a Learner row, and lingua_prune_orphans only
+      sweeps student-backed rows — nothing would ever clean those up. Starting is a
+      deliberate act.
+    {% endcomment %}
+    <div class="alert alert-info">
+      <p class="mb-2"><strong>This page is not switched on for you yet.</strong></p>
+      <p class="small mb-3">
+        Starting gives you your own minutes counter and review deck, separate from
+        the girls'. You will not appear in their roster, their portal links, or any
+        charter paperwork — you are not a student.
+      </p>
+      <form method="post">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="start">
+        <button type="submit" class="btn btn-primary">Empezar mi propio español</button>
+      </form>
+    </div>
+  {% else %}
+    <div class="ses-who mb-3">
+      <span class="ses-who-label">Minutos de español</span>
+      <strong>{{ totals.minutes }}</strong>
+      <span class="ses-band">{{ totals.listening_minutes }} escuchando · {{ totals.reading_minutes }} leyendo</span>
+    </div>
+
+    {# A bare minutes box — no resource needed. Dreaming Spanish, a podcast, a film. #}
+    <form method="post" class="d-flex align-items-center gap-2 mb-4">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="log_listening">
+      <label class="small text-muted mb-0" for="mins">Hoy escuché</label>
+      <input type="number" min="1" max="600" name="minutes" id="mins"
+             class="form-control form-control-sm" style="width: 6rem;">
+      <span class="small text-muted">min</span>
+      <button type="submit" class="btn btn-outline-primary">Anotar</button>
+    </form>
+  {% endif %}
+
+  {# ---- the phrasebook: the reason this page exists ---- #}
+  {% if phrase_groups %}
+    <div data-lingua-clips>
+      {% for g in phrase_groups %}
+        <h3 class="ses-cat">{{ g.label }}</h3>
+        <ul class="ses-phrases">
+          {% for item in g.phrases %}
+            <li class="ses-phrase">
+              {% if item.audio_url %}
+                <button type="button" class="ses-say lingua-clip-btn"
+                        data-audio-url="{{ item.audio_url }}"
+                        aria-label="Hear: {{ item.phrase.text }}">
+                  <span class="ses-say-icon" aria-hidden="true">🔊</span>
+                  <span class="ses-say-es">{{ item.phrase.text }}</span>
+                </button>
+              {% else %}
+                {# No baked clip yet: still readable, just not tappable (LGA-54). #}
+                <span class="ses-say is-mute">
+                  <span class="ses-say-icon" aria-hidden="true">💬</span>
+                  <span class="ses-say-es">{{ item.phrase.text }}</span>
+                </span>
+              {% endif %}
+              <span class="ses-en">{{ item.phrase.english }}</span>
+              {% if item.phrase.note %}<span class="ses-note">{{ item.phrase.note }}</span>{% endif %}
+            </li>
+          {% endfor %}
+        </ul>
+      {% endfor %}
+    </div>
+  {% else %}
+    <p class="alert alert-info">No phrases yet — run <code>manage.py seed_travel_phrases</code>.</p>
+  {% endif %}
+
+  {% if learner %}
+    {% if listen %}
+      <h3 class="ses-cat mt-4">Para escuchar</h3>
+      <ul class="ses-phrases">
+        {% for r in listen %}
+          <li class="ses-phrase">
+            <a href="{{ r.url }}" target="_blank" rel="noopener noreferrer">{{ r.title }}</a>
+            <span class="ses-en">{{ r.provider }}</span>
+          </li>
+        {% endfor %}
+      </ul>
+    {% endif %}
+
+    {% if books %}
+      <h3 class="ses-cat mt-4">Para leer</h3>
+      <ul class="ses-phrases">
+        {% for b in books %}
+          <li class="ses-phrase">
+            <span class="ses-say-es">{{ b.title }}</span>
+            <span class="ses-en">{{ b.author }}{% if b.level_label %} · {{ b.level_label }}{% endif %}</span>
+          </li>
+        {% endfor %}
+      </ul>
+    {% endif %}
+
+    {% if langua_url %}
+      {% comment %}
+        An outbound link and nothing else. No AI-conversation code lives in this
+        codebase, so there is nothing for a child to reach even if the login gate
+        and this page both failed — and D-52/D-54 never attach, because the app is
+        not the thing running the AI. Adults only: every such product's own terms
+        exclude under-18s, and the research is unambiguous that a generative voice
+        tutor is not appropriate for these children.
+      {% endcomment %}
+      <h3 class="ses-cat mt-4">Para conversar</h3>
+      <p class="small text-muted mb-2">
+        Practice talking, out loud, with something that answers back. This opens a
+        separate service — it is for you, not for the girls.
+      </p>
+      <p><a href="{{ langua_url }}" target="_blank" rel="noopener noreferrer nofollow"
+            class="btn btn-outline-secondary">Abrir Langua ↗</a></p>
+    {% endif %}
+  {% endif %}
+
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'lingua/clips.js' %}"></script>
+{% endblock %}

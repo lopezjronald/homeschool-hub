@@ -684,3 +684,53 @@ def book_log_redirect(request):
     except NoReverseMatch:
         return redirect("lingua:progress")
     return redirect(target + "?" + urlencode({"subject": subject}))
+
+
+@login_required
+@require_http_methods(["GET", "POST"])
+def mi_espanol(request):
+    """The parent's own Spanish page — "Mi español" (LGA-103).
+
+    Everything else in lingua is about the children; this is the one page that is
+    about the adult, aimed at being able to hold his own on a trip.
+
+    WHY A CHILD CANNOT REACH THIS, structurally rather than by permission check:
+    the learner is resolved from ``request.user.id`` and nothing else — never a
+    query parameter, never a posted id. The kid portal is tokenless and its token
+    resolves to a ``Student``; there is no code path anywhere from a portal token
+    to a ``User``. So there is no path from a child to a user-backed Learner.
+
+    GET never provisions. Auto-creating on view would give every co-parent,
+    grandparent and teacher who clicks the nav pill a Learner row — and
+    ``lingua_prune_orphans`` only sweeps student-backed rows, so nothing would ever
+    clean them up. Starting is an explicit POST.
+    """
+    learner = services.adult_learner_for_user(request.user.pk)
+
+    if request.method == "POST":
+        if request.POST.get("action") == "start":
+            learner = services.start_adult_learner(request.user.pk)
+            messages.success(request, "¡Empezamos! This page is yours now.")
+        elif learner is not None and request.POST.get("action") == "log_listening":
+            # A bare minutes box: no resource, just "I watched something today".
+            # record_listening already supports resource=None and clamps the value.
+            try:
+                minutes = int(request.POST.get("minutes", 0))
+            except (TypeError, ValueError):
+                minutes = 0
+            session = services.record_listening(learner, None, minutes)
+            if session:
+                messages.success(request, f"Anotado: {session.minutes} min de español.")
+        return redirect("lingua:mi_espanol")
+
+    ctx = {
+        "learner": learner,
+        "phrase_groups": services.travel_phrases_with_audio(),
+        # The adult shelf that already exists — "Dad's parallel ladder", CEFR-levelled.
+        "books": LibraryBook.objects.filter(track=LibraryBook.ADULT),
+        "langua_url": settings.LINGUA.get("ADULT_CONVERSATION_URL", ""),
+    }
+    if learner is not None:
+        ctx["totals"] = services.reading_totals(learner)
+        ctx["listen"] = services.listening_shelves(profiles.ADULT)
+    return render(request, "lingua/mi_espanol.html", ctx)

@@ -384,6 +384,15 @@ LINGUA = {
     "AI_PRICE_OUTPUT_PER_MTOK": _env_float("LINGUA_AI_PRICE_OUTPUT_PER_MTOK", 25.0),
     # Audit-trail retention in days (~18 months); enforced by `purge_stale` (D-56).
     "AUDIT_RETENTION_DAYS": _env_int("LINGUA_AUDIT_RETENTION_DAYS", 548),
+    # An OUTBOUND link for the adult's AI conversation practice (LGA-103). A plain
+    # href and nothing else: no conversation code lives in this codebase, so there
+    # is nothing for a child to reach even if every other gate failed, and D-52/D-54
+    # (no child data to AI, AI disclosure) never attach because the app is not the
+    # one running it. Adults only — the research is unambiguous that generative
+    # voice tutors are inappropriate for these children, and every such product's
+    # own terms exclude them anyway.
+    "ADULT_CONVERSATION_URL": os.getenv(
+        "LINGUA_ADULT_CONVERSATION_URL", "https://languatalk.com/"),
     # TTS provider order (SPIKE-01: Polly primary, edge-tts fallback — D-17/D-18).
     "TTS_PROVIDER": os.getenv("LINGUA_TTS_PROVIDER", "polly"),
     # Polly synthesis defaults (es-MX neural). Authoring-time only (tts_build);

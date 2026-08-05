@@ -14,14 +14,42 @@ from . import comprehension, profiles
 
 
 class Learner(models.Model):
-    """A language learner. Maps 1:1 to a host ``students.Student`` via a plain
-    integer id (NOT a ForeignKey) so the module stays extractable (D-03)."""
+    """A language learner — a child, or the parent learning alongside them.
 
-    # NOT a ForeignKey. Resolve name/level via lingua.integrations.directory.
+    Maps to exactly ONE host row via a plain integer id (NOT a ForeignKey) so the
+    module stays extractable (D-03). Which host row depends on who this is:
+
+    * a child  -> ``host_student_id`` (students.Student.pk)
+    * a parent -> ``host_user_id`` (the auth user's pk), added in LGA-103
+
+    A parent deliberately has NO Student row. That is what keeps the adult out of
+    the kids' roster, out of portal-token generation and out of charter records
+    for free — every one of those resolves through ``directory.family_children()``,
+    which only ever returns Students.
+
+    This supersedes the clause in D-03 that said the scalar is host_student_id
+    "NOT host_user_id — children have no user row". The RULE (never a cross-app
+    ForeignKey) is untouched; only the assumption that a learner is always a child
+    has changed.
+    """
+
+    # NOT ForeignKeys. Resolve name/level via lingua.integrations.directory.
+    # Both nullable, with a constraint that exactly one is set. `unique` on a
+    # nullable column is safe on both Postgres and SQLite — NULLs are distinct in
+    # a UNIQUE index — so any number of adults can coexist with a NULL student id.
     host_student_id = models.IntegerField(
         unique=True,
+        null=True,
+        blank=True,
         db_index=True,
         help_text="students.Student.pk on the host. Deliberately not an FK (D-03).",
+    )
+    host_user_id = models.IntegerField(
+        unique=True,
+        null=True,
+        blank=True,
+        db_index=True,
+        help_text="auth user pk for an ADULT learner. Deliberately not an FK (D-03).",
     )
     language = models.CharField(max_length=8, default="es")
     variant = models.CharField(max_length=16, default="es-MX")
@@ -29,10 +57,29 @@ class Learner(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        ordering = ["host_student_id"]
+        # `id` last: NULLs sort first on SQLite and last on Postgres, and this repo
+        # tests on one and runs on the other.
+        ordering = ["host_student_id", "host_user_id", "id"]
+        constraints = [
+            models.CheckConstraint(
+                # Django 6 renamed `check=` to `condition=`.
+                condition=(
+                    models.Q(host_student_id__isnull=False, host_user_id__isnull=True)
+                    | models.Q(host_student_id__isnull=True, host_user_id__isnull=False)
+                ),
+                name="learner_has_exactly_one_host_ref",
+            ),
+        ]
+
+    @property
+    def is_adult_learner(self):
+        """True when this learner is a parent rather than a child."""
+        return self.host_user_id is not None
 
     def __str__(self):
         # No host import — identify by the plain id (name comes from the adapter).
+        if self.host_user_id is not None:
+            return f"Learner<host_user_id={self.host_user_id}>"
         return f"Learner<host_student_id={self.host_student_id}>"
 
     ALLOWED_OVERRIDES = {"language", "variant", "support_level", "content_ceiling"}
@@ -44,6 +91,22 @@ class Learner(models.Model):
         DEFAULTS (profiles.PROFILES). ``overrides`` may set language / variant /
         support_level / content_ceiling independently of the defaults (D-64/65).
         Unknown override keys raise, to catch typos before the service layer."""
+        return cls._create(track_profile, host_student_id=host_student_id, **overrides)
+
+    @classmethod
+    @transaction.atomic
+    def create_for_host_user(cls, host_user_id, track_profile=None, **overrides):
+        """Create an ADULT learner, hung off a user rather than a student (LGA-103).
+
+        A sibling of ``create_for_host_student`` rather than an overload of it: that
+        method and the five tests pinning its signature stay exactly as they were.
+        """
+        return cls._create(track_profile or profiles.ADULT,
+                           host_user_id=host_user_id, **overrides)
+
+    @classmethod
+    def _create(cls, track_profile, *, host_student_id=None, host_user_id=None,
+                **overrides):
         unknown = set(overrides) - cls.ALLOWED_OVERRIDES
         if unknown:
             raise ValueError(f"Unknown override(s): {sorted(unknown)}")
@@ -51,6 +114,7 @@ class Learner(models.Model):
         cfg = getattr(settings, "LINGUA", {})
         learner = cls.objects.create(
             host_student_id=host_student_id,
+            host_user_id=host_user_id,
             language=overrides.get("language", cfg.get("DEFAULT_LANGUAGE", "es")),
             variant=overrides.get("variant", cfg.get("DEFAULT_VARIANT", "es-MX")),
         )
@@ -260,6 +324,73 @@ class ClassroomPhrase(models.Model):
 
     def __str__(self):
         return f"ClassroomPhrase<{self.text}>"
+
+
+class TravelPhrase(models.Model):
+    """One Spanish phrase for actually being somewhere — LGA-103, the adult track.
+
+    Mirrors ``ClassroomPhrase``'s shape but is a SEPARATE table, for two concrete
+    reasons rather than tidiness: ``classroom_phrases_with_audio`` renders every
+    active row on the kids' session page, so extra categories there would leak
+    straight onto it; and ClassroomPhrase.text is globally unique, which would mean
+    "¿Cuánto cuesta?" could exist in exactly one context, ever.
+
+    There is deliberately NO ``age_band`` field. Adding one would invite someone to
+    surface these in the kid portal later, and pharmacy and emergency phrases are
+    not what a nine-year-old's page is for. This content is adult-only by having no
+    way to be anything else.
+
+    Content-only (no learner FK, D-03). Voiced through the same content-addressed
+    AudioClip pipeline as the classroom phrases — native audio is the pronunciation
+    model, not the parent's mouth.
+    """
+
+    AIRPORT = "airport"
+    HOTEL = "hotel"
+    RESTAURANT = "restaurant"
+    DIRECTIONS = "directions"
+    SHOPPING = "shopping"
+    PHARMACY = "pharmacy"
+    EMERGENCY = "emergency"
+    SMALLTALK = "smalltalk"
+    CATEGORY_CHOICES = [
+        (AIRPORT, "Llegada — airport, taxi, checking in"),
+        (HOTEL, "El hotel — the room, the front desk"),
+        (RESTAURANT, "Comer — ordering, paying"),
+        (DIRECTIONS, "Encontrar el camino — directions, transport"),
+        (SHOPPING, "Comprar — shops, markets, prices"),
+        (PHARMACY, "La farmacia — feeling unwell"),
+        (EMERGENCY, "Emergencias — help, lost, hurt"),
+        (SMALLTALK, "Conversar — greetings and being a guest"),
+    ]
+    # The arc of an actual trip: you land, you sleep, you eat, you get around, you
+    # buy things — and the two you hope not to need are next to each other at the
+    # end where you can find them fast.
+    CATEGORY_ORDER = [SMALLTALK, AIRPORT, HOTEL, RESTAURANT, DIRECTIONS,
+                      SHOPPING, PHARMACY, EMERGENCY]
+
+    text = models.CharField(max_length=120, help_text="The Spanish phrase (es-MX).")
+    english = models.CharField(max_length=160, help_text="What it means.")
+    category = models.CharField(max_length=16, choices=CATEGORY_CHOICES, default=SMALLTALK)
+    note = models.CharField(
+        max_length=200, blank=True,
+        help_text="Optional note — when to use it, or what you will hear back.",
+    )
+    order = models.IntegerField(default=0)
+    active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ["order", "id"]
+        constraints = [
+            # Unique per CATEGORY, not globally: "¿Dónde está el baño?" genuinely
+            # belongs in both directions and restaurant, and a person looking for it
+            # will look in whichever they are standing in.
+            models.UniqueConstraint(fields=["text", "category"],
+                                    name="travelphrase_unique_text_per_category"),
+        ]
+
+    def __str__(self):
+        return f"TravelPhrase<{self.category}:{self.text}>"
 
 
 class WritingError(models.Model):

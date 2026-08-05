@@ -7783,9 +7783,15 @@ class AdultLearnerTests(TestCase):
 
     @classmethod
     def setUpTestData(cls):
+        from core.models import Family
         cls.parent = User.objects.create_user("dad", email="dad@e.com", password="pw")
         cls.child_user = User.objects.create_user("mum", email="mum@e.com", password="pw")
-        cls.student = Student.objects.create(parent=cls.parent, first_name="Nena")
+        # A REAL family: without one, family_children(None) early-returns [] and the
+        # "the adult is invisible to the roster" test passes against an empty list,
+        # proving nothing. Mutating the real query branch did not fail it.
+        cls.family = Family.objects.create(name="Lopez")
+        cls.student = Student.objects.create(
+            parent=cls.parent, first_name="Nena", family=cls.family)
         cls.kid = Learner.create_for_host_student(cls.student.pk, profiles.KIDS_EARLY)
 
     # ---- identity ----
@@ -7908,9 +7914,14 @@ class AdultLearnerTests(TestCase):
         """The payoff of choosing "no Student row" — rosters, portal tokens and
         charter records all resolve through here, so he is skipped for free."""
         services.start_adult_learner(self.parent.pk)
-        family = getattr(self.student, "family", None)
-        children = directory.family_children(getattr(family, "pk", None))
-        self.assertNotIn(self.parent.pk, [c["pk"] for c in children])
+        children = directory.family_children(self.family.pk)
+        # The roster must be EXACTLY the children — not "does not contain the
+        # parent's pk", which is meaningless here: User.pk and Student.pk are
+        # different id spaces and both happen to be 1 in a fresh test database, so
+        # that assertion fails on a coincidence and passes on one too.
+        self.assertTrue(children, "empty roster — any assertion below would be vacuous")
+        self.assertEqual([c["pk"] for c in children], [self.student.pk])
+        self.assertEqual([c["first_name"] for c in children], ["Nena"])
 
     # ---- the page ----
 
@@ -7978,6 +7989,31 @@ class TravelPhraseTests(TestCase):
                 f"finds an empty section")
         call_command("seed_travel_phrases", stdout=StringIO())
         self.assertEqual(TravelPhrase.objects.count(), first)
+
+    def test_every_seeded_value_fits_its_column(self):
+        """SQLite ignores VARCHAR(n); Postgres enforces it.
+
+        Three seeded notes were over the 200-char limit. Locally everything passed;
+        on Postgres the seed would have raised DataError partway through — after
+        committing the earlier rows, since it is not wrapped in a transaction — and
+        `La farmacia` and `Emergencias` would simply never have been created. The
+        page would have looked like a working, merely shorter phrasebook.
+
+        Checked with the MODEL's own max_length rather than a copied number, so
+        widening the column cannot leave this test asserting the old limit.
+        """
+        from lingua.management.commands.seed_travel_phrases import PHRASES
+        from lingua.models import TravelPhrase
+        caps = {name: TravelPhrase._meta.get_field(name).max_length
+                for name in ("text", "english", "note")}
+        for category, rows in PHRASES.items():
+            for text, english, note in rows:
+                for field, value in (("text", text), ("english", english), ("note", note)):
+                    self.assertLessEqual(
+                        len(value), caps[field],
+                        f"{category}: {field} is {len(value)} chars, column holds "
+                        f"{caps[field]} — this passes on SQLite and breaks the seed "
+                        f"on Postgres partway through")
 
     def test_the_same_sentence_can_belong_to_two_situations(self):
         """Unique per category, not globally: "¿Dónde está el baño?" is a

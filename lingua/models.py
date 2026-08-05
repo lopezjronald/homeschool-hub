@@ -372,8 +372,13 @@ class TravelPhrase(models.Model):
     text = models.CharField(max_length=120, help_text="The Spanish phrase (es-MX).")
     english = models.CharField(max_length=160, help_text="What it means.")
     category = models.CharField(max_length=16, choices=CATEGORY_CHOICES, default=SMALLTALK)
+    # 300, not 200: the most useful notes are the ones that stop a beginner saying
+    # something that lands badly — "perdí a mi hija" is heard as "my daughter died"
+    # — and those need room to say what to use INSTEAD and what you will hear back.
+    # Three seeded notes were over 200; SQLite ignores VARCHAR limits and Postgres
+    # enforces them, so the seed passed here and would have died mid-run on prod.
     note = models.CharField(
-        max_length=200, blank=True,
+        max_length=300, blank=True,
         help_text="Optional note — when to use it, or what you will hear back.",
     )
     order = models.IntegerField(default=0)

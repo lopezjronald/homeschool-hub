@@ -7496,6 +7496,9 @@ class ListeningRotationTests(TestCase):
 
     def test_asking_for_no_choices_returns_none(self):
         self.assertEqual(services.listening_choices(self.learner, count=0), [])
+        # A negative count must not slice the list from the end and hand back
+        # something — `fresh[:-1]` is four videos, not none.
+        self.assertEqual(services.listening_choices(self.learner, count=-1), [])
 
     # ---- the two ways this silently breaks ----
 
@@ -7517,15 +7520,18 @@ class ListeningRotationTests(TestCase):
     def test_when_she_has_seen_everything_it_recycles_oldest_first(self):
         """Never dead-end her with an empty page — recycle, and say it is a repeat."""
         now = timezone.now()
+        # Watched in REVERSE id order on purpose: Video 5 longest ago, Video 1 most
+        # recently. If recency and id agreed, sorting by id would pass this test
+        # while doing the wrong thing — which it did, until this line was flipped.
         for offset, video in enumerate(self.videos):
             session = services.record_listening(self.learner, video, 4)
-            # Video 1 watched longest ago, Video 5 most recently.
             ListeningSession.objects.filter(pk=session.pk).update(
-                created_at=now - timedelta(days=10 - offset))
+                created_at=now - timedelta(days=offset + 1))
 
         choices = services.listening_choices(self.learner)
         self.assertEqual(len(choices), 3, "she was dead-ended instead of recycled")
-        self.assertEqual(self._titles(choices), ["Video 1", "Video 2", "Video 3"])
+        self.assertEqual(self._titles(choices), ["Video 5", "Video 4", "Video 3"],
+                         "recycled in id order, not least-recently-seen order")
         self.assertTrue(all(c["seen"] for c in choices),
                         "a repeat must be labelled, not passed off as new")
 

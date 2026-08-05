@@ -1030,11 +1030,17 @@ def _listening_seen(learner):
     buttons, and a video she watched without logging must not come back tomorrow
     as if it were new.
 
-    NULLs are dropped, and that is load-bearing: ``ListeningSession.resource`` is
-    SET_NULL, so a deleted curated item leaves rows with ``resource_id = None``.
-    Feeding None into an exclusion set makes ``NOT IN (NULL, 3)`` evaluate to NULL
-    for every row — the whole catalogue disappears and the page silently goes
-    empty. ``build_daily_plan`` defends the same shape with ``discard(None)``.
+    NULLs are dropped. ``ListeningSession.resource`` is SET_NULL, so a deleted
+    curated item leaves rows with ``resource_id = None``, and a None key would be
+    meaningless here.
+
+    Today that is DEFENCE IN DEPTH, not load-bearing: the caller excludes with a
+    Python ``pk not in seen`` against this dict, which handles a None key harmlessly.
+    It becomes load-bearing the moment anyone turns that into a SQL
+    ``.exclude(pk__in=seen)`` — the natural optimisation once the catalogue outgrows
+    a few dozen rows — because ``NOT IN (NULL, 3)`` is NULL for every row, so the
+    entire catalogue would vanish and the page would silently go empty.
+    ``build_daily_plan`` defends the same shape with ``discard(None)``.
     """
     seen = {}
     rows = (ListeningSession.objects.filter(learner=learner, resource__isnull=False)

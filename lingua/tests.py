@@ -7515,6 +7515,11 @@ class ListeningRotationTests(TestCase):
             kind=ListeningResource.VIDEO)
         services.record_listening(self.learner, doomed, 5)
         doomed.delete()
+        # The discriminating half: a None key must never reach the exclusion set.
+        # Asserting only the count passes even with both guards removed, because
+        # the caller currently excludes in Python; this pins the guards themselves
+        # so a future .exclude(pk__in=seen) cannot quietly blank the page.
+        self.assertNotIn(None, services._listening_seen(self.learner))
         self.assertEqual(len(services.listening_choices(self.learner)), 3)
 
     def test_when_she_has_seen_everything_it_recycles_oldest_first(self):
@@ -7662,3 +7667,105 @@ class ListeningRotationTests(TestCase):
         self.assertNotIn("Para la mayor", html, "the other band's video leaked")
         shown = sum(1 for v in self.videos if v.title in html)
         self.assertEqual(shown, 3, f"{shown} videos on the page, expected 3")
+
+
+class ListeningLinkCheckTests(TestCase):
+    """--deactivate must only ever fire on a link that is genuinely gone (LGA-102).
+
+    Every case is exercised with a patched urlopen, so the suite never touches the
+    network — a test that called YouTube would be flaky offline and slow always.
+    """
+
+    def _probe(self, *, code=None, body=None, exc=None,
+               url="https://www.youtube.com/watch?v=abc"):
+        import json as _json
+        import urllib.error
+        from unittest import mock
+
+        from lingua.management.commands.check_listening_links import probe
+
+        class _Resp:
+            def __enter__(self_inner):
+                return self_inner
+
+            def __exit__(self_inner, *a):
+                return False
+
+            def read(self_inner):
+                return _json.dumps(body or {}).encode()
+
+        def fake(*args, **kwargs):
+            if exc is not None:
+                raise exc
+            if code is not None:
+                raise urllib.error.HTTPError(url, code, "", {}, None)
+            return _Resp()
+
+        with mock.patch(
+                "lingua.management.commands.check_listening_links.urllib.request.urlopen",
+                side_effect=fake):
+            return probe(url)
+
+    def test_a_live_video_reports_its_channel_and_title(self):
+        ok, detail = self._probe(body={"author_name": "Rockalingua", "title": "Los números"})
+        self.assertTrue(ok)
+        self.assertIn("Rockalingua", detail)
+
+    def test_only_a_404_counts_as_dead(self):
+        """401 means embedding is off, not gone.
+
+        Dreaming Spanish disables embedding, and this page only ever links out, so
+        treating 401 as dead would switch off perfectly usable videos. That is not
+        hypothetical — it was the first behaviour written, and it was wrong.
+        """
+        self.assertEqual(self._probe(code=404)[0], False)
+        for code in (401, 403, 429, 500):
+            self.assertIsNone(self._probe(code=code)[0],
+                              f"HTTP {code} was treated as a verdict")
+
+    def test_a_network_wobble_is_never_a_verdict(self):
+        import socket
+        import ssl
+        import urllib.error
+        for exc in (urllib.error.URLError("down"), TimeoutError(),
+                    ssl.SSLError("handshake"), ConnectionResetError(),
+                    socket.timeout(), ValueError("not json")):
+            self.assertIsNone(self._probe(exc=exc)[0],
+                              f"{type(exc).__name__} was treated as a verdict")
+
+    def test_a_channel_is_reported_unchecked_not_dead(self):
+        # oEmbed never supported channel URLs, so its 404 there means nothing.
+        for url in ("https://www.youtube.com/channel/UCabc",
+                    "https://www.youtube.com/@someone",
+                    "https://www.youtube.com/user/Rockalingua"):
+            self.assertIsNone(self._probe(url=url)[0], url)
+
+    def test_deactivate_switches_off_only_the_genuinely_gone(self):
+        from io import StringIO
+        from unittest import mock
+
+        from django.core.management import call_command
+
+        gone = ListeningResource.objects.create(
+            title="Gone", url="https://www.youtube.com/watch?v=gone",
+            age_band=profiles.KIDS_EARLY, level="L1", order=1,
+            kind=ListeningResource.VIDEO)
+        embed_off = ListeningResource.objects.create(
+            title="Embedding off", url="https://www.youtube.com/watch?v=embedoff",
+            age_band=profiles.KIDS_EARLY, level="L1", order=2,
+            kind=ListeningResource.VIDEO)
+
+        def fake_probe(url):
+            if "gone" in url:
+                return False, "HTTP 404"
+            return None, "HTTP 401 — embedding is off"
+
+        with mock.patch("lingua.management.commands.check_listening_links.probe",
+                        side_effect=fake_probe):
+            call_command("check_listening_links", "--deactivate", stdout=StringIO())
+
+        gone.refresh_from_db()
+        embed_off.refresh_from_db()
+        self.assertFalse(gone.active, "a deleted video stayed switched on")
+        self.assertTrue(embed_off.active,
+                        "an embedding-disabled video was switched off — the link works")

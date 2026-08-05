@@ -53,7 +53,10 @@ def probe(url):
         if exc.code == 404:
             return False, "HTTP 404 — deleted or the id is wrong"
         return None, f"HTTP {exc.code} — embedding is off; the link itself may be fine"
-    except (urllib.error.URLError, TimeoutError, ValueError) as exc:
+    except (OSError, ValueError) as exc:
+        # OSError, not just URLError: an SSL hiccup or a reset connection are
+        # both OSError subclasses and would otherwise escape and abort the run
+        # partway, leaving every later row unchecked.
         # A network wobble is NOT evidence a video is dead. Never deactivate on it.
         return None, f"could not reach YouTube ({exc})"
 

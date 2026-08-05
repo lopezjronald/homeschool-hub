@@ -189,9 +189,13 @@ class ReviewItemAdmin(admin.ModelAdmin):
 
 @admin.register(ListeningResource)
 class ListeningResourceAdmin(admin.ModelAdmin):
-    list_display = ("title", "provider", "age_band", "level", "visual_support", "order", "active")
-    list_filter = ("age_band", "active", "visual_support")
+    list_display = ("title", "provider", "age_band", "kind", "level",
+                    "visual_support", "order", "active")
+    list_filter = ("age_band", "kind", "active", "visual_support")
     search_fields = ("title", "provider")
+    # `kind` is DERIVED from the url and re-derived by seed_listening, so an edit
+    # here would be silently reverted on the next seed. Shown, not editable.
+    readonly_fields = ("kind",)
 
 
 @admin.register(ListeningSession)

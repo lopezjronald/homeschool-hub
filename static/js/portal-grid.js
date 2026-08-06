@@ -563,8 +563,8 @@
             // halves fail for different reasons.
             var got = OPS[key], want = OPS[ineq.op];
             readout.textContent = right
-              ? "Sí. " + (want.dashed ? "Dashed, so the line is not included"
-                                      : "Solid, so the line is included")
+              ? "Yes. " + (want.dashed ? "Dashed, so the line is not included"
+                                       : "Solid, so the line is included")
                 + ", and shaded " + (want.above ? "above" : "below") + "."
               : (got.dashed !== want.dashed
                    ? "Look at the line itself: is it dashed or solid?"

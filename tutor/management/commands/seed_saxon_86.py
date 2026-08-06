@@ -502,11 +502,10 @@ BLOCKS = [
                  "**Bigger** again, to change the size of the whole triangle — and "
                  "keep your eyes on the three numbers while you do, because they do "
                  "not move, and that is Lesson 53's promise happening in front of "
-                 "you. The frame holding the picture is a fixed size, so a triangle "
-                 "made very large or very steep will run off its edge; that is the "
-                 "frame running out of room, not anything wrong with your triangle, "
-                 "and **Smaller** brings it back. Then press **Stand at the other "
-                 "angle**, which is the button this whole page is about.",
+                 "you. **Bigger** and **Smaller** change the size; the triangle "
+                 "always fits the frame, so a steep one just gets narrower rather "
+                 "than taller. Then press **Stand at the other angle**, which is "
+                 "the button this whole page is about.",
         "widget": "triangle",
         # {"angle": 30} on purpose: 30° is the angle Saxon works on page 2, so the
         # readout opens showing 0.5 / 0.866 / 0.577 — the three numbers the book

@@ -730,6 +730,27 @@ def reading_totals(learner):
     }
 
 
+def input_minutes(learner, *, start=None, end=None):
+    """Comprehensible-input minutes (reading + listening) within a date window.
+
+    The date-ranged sibling of ``reading_totals`` (which is all-time): the host's
+    cross-subject hours report needs the Spanish minutes done IN a given month, not
+    the lifetime total. ``start``/``end`` are inclusive local dates; ``None`` leaves
+    that bound open. Uses the same reading-seconds + listening-minutes arithmetic as
+    ``reading_totals`` so the two never disagree on what a minute is."""
+    reading = learner.reading_sessions.all()
+    listening = ListeningSession.objects.filter(learner=learner)
+    if start is not None:
+        reading = reading.filter(created_at__date__gte=start)
+        listening = listening.filter(created_at__date__gte=start)
+    if end is not None:
+        reading = reading.filter(created_at__date__lte=end)
+        listening = listening.filter(created_at__date__lte=end)
+    reading_minutes = round((reading.aggregate(s=Sum("seconds"))["s"] or 0) / 60)
+    listen_minutes = listening.aggregate(m=Sum("minutes"))["m"] or 0
+    return reading_minutes + listen_minutes
+
+
 def pick_reread(learner, *, cap=3, exclude_story_ids=None):
     """Pick a previously-read story to resurface — the reread-first slot of the Daily
     Plan and the highest-leverage CI lever (N-01): rereading known stories cuts content

@@ -1,7 +1,7 @@
 from datetime import date, timedelta
 
 from django.core import mail
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
@@ -1790,3 +1790,122 @@ class AuditContentCommandTests(TestCase):
         out = self._run()
         self.assertIn("NOTE", out)
         self.assertIn("has to approve it", out)
+
+
+class CrossAppActivityTests(TestCase):
+    """core.activity.aggregate_activity + current_streak — the foundation (F2) the
+    whole-school streak, hours report, and trophy case all read."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.parent = CustomUser.objects.create_user(
+            username="act", email="act@e.com", password="pw")
+        cls.family = Family.objects.create(name="Act Fam")
+        FamilyMembership.objects.create(user=cls.parent, family=cls.family, role="parent")
+        cls.child = Student.objects.create(
+            parent=cls.parent, family=cls.family, first_name="Vi", grade_level="G03")
+
+    def _entry(self, subject, day, minutes=None):
+        from worklog.models import WorkLogEntry
+        return WorkLogEntry.objects.create(
+            parent=self.parent, family=self.family, child=self.child,
+            subject=subject, date=day, minutes=minutes)
+
+    def test_a_day_shared_across_subjects_counts_once_but_keeps_both_minutes(self):
+        from core.activity import aggregate_activity
+        today = timezone.localdate()
+        self._entry("Math", today, minutes=30)
+        self._entry("Reading", today, minutes=15)
+        agg = aggregate_activity(self.child, today, today)
+        self.assertEqual(agg["days_count"], 1)                 # one distinct day of instruction
+        self.assertEqual(agg["total_minutes"], 45)             # but both subjects' minutes
+        self.assertEqual(agg["by_subject"]["math"]["minutes"], 30)
+        self.assertEqual(agg["by_subject"]["reading"]["minutes"], 15)
+
+    def test_the_spanish_mirror_and_a_lingua_session_never_double_count(self):
+        """The load-bearing invariant. The lingua book mirror writes a 'Spanish
+        reading' Work Log row (no minutes); the SAME day the child logs listening
+        minutes inside lingua. Days must union to one, and Spanish minutes must come
+        only from lingua — a mutant that summed the providers' days, or let the
+        mirror contribute minutes, fails here."""
+        from core.activity import aggregate_activity
+        from lingua import profiles
+        from lingua.models import Learner, ListeningSession
+        today = timezone.localdate()
+        self._entry("Math", today, minutes=30)
+        self._entry("Spanish reading", today)                  # mirror row, minutes NULL
+        learner = Learner.create_for_host_student(self.child.pk, profiles.KIDS_EARLY)
+        ListeningSession.objects.create(learner=learner, minutes=15)  # created today
+        agg = aggregate_activity(self.child, today, today)
+        self.assertEqual(agg["days_count"], 1)                 # math + mirror + listening = 1 day
+        self.assertEqual(agg["by_subject"]["spanish"]["minutes"], 15)   # not 0, not 30, not doubled
+        self.assertEqual(agg["by_subject"]["spanish"]["days"], {today})
+        self.assertEqual(agg["total_minutes"], 45)             # 30 math + 15 spanish; mirror adds 0
+
+    def test_streak_counts_yesterday_when_today_is_empty(self):
+        from core.activity import current_streak
+        today = timezone.localdate()
+        for back in (1, 2, 3):
+            self._entry("Math", today - timedelta(days=back), minutes=10)
+        self.assertEqual(current_streak(self.child, on=today), 3)   # yesterday still counts
+        self._entry("Math", today, minutes=10)
+        self.assertEqual(current_streak(self.child, on=today), 4)
+
+    def test_streak_breaks_on_a_gap(self):
+        from core.activity import current_streak
+        today = timezone.localdate()
+        self._entry("Math", today, minutes=10)
+        self._entry("Math", today - timedelta(days=1), minutes=10)
+        self._entry("Math", today - timedelta(days=3), minutes=10)   # gap at day-2
+        self.assertEqual(current_streak(self.child, on=today), 2)
+
+    def test_a_completed_lesson_is_activity_but_a_skip_is_not(self):
+        from core.activity import aggregate_activity
+        from curricula.models import Chapter, Lesson, LessonProgress
+        curr = Curriculum.objects.create(
+            parent=self.parent, family=self.family, name="Math 3A", subject="Math")
+        ch = Chapter.objects.create(curriculum=curr, number=1, title="One")
+        done = Lesson.objects.create(chapter=ch, order=1, title="L1")
+        skipped = Lesson.objects.create(chapter=ch, order=2, title="L2")
+        LessonProgress.objects.create(
+            child=self.child, lesson=done, status=LessonProgress.COMPLETED)
+        sk = LessonProgress.objects.create(
+            child=self.child, lesson=skipped, status=LessonProgress.SKIPPED)
+        # Backdate the skip to a DIFFERENT day. Both rows share today via auto_now_add,
+        # so counting the skip would only show as a SECOND day if it lands elsewhere —
+        # otherwise the exclusion can't be observed and the test can't kill the mutant.
+        LessonProgress.objects.filter(pk=sk.pk).update(
+            created_at=sk.created_at - timedelta(days=1))
+        agg = aggregate_activity(self.child)                   # unbounded
+        # Only today (the completed lesson). A mutant that counts skips would add
+        # yesterday, making this set — and days_count — 2.
+        self.assertEqual(agg["by_subject"]["math"]["days"], {timezone.localdate()})
+        self.assertEqual(agg["days_count"], 1)
+
+    def test_aggregating_never_provisions_a_lingua_learner(self):
+        """Read-only invariant: reporting on a child who has never done Spanish must
+        not create a Learner row (a provisioning getter would)."""
+        from core.activity import aggregate_activity
+        from lingua.models import Learner
+        self._entry("Math", timezone.localdate(), minutes=20)
+        aggregate_activity(self.child)
+        self.assertEqual(Learner.objects.filter(host_student_id=self.child.pk).count(), 0)
+
+    @override_settings(ACTIVITY_SIGNAL_PROVIDERS=[
+        "worklog.activity.WorkLogSignals",
+        "does.not.Exist",                                      # bogus path must be skipped
+    ])
+    def test_runs_without_lingua_and_survives_a_bad_provider(self):
+        """Extractability + resilience: with the lingua provider absent and a bogus
+        dotted path in the list, the aggregator still returns the host signals and
+        does NOT reach into lingua."""
+        from core.activity import aggregate_activity
+        from lingua import profiles
+        from lingua.models import Learner, ListeningSession
+        today = timezone.localdate()
+        self._entry("Math", today, minutes=30)
+        learner = Learner.create_for_host_student(self.child.pk, profiles.KIDS_EARLY)
+        ListeningSession.objects.create(learner=learner, minutes=99)
+        agg = aggregate_activity(self.child, today, today)
+        self.assertEqual(agg["by_subject"]["math"]["minutes"], 30)   # host signal present
+        self.assertNotIn("spanish", agg["by_subject"])               # lingua not consulted

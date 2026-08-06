@@ -451,6 +451,16 @@ LINGUA = {
     ),
 }
 
+# Cross-app activity providers, unioned by core.activity.aggregate_activity (F2) to
+# feed the whole-school streak, hours/attendance report, and trophy case. Dotted
+# paths, imported best-effort — the lingua provider is the only one that reaches into
+# lingua, so dropping it (module extracted) leaves the host signals working.
+ACTIVITY_SIGNAL_PROVIDERS = [
+    "worklog.activity.WorkLogSignals",
+    "curricula.activity.LessonProgressSignals",
+    "homeschool_hub.adapters.lingua_signals.LinguaSignals",
+]
+
 # ---------------------------------------------------------------------------
 # Manga art generation (Replicate) — server-side only, disabled until a token
 # is set. MANGA_IMAGE_MODEL is any Replicate slug; nano-banana-2 holds several

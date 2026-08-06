@@ -2,7 +2,7 @@ import tempfile
 
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.test import Client, TestCase, override_settings
+from django.test import Client, SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
 
 from core.models import Family, FamilyMembership
@@ -17,6 +17,63 @@ from .services import apply_blueprint, get_blueprint
 User = get_user_model()
 
 MEDIA = tempfile.mkdtemp()
+
+
+class SubjectCanonicalTests(SimpleTestCase):
+    """canonical() is the grouping key every cross-subject feature keys on (F1)."""
+
+    def test_case_and_whitespace_are_folded(self):
+        from curricula.subjects import canonical
+        self.assertEqual(canonical("  Math  "), "math")
+        self.assertEqual(canonical("MATHEMATICS"), "math")
+        # collapses runs of internal whitespace, not just the ends
+        self.assertEqual(canonical("Language   Arts"), "writing")
+
+    def test_the_lingua_mirror_subject_folds_into_spanish(self):
+        """The load-bearing alias: the book mirror files rows under 'Spanish
+        reading', which must group with the child's Spanish, not a 2nd subject.
+        Assert the exact slug so a mutant that drops the alias (leaving
+        'spanish-reading') fails."""
+        from curricula.subjects import canonical
+        self.assertEqual(canonical("Spanish reading"), "spanish")
+        self.assertEqual(canonical("Spanish"), "spanish")
+        self.assertEqual(canonical("Spanish reading"), canonical("Español"))
+
+    def test_known_synonyms_fold_together(self):
+        from curricula.subjects import canonical
+        self.assertEqual(canonical("English"), "writing")
+        self.assertEqual(canonical("Social Studies"), "history")
+        self.assertEqual(canonical("Geography"), "history")
+
+    def test_an_unknown_subject_keeps_its_own_slug_not_a_catch_all(self):
+        """A genuinely new subject must never be silently merged into another —
+        it falls through to its OWN hyphenated slug. Kills a mutant that returns
+        '' or a shared bucket for anything unrecognized."""
+        from curricula.subjects import canonical
+        self.assertEqual(canonical("Underwater Basket Weaving"),
+                         "underwater-basket-weaving")
+        self.assertNotEqual(canonical("Underwater Basket Weaving"), "")
+
+    def test_distinct_subjects_stay_distinct(self):
+        """Guards against over-merging: reading and literature are different
+        subjects, and math must not collapse into writing."""
+        from curricula.subjects import canonical
+        self.assertNotEqual(canonical("Reading"), canonical("Literature"))
+        self.assertNotEqual(canonical("Math"), canonical("Writing"))
+
+    def test_empty_and_none_are_empty_string(self):
+        from curricula.subjects import canonical
+        self.assertEqual(canonical(""), "")
+        self.assertEqual(canonical(None), "")
+        self.assertEqual(canonical("   "), "")
+
+    def test_canonical_is_idempotent(self):
+        """Feeding a slug back through yields itself — so grouping on canonical()
+        is stable no matter how many times it is applied."""
+        from curricula.subjects import canonical
+        for raw in ("Mathematics", "Spanish reading", "Underwater Basket Weaving"):
+            once = canonical(raw)
+            self.assertEqual(canonical(once), once, raw)
 
 
 class FuzzySearchTests(TestCase):

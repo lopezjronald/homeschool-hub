@@ -8072,6 +8072,33 @@ class TravelPhraseTests(TestCase):
         self.assertTrue(all(i["phrase"].text for i in every))
         self.assertTrue(all(i["audio_url"] is None for i in every))
 
+    def test_each_group_carries_a_short_label_for_the_quick_jump(self):
+        """The full label is a sentence; the chip needs the situation word alone."""
+        from io import StringIO
+
+        from django.core.management import call_command
+        call_command("seed_travel_phrases", stdout=StringIO())
+        for g in services.travel_phrases_with_audio():
+            self.assertNotIn("—", g["short"])
+            self.assertTrue(g["short"])
+            self.assertLessEqual(len(g["short"]), 24)
+
+    def test_the_page_has_a_quick_jump_to_every_situation(self):
+        """Standing at a hotel desk, you want ONE situation fast, not a scroll
+        through 96 phrases."""
+        from io import StringIO
+
+        from django.core.management import call_command
+        from lingua.models import TravelPhrase
+        call_command("seed_travel_phrases", stdout=StringIO())
+        parent = User.objects.create_user("qj", email="qj@e.com", password="pw")
+        self.client.force_login(parent)
+        html = self.client.get(reverse("lingua:mi_espanol")).content.decode()
+        for key in TravelPhrase.CATEGORY_ORDER:
+            if TravelPhrase.objects.filter(category=key).exists():
+                self.assertIn(f'href="#cat-{key}"', html, key)
+                self.assertIn(f'id="cat-{key}"', html, key)
+
     def test_the_groups_follow_the_arc_of_a_trip(self):
         from io import StringIO
 

@@ -1158,7 +1158,15 @@ def travel_phrases_with_audio(*, voice=None, engine=None):
             {"phrase": p, "audio_url": urls.get(p.text)}
         )
     return [
-        {"key": key, "label": labels.get(key, key), "phrases": by_cat[key]}
+        {
+            "key": key,
+            "label": labels.get(key, key),
+            # The Spanish word alone, for a quick-jump chip — the full label is a
+            # sentence ("Comer — ordering, paying"), too long to tap on a phone at
+            # a restaurant, which is exactly when this menu is used.
+            "short": labels.get(key, key).split("—")[0].strip(),
+            "phrases": by_cat[key],
+        }
         for key in TravelPhrase.CATEGORY_ORDER
         if by_cat.get(key)
     ]

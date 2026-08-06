@@ -1350,6 +1350,14 @@ class HubNavTests(TestCase):
         self.assertContains(resp, "Welcome back")
         self.assertContains(resp, "Work Log &amp; Report")
         self.assertContains(resp, ">Progress<")
+        # The Spanish area must be reachable from the hub in one click, and the
+        # tile must NAME writing — the parent could not find the writing track
+        # because the only entry was a navbar link labelled "Spanish" landing on
+        # a "Progress" page (HH-156). A hub tile that says "writing" fixes the
+        # mental model regardless of which sub-page it lands on.
+        self.assertContains(resp, reverse("lingua:progress"))
+        self.assertContains(resp, ">Spanish<")
+        self.assertContains(resp, "writing")
 
     def test_nav_drops_assignments_and_has_account_dropdown(self):
         self.client.login(username="hubparent", password="pw")

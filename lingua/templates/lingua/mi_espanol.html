@@ -53,9 +53,18 @@
 
   {# ---- the phrasebook: the reason this page exists ---- #}
   {% if phrase_groups %}
+    {% comment %}
+      Quick-jump chips. On a phone at a hotel desk you want ONE situation fast,
+      not a scroll through 96 phrases — so tap the situation, land on it.
+    {% endcomment %}
+    <nav class="d-flex flex-wrap gap-1 mb-3" aria-label="Jump to a situation">
+      {% for g in phrase_groups %}
+        <a href="#cat-{{ g.key }}" class="btn btn-sm btn-outline-secondary">{{ g.short }}</a>
+      {% endfor %}
+    </nav>
     <div data-lingua-clips>
       {% for g in phrase_groups %}
-        <h3 class="ses-cat">{{ g.label }}</h3>
+        <h3 class="ses-cat" id="cat-{{ g.key }}">{{ g.label }}</h3>
         <ul class="ses-phrases">
           {% for item in g.phrases %}
             <li class="ses-phrase">

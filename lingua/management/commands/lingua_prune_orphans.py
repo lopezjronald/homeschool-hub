@@ -23,13 +23,47 @@ class Command(BaseCommand):
             help="Report what would be deleted without deleting anything.",
         )
 
+    def _adult_orphans(self):
+        """Adult learners whose host user is gone (D-70, LGA-103).
+
+        Swept SEPARATELY from children, not folded in: an adult's id lives in a
+        different table and a different id space, so mixing the two lists would
+        compare a user pk against a set of student pks and delete live rows on a
+        coincidental collision.
+        """
+        rows = list(
+            Learner.objects.filter(host_user_id__isnull=False)
+            .values_list("pk", "host_user_id")
+        )
+        if not rows:
+            return []
+        alive = directory.existing_user_ids(uid for _, uid in rows)
+        return [pk for pk, uid in rows if uid not in alive]
+
     def handle(self, *args, **options):
-        # STUDENT-BACKED learners only. An adult learner (LGA-103) has
+        # Children and adults are swept in two passes against two different host
+        # tables. STUDENT-backed first.
+        #
+        # The filter below is load-bearing: an adult learner (LGA-103) has
         # host_student_id NULL, and `None not in existing_student_ids` is always
-        # true — so without this filter every scheduled run would classify the
-        # parent's own learner as an orphan and delete it, cascading his entire
-        # history. This command runs unattended on Heroku Scheduler, so that would
-        # have happened quietly, overnight, once.
+        # true — so without it every scheduled run would classify the parent's own
+        # learner as an orphan and delete it, cascading his entire history. This
+        # command runs unattended on Heroku Scheduler, so that would have happened
+        # quietly, overnight, once.
+        adult_orphan_pks = self._adult_orphans()
+        if adult_orphan_pks:
+            if options["dry_run"]:
+                self.stdout.write(
+                    f"[dry-run] would delete {len(adult_orphan_pks)} adult learner(s) "
+                    f"whose user account is gone."
+                )
+            else:
+                gone, _ = Learner.objects.filter(pk__in=adult_orphan_pks).delete()
+                self.stdout.write(
+                    f"Deleted {gone} row(s) for {len(adult_orphan_pks)} adult "
+                    f"learner(s) whose user account is gone."
+                )
+
         learners = list(
             Learner.objects.filter(host_student_id__isnull=False)
             .values_list("pk", "host_student_id")

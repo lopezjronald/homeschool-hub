@@ -8193,3 +8193,110 @@ class AdultConversationHandoffTests(TestCase):
                 with open(os.path.join(root, name), encoding="utf-8", errors="replace") as fh:
                     self.assertNotIn(host, fh.read(),
                                      f"{name} offers a child an AI conversation link")
+
+
+class AdultListeningTests(TestCase):
+    """The parent's own input ladder (LGA-103)."""
+
+    def setUp(self):
+        from io import StringIO
+
+        from django.core.management import call_command
+        call_command("seed_listening", stdout=StringIO())
+
+    def test_the_adult_band_has_listening_resources(self):
+        """Without these the "Para escuchar" section renders empty forever."""
+        from lingua.models import ListeningResource
+        self.assertTrue(
+            ListeningResource.objects.filter(
+                age_band=profiles.ADULT, active=True).exists(),
+            "no adult listening resources — the section on his page is dead")
+
+    def test_they_are_shelves_not_rotatable_videos(self):
+        """Rotation exists to stop a CHILD seeing the same video forever.
+
+        An adult picks for himself and does not need protecting from a rewatch,
+        and channels do not rot — so the adult band is shelves on purpose.
+        """
+        from lingua.models import ListeningResource
+        rows = ListeningResource.objects.filter(age_band=profiles.ADULT)
+        self.assertTrue(rows.exists())
+        for row in rows:
+            self.assertEqual(row.kind, ListeningResource.SHELF, row.url)
+
+    def test_the_adult_resources_never_reach_a_child(self):
+        for band in (profiles.KIDS_EARLY, profiles.KIDS_OLDER):
+            titles = [r.title for r in services.listening_resources(band)]
+            self.assertNotIn("Doorway to Mexico — el canal", titles)
+            self.assertNotIn("How to Spanish — español mexicano real", titles)
+
+    def test_the_thin_pool_warning_stays_quiet_about_the_adult_band(self):
+        """A warning that fires on a deliberate design choice trains people to
+        ignore the whole block — and this one carries a real message for the kid
+        bands."""
+        from io import StringIO
+
+        from django.core.management import call_command
+        out = StringIO()
+        call_command("seed_listening", stdout=out)
+        self.assertNotIn(profiles.ADULT, out.getvalue())
+
+
+class AdultOrphanSweepTests(TestCase):
+    """Deleting a parent's account must not leave their history behind (LGA-103)."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.parent = User.objects.create_user("sweep", email="s@e.com", password="pw")
+        cls.keeper = User.objects.create_user("keep", email="k@e.com", password="pw")
+
+    def _run(self, *args):
+        from io import StringIO
+
+        from django.core.management import call_command
+        out, err = StringIO(), StringIO()
+        call_command("lingua_prune_orphans", *args, stdout=out, stderr=err)
+        return out.getvalue() + err.getvalue()
+
+    def test_an_adult_whose_account_is_gone_is_swept(self):
+        doomed = services.start_adult_learner(self.parent.pk)
+        self.parent.delete()
+        self._run()
+        self.assertFalse(Learner.objects.filter(pk=doomed.pk).exists(),
+                         "the parent's learner outlived their account")
+
+    def test_a_live_adult_is_never_swept(self):
+        keep = services.start_adult_learner(self.keeper.pk)
+        self._run()
+        self.assertTrue(Learner.objects.filter(pk=keep.pk).exists())
+
+    def test_a_dry_run_deletes_nothing(self):
+        doomed = services.start_adult_learner(self.parent.pk)
+        self.parent.delete()
+        out = self._run("--dry-run")
+        self.assertIn("dry-run", out)
+        self.assertTrue(Learner.objects.filter(pk=doomed.pk).exists())
+
+    def test_a_user_id_is_never_matched_against_student_ids(self):
+        """The two id spaces are separate and both start at 1.
+
+        Folding adults into the student sweep would compare a user pk against a
+        set of Student pks and delete a live learner on a coincidental collision —
+        which is exactly the shape of the bug this whole ticket started with.
+        """
+        from core.models import Family
+        family = Family.objects.create(name="Sweep")
+        student = Student.objects.create(
+            parent=self.keeper, first_name="Kid", family=family)
+        kid = Learner.create_for_host_student(student.pk, profiles.KIDS_EARLY)
+        adult = services.start_adult_learner(self.keeper.pk)
+        # Deliberately arrange the collision: a live adult whose user pk equals a
+        # DELETED student's pk would be swept by a naive implementation.
+        ghost_pk = student.pk
+        student.delete()
+        self._run()
+        self.assertFalse(Learner.objects.filter(pk=kid.pk).exists(),
+                         "the orphaned child learner should have been swept")
+        self.assertTrue(Learner.objects.filter(pk=adult.pk).exists(),
+                        f"the adult (user {adult.host_user_id}) was swept because a "
+                        f"STUDENT with pk {ghost_pk} was deleted")

@@ -4,7 +4,11 @@ D-04: all host *identity* coupling is concentrated here. A learner is carried
 through lingua as a plain ``host_student_id`` (D-03); these functions are the
 only place that resolves it against the host's ``students.Student``. To extract
 lingua as a standalone product, this one file is what you reimplement.
+An ADULT learner is carried as a ``host_user_id`` instead (D-70), so this file
+resolves both — still without a ForeignKey either way.
 """
+from django.contrib.auth import get_user_model
+
 from students.models import Student  # the ONE permitted host import in lingua
 
 
@@ -101,5 +105,22 @@ def existing_student_ids(host_student_ids):
     return set(
         Student.objects
         .filter(pk__in=list(host_student_ids))
+        .values_list("pk", flat=True)
+    )
+
+
+def existing_user_ids(host_user_ids):
+    """The subset of the given ids that still exist as host users (one query).
+
+    The adult-learner counterpart of ``existing_student_ids`` (D-70, LGA-103).
+    Without it nothing would ever sweep an adult whose account was deleted, and
+    their whole history would sit behind a dangling id forever.
+
+    Uses ``get_user_model`` rather than importing the model directly, so the one
+    permitted host import stays the one at the top of this file.
+    """
+    return set(
+        get_user_model().objects
+        .filter(pk__in=list(host_user_ids))
         .values_list("pk", flat=True)
     )

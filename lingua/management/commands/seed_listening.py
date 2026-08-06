@@ -84,6 +84,34 @@ RESOURCES = [
     # and `test_every_band_has_videos_to_rotate` names the shortfall out loud.
     ("Lost in NYC — historia para principiantes", "Dreaming Spanish",
      "https://www.youtube.com/watch?v=p5ZHNWifka4", profiles.KIDS_OLDER, "L1", True, 8, 10),
+
+    # --- ADULT (LGA-103): the parent's own input ladder ---
+    # SHELVES on purpose. The 3-choice rotation exists to stop a child seeing the
+    # same video forever; an adult picks for himself and does not need protecting
+    # from a rewatch, so channels and playlists — which do not rot — are the right
+    # shape here. Ordered easiest first.
+    #
+    # es-MX leaning, because that is the anchor dialect and the trip is to Mexico.
+    # Dreaming Spanish is pan-Latin-American and goes first only because its
+    # graded ladder is the gentlest on-ramp for a beginner.
+    ("Dreaming Spanish — el canal", "Dreaming Spanish",
+     "https://www.youtube.com/@DreamingSpanish", profiles.ADULT, "L1", True, 15, 1),
+    ("Dreaming Spanish — Súper principiante", "Dreaming Spanish",
+     "https://www.youtube.com/playlist?list=PLlpPf-YgbU7GbOHc3siOGQ5KmVSngZucl",
+     profiles.ADULT, "L1", True, 10, 2),
+    ("Dreaming Spanish — Principiante", "Dreaming Spanish",
+     "https://www.youtube.com/playlist?list=PLlpPf-YgbU7HWrrenMs3-nuhxgzyAiA-C",
+     profiles.ADULT, "L2", True, 12, 3),
+    # Explicitly Mexican, and conversational rather than narrated — closer to what
+    # he will actually have to follow at a hotel desk.
+    ("Learn Mexican Spanish — Temporada 1", "Doorway To Mexico",
+     "https://www.youtube.com/playlist?list=PLoJBD5jxm7BXNJ_Ma6mXjActy_m2SkXMR",
+     profiles.ADULT, "L3", False, 20, 4),
+    ("Doorway to Mexico — el canal", "Doorway To Mexico",
+     "https://www.youtube.com/channel/UCoghXiWV7PxWp1e4Aj9LaVA",
+     profiles.ADULT, "L3", False, 20, 5),
+    ("How to Spanish — español mexicano real", "How to Spanish",
+     "https://www.youtube.com/c/HowtoSpanishLessons", profiles.ADULT, "L4", False, 25, 6),
 ]
 
 
@@ -119,7 +147,12 @@ class Command(BaseCommand):
         # failing test because the fix is curation, and this is where the person
         # doing the curating is looking. Roughly a week at 3 a day is the bar.
         WEEK = 8
-        for band in sorted({row[3] for row in RESOURCES}):
+        # Kid bands only. The ADULT band is shelves by design — rotation exists to
+        # stop a child seeing the same video forever, and an adult picks for
+        # himself — so warning that he has "no videos to rotate" would be noise
+        # that trains someone to ignore this whole block.
+        kid_bands = {profiles.KIDS_EARLY, profiles.KIDS_OLDER}
+        for band in sorted({row[3] for row in RESOURCES} & kid_bands):
             n = ListeningResource.objects.filter(
                 age_band=band, kind=ListeningResource.VIDEO, active=True).count()
             if n < WEEK:

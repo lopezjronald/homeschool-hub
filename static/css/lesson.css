@@ -364,3 +364,23 @@
   opacity: 0.8;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
+
+/* ---- Lesson 86: the right-triangle explorer -------------------------- */
+.lesson-triangle {
+  display: block;
+  width: 100%;
+  max-width: 320px;
+  height: auto;
+  margin: 0 auto;
+  background: #FBFDFA;
+  border: 1px solid var(--lesson-rule, #DCE6D6);
+  border-radius: 8px;
+}
+/* The angle slider, shared by any lesson tool that wants one. */
+.lesson-slider {
+  display: block;
+  width: 100%;
+  max-width: 320px;
+  margin: 12px auto 4px;
+  accent-color: var(--lesson-move, #C2571A);
+}

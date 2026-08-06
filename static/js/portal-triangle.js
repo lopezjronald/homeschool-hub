@@ -84,7 +84,7 @@
   function build(host, cfg) {
     var theta = Number(cfg.angle) || 30;
     var corner = "A";
-    var scale = 1;
+    var scale = 0.85;   // room for Bigger; 1.0 fills the fitted box
 
     var svg = el("svg", { viewBox: "0 0 " + SIZE + " " + SIZE, class: "lesson-triangle",
                           role: "img", "aria-label": "right triangle" });
@@ -94,11 +94,19 @@
 
     function draw() {
       while (svg.firstChild) svg.removeChild(svg.firstChild);
-      var span = (SIZE - 2 * PAD) * scale;
-      // Right angle at the bottom-right. A is bottom-left, B is top.
+      // FIT the whole triangle inside the box for THIS angle, then apply `scale`
+      // on top. Without the fit, a steep angle (tan 80 ≈ 5.7) makes the upright
+      // leg five times the base and the triangle runs clean off the top of the
+      // canvas. `scale` stays ≤ 1, so the picture always fits and "Smaller" always
+      // shrinks it — the earlier version could not grow past the edge and made
+      // "bigger/smaller" behave unpredictably near 90°.
+      var box = SIZE - 2 * PAD;
+      var t = Math.tan(rad(theta));
+      var base = box / Math.max(1, t);            // shrink base when the leg is tall
+      var upright = base * t;
       var ax = PAD, ay = SIZE - PAD;
-      var cx = PAD + span, cy = SIZE - PAD;
-      var by = SIZE - PAD - span * Math.tan(rad(theta));
+      var cx = PAD + base * scale, cy = SIZE - PAD;
+      var by = SIZE - PAD - upright * scale;
       var bx = cx;
 
       svg.appendChild(el("polygon", {
@@ -136,10 +144,12 @@
 
       var t2 = corner === "A" ? theta : complement(theta);
       var r = ratios(t2, 1);
+      // Saxon's own wording — sin/cos/tan as the ratios of the NAMED sides. This
+      // is a Pre-Algebra lesson in English; the labels match the lesson text.
       readout.textContent =
-        "sen θ = opuesto/hipotenusa = " + r.sin.toFixed(3) +
-        "   ·   cos θ = adyacente/hipotenusa = " + r.cos.toFixed(3) +
-        "   ·   tan θ = opuesto/adyacente = " + (r.tan === null ? "—" : r.tan.toFixed(3));
+        "sin θ = opposite/hypotenuse = " + r.sin.toFixed(3) +
+        "   ·   cos θ = adjacent/hypotenuse = " + r.cos.toFixed(3) +
+        "   ·   tan θ = opposite/adjacent = " + (r.tan === null ? "—" : r.tan.toFixed(3));
     }
 
     var controls = document.createElement("div");
@@ -156,8 +166,8 @@
     button("Stand at the other angle", function () {
       corner = corner === "A" ? "B" : "A";
     });
-    button("Bigger", function () { scale = Math.min(1.35, scale + 0.15); });
-    button("Smaller", function () { scale = Math.max(0.5, scale - 0.15); });
+    button("Bigger", function () { scale = Math.min(1, scale + 0.15); });
+    button("Smaller", function () { scale = Math.max(0.4, scale - 0.15); });
 
     var slider = document.createElement("input");
     slider.type = "range";

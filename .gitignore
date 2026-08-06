@@ -35,4 +35,4 @@ nul
 saxon_source/
 
 # Adversarial review transcripts — working notes, not part of the app.
-reviews.tmp.md
+reviews*.tmp.md

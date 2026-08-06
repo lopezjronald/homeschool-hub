@@ -10,6 +10,7 @@
     </div>
     <div class="d-flex gap-2">
       <a href="{% url 'worklog:worklog_report' %}" class="btn btn-outline-primary">Report</a>
+      <a href="{% url 'worklog:hours_report' %}" class="btn btn-outline-primary">Hours</a>
       {% if can_edit %}
       <a href="{% url 'lingua:library_list' %}" class="btn btn-outline-success">📕 Log a book they read</a>
       <a href="{% url 'worklog:worklog_create' %}" class="btn btn-primary">Log Work</a>

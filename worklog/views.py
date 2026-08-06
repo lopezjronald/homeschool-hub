@@ -225,6 +225,107 @@ def charter_report(request):
     })
 
 
+@login_required
+def hours_report(request):
+    """Instructional hours, attendance, and days of instruction — per child.
+
+    A grade-AGNOSTIC attendance record, deliberately separate from charter_report
+    (which is the grade record): distinct days of instruction and total time, broken
+    down by subject, over a date range. Reads core.activity.aggregate_activity so a
+    child's Spanish input minutes (from the lingua module) count alongside logged
+    work, and a day worked in two subjects still counts once. View access is enough;
+    print to PDF, or download CSV (``?format=csv``).
+    """
+    family = get_selected_family(request)
+    today = timezone.localdate()
+    start = today - timedelta(days=29)
+    end = today
+    selected_child = None
+
+    if request.GET:
+        form = WorkLogReportForm(request.GET, user=request.user, family=family)
+        if form.is_valid():
+            start = form.cleaned_data.get("start") or start
+            end = form.cleaned_data.get("end") or end
+            selected_child = form.cleaned_data.get("child")
+    else:
+        form = WorkLogReportForm(
+            user=request.user, family=family, initial={"start": start, "end": end},
+        )
+
+    # The form already scoped the child dropdown to what this user may see — reuse it
+    # rather than re-deriving the family's children (and its scoping rules).
+    children = list(form.fields["child"].queryset)
+    if selected_child:
+        children = [c for c in children if c.pk == selected_child.pk]
+
+    rows = [_hours_row(c, start, end) for c in children]
+    # Hide a child with nothing in range — unless one was explicitly picked, so
+    # filtering to a quiet child never renders a blank page.
+    if not selected_child:
+        rows = [r for r in rows if r["days"] > 0]
+
+    if request.GET.get("format") == "csv":
+        return _hours_csv(rows, start, end)
+
+    total_minutes = sum(r["minutes"] for r in rows)
+    return render(request, "worklog/hours_report.html", {
+        "form": form,
+        "rows": rows,
+        "start": start,
+        "end": end,
+        "selected_child": selected_child,
+        "total_minutes": total_minutes,
+        "total_hours": round(total_minutes / 60, 1),
+        "family": family,
+        "today": today,
+        "csv_qs": _preserved_get_qs(request, extra={"format": "csv"}),
+    })
+
+
+def _hours_row(child, start, end):
+    """Per-child view-model: days of instruction, total time, and a per-subject
+    (days + minutes) breakdown, sorted heaviest first."""
+    from core.activity import aggregate_activity
+    from curricula.subjects import emoji_for
+
+    agg = aggregate_activity(child, start, end)
+    subjects = []
+    for slug, data in agg["by_subject"].items():
+        minutes = data["minutes"]
+        subjects.append({
+            "label": slug.replace("-", " ").title() if slug else "Other",
+            "emoji": emoji_for(slug),
+            "days": len(data["days"]),
+            "minutes": minutes,
+            "hours": round(minutes / 60, 1),
+        })
+    subjects.sort(key=lambda s: (-s["minutes"], -s["days"], s["label"]))
+    return {
+        "child": child,
+        "days": agg["days_count"],
+        "minutes": agg["total_minutes"],
+        "hours": round(agg["total_minutes"] / 60, 1),
+        "subjects": subjects,
+    }
+
+
+def _hours_csv(rows, start, end):
+    """Hours / attendance summary spreadsheet (stdlib csv, no deps)."""
+    resp = HttpResponse(content_type="text/csv")
+    resp["Content-Disposition"] = (
+        'attachment; filename="hours-report-%s_to_%s.csv"' % (start.isoformat(), end.isoformat())
+    )
+    writer = csv.writer(resp)
+    writer.writerow(["Child", "Subject", "Days", "Minutes", "Hours"])
+    for r in rows:
+        name = r["child"].get_full_name() or r["child"].first_name
+        for s in r["subjects"]:
+            writer.writerow([name, s["label"], s["days"], s["minutes"], s["hours"]])
+        writer.writerow([name, "— All subjects —", r["days"], r["minutes"], r["hours"]])
+    return resp
+
+
 def _report_item(entry, mastery):
     """View-model for one work-log entry: its sample work + AI/parent grade."""
     from tutor.models import MasteryAssessment

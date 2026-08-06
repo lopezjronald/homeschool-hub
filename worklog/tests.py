@@ -336,6 +336,99 @@ class WorkLogReportTest(TestCase):
         self.assertNotContains(resp, "ForbiddenSubject")
 
 
+class HoursReportTest(TestCase):
+    """B1: instructional-hours / attendance / days-of-instruction report."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.parent = User.objects.create_user(username="hp", email="hp@e.com", password="pw")
+        cls.other = User.objects.create_user(username="ho", email="ho@e.com", password="pw")
+        cls.fam = Family.objects.create(name="Hours Family")
+        cls.other_fam = Family.objects.create(name="Other Family")
+        FamilyMembership.objects.create(user=cls.parent, family=cls.fam, role="parent")
+        FamilyMembership.objects.create(user=cls.other, family=cls.other_fam, role="parent")
+        cls.violet = Student.objects.create(
+            parent=cls.parent, first_name="Violet", grade_level="G03", family=cls.fam)
+        cls.kaylin = Student.objects.create(
+            parent=cls.parent, first_name="Kaylin", grade_level="G07", family=cls.fam)
+        cls.quiet = Student.objects.create(
+            parent=cls.parent, first_name="Quiet", grade_level="G01", family=cls.fam)
+        cls.other_child = Student.objects.create(
+            parent=cls.other, first_name="Zed", grade_level="G05", family=cls.other_fam)
+
+        cls.today = timezone.localdate()
+        # Violet: two subjects, SAME day -> one day of instruction, 45+15 minutes.
+        WorkLogEntry.objects.create(parent=cls.parent, family=cls.fam, child=cls.violet,
+                                    subject="Math", date=cls.today, minutes=45)
+        WorkLogEntry.objects.create(parent=cls.parent, family=cls.fam, child=cls.violet,
+                                    subject="Reading", date=cls.today, minutes=15)
+        # Other family — must never appear.
+        WorkLogEntry.objects.create(parent=cls.other, family=cls.other_fam, child=cls.other_child,
+                                    subject="ForbiddenSubject", date=cls.today, minutes=99)
+
+    def _url(self, **params):
+        base = reverse("worklog:hours_report")
+        return base + ("?" + "&".join(f"{k}={v}" for k, v in params.items()) if params else "")
+
+    def test_requires_login(self):
+        resp = self.client.get(reverse("worklog:hours_report"))
+        self.assertEqual(resp.status_code, 302)
+        self.assertIn("/accounts/login/", resp.url)
+
+    def test_a_day_in_two_subjects_counts_once_but_time_sums(self):
+        self.client.login(username="hp", password="pw")
+        resp = self.client.get(reverse("worklog:hours_report"))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "Violet")
+        # One day of instruction even though two subjects were worked...
+        self.assertContains(resp, "1 day of instruction")
+        # ...and the minutes of both subjects are present.
+        self.assertContains(resp, "45")
+        self.assertContains(resp, "15")
+        self.assertContains(resp, "Math")
+        self.assertContains(resp, "Reading")
+        self.assertNotContains(resp, "ForbiddenSubject")   # other family excluded
+
+    def test_spanish_minutes_from_lingua_are_counted(self):
+        """Proves the aggregator wiring: a lingua listening session shows up as
+        Spanish time in the host's hours report, no Work Log entry needed."""
+        from lingua import profiles
+        from lingua.models import Learner, ListeningSession
+        learner = Learner.create_for_host_student(self.kaylin.pk, profiles.KIDS_OLDER)
+        ListeningSession.objects.create(learner=learner, minutes=20)
+        self.client.login(username="hp", password="pw")
+        resp = self.client.get(reverse("worklog:hours_report"))
+        self.assertContains(resp, "Kaylin")
+        self.assertContains(resp, "Spanish")
+        self.assertContains(resp, "20")
+
+    def test_quiet_child_hidden_by_default_but_shown_when_selected(self):
+        # The name is always in the filter dropdown; assert on the CARD heading
+        # (`mb-0">Quiet`) so we test the data card, not the <option>.
+        self.client.login(username="hp", password="pw")
+        default = self.client.get(reverse("worklog:hours_report"))
+        self.assertNotContains(default, 'mb-0">Quiet')       # no activity -> no card
+        picked = self.client.get(reverse("worklog:hours_report"), {"child": self.quiet.pk})
+        self.assertContains(picked, 'mb-0">Quiet')           # explicit pick shows the empty child
+
+    def test_csv_has_per_subject_rows_and_a_child_total(self):
+        self.client.login(username="hp", password="pw")
+        resp = self.client.get(reverse("worklog:hours_report"), {"format": "csv"})
+        self.assertEqual(resp["Content-Type"], "text/csv")
+        body = resp.content.decode()
+        self.assertIn("Child,Subject,Days,Minutes,Hours", body)
+        self.assertIn("Math", body)
+        self.assertIn("— All subjects —", body)
+        # Violet's total row: 1 day, 60 minutes.
+        self.assertIn("— All subjects —,1,60", body)
+
+    def test_other_family_parent_sees_only_their_own(self):
+        self.client.login(username="ho", password="pw")
+        resp = self.client.get(reverse("worklog:hours_report"))
+        self.assertContains(resp, "Zed")
+        self.assertNotContains(resp, "Violet")
+
+
 @override_settings(MEDIA_ROOT=MEDIA)
 class CharterReportRedesignTest(TestCase):
     """The redesigned Charter Report: structured sample work + AI-suggested and

@@ -7,6 +7,7 @@ app_name = "worklog"
 urlpatterns = [
     path("", views.worklog_list, name="worklog_list"),
     path("report/", views.worklog_report, name="worklog_report"),
+    path("hours-report/", views.hours_report, name="hours_report"),
     path("charter-report/", views.charter_report, name="charter_report"),
     path("charter-report/<int:entry_pk>/stamp/", views.report_stamp, name="report_stamp"),
     path("sample-report/", views.sample_report, name="sample_report"),

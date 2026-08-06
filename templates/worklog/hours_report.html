@@ -1,0 +1,127 @@
+{% extends "base.html" %}
+{% block title %}Hours &amp; Attendance · Steadfast Scholars{% endblock %}
+
+{% block extra_css %}
+<style>
+  @media print {
+    .navbar, .no-print { display: none !important; }
+    .card { border: none !important; box-shadow: none !important; }
+    body { background: #fff !important; }
+    main { margin: 0 !important; }
+    a[href]:after { content: none !important; }
+  }
+  .ss-report-meta { color: var(--ss-forest, #0F3D2E); }
+  @page { margin: 1.5cm; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+
+  <div class="d-flex justify-content-between align-items-start mb-3">
+    <div>
+      <h1 class="mb-1">Hours &amp; Attendance</h1>
+      <div class="ss-report-meta">
+        {% if family %}<strong>{{ family.name }}</strong> · {% endif %}
+        {{ start|date:"M d, Y" }} – {{ end|date:"M d, Y" }}
+        {% if selected_child %} · {{ selected_child.get_full_name }}{% endif %}
+      </div>
+      <p class="text-muted small mb-0 mt-1" style="max-width: 46rem;">
+        Days of instruction and time on task, by subject. A day worked in two
+        subjects counts once toward attendance. Spanish input from the reading and
+        listening the girls do counts here too. Add minutes on a work-log entry to
+        grow the time totals.
+      </p>
+    </div>
+    <div class="no-print d-flex gap-2">
+      <a href="{% url 'worklog:worklog_list' %}" class="btn btn-outline-secondary">Back</a>
+      {% if csv_qs %}<a href="?{{ csv_qs }}" class="btn btn-outline-primary">Download CSV</a>{% endif %}
+      <button type="button" class="btn btn-amber" onclick="window.print()">Print / Save PDF</button>
+    </div>
+  </div>
+
+  <!-- Filters -->
+  <form method="get" class="card no-print mb-4">
+    <div class="card-body">
+      <div class="row g-3 align-items-end">
+        <div class="col-md-4">
+          <label for="id_child" class="form-label">{{ form.child.label }}</label>
+          {{ form.child }}
+        </div>
+        <div class="col-md-3">
+          <label for="id_start" class="form-label">{{ form.start.label }}</label>
+          {{ form.start }}
+        </div>
+        <div class="col-md-3">
+          <label for="id_end" class="form-label">{{ form.end.label }}</label>
+          {{ form.end }}
+        </div>
+        <div class="col-md-2 d-grid">
+          <button type="submit" class="btn btn-primary">Run report</button>
+        </div>
+      </div>
+      {% if form.non_field_errors %}
+        <div class="alert alert-danger mt-3 mb-0">{{ form.non_field_errors }}</div>
+      {% endif %}
+    </div>
+  </form>
+
+  <!-- Summary -->
+  <div class="d-flex flex-wrap gap-4 mb-4">
+    <div><span class="h3 mb-0">{{ total_hours }}</span> <span class="text-muted">hour{{ total_hours|pluralize }} of instruction</span></div>
+    <div><span class="h3 mb-0">{{ rows|length }}</span> <span class="text-muted">child{{ rows|length|pluralize:"ren" }}</span></div>
+  </div>
+
+  {% if rows %}
+    {% for row in rows %}
+      <div class="card mb-4">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <h4 class="mb-0">{{ row.child.get_full_name }}
+            <span class="badge bg-primary ms-1">{{ row.child.get_grade_level_display }}</span>
+          </h4>
+          <small class="text-muted">
+            {{ row.days }} day{{ row.days|pluralize }} of instruction ·
+            {{ row.hours }} hour{{ row.hours|pluralize }}
+          </small>
+        </div>
+        <div class="table-responsive">
+          <table class="table table-striped mb-0 align-middle">
+            <thead>
+              <tr>
+                <th>Subject</th>
+                <th style="width: 8rem;" class="text-end">Days</th>
+                <th style="width: 8rem;" class="text-end">Hours</th>
+                <th style="width: 8rem;" class="text-end">Minutes</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for s in row.subjects %}
+                <tr>
+                  <td>{{ s.emoji }} {{ s.label }}</td>
+                  <td class="text-end">{{ s.days }}</td>
+                  <td class="text-end">{% if s.minutes %}{{ s.hours }}{% else %}—{% endif %}</td>
+                  <td class="text-end">{% if s.minutes %}{{ s.minutes }}{% else %}—{% endif %}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+            <tfoot>
+              <tr class="fw-semibold border-top">
+                <td>All subjects</td>
+                <td class="text-end">{{ row.days }}</td>
+                <td class="text-end">{{ row.hours }}</td>
+                <td class="text-end">{{ row.minutes }}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
+    {% endfor %}
+  {% else %}
+    <div class="alert alert-info" role="alert">
+      <h4 class="alert-heading">Nothing logged in this range</h4>
+      <p class="mb-0">There is no recorded instruction between {{ start|date:"M d, Y" }} and {{ end|date:"M d, Y" }}{% if selected_child %} for {{ selected_child.get_full_name }}{% endif %}. Try widening the date range, or add minutes when you log work.</p>
+    </div>
+  {% endif %}
+
+</div>
+{% endblock %}

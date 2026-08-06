@@ -428,6 +428,22 @@ class HoursReportTest(TestCase):
         self.assertContains(resp, "Zed")
         self.assertNotContains(resp, "Violet")
 
+    def test_multi_family_user_sees_only_the_selected_family(self):
+        """A user in two families who selects family A must not see family B's child
+        here — matching how worklog_report/charter_report scope to the selected
+        family (regression guard for the review's Low-2)."""
+        second_fam = Family.objects.create(name="Second Family")
+        FamilyMembership.objects.create(user=self.parent, family=second_fam, role="parent")
+        far_child = Student.objects.create(
+            parent=self.parent, first_name="Faraway", grade_level="G02", family=second_fam)
+        WorkLogEntry.objects.create(parent=self.parent, family=second_fam, child=far_child,
+                                    subject="Math", date=self.today, minutes=30)
+        self.client.login(username="hp", password="pw")
+        # Select the FIRST family explicitly.
+        resp = self.client.get(reverse("worklog:hours_report"), {"family_id": self.fam.pk})
+        self.assertContains(resp, 'mb-0">Violet')            # selected family's child
+        self.assertNotContains(resp, 'mb-0">Faraway')        # other family's child, hidden
+
 
 @override_settings(MEDIA_ROOT=MEDIA)
 class CharterReportRedesignTest(TestCase):

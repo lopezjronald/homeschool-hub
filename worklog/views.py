@@ -26,6 +26,7 @@ from core.permissions import (
     viewable_queryset,
 )
 from core.utils import get_active_family, get_selected_family, resolve_family_for_write
+from students.models import Student
 
 from .forms import WorkLogEntryForm, WorkLogReportForm
 from .models import WorkLogEntry
@@ -253,9 +254,13 @@ def hours_report(request):
             user=request.user, family=family, initial={"start": start, "end": end},
         )
 
-    # The form already scoped the child dropdown to what this user may see — reuse it
-    # rather than re-deriving the family's children (and its scoping rules).
-    children = list(form.fields["child"].queryset)
+    # Scope to the NAVBAR-SELECTED family, like worklog_report/charter_report scope
+    # their entries — otherwise a multi-family user who selected one family would still
+    # see the other family's children here (the shared form dropdown lists them all).
+    children = list(
+        scoped_queryset(Student.objects.all(), request.user, family)
+        .order_by("first_name", "last_name")
+    )
     if selected_child:
         children = [c for c in children if c.pk == selected_child.pk]
 

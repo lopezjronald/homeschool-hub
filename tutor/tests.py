@@ -1302,6 +1302,9 @@ class SaxonLessonToolTests(TestCase):
     def test_the_chart_and_binary_cores(self):
         self._run("portal-chart.test.js")
 
+    def test_the_triangle_and_inequality_cores(self):
+        self._run("portal-triangle.test.js")
+
 
 def saxon_lesson_numbers():
     """Every Saxon lesson that has a seed command, found by looking.

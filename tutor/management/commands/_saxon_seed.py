@@ -40,7 +40,7 @@ REQUIRED_KEYS = {
     LessonBlock.KIND_RECAP: ("items",),
 }
 
-KNOWN_WIDGETS = {"grid", "ratiobar", "scislide", "chart", "binary"}
+KNOWN_WIDGETS = {"grid", "ratiobar", "scislide", "chart", "binary", "triangle"}
 
 # A window big enough to hold the grid lines but not so big the shape is a smudge.
 DEFAULT_VIEW = {"xmin": -6, "xmax": 6, "ymin": -6, "ymax": 6}
@@ -55,6 +55,7 @@ WIDGET_KEYS = {
     "scislide": ("mantissa", "exponent"),
     "chart": ("data", "kinds"),
     "binary": ("bits",),
+    "triangle": ("angle",),
 }
 
 

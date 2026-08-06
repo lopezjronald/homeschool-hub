@@ -128,6 +128,54 @@
 
   var VIEW = { xmin: -6, xmax: 6, ymin: -6, ymax: 6 };
 
+  /* ---------- linear inequalities (Saxon Lesson 83) ----------
+
+     Saxon states the rule as two facts a child has to hold together:
+
+       "y > mx + b, and y < mx + b are represented by DASHED lines.
+        y >= mx + b, and y <= mx + b are represented by SOLID lines."
+       "greater than means shaded ABOVE."
+
+     They are two different questions about the same picture — is the boundary
+     included, and which side is the region — and the classic mistake is reading
+     one and assuming the other. So the widget renders them independently and asks
+     her for both. */
+
+  var OPS = {
+    "lt": { symbol: "<",  dashed: true,  above: false },
+    "le": { symbol: "≤",  dashed: false, above: false },
+    "gt": { symbol: ">",  dashed: true,  above: true },
+    "ge": { symbol: "≥",  dashed: false, above: true },
+  };
+
+  /* Is (x, y) in the region y OP (mx + b)? Points ON the line count only for the
+     inclusive operators — which is the entire meaning of dashed versus solid. */
+  function satisfiesInequality(x, y, m, b, op) {
+    var rule = OPS[op];
+    if (!rule) return false;
+    var line = m * x + b;
+    if (Math.abs(y - line) < 1e-9) return !rule.dashed;
+    return rule.above ? y > line : y < line;
+  }
+
+  /* The shaded half-plane as a closed polygon in grid units, clipped to the window.
+
+     Built from the line's two edge crossings plus the corners on the shaded side,
+     so it stays correct for any slope including one steep enough to leave through
+     the top and bottom rather than the sides. */
+  function halfPlanePolygon(m, b, op, view) {
+    var rule = OPS[op];
+    if (!rule) return [];
+    view = Object.assign({}, VIEW, view || {});
+    var pts = [[view.xmin, m * view.xmin + b], [view.xmax, m * view.xmax + b]];
+    var corners = rule.above
+      ? [[view.xmax, view.ymax], [view.xmin, view.ymax]]
+      : [[view.xmax, view.ymin], [view.xmin, view.ymin]];
+    // Order matters: along the line left-to-right, then back across the far edge.
+    return [pts[0], pts[1], corners[0], corners[1]];
+  }
+
+
   /* Nearest whole-number lattice point to a position already in grid units.
      Clamped to the visible window so a drag off the edge parks on the edge
      rather than vanishing. */
@@ -268,6 +316,8 @@
     sampleCurve: sampleCurve,
     fitFamily: fitFamily,
     axisTicks: axisTicks,
+    OPS: OPS, satisfiesInequality: satisfiesInequality,
+    halfPlanePolygon: halfPlanePolygon,
     transform: transform,
   };
   if (typeof module !== "undefined" && module.exports) module.exports = core;
@@ -377,6 +427,25 @@
         }));
       });
     }
+    /* The inequality picture: region first, then the boundary on top of it, so
+       the dashes stay visible against the shading. */
+    function drawInequality(m, b, op) {
+      var rule = FAMILIES && OPS[op];
+      if (!rule) return;
+      var poly = halfPlanePolygon(m, b, op, view);
+      curveLayer.appendChild(el("polygon", {
+        points: poly.map(function (q) { return X(q[0]) + "," + Y(q[1]); }).join(" "),
+        fill: "#14568C", opacity: 0.16, stroke: "none",
+      }));
+      var line = { x1: X(view.xmin), y1: Y(m * view.xmin + b),
+                   x2: X(view.xmax), y2: Y(m * view.xmax + b),
+                   stroke: "#14568C", "stroke-width": 3 };
+      // Dashed means "the line itself is NOT part of the answer" — the single
+      // most-missed half of this lesson, so it has to be unmistakable.
+      if (rule.dashed) line["stroke-dasharray"] = "9 6";
+      curveLayer.appendChild(el("line", line));
+    }
+
     function drawCurve(key, fitTo) {
       while (curveLayer.firstChild) curveLayer.removeChild(curveLayer.firstChild);
       sampleCurve(key, view, null, fitTo).forEach(function (seg) {
@@ -470,6 +539,42 @@
       drawDots(); drawInk();
     });
     host.appendChild(ctl);
+
+    // A lesson-83 style inequality: draw it, then ask her to name the symbol.
+    if (cfg.inequality) {
+      var ineq = cfg.inequality;
+      drawInequality(Number(ineq.m) || 0, Number(ineq.b) || 0, ineq.op);
+      if (ineq.ask) {
+        var row = document.createElement("div");
+        row.className = "lesson-tool-controls";
+        ["lt", "le", "gt", "ge"].forEach(function (key) {
+          var b2 = document.createElement("button");
+          b2.type = "button";
+          b2.className = "lesson-choice";
+          b2.textContent = "y " + OPS[key].symbol + " mx + b";
+          b2.addEventListener("click", function () {
+            row.querySelectorAll(".lesson-choice").forEach(function (o) {
+              o.classList.remove("is-picked", "is-right");
+            });
+            b2.classList.add("is-picked");
+            var right = key === ineq.op;
+            if (right) b2.classList.add("is-right");
+            // Name WHICH half is wrong. "Try again" teaches nothing, and the two
+            // halves fail for different reasons.
+            var got = OPS[key], want = OPS[ineq.op];
+            readout.textContent = right
+              ? "Sí. " + (want.dashed ? "Dashed, so the line is not included"
+                                      : "Solid, so the line is included")
+                + ", and shaded " + (want.above ? "above" : "below") + "."
+              : (got.dashed !== want.dashed
+                   ? "Look at the line itself: is it dashed or solid?"
+                   : "The line is right — but check which side is shaded.");
+          });
+          row.appendChild(b2);
+        });
+        host.appendChild(row);
+      }
+    }
 
     // family choices — the payoff
     if (cfg.choices && cfg.choices.length) {

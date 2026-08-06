@@ -32,16 +32,21 @@ from lingua.models import ListeningResource
 
 # (title, provider, url, age_band, level, visual_support, minutes, order)
 RESOURCES = [
-    # --- KIDS_EARLY (~6-9): songs + animated stories, very high visual support ---
-    ("Canciones de Rockalingua", "Rockalingua",
-     "https://www.youtube.com/playlist?list=PLUnYkVlaxVK5cGl12JITNPeTtJrNT-crG",
-     profiles.KIDS_EARLY, "L1", True, 5, 1),
+    # --- KIDS_EARLY (~6-9): STORIES, not songs (LGA-104) ---
+    # Violet (9) is at the top of this band and asked for stories like the ones on
+    # the older band's channels, not the number/colour songs. So the band is now
+    # comprehensible-input STORYTELLING: animated cuentos with subtitles, told
+    # slowly enough to follow. The song rows are retired below, not deleted.
+    ("Cuentos animados con subtítulos (BookBox)", "BookBox",
+     "https://www.youtube.com/playlist?list=PLfs5ju_X8bFbuTMgAFUjHQ3A0HAFgFu58",
+     profiles.KIDS_EARLY, "L1", True, 6, 1),
+    ("Dreaming Spanish — historias para principiantes", "Dreaming Spanish",
+     "https://www.youtube.com/playlist?list=PLlpPf-YgbU7GbOHc3siOGQ5KmVSngZucl",
+     profiles.KIDS_EARLY, "L1", True, 8, 2),
+    # Kept: Canal Once is a real es-MX kids' channel with stories, not just songs.
     ("Once Niñas y Niños (Canal Once, México)", "Canal Once",
      "https://www.youtube.com/channel/UC0zvIM2UXP8tgBzAlW2ffCQ",
-     profiles.KIDS_EARLY, "L1", True, 10, 2),
-    ("Canciones de 123 Andrés", "123 Andrés",
-     "https://www.youtube.com/channel/UCrNRnxyY4zC2KKE9Aos2mPw",
-     profiles.KIDS_EARLY, "L1", True, 5, 3),
+     profiles.KIDS_EARLY, "L1", True, 10, 3),
     # --- KIDS_OLDER (~10-13): comprehensible-input storytelling with gestures/drawings ---
     ("Dreaming Spanish — Súper principiante", "Dreaming Spanish",
      "https://www.youtube.com/playlist?list=PLlpPf-YgbU7GbOHc3siOGQ5KmVSngZucl",
@@ -56,27 +61,25 @@ RESOURCES = [
      "https://www.youtube.com/channel/UC0zvIM2UXP8tgBzAlW2ffCQ",
      profiles.KIDS_OLDER, "L2", True, 12, 3),
 
-    # --- Single videos: the pool the 3-choice rotation draws from (LGA-102) ---
-    # Rockalingua and 123 Andrés, both already curated above as channels. Ordered
-    # roughly easiest-first within the band.
-    ("Los números", "Rockalingua",
-     "https://www.youtube.com/watch?v=oUvyhStbFy8", profiles.KIDS_EARLY, "L1", True, 3, 10),
-    ("Colores y números", "Rockalingua",
-     "https://www.youtube.com/watch?v=ZiNFXntWOJw", profiles.KIDS_EARLY, "L1", True, 3, 11),
-    ("Las partes del cuerpo", "Rockalingua",
-     "https://www.youtube.com/watch?v=pOg6y-Q59eM", profiles.KIDS_EARLY, "L1", True, 3, 12),
-    ("La familia", "Rockalingua",
-     "https://www.youtube.com/watch?v=_T1svGpYS28", profiles.KIDS_EARLY, "L1", True, 3, 13),
-    ("De colores / amistad", "Rockalingua",
-     "https://www.youtube.com/watch?v=oMRZhR6SOmc", profiles.KIDS_EARLY, "L1", True, 4, 14),
-    ("Yo soy especial", "123 Andrés",
-     "https://www.youtube.com/watch?v=dW_xBF1CDnY", profiles.KIDS_EARLY, "L1", True, 4, 15),
-    # A movement song — she drums, so a song that asks the body to keep time is
-    # doing two jobs at once.
-    ("La clave (canción de movimiento)", "123 Andrés",
-     "https://www.youtube.com/watch?v=RY3n0k73PJk", profiles.KIDS_EARLY, "L1", True, 4, 16),
-    ("¡Voy a la escuela!", "123 Andrés",
-     "https://www.youtube.com/watch?v=sZ_OkNqnzTk", profiles.KIDS_EARLY, "L1", True, 4, 17),
+    # --- Single STORY videos: the pool the 3-choice rotation draws from (LGA-102).
+    # Animated cuentos with subtitles, each verified through oEmbed by title AND
+    # channel. Ordered easiest/shortest first. ---
+    ("El tesoro más grande (cuento animado)", "BookBox",
+     "https://www.youtube.com/watch?v=3O8RUPDzUcI", profiles.KIDS_EARLY, "L1", True, 5, 10),
+    ("Los cuatro amigos (cuento animado)", "BookBox",
+     "https://www.youtube.com/watch?v=5k8OMdstOKI", profiles.KIDS_EARLY, "L1", True, 5, 11),
+    ("Hugo el cubo (cuento animado)", "BookBox",
+     "https://www.youtube.com/watch?v=4mCuUP-ePcc", profiles.KIDS_EARLY, "L1", True, 5, 12),
+    ("¡Sonríe, por favor! (cuento animado)", "BookBox",
+     "https://www.youtube.com/watch?v=jgj3PnD2-Us", profiles.KIDS_EARLY, "L1", True, 5, 13),
+    ("El chacal azul (cuento animado)", "BookBox",
+     "https://www.youtube.com/watch?v=U36_u9nxIwI", profiles.KIDS_EARLY, "L2", True, 6, 14),
+    ("Caperucita Roja (cuento de hadas)", "SPANISH with Cartoons",
+     "https://www.youtube.com/watch?v=kAL0rtFHyrs", profiles.KIDS_EARLY, "L2", True, 7, 15),
+    ("Rapunzel (cuento de hadas)", "SPANISH with Cartoons",
+     "https://www.youtube.com/watch?v=o3wZRwoBz_A", profiles.KIDS_EARLY, "L2", True, 8, 16),
+    ("Cuentos de hadas para principiantes", "Tinto and Tea",
+     "https://www.youtube.com/watch?v=mj0-EiQNjt4", profiles.KIDS_EARLY, "L2", True, 10, 17),
 
     # KIDS_OLDER has ONE verified single video so far. Dreaming Spanish turns
     # embedding off, so oEmbed cannot confirm most of its catalogue and those were
@@ -114,6 +117,34 @@ RESOURCES = [
      "https://www.youtube.com/c/HowtoSpanishLessons", profiles.ADULT, "L4", False, 25, 6),
 ]
 
+# --- RETIRED (LGA-104) ---------------------------------------------------------
+# Rows that were seeded once and are now switched OFF. Violet (9) outgrew the
+# KIDS_EARLY number/colour songs and asked for stories instead, so her band's song
+# rows are removed from RESOURCES above — but get_or_create only ever CREATES, it
+# never deactivates, so the rows would linger `active=True` in every database that
+# already ran the seed. This list is the surgical off-switch: the seed sets
+# `active=False` on EXACTLY these (url, age_band) pairs and touches nothing else's
+# `active`, so a parent's admin edit on some other resource is never clobbered.
+#
+# They are retired, not deleted: a genuinely younger child could want them back,
+# and a re-add is one `active=True` in the admin. Nothing here is on RESOURCES, so
+# a later seed run will not resurrect them.
+RETIRED = [
+    # (url, age_band) — Violet's former song rotation + the two song shelves
+    ("https://www.youtube.com/watch?v=oUvyhStbFy8", profiles.KIDS_EARLY),
+    ("https://www.youtube.com/watch?v=ZiNFXntWOJw", profiles.KIDS_EARLY),
+    ("https://www.youtube.com/watch?v=pOg6y-Q59eM", profiles.KIDS_EARLY),
+    ("https://www.youtube.com/watch?v=_T1svGpYS28", profiles.KIDS_EARLY),
+    ("https://www.youtube.com/watch?v=oMRZhR6SOmc", profiles.KIDS_EARLY),
+    ("https://www.youtube.com/watch?v=dW_xBF1CDnY", profiles.KIDS_EARLY),
+    ("https://www.youtube.com/watch?v=RY3n0k73PJk", profiles.KIDS_EARLY),
+    ("https://www.youtube.com/watch?v=sZ_OkNqnzTk", profiles.KIDS_EARLY),
+    ("https://www.youtube.com/playlist?list=PLUnYkVlaxVK5cGl12JITNPeTtJrNT-crG",
+     profiles.KIDS_EARLY),   # Canciones de Rockalingua (shelf)
+    ("https://www.youtube.com/channel/UCrNRnxyY4zC2KKE9Aos2mPw",
+     profiles.KIDS_EARLY),   # Canciones de 123 Andrés (shelf)
+]
+
 
 class Command(BaseCommand):
     help = "Seed the curated Spanish listening resources (idempotent)."
@@ -141,6 +172,19 @@ class Command(BaseCommand):
         self.stdout.write(self.style.SUCCESS(
             f"Listening resources seeded: {created} created, {existing} already present."
         ))
+
+        # Retire the rows Violet outgrew (LGA-104). Only ever flips active True->False,
+        # and only for the named pairs — an already-off row is a no-op, and nothing
+        # else's `active` is read or written. filter().update() so a fresh database
+        # that never had these rows simply retires 0.
+        retired = 0
+        for url, band in RETIRED:
+            retired += ListeningResource.objects.filter(
+                url=url, age_band=band, active=True).update(active=False)
+        if retired:
+            self.stdout.write(self.style.SUCCESS(
+                f"Retired {retired} outgrown resource(s) (LGA-104)."
+            ))
 
         # A thin band still WORKS — the rotation recycles sooner and says "otra vez"
         # — so this is a nudge, not an error. It is reported here rather than as a

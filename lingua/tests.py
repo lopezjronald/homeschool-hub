@@ -7669,6 +7669,60 @@ class ListeningRotationTests(TestCase):
         self.assertEqual(shown, 3, f"{shown} videos on the page, expected 3")
 
 
+class ListeningRetireTests(TestCase):
+    """Violet outgrew the number/colour songs and asked for stories (LGA-104).
+
+    The songs are dropped from RESOURCES, but a database that already ran the seed
+    still holds them ``active``. The seed's RETIRED list is the off-switch — and it
+    must flip OFF only the named rows, never a resource a parent tuned in the admin.
+    """
+
+    def _seed(self):
+        from io import StringIO
+
+        from django.core.management import call_command
+        call_command("seed_listening", stdout=StringIO())
+
+    def test_a_previously_seeded_song_is_switched_off(self):
+        from lingua.management.commands.seed_listening import RETIRED
+        url, band = RETIRED[0]
+        song = ListeningResource.objects.create(
+            title="Los números", url=url, age_band=band, level="L1", minutes=3,
+            order=10, kind=ListeningResource.VIDEO, active=True)
+        self._seed()
+        song.refresh_from_db()
+        self.assertFalse(song.active, "the outgrown song is still active after seeding")
+
+    def test_it_never_touches_a_resource_not_on_the_retire_list(self):
+        """A parent's own curated row must survive the seed untouched — a retire step
+        that deactivated broadly would green this test into red."""
+        keep = ListeningResource.objects.create(
+            title="Un cuento que le gusta", url="https://www.youtube.com/watch?v=keepme",
+            age_band=profiles.KIDS_EARLY, level="L1", minutes=5, order=99,
+            kind=ListeningResource.VIDEO, active=True)
+        self._seed()
+        keep.refresh_from_db()
+        self.assertTrue(keep.active, "the seed deactivated a row that was not retired")
+
+    def test_the_early_band_offers_stories_and_no_longer_the_songs(self):
+        from lingua.management.commands.seed_listening import RETIRED
+        # Stand up the songs the way a database that already ran the old seed holds them.
+        for i, (url, band) in enumerate(RETIRED):
+            ListeningResource.objects.get_or_create(
+                url=url, age_band=band,
+                defaults=dict(title=f"Song {i}", level="L1", minutes=3, order=i,
+                              kind=ListeningResource.VIDEO, active=True))
+        self._seed()
+        offered = services.listening_resources(profiles.KIDS_EARLY)
+        offered_urls = {r.url for r in offered}
+        for url, band in RETIRED:
+            if band == profiles.KIDS_EARLY:
+                self.assertNotIn(url, offered_urls, f"retired song {url} still offered")
+        self.assertTrue(
+            any("cuento" in r.title.lower() for r in offered),
+            "no story surfaced for the early band after the swap")
+
+
 class ListeningLinkCheckTests(TestCase):
     """--deactivate must only ever fire on a link that is genuinely gone (LGA-102).
 

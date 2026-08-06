@@ -67,6 +67,12 @@ class WorkLogEntry(models.Model):
         blank=True,
         help_text="What did they do? What did you observe?",
     )
+    minutes = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        help_text="Optional: minutes spent, for your hours / attendance report. "
+                  "Parent-only — never shown to the child.",
+    )
     attachment = models.FileField(
         upload_to="work_log/%Y/%m/",
         blank=True,

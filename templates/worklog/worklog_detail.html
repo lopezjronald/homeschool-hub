@@ -24,6 +24,11 @@
             <dt class="col-sm-3">Notes</dt>
             <dd class="col-sm-9">{{ entry.description|linebreaksbr|default:"—" }}</dd>
 
+            {% if entry.minutes %}
+            <dt class="col-sm-3">Time</dt>
+            <dd class="col-sm-9">{{ entry.minutes }} min</dd>
+            {% endif %}
+
             <dt class="col-sm-3">Work</dt>
             <dd class="col-sm-9">
               {% if entry.attachment %}

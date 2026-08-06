@@ -44,6 +44,9 @@
               {% if entry.description %}
                 <p class="card-text">{{ entry.description|truncatewords:24 }}</p>
               {% endif %}
+              {% if entry.minutes %}
+                <span class="badge bg-light text-dark">⏱ {{ entry.minutes }} min</span>
+              {% endif %}
               {% if entry.attachment %}
                 <span class="badge bg-info text-dark">📎 Attachment</span>
               {% endif %}

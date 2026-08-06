@@ -187,6 +187,66 @@ class WorkLogCreateTest(TestCase):
         self.assertFalse(WorkLogEntry.objects.filter(child=other_child).exists())
 
 
+class WorkLogMinutesTest(TestCase):
+    """F3: optional per-entry minutes, the raw material for the hours report."""
+
+    def setUp(self):
+        self.client = Client()
+        self.parent = User.objects.create_user(
+            username="mparent", email="mp@example.com", password="pw", is_active=True,
+        )
+        self.child = Student.objects.create(
+            parent=self.parent, first_name="Kaylin", grade_level="G07",
+        )
+        self.client.login(username="mparent", password="pw")
+
+    def _post(self, **extra):
+        data = {"child": self.child.pk, "date": "2026-08-06",
+                "subject": "Math", "description": ""}
+        data.update(extra)
+        return self.client.post(reverse("worklog:worklog_create"), data=data)
+
+    def test_minutes_are_stored_when_given(self):
+        self.assertEqual(self._post(minutes="45").status_code, 302)
+        self.assertEqual(WorkLogEntry.objects.get(child=self.child).minutes, 45)
+
+    def test_minutes_are_optional(self):
+        self.assertEqual(self._post().status_code, 302)
+        self.assertIsNone(WorkLogEntry.objects.get(child=self.child).minutes)
+
+    def test_zero_minutes_is_treated_as_not_recorded(self):
+        """0 is meaningless as a session; clean_minutes coerces it to None so it
+        never lands as a real zero that skews an average or a total."""
+        self.assertEqual(self._post(minutes="0").status_code, 302)
+        self.assertIsNone(WorkLogEntry.objects.get(child=self.child).minutes)
+
+    def test_absurd_minutes_are_rejected(self):
+        """More than a full day is a fat-finger; reject rather than corrupt the
+        hours report. Nothing is saved."""
+        resp = self._post(minutes="99999")
+        self.assertEqual(resp.status_code, 200)
+        self.assertFalse(WorkLogEntry.objects.filter(child=self.child).exists())
+
+    def test_minutes_field_is_positive_integer_not_small(self):
+        """SQLite ignores column width, so a PositiveSmallIntegerField (Postgres
+        cap 32767) would pass every local test and only fail in prod once minutes
+        add up in a query. Pin the wider type + nullability at the schema level so
+        a downgrade of the field type fails here, not on prod."""
+        field = WorkLogEntry._meta.get_field("minutes")
+        self.assertEqual(field.get_internal_type(), "PositiveIntegerField")
+        self.assertTrue(field.null)
+
+    def test_minutes_row_shows_on_detail_and_hides_when_absent(self):
+        with_min = WorkLogEntry.objects.create(
+            parent=self.parent, child=self.child, subject="Math", minutes=30)
+        without = WorkLogEntry.objects.create(
+            parent=self.parent, child=self.child, subject="Reading")
+        shown = self.client.get(reverse("worklog:worklog_detail", kwargs={"pk": with_min.pk}))
+        self.assertContains(shown, "30 min")
+        hidden = self.client.get(reverse("worklog:worklog_detail", kwargs={"pk": without.pk}))
+        self.assertNotContains(hidden, "Time</dt>")
+
+
 class WorkLogReportTest(TestCase):
     """Date-range completion report: scoping, filtering, and oversight access."""
 

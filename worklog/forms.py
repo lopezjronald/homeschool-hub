@@ -17,12 +17,15 @@ class WorkLogEntryForm(forms.ModelForm):
 
     class Meta:
         model = WorkLogEntry
-        fields = ["child", "date", "subject", "curriculum", "description", "attachment"]
+        fields = ["child", "date", "subject", "curriculum", "description", "minutes", "attachment"]
         widgets = {
             "date": forms.DateInput(attrs={"type": "date"}),
             "description": forms.Textarea(attrs={"rows": 3}),
             "subject": forms.TextInput(attrs={"placeholder": "e.g. Math, Reading, Nature walk"}),
+            "minutes": forms.NumberInput(attrs={"min": 1, "max": 1440,
+                                                "placeholder": "optional"}),
         }
+        labels = {"minutes": "Minutes (optional)"}
 
     def __init__(self, *args, user=None, family=None, **kwargs):
         super().__init__(*args, **kwargs)
@@ -66,6 +69,17 @@ class WorkLogEntryForm(forms.ModelForm):
             if not self._allowed_curricula().filter(pk=curriculum.pk).exists():
                 raise forms.ValidationError("Invalid curriculum selection.")
         return curriculum
+
+    def clean_minutes(self):
+        # The client-side max is only a hint. Bound it server-side so one
+        # fat-fingered value can't distort the hours/attendance report — and
+        # treat 0 as "not recorded" rather than a real zero-minute session.
+        minutes = self.cleaned_data.get("minutes")
+        if minutes in (None, 0):
+            return None
+        if minutes > 1440:
+            raise forms.ValidationError("That's more than a full day — please check the minutes.")
+        return minutes
 
 
 class WorkLogReportForm(forms.Form):

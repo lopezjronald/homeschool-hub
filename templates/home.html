@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load static %}
 {% block title %}Home · Steadfast Scholars{% endblock %}
 {% block content %}
 <div class="container py-4">
@@ -9,6 +10,8 @@
       <h1>Welcome back, {{ user.username }}</h1>
       <p class="lead mb-0">{% if selected_family %}{{ selected_family.name }} · {% endif %}pick up where you left off.</p>
     {% else %}
+      <img src="{% static 'brand/logo-emblem.svg' %}" alt="" width="84" height="84"
+           class="d-block mx-auto mb-3">
       <h1>Steadfast Scholars</h1>
       <p class="lead mx-auto mb-4" style="max-width:640px;">
         One calm place for your children's learning — log their work, follow every

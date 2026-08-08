@@ -815,10 +815,125 @@ WORLD_HISTORY_G7 = {
 }
 
 
+SCIENCE_G3 = {
+    "slug": "science_g3",
+    "name": "Science 3 — You're the Scientist",
+    "subject": "Science",
+    "grade_level": "G03",
+    "source": "Grade 3 NGSS (3-PS2, 3-LS1/3/4, 3-ESS2/3). Self-directed household "
+              "experiments from the family's commissioned research build (2026).",
+    "chapters": [
+        {"number": 1, "title": "Unit 1 — Forces & Motion", "lessons": [
+            _ls(1, 1, "Mission 1: Push It, Pull It", "Identify pushes and pulls as forces (3-PS2)."),
+            _ls(2, 2, "Mission 2: The Great Ramp Races", "Measure how ramp height changes motion (3-PS2-2)."),
+            _ls(3, 3, "Mission 3: Friction — The Invisible Brake", "Test friction on different surfaces (3-PS2)."),
+            _ls(4, 4, "Mission 4: Balloon Rocket", "Explore action–reaction forces (3-PS2)."),
+            _ls(5, 5, "Mission 5: Balanced vs. Unbalanced", "Distinguish balanced from unbalanced forces (3-PS2-1)."),
+        ]},
+        {"number": 2, "title": "Unit 2 — Invisible Forces: Magnets & Static", "lessons": [
+            _ls(1, 6, "Mission 6: Magnet Detective", "Discover magnets attract iron/steel; poles attract/repel (3-PS2-3)."),
+            _ls(2, 7, "Mission 7: Force Through Walls", "Test magnetic force at a distance and through materials (3-PS2-4)."),
+            _ls(3, 8, "Mission 8: Make a Compass", "Build a floating compass from a magnetized needle (3-PS2)."),
+            _ls(4, 9, "Mission 9: Static Electricity", "Explore static charge as a non-contact force (3-PS2-3)."),
+        ]},
+        {"number": 3, "title": "Unit 3 — Life Cycles", "lessons": [
+            _ls(1, 10, "Mission 10: Sprout Lab — Setup Day", "Set up a fair test of light on bean growth (3-LS1-1)."),
+            _ls(2, 11, "Mission 11: Every Living Thing Has a Cycle", "Model animal life cycles and metamorphosis (3-LS1-1)."),
+            _ls(3, 12, "Mission 12: Sprout Lab — Results Day", "Compare and measure the sprout results (3-LS1-1)."),
+            _ls(4, 13, "Mission 13: Plant Life Cycle Wheel + Seed Hunt", "Model the plant life cycle; find seeds (3-LS1-1)."),
+        ]},
+        {"number": 4, "title": "Unit 4 — Traits & Families", "lessons": [
+            _ls(1, 14, "Mission 14: The Family Trait Lab", "Survey inherited traits across the family (3-LS3-1)."),
+            _ls(2, 15, "Mission 15: Inherited or Acquired?", "Sort inherited vs. acquired; environment's effect (3-LS3-2)."),
+            _ls(3, 16, "Mission 16: Same Species, All Different", "Measure variation within one kind (3-LS3-1)."),
+        ]},
+        {"number": 5, "title": "Unit 5 — Survival, Adaptation & Fossils", "lessons": [
+            _ls(1, 17, "Mission 17: The Beak Buffet", "Model how beak shape is an adaptation (3-LS4-3)."),
+            _ls(2, 18, "Mission 18: Camouflage Hunt", "Model how camouflage aids survival (3-LS4-3)."),
+            _ls(3, 19, "Mission 19: Fossil Factory", "Make imprint fossils; explain what fossils are (3-LS4-1)."),
+            _ls(4, 20, "Mission 20: Fossil Detective", "Read fossil evidence; match traits to environments (3-LS4-1/2)."),
+        ]},
+        {"number": 6, "title": "Unit 6 — Weather, Climate & Hazards", "lessons": [
+            _ls(1, 21, "Mission 21: Weather Station — Rain Gauge & Log", "Measure and log daily weather (3-ESS2-1)."),
+            _ls(2, 22, "Mission 22: Cloud in a Jar", "Model how clouds form (3-ESS2-1). ⚠️ adult assist (hot water)."),
+            _ls(3, 23, "Mission 23: Weather vs. Climate", "Distinguish weather from climate (3-ESS2-2)."),
+            _ls(4, 24, "Mission 24: Design vs. Disaster — Wind!", "Engineer to reduce weather-hazard damage (3-ESS3-1)."),
+            _ls(5, 25, "Mission 25: Flood Fighters", "Engineer flood protection like local levees (3-ESS3-1)."),
+        ]},
+        {"number": 7, "title": "Capstone", "lessons": [
+            _ls(1, 26, "Mission 26: Violet's Science Fair", "Review 3-PS2/LS/ESS: what a scientist does."),
+        ]},
+    ],
+}
+
+
+SCIENCE_G7 = {
+    "slug": "science_g7",
+    "name": "Science 7 — Integrated Science Lab",
+    "subject": "Science",
+    "grade_level": "G07",
+    "source": "CA Grade 7 Integrated (MS-PS1/PS3, MS-ESS2/ESS3, MS-LS1/LS2, MS-ETS1). "
+              "Self-directed experiments + PhET; CER write-ups. Commissioned research build (2026).",
+    "chapters": [
+        {"number": 1, "title": "Unit 1 — Matter & the Particle Model", "lessons": [
+            _ls(1, 1, "Mission 1: Everything Is Particles", "Model matter as moving particles; temperature = speed (MS-PS1-1/4)."),
+            _ls(2, 2, "Mission 2: Ice Balloon Lab", "Investigate density and phase (why ice floats) (MS-PS1-4)."),
+            _ls(3, 3, "Mission 3: Phase Change Numbers", "Graph phase-change plateaus (MS-PS1-4). ⚠️ adult (stove)."),
+            _ls(4, 4, "Mission 4: Density Tower", "Explain density layering (MS-PS1)."),
+        ]},
+        {"number": 2, "title": "Unit 2 — Chemical Reactions", "lessons": [
+            _ls(1, 5, "Mission 5: Signs of a Reaction", "Distinguish chemical vs. physical change by evidence (MS-PS1-2)."),
+            _ls(2, 6, "Mission 6: Conservation of Mass — Wait, Weight!", "Show mass is conserved in a reaction (MS-PS1-5)."),
+            _ls(3, 7, "Mission 7: Hot and Cold Reactions", "Classify exothermic vs. endothermic reactions (MS-PS1-6)."),
+            _ls(4, 8, "Mission 8: Reaction Engineering — Balloon Blow-Up", "Find the limiting reactant (MS-PS1-2/6)."),
+        ]},
+        {"number": 3, "title": "Unit 3 — Thermal Energy", "lessons": [
+            _ls(1, 9, "Mission 9: Heat Moves Three Ways", "Model conduction, convection, radiation (MS-PS3-3). ⚠️ adult (hot water)."),
+            _ls(2, 10, "Mission 10: Build a Cooler — Design", "Design an insulator to slow heat flow (MS-PS3-3)."),
+            _ls(3, 11, "Mission 11: Build a Cooler — Test & Iterate", "Test and iterate the insulation design (MS-PS3-3)."),
+            _ls(4, 12, "Mission 12: Thermos Autopsy & Home Heat Audit", "Apply heat-transfer ideas to real devices (MS-PS3-4)."),
+        ]},
+        {"number": 4, "title": "Unit 4 — Plate Tectonics & the Rock Cycle", "lessons": [
+            _ls(1, 13, "Mission 13: The Puzzle Earth", "Explain plate tectonics with Pangaea evidence (MS-ESS2-3)."),
+            _ls(2, 14, "Mission 14: Boundaries — Where the Action Is", "Model the three plate boundaries (MS-ESS2-2)."),
+            _ls(3, 15, "Mission 15: The Crayon Rock Cycle", "Model the rock cycle (MS-ESS2-1). ⚠️ adult (hot water)."),
+            _ls(4, 16, "Mission 16: Rocks of California", "Classify local rocks by observation (MS-ESS2-1)."),
+        ]},
+        {"number": 5, "title": "Unit 5 — Earth's Natural Resources", "lessons": [
+            _ls(1, 17, "Mission 17: Cookie Mining", "Model resource extraction cost-benefit (MS-ESS3-1)."),
+            _ls(2, 18, "Mission 18: Renewable vs. Nonrenewable", "Compare renewable and nonrenewable energy (MS-ESS3-3/4)."),
+            _ls(3, 19, "Mission 19: Design a Resource Plan", "Weigh energy trade-offs in a 20-year plan (MS-ESS3-4)."),
+        ]},
+        {"number": 6, "title": "Unit 6 — Ecosystems & Biodiversity", "lessons": [
+            _ls(1, 20, "Mission 20: Backyard Biodiversity Survey", "Measure biodiversity in two zones (MS-LS2-1/5)."),
+            _ls(2, 21, "Mission 21: Build the Food Web", "Model energy flow through a food web (MS-LS2-3)."),
+            _ls(3, 22, "Mission 22: Pull a Thread — Ecosystem Jenga", "Test how species loss destabilizes a web (MS-LS2-4)."),
+            _ls(4, 23, "Mission 23: Competition & Invasion", "Explain competition and invasive species (MS-LS2-1/2)."),
+        ]},
+        {"number": 7, "title": "Unit 7 — Cycling of Matter & Energy", "lessons": [
+            _ls(1, 24, "Mission 24: Photosynthesis You Can SEE", "Observe photosynthesis producing oxygen (MS-LS1-6)."),
+            _ls(2, 25, "Mission 25: The Carbon & Water Merry-Go-Round", "Model the water and carbon cycles (MS-LS2-3/LS1-7)."),
+            _ls(3, 26, "Mission 26: Decomposer Detectives", "Model decomposition recycling matter (MS-LS2-3)."),
+        ]},
+        {"number": 8, "title": "Unit 8 — Engineering Design", "lessons": [
+            _ls(1, 27, "Mission 27: The Egg-Drop Lander — Design", "Define a problem and brainstorm designs (MS-ETS1-1/2)."),
+            _ls(2, 28, "Mission 28: The Egg-Drop Lander — Test & Iterate", "Test and iterate to find the limit (MS-ETS1-3/4)."),
+            _ls(3, 29, "Mission 29: Build Something the Family Needs", "Run the full design process for a real client (MS-ETS1)."),
+        ]},
+        {"number": 9, "title": "Capstone", "lessons": [
+            _ls(1, 30, "Mission 30: The Lab Report & Science Showcase",
+                "Review all units: how matter and energy move through the world."),
+        ]},
+    ],
+}
+
+
 BLUEPRINTS = {
     DIMENSIONS_MATH_3A["slug"]: DIMENSIONS_MATH_3A,
     SOCIAL_STUDIES_G3["slug"]: SOCIAL_STUDIES_G3,
     WORLD_HISTORY_G7["slug"]: WORLD_HISTORY_G7,
+    SCIENCE_G3["slug"]: SCIENCE_G3,
+    SCIENCE_G7["slug"]: SCIENCE_G7,
     BLACKBIRD_I_AM_DAVID["slug"]: BLACKBIRD_I_AM_DAVID,
     BLACKBIRD_A_MOUSE_CALLED_WOLF["slug"]: BLACKBIRD_A_MOUSE_CALLED_WOLF,
     ESSENTIALS_IN_WRITING_3["slug"]: ESSENTIALS_IN_WRITING_3,

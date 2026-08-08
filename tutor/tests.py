@@ -2190,3 +2190,104 @@ class WorldHistoryKaylinSeedTests(TestCase):
             "portal/_lesson_blocks.html", {"blocks": m6.blocks.order_by("order")})
         self.assertIn("House of Wisdom", html)               # verbatim content preserved
         self.assertIn("al-jabr", html)                        # the algebra tie-in
+
+
+class ScienceVioletSeedTests(TestCase):
+    """Violet's Grade 3 Science mission course: household experiments, safety flags,
+    no AI. Same in-app mission pattern (via _mission_seed)."""
+
+    @classmethod
+    def setUpTestData(cls):
+        User = get_user_model()
+        cls.parent = User.objects.create_user("sciviolet", email="sv@e.com", password="pw")
+        cls.violet = Student.objects.create(
+            parent=cls.parent, first_name="Violet", grade_level="G03")
+
+    def _seed(self):
+        call_command("seed_sci_violet", stdout=StringIO())
+
+    def test_seeds_units_missions_and_approved_materials(self):
+        from curricula.models import Chapter, CurriculumPlacement
+        from tutor.models import Material
+        self._seed()
+        curr = Curriculum.objects.get(name__startswith="Science 3")
+        self.assertEqual(curr.subject, "Science")
+        self.assertEqual(Chapter.objects.filter(curriculum=curr).count(), 7)   # 6 units + capstone
+        self.assertEqual(Lesson.objects.filter(chapter__curriculum=curr).count(), 26)
+        mats = Material.objects.filter(
+            lesson__chapter__curriculum=curr, skill_type=Material.SKILL_LESSON)
+        self.assertEqual(mats.count(), 26)
+        self.assertTrue(all(m.status == Material.APPROVED for m in mats))
+        self.assertTrue(
+            CurriculumPlacement.objects.filter(child=self.violet, curriculum=curr).exists())
+
+    def test_hot_water_mission_carries_the_adult_assist_and_safety_flags(self):
+        from django.template.loader import render_to_string
+        from tutor.models import Material
+        self._seed()
+        m22 = Material.objects.get(title__startswith="Mission 22")
+        html = render_to_string(
+            "portal/_lesson_blocks.html", {"blocks": m22.blocks.order_by("order")})
+        self.assertIn("ADULT ASSIST", html)                  # the flagged safety banner
+        self.assertIn("Safety", html)                         # standing safety rule on every card
+
+    def test_a_mission_renders_verbatim(self):
+        from django.template.loader import render_to_string
+        from tutor.models import Material
+        self._seed()
+        m8 = Material.objects.get(title__startswith="Mission 8")
+        html = render_to_string(
+            "portal/_lesson_blocks.html", {"blocks": m8.blocks.order_by("order")})
+        self.assertIn("compass", html.lower())               # verbatim content
+        self.assertIn("3 things I learned", html)             # completion block
+
+
+class ScienceKaylinSeedTests(TestCase):
+    """Kaylin's Grade 7 Integrated Science: 30 missions, CER completion, PhET labs,
+    adult-assist flags. Same in-app mission pattern."""
+
+    @classmethod
+    def setUpTestData(cls):
+        User = get_user_model()
+        cls.parent = User.objects.create_user("scikaylin", email="sk@e.com", password="pw")
+        cls.kaylin = Student.objects.create(
+            parent=cls.parent, first_name="Kaylin", grade_level="G07")
+
+    def _seed(self):
+        call_command("seed_sci_kaylin", stdout=StringIO())
+
+    def test_seeds_eight_units_and_30_approved_missions(self):
+        from curricula.models import Chapter, CurriculumPlacement
+        from tutor.models import Material
+        self._seed()
+        curr = Curriculum.objects.get(name__startswith="Science 7")
+        self.assertEqual(curr.subject, "Science")
+        self.assertEqual(curr.grade_level, "G07")
+        self.assertEqual(Chapter.objects.filter(curriculum=curr).count(), 9)   # 8 units + capstone
+        self.assertEqual(Lesson.objects.filter(chapter__curriculum=curr).count(), 30)
+        mats = Material.objects.filter(
+            lesson__chapter__curriculum=curr, skill_type=Material.SKILL_LESSON)
+        self.assertEqual(mats.count(), 30)
+        self.assertTrue(all(m.status == Material.APPROVED for m in mats))
+        self.assertTrue(
+            CurriculumPlacement.objects.filter(child=self.kaylin, curriculum=curr).exists())
+
+    def test_cer_completion_and_phet_digital_lab_render(self):
+        from django.template.loader import render_to_string
+        from tutor.models import Material
+        self._seed()
+        m1 = Material.objects.get(title__startswith="Mission 1:")
+        html = render_to_string(
+            "portal/_lesson_blocks.html", {"blocks": m1.blocks.order_by("order")})
+        self.assertIn("I claim", html)                        # the CER completion frame
+        self.assertIn("phet.colorado.edu", html)              # PhET digital-lab link
+        self.assertIn("<a ", html)                            # rendered as a clickable link
+
+    def test_stove_mission_carries_the_adult_assist_flag(self):
+        from django.template.loader import render_to_string
+        from tutor.models import Material
+        self._seed()
+        m3 = Material.objects.get(title__startswith="Mission 3:")
+        html = render_to_string(
+            "portal/_lesson_blocks.html", {"blocks": m3.blocks.order_by("order")})
+        self.assertIn("ADULT ASSIST", html)                  # the flagged stove safety banner

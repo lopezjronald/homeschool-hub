@@ -25,7 +25,7 @@ from curricula.services import apply_blueprint
 from students.models import Student
 from tutor.models import LessonBlock, Material
 
-from ._mission_seed import add_journal
+from ._mission_seed import add_journal, mission_quiz
 from ._saxon_seed import validate_blocks
 
 # The RECAP now points to the Explorer's Log (a real place to write it), instead of
@@ -400,6 +400,7 @@ class Command(BaseCommand):
                 title=f"Mission {m['n']} · Explorer's Log",
                 intro=JOURNAL_INTRO,
                 questions=journal_questions(m),
+                quiz=mission_quiz("ss_violet", m["n"]),
             )
             seeded += 1
 

@@ -14,7 +14,9 @@ from django.core.management.base import BaseCommand
 from curricula.blueprints import SCIENCE_G7
 from tutor.models import LessonBlock
 
-from ._mission_seed import add_journal, resolve_child, setup_course, upsert_mission
+from ._mission_seed import (
+    add_journal, mission_quiz, resolve_child, setup_course, upsert_mission,
+)
 
 SAFETY = ("🛟 **Safety:** Anything with the stove, boiling water, or open flame needs "
           "Dad (those missions are flagged ⚠️). Everything else is solo. Vinegar + "
@@ -384,6 +386,7 @@ class Command(BaseCommand):
                 title=f"Mission {m['n']} · Lab Notebook",
                 intro=JOURNAL_INTRO,
                 questions=journal_questions(m),
+                quiz=mission_quiz("sci_kaylin", m["n"]),
             )
         self.stdout.write(self.style.SUCCESS(
             f"Seeded {len(MISSIONS)} Science missions + lab notebooks (APPROVED) for "

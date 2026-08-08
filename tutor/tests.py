@@ -2167,7 +2167,7 @@ class SocialStudiesVioletSeedTests(TestCase):
     def test_each_mission_has_an_explorers_log_journal(self):
         """The reflection the charter needs lives in a per-mission student journal —
         turning it in fires AI encouragement + a draft the parent stamps."""
-        from tutor.models import QuestionSet
+        from tutor.models import Question, QuestionSet
         self._seed()
         curr = Curriculum.objects.get(name__startswith="Social Studies 3")
         sets = QuestionSet.objects.filter(lesson__chapter__curriculum=curr)
@@ -2178,6 +2178,9 @@ class SocialStudiesVioletSeedTests(TestCase):
         prompts = " ".join(m1.questions.values_list("prompt", flat=True))
         self.assertIn("3 things I learned", prompts)          # the reflection moved here
         self.assertIn("log", prompts.lower())
+        # + a short auto-check quiz on the mission's facts, in the same journal
+        self.assertTrue(m1.questions.filter(
+            response_type__in=[Question.TYPE_MATCHING, Question.TYPE_FILL_BLANK]).exists())
 
 
 class WorldHistoryKaylinSeedTests(TestCase):
@@ -2229,7 +2232,7 @@ class WorldHistoryKaylinSeedTests(TestCase):
         self.assertIn("al-jabr", html)                        # the algebra tie-in
 
     def test_each_mission_has_a_history_log_journal(self):
-        from tutor.models import QuestionSet
+        from tutor.models import Question, QuestionSet
         self._seed()
         curr = Curriculum.objects.get(name__startswith="World History 7")
         sets = QuestionSet.objects.filter(lesson__chapter__curriculum=curr)
@@ -2240,6 +2243,8 @@ class WorldHistoryKaylinSeedTests(TestCase):
         prompts = " ".join(m1.questions.values_list("prompt", flat=True))
         self.assertIn("Big Idea", prompts)                    # the reflection moved here
         self.assertIn("3 facts", prompts)
+        self.assertTrue(m1.questions.filter(
+            response_type__in=[Question.TYPE_MATCHING, Question.TYPE_FILL_BLANK]).exists())
 
 
 class ScienceVioletSeedTests(TestCase):
@@ -2292,7 +2297,7 @@ class ScienceVioletSeedTests(TestCase):
         self.assertIn("Science Log", html)                    # RECAP now points to the journal
 
     def test_each_mission_has_a_science_log_journal(self):
-        from tutor.models import QuestionSet
+        from tutor.models import Question, QuestionSet
         self._seed()
         curr = Curriculum.objects.get(name__startswith="Science 3")
         sets = QuestionSet.objects.filter(lesson__chapter__curriculum=curr)
@@ -2303,6 +2308,34 @@ class ScienceVioletSeedTests(TestCase):
         prompts = " ".join(m1.questions.values_list("prompt", flat=True))
         self.assertIn("3 things I learned", prompts)          # the reflection moved here
         self.assertIn("science log", prompts.lower())
+        self.assertTrue(m1.questions.filter(
+            response_type__in=[Question.TYPE_MATCHING, Question.TYPE_FILL_BLANK]).exists())
+
+    def test_quiz_widgets_are_well_formed_and_self_checking(self):
+        """A fill-blank blank splits on six underscores and every answer is in the
+        word bank; a matching definition points at a real word — so the portal
+        widgets render and self-check instead of silently degrading."""
+        from tutor.models import Question
+        self._seed()
+        curr = Curriculum.objects.get(name__startswith="Science 3")
+        fill = Question.objects.filter(
+            question_set__lesson__chapter__curriculum=curr,
+            response_type=Question.TYPE_FILL_BLANK).first()
+        self.assertIsNotNone(fill)
+        data = fill.vocab_data
+        self.assertTrue(data.get("words"))
+        self.assertTrue(data.get("sentences"))
+        for s in data["sentences"]:
+            self.assertIn("______", s["text"])               # widget splits the blank here
+            self.assertIn(s["word"], data["words"])          # the answer is in the bank
+        match = Question.objects.filter(
+            question_set__lesson__chapter__curriculum=curr,
+            response_type=Question.TYPE_MATCHING).first()
+        self.assertIsNotNone(match)
+        words = set(match.vocab_data["words"])
+        self.assertTrue(words)
+        for d in match.vocab_data["definitions"]:
+            self.assertIn(d["word"], words)                  # each definition points at a real word
 
 
 class ScienceKaylinSeedTests(TestCase):
@@ -2348,7 +2381,7 @@ class ScienceKaylinSeedTests(TestCase):
         self.assertIn('target="_blank"', html)                # external lab link opens in a new tab
 
     def test_each_mission_has_a_lab_notebook_journal(self):
-        from tutor.models import QuestionSet
+        from tutor.models import Question, QuestionSet
         self._seed()
         curr = Curriculum.objects.get(name__startswith="Science 7")
         sets = QuestionSet.objects.filter(lesson__chapter__curriculum=curr)
@@ -2359,6 +2392,8 @@ class ScienceKaylinSeedTests(TestCase):
         prompts = " ".join(m1.questions.values_list("prompt", flat=True))
         self.assertIn("I claim", prompts)                     # the CER frame moved here
         self.assertIn("3 facts", prompts)
+        self.assertTrue(m1.questions.filter(
+            response_type__in=[Question.TYPE_MATCHING, Question.TYPE_FILL_BLANK]).exists())
 
     def test_stove_mission_carries_the_adult_assist_flag(self):
         from django.template.loader import render_to_string

@@ -14,7 +14,9 @@ from django.core.management.base import BaseCommand
 from curricula.blueprints import SCIENCE_G3
 from tutor.models import LessonBlock
 
-from ._mission_seed import add_journal, resolve_child, setup_course, upsert_mission
+from ._mission_seed import (
+    add_journal, mission_quiz, resolve_child, setup_course, upsert_mission,
+)
 
 SAFETY = ("🛟 **Safety:** Water and mess are fine. Anything hot, sharp, or plugged in "
           "— get Dad first.")
@@ -363,6 +365,7 @@ class Command(BaseCommand):
                 title=f"Mission {m['n']} · Science Log",
                 intro=JOURNAL_INTRO,
                 questions=journal_questions(m),
+                quiz=mission_quiz("sci_violet", m["n"]),
             )
         self.stdout.write(self.style.SUCCESS(
             f"Seeded {len(MISSIONS)} Science missions + journals (APPROVED) for "

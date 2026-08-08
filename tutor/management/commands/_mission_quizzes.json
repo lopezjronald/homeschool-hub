@@ -1,0 +1,5176 @@
+{
+ "ss_violet": {
+  "1": [
+   {
+    "type": "matching",
+    "prompt": "Match each map word to what it means.",
+    "pairs": [
+     {
+      "term": "Compass rose",
+      "definition": "shows the directions N, E, S, and W"
+     },
+     {
+      "term": "Map key",
+      "definition": "tells what the symbols on a map mean"
+     },
+     {
+      "term": "Sierra Nevada",
+      "definition": "mountains to the east of the valley"
+     },
+     {
+      "term": "Pacific Ocean",
+      "definition": "the ocean to the west"
+     }
+    ]
+   },
+   {
+    "type": "fill_blank",
+    "prompt": "Fill each blank with the right word from the bank.",
+    "words": [
+     "compass rose",
+     "map key",
+     "east",
+     "west"
+    ],
+    "sentences": [
+     {
+      "text": "A ___ shows the directions North, East, South, and West.",
+      "word": "compass rose"
+     },
+     {
+      "text": "A ___ tells you what the symbols on a map stand for.",
+      "word": "map key"
+     },
+     {
+      "text": "You zoom ___ on the map to see the Sierra Nevada mountains.",
+      "word": "east"
+     },
+     {
+      "text": "You zoom ___ on the map to see the Pacific Ocean.",
+      "word": "west"
+     }
+    ]
+   }
+  ],
+  "2": [
+   {
+    "type": "matching",
+    "prompt": "Match each landform to what it is.",
+    "pairs": [
+     {
+      "term": "Valley",
+      "definition": "low, flat land between mountains"
+     },
+     {
+      "term": "Mountains",
+      "definition": "tall, high land that rises up"
+     },
+     {
+      "term": "River",
+      "definition": "moving water that flows across the land"
+     },
+     {
+      "term": "Foothills",
+      "definition": "small hills at the bottom of the mountains"
+     }
+    ]
+   },
+   {
+    "type": "fill_blank",
+    "prompt": "Fill each blank with the right word from the bank.",
+    "words": [
+     "valley",
+     "Sierra Nevada",
+     "Sacramento River"
+    ],
+    "sentences": [
+     {
+      "text": "Our home is in the Central ___, between two mountain ranges.",
+      "word": "valley"
+     },
+     {
+      "text": "The ___ mountains are on the east side of California.",
+      "word": "Sierra Nevada"
+     },
+     {
+      "text": "The ___ flows down the middle of the valley.",
+      "word": "Sacramento River"
+     }
+    ]
+   }
+  ],
+  "3": [
+   {
+    "type": "fill_blank",
+    "prompt": "Fill each blank with the right word from the bank.",
+    "words": [
+     "downhill",
+     "rivers",
+     "ocean"
+    ],
+    "sentences": [
+     {
+      "text": "Water always flows ___.",
+      "word": "downhill"
+     },
+     {
+      "text": "People built cities next to ___ for water, food, and boats.",
+      "word": "rivers"
+     },
+     {
+      "text": "The Sacramento River flows from the mountains all the way to the ___.",
+      "word": "ocean"
+     }
+    ]
+   },
+   {
+    "type": "matching",
+    "prompt": "Match each word to the right idea.",
+    "pairs": [
+     {
+      "term": "Downhill",
+      "definition": "the direction water flows"
+     },
+     {
+      "term": "River",
+      "definition": "gave early cities water, food, and boats"
+     },
+     {
+      "term": "Ocean",
+      "definition": "where the Sacramento River ends"
+     }
+    ]
+   }
+  ],
+  "4": [
+   {
+    "type": "fill_blank",
+    "prompt": "Fill each blank with the right word from the bank.",
+    "words": [
+     "levees",
+     "dams",
+     "twice"
+    ],
+    "sentences": [
+     {
+      "text": "Walls of earth that hold a river in are called ___.",
+      "word": "levees"
+     },
+     {
+      "text": "Walls that hold water back are called ___.",
+      "word": "dams"
+     },
+     {
+      "text": "Good engineers always test their work ___.",
+      "word": "twice"
+     }
+    ]
+   },
+   {
+    "type": "matching",
+    "prompt": "Match each word to what it does.",
+    "pairs": [
+     {
+      "term": "Levee",
+      "definition": "holds a river inside its banks so it won't flood"
+     },
+     {
+      "term": "Dam",
+      "definition": "holds water back to make a lake"
+     },
+     {
+      "term": "West Sacramento",
+      "definition": "a town kept safe by levees"
+     }
+    ]
+   }
+  ],
+  "5": [
+   {
+    "type": "matching",
+    "prompt": "Match each nation to where they lived.",
+    "pairs": [
+     {
+      "term": "Nisenan",
+      "definition": "lived north and east of the rivers"
+     },
+     {
+      "term": "Plains Miwok",
+      "definition": "lived to the south"
+     },
+     {
+      "term": "Patwin",
+      "definition": "lived to the west"
+     }
+    ]
+   },
+   {
+    "type": "fill_blank",
+    "prompt": "Fill each blank with the right word from the bank.",
+    "words": [
+     "Nisenan",
+     "Miwok",
+     "Patwin"
+    ],
+    "sentences": [
+     {
+      "text": "The ___ people lived north and east of the rivers.",
+      "word": "Nisenan"
+     },
+     {
+      "text": "The Plains ___ lived to the south.",
+      "word": "Miwok"
+     },
+     {
+      "text": "The ___ people lived to the west.",
+      "word": "Patwin"
+     }
+    ]
+   }
+  ],
+  "6": [
+   {
+    "type": "fill_blank",
+    "prompt": "Fill each blank with the right word from the bank.",
+    "words": [
+     "acorns",
+     "flour",
+     "salmon"
+    ],
+    "sentences": [
+     {
+      "text": "The Nisenan gathered ___ from oak trees.",
+      "word": "acorns"
+     },
+     {
+      "text": "They ground the acorns into ___.",
+      "word": "flour"
+     },
+     {
+      "text": "They caught ___ from the rivers.",
+      "word": "salmon"
+     }
+    ]
+   },
+   {
+    "type": "matching",
+    "prompt": "Match each food to where it came from.",
+    "pairs": [
+     {
+      "term": "Acorns",
+      "definition": "gathered from oak trees"
+     },
+     {
+      "term": "Salmon",
+      "definition": "caught from the rivers"
+     },
+     {
+      "term": "Flour",
+      "definition": "what acorns were ground into"
+     }
+    ]
+   }
+  ],
+  "7": [
+   {
+    "type": "fill_blank",
+    "prompt": "Fill each blank with the right word from the bank.",
+    "words": [
+     "tule",
+     "dome",
+     "local"
+    ],
+    "sentences": [
+     {
+      "text": "Nisenan homes were made from ___ reeds.",
+      "word": "tule"
+     },
+     {
+      "text": "The houses were ___-shaped, rounded like a hill.",
+      "word": "dome"
+     },
+     {
+      "text": "The homes were built from ___ plants that grew nearby.",
+      "word": "local"
+     }
+    ]
+   },
+   {
+    "type": "matching",
+    "prompt": "Match each word to the right idea.",
+    "pairs": [
+     {
+      "term": "Tule reeds",
+      "definition": "tall marsh plants used to build homes"
+     },
+     {
+      "term": "Dome shape",
+      "definition": "the rounded shape of the house"
+     },
+     {
+      "term": "Tule house",
+      "definition": "cool in summer and warm in winter"
+     }
+    ]
+   }
+  ],
+  "8": [
+   {
+    "type": "fill_blank",
+    "prompt": "Fill each blank with the right word from the bank.",
+    "words": [
+     "baskets",
+     "traded",
+     "stories"
+    ],
+    "sentences": [
+     {
+      "text": "The Nisenan wove ___ so tightly they could hold water.",
+      "word": "baskets"
+     },
+     {
+      "text": "They ___ goods with neighboring tribes.",
+      "word": "traded"
+     },
+     {
+      "text": "History was passed down through spoken ___.",
+      "word": "stories"
+     }
+    ]
+   },
+   {
+    "type": "matching",
+    "prompt": "Match each word to what it means.",
+    "pairs": [
+     {
+      "term": "Baskets",
+      "definition": "woven so tightly they could hold water"
+     },
+     {
+      "term": "Trade",
+      "definition": "giving and getting goods with other tribes"
+     },
+     {
+      "term": "Spoken stories",
+      "definition": "how history was remembered without writing"
+     }
+    ]
+   }
+  ],
+  "9": [
+   {
+    "type": "fill_blank",
+    "prompt": "Fill each blank with the right word from the bank.",
+    "words": [
+     "Wilton Rancheria",
+     "chairperson",
+     "today"
+    ],
+    "sentences": [
+     {
+      "text": "___ is Sacramento County's only federally recognized tribe.",
+      "word": "Wilton Rancheria"
+     },
+     {
+      "text": "The tribe's government is led by a ___ and a council.",
+      "word": "chairperson"
+     },
+     {
+      "text": "Native people did not disappear; they are still here ___.",
+      "word": "today"
+     }
+    ]
+   },
+   {
+    "type": "matching",
+    "prompt": "Match each word to what it means.",
+    "pairs": [
+     {
+      "term": "Wilton Rancheria",
+      "definition": "Sacramento County's only federally recognized tribe"
+     },
+     {
+      "term": "Chairperson",
+      "definition": "leads the tribal government, like a mayor"
+     },
+     {
+      "term": "Council",
+      "definition": "a group that helps make the tribe's rules"
+     }
+    ]
+   }
+  ],
+  "10": [
+   {
+    "type": "fill_blank",
+    "prompt": "Fill each blank with the right word from the bank.",
+    "words": [
+     "Sutter",
+     "fort",
+     "land"
+    ],
+    "sentences": [
+     {
+      "text": "In 1839, John ___ built a settlement where Sacramento is now.",
+      "word": "Sutter"
+     },
+     {
+      "text": "He built a ___ with walls and a gate.",
+      "word": "fort"
+     },
+     {
+      "text": "As newcomers arrived, the Nisenan and Miwok lost most of their ___.",
+      "word": "land"
+     }
+    ]
+   },
+   {
+    "type": "matching",
+    "prompt": "Match each word to what it means.",
+    "pairs": [
+     {
+      "term": "John Sutter",
+      "definition": "built a fort here in 1839"
+     },
+     {
+      "term": "New Helvetia",
+      "definition": "the name of Sutter's settlement"
+     },
+     {
+      "term": "Newcomers",
+      "definition": "people who arrived and took over the land"
+     }
+    ]
+   }
+  ],
+  "11": [
+   {
+    "type": "fill_blank",
+    "prompt": "Fill each blank with the right word from the bank.",
+    "words": [
+     "Gold Rush",
+     "Sacramento",
+     "supplies"
+    ],
+    "sentences": [
+     {
+      "text": "When gold was found in 1848, the ___ began.",
+      "word": "Gold Rush"
+     },
+     {
+      "text": "___ boomed as the supply town for miners.",
+      "word": "Sacramento"
+     },
+     {
+      "text": "The people who often got rich were the ones selling ___.",
+      "word": "supplies"
+     }
+    ]
+   },
+   {
+    "type": "matching",
+    "prompt": "Match each word to what it means.",
+    "pairs": [
+     {
+      "term": "Gold Rush",
+      "definition": "when tens of thousands rushed to California for gold"
+     },
+     {
+      "term": "Sacramento",
+      "definition": "the supply town where miners bought food and tools"
+     },
+     {
+      "term": "Sellers",
+      "definition": "the people who often got rich, not the miners"
+     }
+    ]
+   }
+  ],
+  "12": [
+   {
+    "type": "fill_blank",
+    "prompt": "Fill each blank with the right word from the bank.",
+    "words": [
+     "capital",
+     "railroad",
+     "week"
+    ],
+    "sentences": [
+     {
+      "text": "Sacramento is California's ___ city, where state laws are made.",
+      "word": "capital"
+     },
+     {
+      "text": "The transcontinental ___ started right here in Sacramento.",
+      "word": "railroad"
+     },
+     {
+      "text": "After the railroad, a trip east took about a ___ instead of months.",
+      "word": "week"
+     }
+    ]
+   },
+   {
+    "type": "matching",
+    "prompt": "Match each word to what it means.",
+    "pairs": [
+     {
+      "term": "Capital city",
+      "definition": "the place where state laws are made"
+     },
+     {
+      "term": "Transcontinental railroad",
+      "definition": "connected California to the rest of the country"
+     },
+     {
+      "term": "Wagon",
+      "definition": "the slow way to travel east before the railroad"
+     }
+    ]
+   }
+  ],
+  "13": [
+   {
+    "type": "fill_blank",
+    "prompt": "Fill each blank with the right word from the bank.",
+    "words": [
+     "primary source",
+     "photo",
+     "evidence"
+    ],
+    "sentences": [
+     {
+      "text": "A ___ is something made at the time in history.",
+      "word": "primary source"
+     },
+     {
+      "text": "An old ___ of Sacramento is one example.",
+      "word": "photo"
+     },
+     {
+      "text": "Primary sources are like clues, or ___, about the past.",
+      "word": "evidence"
+     }
+    ]
+   },
+   {
+    "type": "matching",
+    "prompt": "Match each word to what it means.",
+    "pairs": [
+     {
+      "term": "Primary source",
+      "definition": "something made at the time in history"
+     },
+     {
+      "term": "Old photo",
+      "definition": "an example of a primary source"
+     },
+     {
+      "term": "Evidence",
+      "definition": "clues that tell us about the past"
+     }
+    ]
+   }
+  ],
+  "14": [
+   {
+    "type": "fill_blank",
+    "prompt": "Fill each blank with the right word from the bank.",
+    "words": [
+     "oral history",
+     "interview",
+     "primary"
+    ],
+    "sentences": [
+     {
+      "text": "A story from someone who lived through history is an ___.",
+      "word": "oral history"
+     },
+     {
+      "text": "When you ask someone questions about the past, you ___ them.",
+      "word": "interview"
+     },
+     {
+      "text": "An oral history is a ___ source you made yourself.",
+      "word": "primary"
+     }
+    ]
+   },
+   {
+    "type": "matching",
+    "prompt": "Match each word to what it means.",
+    "pairs": [
+     {
+      "term": "Oral history",
+      "definition": "a story told by someone who lived through it"
+     },
+     {
+      "term": "Interview",
+      "definition": "asking someone questions to learn about the past"
+     },
+     {
+      "term": "Primary source",
+      "definition": "what an oral history becomes"
+     }
+    ]
+   }
+  ],
+  "15": [
+   {
+    "type": "fill_blank",
+    "prompt": "Fill each blank with the right word from the bank.",
+    "words": [
+     "laws",
+     "consequences",
+     "fair"
+    ],
+    "sentences": [
+     {
+      "text": "Rules for everyone in a community are called ___.",
+      "word": "laws"
+     },
+     {
+      "text": "People who break laws face ___.",
+      "word": "consequences"
+     },
+     {
+      "text": "Laws help keep life safe and ___.",
+      "word": "fair"
+     }
+    ]
+   },
+   {
+    "type": "matching",
+    "prompt": "Match each word to what it means.",
+    "pairs": [
+     {
+      "term": "Laws",
+      "definition": "rules that everyone in a community follows"
+     },
+     {
+      "term": "Consequences",
+      "definition": "what happens when someone breaks a law"
+     },
+     {
+      "term": "Seatbelt rule",
+      "definition": "an example of a real law"
+     }
+    ]
+   }
+  ],
+  "16": [
+   {
+    "type": "fill_blank",
+    "prompt": "Fill each blank with the right word from the bank.",
+    "words": [
+     "Constitution",
+     "highest",
+     "rights"
+    ],
+    "sentences": [
+     {
+      "text": "The U.S. ___ is the rulebook for our whole country.",
+      "word": "Constitution"
+     },
+     {
+      "text": "It is the ___ law of the land.",
+      "word": "highest"
+     },
+     {
+      "text": "The Constitution also protects our ___.",
+      "word": "rights"
+     }
+    ]
+   },
+   {
+    "type": "matching",
+    "prompt": "Match each word to what it means.",
+    "pairs": [
+     {
+      "term": "Constitution",
+      "definition": "the rulebook for the whole country"
+     },
+     {
+      "term": "Highest law",
+      "definition": "what the Constitution is"
+     },
+     {
+      "term": "Rights",
+      "definition": "the freedoms the Constitution protects"
+     }
+    ]
+   }
+  ],
+  "17": [
+   {
+    "type": "matching",
+    "prompt": "Match each branch of government to its job.",
+    "pairs": [
+     {
+      "term": "Legislative",
+      "definition": "makes the laws (Congress)"
+     },
+     {
+      "term": "Executive",
+      "definition": "carries out the laws (President)"
+     },
+     {
+      "term": "Judicial",
+      "definition": "judges the laws (courts)"
+     }
+    ]
+   },
+   {
+    "type": "fill_blank",
+    "prompt": "Fill each blank with the right word from the bank.",
+    "words": [
+     "Legislative",
+     "Executive",
+     "Judicial",
+     "three"
+    ],
+    "sentences": [
+     {
+      "text": "The ___ branch makes the laws.",
+      "word": "Legislative"
+     },
+     {
+      "text": "The ___ branch carries out the laws, led by the President.",
+      "word": "Executive"
+     },
+     {
+      "text": "The ___ branch judges the laws in courts.",
+      "word": "Judicial"
+     },
+     {
+      "text": "There are ___ branches that share power, like legs on a stool.",
+      "word": "three"
+     }
+    ]
+   }
+  ],
+  "18": [
+   {
+    "type": "matching",
+    "prompt": "Match each level of government to what it does.",
+    "pairs": [
+     {
+      "term": "Mayor",
+      "definition": "the leader of a city"
+     },
+     {
+      "term": "City council",
+      "definition": "makes local rules for parks and streets"
+     },
+     {
+      "term": "State",
+      "definition": "the middle level, based in Sacramento"
+     },
+     {
+      "term": "Country",
+      "definition": "the top level, based in Washington D.C."
+     }
+    ]
+   },
+   {
+    "type": "fill_blank",
+    "prompt": "Fill each blank with the right word from the bank.",
+    "words": [
+     "mayor",
+     "city council",
+     "state",
+     "country"
+    ],
+    "sentences": [
+     {
+      "text": "A ___ leads a city's government.",
+      "word": "mayor"
+     },
+     {
+      "text": "The ___ makes local rules about parks, streets, and libraries.",
+      "word": "city council"
+     },
+     {
+      "text": "The ___ level handles bigger things than a city, from the Capitol in Sacramento.",
+      "word": "state"
+     },
+     {
+      "text": "The government of the whole ___ is in Washington D.C.",
+      "word": "country"
+     }
+    ]
+   }
+  ],
+  "19": [
+   {
+    "type": "matching",
+    "prompt": "Match each symbol to what it stands for.",
+    "pairs": [
+     {
+      "term": "American flag",
+      "definition": "the 50 states and 13 colonies"
+     },
+     {
+      "term": "Bald eagle",
+      "definition": "strength and freedom"
+     },
+     {
+      "term": "Statue of Liberty",
+      "definition": "welcome"
+     },
+     {
+      "term": "Bear flag",
+      "definition": "California"
+     }
+    ]
+   },
+   {
+    "type": "fill_blank",
+    "prompt": "Fill each blank with the right word from the bank.",
+    "words": [
+     "flag",
+     "eagle",
+     "Liberty",
+     "bear"
+    ],
+    "sentences": [
+     {
+      "text": "The American ___ has stars for the 50 states.",
+      "word": "flag"
+     },
+     {
+      "text": "The bald ___ stands for strength and freedom.",
+      "word": "eagle"
+     },
+     {
+      "text": "The Statue of ___ stands for welcome.",
+      "word": "Liberty"
+     },
+     {
+      "text": "The California ___ flag shows a grizzly.",
+      "word": "bear"
+     }
+    ]
+   }
+  ],
+  "20": [
+   {
+    "type": "matching",
+    "prompt": "Match each economy word to what it means.",
+    "pairs": [
+     {
+      "term": "Goods",
+      "definition": "things you can hold, like food and shoes"
+     },
+     {
+      "term": "Services",
+      "definition": "work people do for you, like a haircut"
+     },
+     {
+      "term": "Producers",
+      "definition": "people who make or do things"
+     },
+     {
+      "term": "Consumers",
+      "definition": "people who buy or use things"
+     }
+    ]
+   },
+   {
+    "type": "fill_blank",
+    "prompt": "Fill each blank with the right word from the bank.",
+    "words": [
+     "goods",
+     "services",
+     "producer",
+     "consumer"
+    ],
+    "sentences": [
+     {
+      "text": "Things you can hold, like toys and food, are ___.",
+      "word": "goods"
+     },
+     {
+      "text": "Work people do for you, like a haircut, are ___.",
+      "word": "services"
+     },
+     {
+      "text": "A person who makes or does something is a ___.",
+      "word": "producer"
+     },
+     {
+      "text": "A person who buys or uses something is a ___.",
+      "word": "consumer"
+     }
+    ]
+   }
+  ],
+  "21": [
+   {
+    "type": "matching",
+    "prompt": "Match each kind of resource to its examples.",
+    "pairs": [
+     {
+      "term": "Natural resources",
+      "definition": "rivers, valley soil, and sunshine"
+     },
+     {
+      "term": "Human resources",
+      "definition": "workers, farmers, and their skills"
+     },
+     {
+      "term": "Capital resources",
+      "definition": "tools, tractors, and the Port"
+     }
+    ]
+   },
+   {
+    "type": "fill_blank",
+    "prompt": "Fill each blank with the right word from the bank.",
+    "words": [
+     "natural",
+     "human",
+     "capital"
+    ],
+    "sentences": [
+     {
+      "text": "Rivers, soil, and sunshine are ___ resources.",
+      "word": "natural"
+     },
+     {
+      "text": "Workers, farmers, and teachers are ___ resources.",
+      "word": "human"
+     },
+     {
+      "text": "Tools, tractors, and railroads are ___ resources.",
+      "word": "capital"
+     }
+    ]
+   }
+  ],
+  "22": [
+   {
+    "type": "fill_blank",
+    "prompt": "Fill each blank with the right word from the bank.",
+    "words": [
+     "trade",
+     "labels",
+     "almonds"
+    ],
+    "sentences": [
+     {
+      "text": "Communities ___ because they can't make everything themselves.",
+      "word": "trade"
+     },
+     {
+      "text": "You can read an item's ___ to find where it was made.",
+      "word": "labels"
+     },
+     {
+      "text": "Our valley grows rice and ___ that ship around the world.",
+      "word": "almonds"
+     }
+    ]
+   },
+   {
+    "type": "matching",
+    "prompt": "Match each word to what it means.",
+    "pairs": [
+     {
+      "term": "Trade",
+      "definition": "buying from other places and selling what you make"
+     },
+     {
+      "term": "Labels",
+      "definition": "tell you what country an item was made in"
+     },
+     {
+      "term": "Almonds",
+      "definition": "a Valley food that ships around the world"
+     }
+    ]
+   }
+  ],
+  "23": [
+   {
+    "type": "fill_blank",
+    "prompt": "Fill each blank with the right word from the bank.",
+    "words": [
+     "costs",
+     "profit",
+     "trade-offs"
+    ],
+    "sentences": [
+     {
+      "text": "The money you spend to make lemonade is your ___.",
+      "word": "costs"
+     },
+     {
+      "text": "The money left after you pay your costs is your ___.",
+      "word": "profit"
+     },
+     {
+      "text": "Every choice in a business has ___.",
+      "word": "trade-offs"
+     }
+    ]
+   },
+   {
+    "type": "matching",
+    "prompt": "Match each money word to what it means.",
+    "pairs": [
+     {
+      "term": "Costs",
+      "definition": "the money you spend to make something"
+     },
+     {
+      "term": "Profit",
+      "definition": "the money left after you pay your costs"
+     },
+     {
+      "term": "Price",
+      "definition": "what you charge for each cup"
+     }
+    ]
+   }
+  ],
+  "24": [
+   {
+    "type": "fill_blank",
+    "prompt": "Fill each blank with the right word from the bank.",
+    "words": [
+     "changed",
+     "same",
+     "Nisenan"
+    ],
+    "sentences": [
+     {
+      "text": "The people, buildings, and jobs in our community have ___.",
+      "word": "changed"
+     },
+     {
+      "text": "The river and the land have stayed the ___.",
+      "word": "same"
+     },
+     {
+      "text": "The ___ and Miwok were here first and are still here today.",
+      "word": "Nisenan"
+     }
+    ]
+   },
+   {
+    "type": "matching",
+    "prompt": "Match each part of our community's story.",
+    "pairs": [
+     {
+      "term": "River and land",
+      "definition": "things that stayed the same"
+     },
+     {
+      "term": "Buildings and jobs",
+      "definition": "things that changed over time"
+     },
+     {
+      "term": "Nisenan and Miwok",
+      "definition": "the first people, still here today"
+     }
+    ]
+   }
+  ]
+ },
+ "ss_kaylin": {
+  "1": [
+   {
+    "type": "fill_blank",
+    "prompt": "Fill each blank with the right word about why Rome fell.",
+    "words": [
+     "476",
+     "weakened",
+     "invasions",
+     "split"
+    ],
+    "sentences": [
+     {
+      "text": "In ___ CE the Western Roman Empire fell.",
+      "word": "476"
+     },
+     {
+      "text": "Over time many problems ___ Rome.",
+      "word": "weakened"
+     },
+     {
+      "text": "Attacks by outside groups, called ___, hurt the empire.",
+      "word": "invasions"
+     },
+     {
+      "text": "The empire had been ___ into eastern and western halves.",
+      "word": "split"
+     }
+    ]
+   },
+   {
+    "type": "matching",
+    "prompt": "Match each cause of Rome's fall to its meaning.",
+    "pairs": [
+     {
+      "term": "476 CE",
+      "definition": "the year the Western Roman Empire fell"
+     },
+     {
+      "term": "invasions",
+      "definition": "attacks by outside groups"
+     },
+     {
+      "term": "weak leaders",
+      "definition": "greedy or ineffective rulers who hurt Rome"
+     }
+    ]
+   }
+  ],
+  "2": [
+   {
+    "type": "matching",
+    "prompt": "Match each Byzantine term to what it means.",
+    "pairs": [
+     {
+      "term": "Byzantine Empire",
+      "definition": "the surviving eastern half of the Roman Empire"
+     },
+     {
+      "term": "Constantinople",
+      "definition": "the capital city of the Byzantine Empire"
+     },
+     {
+      "term": "Justinian",
+      "definition": "emperor who wrote down Roman laws in a famous code"
+     },
+     {
+      "term": "Hagia Sophia",
+      "definition": "the church famous for its giant dome"
+     }
+    ]
+   },
+   {
+    "type": "fill_blank",
+    "prompt": "Fill each blank about Byzantium.",
+    "words": [
+     "Constantinople",
+     "Justinian's Code",
+     "537"
+    ],
+    "sentences": [
+     {
+      "text": "The Byzantine capital was ___.",
+      "word": "Constantinople"
+     },
+     {
+      "text": "___ collected Roman laws and shaped later legal systems.",
+      "word": "Justinian's Code"
+     },
+     {
+      "text": "The Hagia Sophia was built in ___ CE.",
+      "word": "537"
+     }
+    ]
+   }
+  ],
+  "3": [
+   {
+    "type": "matching",
+    "prompt": "Match each church term to its meaning.",
+    "pairs": [
+     {
+      "term": "Roman Catholic",
+      "definition": "the western branch of Christianity"
+     },
+     {
+      "term": "Eastern Orthodox",
+      "definition": "the eastern branch of Christianity"
+     },
+     {
+      "term": "Pope",
+      "definition": "the leader of the western church"
+     },
+     {
+      "term": "Patriarch",
+      "definition": "the leader of the eastern church"
+     },
+     {
+      "term": "Great Schism",
+      "definition": "the 1054 split of the Christian church"
+     }
+    ]
+   },
+   {
+    "type": "fill_blank",
+    "prompt": "Fill each blank about the split.",
+    "words": [
+     "1054",
+     "Latin",
+     "Greek"
+    ],
+    "sentences": [
+     {
+      "text": "The Great Schism happened in the year ___.",
+      "word": "1054"
+     },
+     {
+      "text": "The western church used the ___ language.",
+      "word": "Latin"
+     },
+     {
+      "text": "The eastern church used the ___ language.",
+      "word": "Greek"
+     }
+    ]
+   }
+  ],
+  "4": [
+   {
+    "type": "fill_blank",
+    "prompt": "Fill each blank about the rise of Islam in Arabia.",
+    "words": [
+     "Muhammad",
+     "Qur'an",
+     "Mecca",
+     "Hijra"
+    ],
+    "sentences": [
+     {
+      "text": "___ began teaching Islam in Arabia in the 600s.",
+      "word": "Muhammad"
+     },
+     {
+      "text": "The holy book of Islam is the ___.",
+      "word": "Qur'an"
+     },
+     {
+      "text": "___ was a trade and religious hub in Arabia.",
+      "word": "Mecca"
+     },
+     {
+      "text": "In 622 CE, Muhammad's journey to Medina was called the ___.",
+      "word": "Hijra"
+     }
+    ]
+   },
+   {
+    "type": "matching",
+    "prompt": "Match each Arabia term to its meaning.",
+    "pairs": [
+     {
+      "term": "caravans",
+      "definition": "groups that carried trade across the desert"
+     },
+     {
+      "term": "oases",
+      "definition": "water spots in the desert where people lived"
+     },
+     {
+      "term": "Five Pillars",
+      "definition": "the five basic duties of Islam"
+     }
+    ]
+   }
+  ],
+  "5": [
+   {
+    "type": "fill_blank",
+    "prompt": "Fill each blank about how Islam spread.",
+    "words": [
+     "Spain",
+     "India",
+     "750"
+    ],
+    "sentences": [
+     {
+      "text": "Muslim rule reached as far west as ___.",
+      "word": "Spain"
+     },
+     {
+      "text": "Muslim rule stretched all the way east to ___.",
+      "word": "India"
+     },
+     {
+      "text": "The Abbasid caliphate began around the year ___.",
+      "word": "750"
+     }
+    ]
+   },
+   {
+    "type": "matching",
+    "prompt": "Match each term about Muslim rulers.",
+    "pairs": [
+     {
+      "term": "caliph",
+      "definition": "the title for the ruler of the Muslim empire"
+     },
+     {
+      "term": "Umayyad",
+      "definition": "the earlier of the two caliphates"
+     },
+     {
+      "term": "Abbasid",
+      "definition": "the later caliphate that began around 750"
+     }
+    ]
+   }
+  ],
+  "6": [
+   {
+    "type": "matching",
+    "prompt": "Match each Golden Age term to its meaning.",
+    "pairs": [
+     {
+      "term": "House of Wisdom",
+      "definition": "the Baghdad center where scholars advanced knowledge"
+     },
+     {
+      "term": "al-Khwarizmi",
+      "definition": "the scholar who invented algebra"
+     },
+     {
+      "term": "algebra",
+      "definition": "math named from the Arabic word al-jabr"
+     },
+     {
+      "term": "Arabic numerals",
+      "definition": "the number system that included a zero"
+     }
+    ]
+   },
+   {
+    "type": "fill_blank",
+    "prompt": "Fill each blank about the Golden Age.",
+    "words": [
+     "Baghdad",
+     "algebra",
+     "zero"
+    ],
+    "sentences": [
+     {
+      "text": "The House of Wisdom was located in ___.",
+      "word": "Baghdad"
+     },
+     {
+      "text": "Al-Khwarizmi invented ___, whose name comes from Arabic.",
+      "word": "algebra"
+     },
+     {
+      "text": "The Arabic number system included a symbol for ___.",
+      "word": "zero"
+     }
+    ]
+   }
+  ],
+  "7": [
+   {
+    "type": "fill_blank",
+    "prompt": "Fill each blank about trade in the Islamic world.",
+    "words": [
+     "merchants",
+     "goods",
+     "ideas",
+     "continents"
+    ],
+    "sentences": [
+     {
+      "text": "Muslim ___ connected Africa, Europe, and Asia.",
+      "word": "merchants"
+     },
+     {
+      "text": "Trade routes moved ___ like silk, spices, gold, and salt.",
+      "word": "goods"
+     },
+     {
+      "text": "Trade also spread ___ such as numbers, paper, and religion.",
+      "word": "ideas"
+     },
+     {
+      "text": "The Islamic world linked three ___ together.",
+      "word": "continents"
+     }
+    ]
+   },
+   {
+    "type": "matching",
+    "prompt": "Match each term about trade.",
+    "pairs": [
+     {
+      "term": "goods",
+      "definition": "things like silk, spices, gold, and salt that were traded"
+     },
+     {
+      "term": "ideas",
+      "definition": "things like numbers, paper, and religion that spread"
+     },
+     {
+      "term": "merchants",
+      "definition": "the traders who linked three continents"
+     }
+    ]
+   }
+  ],
+  "8": [
+   {
+    "type": "matching",
+    "prompt": "Match each feudalism term to its meaning.",
+    "pairs": [
+     {
+      "term": "feudalism",
+      "definition": "the system ranking king, lords, knights, and peasants"
+     },
+     {
+      "term": "manor",
+      "definition": "a self-sufficient farm-village"
+     },
+     {
+      "term": "Charlemagne",
+      "definition": "ruler crowned in 800 CE who reunited much of Europe"
+     },
+     {
+      "term": "serfs",
+      "definition": "peasants at the bottom of the feudal pyramid"
+     }
+    ]
+   },
+   {
+    "type": "fill_blank",
+    "prompt": "Fill each blank about medieval Europe.",
+    "words": [
+     "loyalty",
+     "Charlemagne",
+     "manor",
+     "800"
+    ],
+    "sentences": [
+     {
+      "text": "In feudalism, land was traded for ___ and protection.",
+      "word": "loyalty"
+     },
+     {
+      "text": "___ revived learning and reunited much of Europe.",
+      "word": "Charlemagne"
+     },
+     {
+      "text": "The ___ was a self-sufficient farm-village world.",
+      "word": "manor"
+     },
+     {
+      "text": "Charlemagne was crowned in the year ___ CE.",
+      "word": "800"
+     }
+    ]
+   }
+  ],
+  "9": [
+   {
+    "type": "fill_blank",
+    "prompt": "Fill each blank about the medieval Church.",
+    "words": [
+     "Catholic",
+     "monasteries",
+     "illuminated",
+     "hand-copying"
+    ],
+    "sentences": [
+     {
+      "text": "The ___ Church was the most powerful institution in medieval Europe.",
+      "word": "Catholic"
+     },
+     {
+      "text": "Books were preserved in ___ by monks.",
+      "word": "monasteries"
+     },
+     {
+      "text": "Monks decorated pages to create ___ manuscripts.",
+      "word": "illuminated"
+     },
+     {
+      "text": "Because of ___, books were rare and expensive.",
+      "word": "hand-copying"
+     }
+    ]
+   },
+   {
+    "type": "matching",
+    "prompt": "Match each term about the Church.",
+    "pairs": [
+     {
+      "term": "monasteries",
+      "definition": "places where monks preserved books"
+     },
+     {
+      "term": "illuminated manuscripts",
+      "definition": "beautifully decorated hand-copied pages"
+     },
+     {
+      "term": "Catholic Church",
+      "definition": "the most powerful institution in medieval Europe"
+     }
+    ]
+   }
+  ],
+  "10": [
+   {
+    "type": "fill_blank",
+    "prompt": "Fill each blank about the Crusades and Magna Carta.",
+    "words": [
+     "Crusades",
+     "Jerusalem",
+     "Magna Carta",
+     "1215"
+    ],
+    "sentences": [
+     {
+      "text": "The ___ were wars to take the Holy Land from Muslim rule.",
+      "word": "Crusades"
+     },
+     {
+      "text": "Christian armies tried to capture the city of ___.",
+      "word": "Jerusalem"
+     },
+     {
+      "text": "In 1215, King John was forced to sign the ___.",
+      "word": "Magna Carta"
+     },
+     {
+      "text": "The Magna Carta was signed in the year ___.",
+      "word": "1215"
+     }
+    ]
+   },
+   {
+    "type": "matching",
+    "prompt": "Match each term to its meaning.",
+    "pairs": [
+     {
+      "term": "Crusades",
+      "definition": "wars to take Jerusalem from Muslim rule"
+     },
+     {
+      "term": "Magna Carta",
+      "definition": "1215 document saying the king is under the law"
+     },
+     {
+      "term": "King John",
+      "definition": "the English king forced to sign the Magna Carta"
+     }
+    ]
+   }
+  ],
+  "11": [
+   {
+    "type": "fill_blank",
+    "prompt": "Fill each blank about the Black Death.",
+    "words": [
+     "bubonic",
+     "third",
+     "trade",
+     "feudalism"
+    ],
+    "sentences": [
+     {
+      "text": "The Black Death was the ___ plague.",
+      "word": "bubonic"
+     },
+     {
+      "text": "The plague killed about one-___ of Europe.",
+      "word": "third"
+     },
+     {
+      "text": "The plague arrived in Europe on ___ ships.",
+      "word": "trade"
+     },
+     {
+      "text": "With far fewer workers, ___ began to die out.",
+      "word": "feudalism"
+     }
+    ]
+   },
+   {
+    "type": "matching",
+    "prompt": "Match each term about the plague.",
+    "pairs": [
+     {
+      "term": "bubonic plague",
+      "definition": "the disease known as the Black Death"
+     },
+     {
+      "term": "labor shortage",
+      "definition": "the scarcity of workers after the plague"
+     },
+     {
+      "term": "1347",
+      "definition": "the year the Black Death reached Europe"
+     }
+    ]
+   }
+  ],
+  "12": [
+   {
+    "type": "fill_blank",
+    "prompt": "Fill each blank about Tang and Song China.",
+    "words": [
+     "Tang",
+     "Song",
+     "civil service",
+     "Confucian"
+    ],
+    "sentences": [
+     {
+      "text": "China reunified first under the ___ dynasty.",
+      "word": "Tang"
+     },
+     {
+      "text": "The dynasty after the Tang was the ___.",
+      "word": "Song"
+     },
+     {
+      "text": "Government jobs went to men who passed the ___ exam.",
+      "word": "civil service"
+     },
+     {
+      "text": "The exam tested knowledge of ___ texts.",
+      "word": "Confucian"
+     }
+    ]
+   },
+   {
+    "type": "matching",
+    "prompt": "Match each term about imperial China.",
+    "pairs": [
+     {
+      "term": "Tang",
+      "definition": "dynasty that began in 618 and reunified China"
+     },
+     {
+      "term": "Song",
+      "definition": "the advanced dynasty that followed the Tang"
+     },
+     {
+      "term": "civil service exam",
+      "definition": "test that decided who got government jobs"
+     }
+    ]
+   }
+  ],
+  "13": [
+   {
+    "type": "matching",
+    "prompt": "Match each Chinese invention to what it did.",
+    "pairs": [
+     {
+      "term": "gunpowder",
+      "definition": "invention used for explosives"
+     },
+     {
+      "term": "magnetic compass",
+      "definition": "invention that points north"
+     },
+     {
+      "term": "paper",
+      "definition": "invention used for writing and books"
+     },
+     {
+      "term": "printing",
+      "definition": "invention that copied books quickly"
+     }
+    ]
+   },
+   {
+    "type": "fill_blank",
+    "prompt": "Fill each blank about the four great inventions.",
+    "words": [
+     "paper",
+     "gunpowder",
+     "compass",
+     "printing"
+    ],
+    "sentences": [
+     {
+      "text": "One great invention was ___, used for writing.",
+      "word": "paper"
+     },
+     {
+      "text": "___ was used for explosives and later weapons.",
+      "word": "gunpowder"
+     },
+     {
+      "text": "The magnetic ___ helped travelers find north.",
+      "word": "compass"
+     },
+     {
+      "text": "Movable-type ___ let books be made faster.",
+      "word": "printing"
+     }
+    ]
+   }
+  ],
+  "14": [
+   {
+    "type": "fill_blank",
+    "prompt": "Fill each blank about the Silk Road and Mongols.",
+    "words": [
+     "Silk Road",
+     "Genghis Khan",
+     "Kublai Khan",
+     "Marco Polo"
+    ],
+    "sentences": [
+     {
+      "text": "The ___ carried silk and ideas between China and the West.",
+      "word": "Silk Road"
+     },
+     {
+      "text": "___ built the largest land empire ever in the 1200s.",
+      "word": "Genghis Khan"
+     },
+     {
+      "text": "His grandson ___ ruled China.",
+      "word": "Kublai Khan"
+     },
+     {
+      "text": "___ visited China and amazed Europe with his reports.",
+      "word": "Marco Polo"
+     }
+    ]
+   },
+   {
+    "type": "matching",
+    "prompt": "Match each term to its meaning.",
+    "pairs": [
+     {
+      "term": "Genghis Khan",
+      "definition": "built the largest land empire in history"
+     },
+     {
+      "term": "Kublai Khan",
+      "definition": "grandson of Genghis who ruled China"
+     },
+     {
+      "term": "Marco Polo",
+      "definition": "European traveler who reported on China"
+     },
+     {
+      "term": "Silk Road",
+      "definition": "trade route linking China and the West"
+     }
+    ]
+   }
+  ],
+  "15": [
+   {
+    "type": "fill_blank",
+    "prompt": "Fill each blank about medieval Japan.",
+    "words": [
+     "China",
+     "Shinto",
+     "Buddhism",
+     "islands"
+    ],
+    "sentences": [
+     {
+      "text": "Japan borrowed writing and government ideas from ___.",
+      "word": "China"
+     },
+     {
+      "text": "Japan's native religion was ___, spirits in nature.",
+      "word": "Shinto"
+     },
+     {
+      "text": "___ came to Japan and blended with the native religion.",
+      "word": "Buddhism"
+     },
+     {
+      "text": "Japan is a chain of mountainous ___.",
+      "word": "islands"
+     }
+    ]
+   },
+   {
+    "type": "matching",
+    "prompt": "Match each term about Japan.",
+    "pairs": [
+     {
+      "term": "Shinto",
+      "definition": "native Japanese religion of nature spirits"
+     },
+     {
+      "term": "Buddhism",
+      "definition": "religion Japan borrowed and blended with Shinto"
+     },
+     {
+      "term": "China",
+      "definition": "the neighbor Japan borrowed ideas from"
+     }
+    ]
+   }
+  ],
+  "16": [
+   {
+    "type": "matching",
+    "prompt": "Match each term about feudal Japan.",
+    "pairs": [
+     {
+      "term": "shogun",
+      "definition": "the military ruler who held real power"
+     },
+     {
+      "term": "samurai",
+      "definition": "warriors who served the lords"
+     },
+     {
+      "term": "daimyo",
+      "definition": "the lords that samurai served"
+     },
+     {
+      "term": "bushido",
+      "definition": "the samurai code of loyalty, courage, and honor"
+     }
+    ]
+   },
+   {
+    "type": "fill_blank",
+    "prompt": "Fill each blank about shoguns and samurai.",
+    "words": [
+     "shogun",
+     "emperor",
+     "bushido",
+     "1192"
+    ],
+    "sentences": [
+     {
+      "text": "Real power belonged to the ___, not the ruler with the title.",
+      "word": "shogun"
+     },
+     {
+      "text": "The ___ held the title but had little real power.",
+      "word": "emperor"
+     },
+     {
+      "text": "Samurai followed a code of honor called ___.",
+      "word": "bushido"
+     },
+     {
+      "text": "The first shogun was appointed in ___.",
+      "word": "1192"
+     }
+    ]
+   }
+  ],
+  "17": [
+   {
+    "type": "fill_blank",
+    "prompt": "Fill each blank about West African trade.",
+    "words": [
+     "Ghana",
+     "gold",
+     "salt",
+     "taxing"
+    ],
+    "sentences": [
+     {
+      "text": "The empire of ___ was the first to grow rich in West Africa.",
+      "word": "Ghana"
+     },
+     {
+      "text": "___ came from mines in the south.",
+      "word": "gold"
+     },
+     {
+      "text": "___ came from mines in the Sahara desert.",
+      "word": "salt"
+     },
+     {
+      "text": "Ghana grew rich by ___ the trade that crossed its land.",
+      "word": "taxing"
+     }
+    ]
+   },
+   {
+    "type": "matching",
+    "prompt": "Match each term about the gold-salt trade.",
+    "pairs": [
+     {
+      "term": "Ghana",
+      "definition": "West African empire that grew rich taxing trade"
+     },
+     {
+      "term": "gold",
+      "definition": "traded up from the south, worth trading for salt"
+     },
+     {
+      "term": "salt",
+      "definition": "mined in the Sahara, worth its weight in gold"
+     }
+    ]
+   }
+  ],
+  "18": [
+   {
+    "type": "fill_blank",
+    "prompt": "Fill each blank about Mansa Musa.",
+    "words": [
+     "Mansa Musa",
+     "Mali",
+     "hajj",
+     "gold"
+    ],
+    "sentences": [
+     {
+      "text": "___ may be the richest person who ever lived.",
+      "word": "Mansa Musa"
+     },
+     {
+      "text": "He was the king of ___.",
+      "word": "Mali"
+     },
+     {
+      "text": "In 1324 he made his ___, a pilgrimage to Mecca.",
+      "word": "hajj"
+     },
+     {
+      "text": "He carried so much ___ that he crashed prices in Egypt.",
+      "word": "gold"
+     }
+    ]
+   },
+   {
+    "type": "matching",
+    "prompt": "Match each term to its meaning.",
+    "pairs": [
+     {
+      "term": "Mansa Musa",
+      "definition": "Mali's king, possibly the richest person ever"
+     },
+     {
+      "term": "hajj",
+      "definition": "the 1324 pilgrimage to Mecca"
+     },
+     {
+      "term": "Mali",
+      "definition": "the West African empire Mansa Musa ruled"
+     }
+    ]
+   }
+  ],
+  "19": [
+   {
+    "type": "fill_blank",
+    "prompt": "Fill each blank about Timbuktu and griots.",
+    "words": [
+     "Timbuktu",
+     "manuscripts",
+     "griots",
+     "oral"
+    ],
+    "sentences": [
+     {
+      "text": "___ became a world center of learning in West Africa.",
+      "word": "Timbuktu"
+     },
+     {
+      "text": "Its libraries held hundreds of thousands of ___.",
+      "word": "manuscripts"
+     },
+     {
+      "text": "___ were trained historians who memorized history.",
+      "word": "griots"
+     },
+     {
+      "text": "Griots kept history through ___ storytelling, not writing.",
+      "word": "oral"
+     }
+    ]
+   },
+   {
+    "type": "matching",
+    "prompt": "Match each term to its meaning.",
+    "pairs": [
+     {
+      "term": "Timbuktu",
+      "definition": "West African center of learning and libraries"
+     },
+     {
+      "term": "manuscripts",
+      "definition": "the handwritten books kept in Timbuktu"
+     },
+     {
+      "term": "griots",
+      "definition": "oral historians who memorized family and kingdom history"
+     }
+    ]
+   }
+  ],
+  "20": [
+   {
+    "type": "fill_blank",
+    "prompt": "Fill each blank about the Maya.",
+    "words": [
+     "Maya",
+     "zero",
+     "twenty",
+     "planets"
+    ],
+    "sentences": [
+     {
+      "text": "The ___ built city-states with pyramids in the jungle.",
+      "word": "Maya"
+     },
+     {
+      "text": "Their number system included a symbol for ___.",
+      "word": "zero"
+     },
+     {
+      "text": "Maya math was based on the number ___.",
+      "word": "twenty"
+     },
+     {
+      "text": "The Maya tracked the ___ with great accuracy.",
+      "word": "planets"
+     }
+    ]
+   },
+   {
+    "type": "matching",
+    "prompt": "Match each Maya term to its meaning.",
+    "pairs": [
+     {
+      "term": "Maya",
+      "definition": "Mesoamerican people who built jungle city-states"
+     },
+     {
+      "term": "dot",
+      "definition": "the symbol for 1 in Maya numbers"
+     },
+     {
+      "term": "bar",
+      "definition": "the symbol for 5 in Maya numbers"
+     },
+     {
+      "term": "zero",
+      "definition": "the special number the Maya math system included"
+     }
+    ]
+   }
+  ],
+  "21": [
+   {
+    "type": "fill_blank",
+    "prompt": "Fill each blank about the Aztec.",
+    "words": [
+     "Aztec",
+     "Tenochtitlán",
+     "chinampas",
+     "lake"
+    ],
+    "sentences": [
+     {
+      "text": "The ___ people were also called the Mexica.",
+      "word": "Aztec"
+     },
+     {
+      "text": "Their capital city was ___.",
+      "word": "Tenochtitlán"
+     },
+     {
+      "text": "The city was built on an island in a ___.",
+      "word": "lake"
+     },
+     {
+      "text": "Floating farm-beds were called ___.",
+      "word": "chinampas"
+     }
+    ]
+   },
+   {
+    "type": "matching",
+    "prompt": "Match each term to its meaning.",
+    "pairs": [
+     {
+      "term": "Aztec",
+      "definition": "the Mexica people who built a city on a lake"
+     },
+     {
+      "term": "Tenochtitlán",
+      "definition": "the Aztec capital built on a lake island"
+     },
+     {
+      "term": "chinampas",
+      "definition": "floating farm-beds used to grow food"
+     }
+    ]
+   }
+  ],
+  "22": [
+   {
+    "type": "fill_blank",
+    "prompt": "Fill each blank about the Inca.",
+    "words": [
+     "Inca",
+     "quipu",
+     "terrace",
+     "roads"
+    ],
+    "sentences": [
+     {
+      "text": "The ___ ruled a huge mountain empire in the Andes.",
+      "word": "Inca"
+     },
+     {
+      "text": "Knotted cords called ___ recorded numbers.",
+      "word": "quipu"
+     },
+     {
+      "text": "___ farming was carved into mountain slopes.",
+      "word": "terrace"
+     },
+     {
+      "text": "The empire was connected by 14,000+ miles of ___.",
+      "word": "roads"
+     }
+    ]
+   },
+   {
+    "type": "matching",
+    "prompt": "Match each Inca term to its meaning.",
+    "pairs": [
+     {
+      "term": "Inca",
+      "definition": "Andes empire that used roads and knotted cords"
+     },
+     {
+      "term": "quipu",
+      "definition": "knotted cords that recorded numbers"
+     },
+     {
+      "term": "terrace farming",
+      "definition": "farming carved into mountain slopes"
+     }
+    ]
+   }
+  ],
+  "23": [
+   {
+    "type": "fill_blank",
+    "prompt": "Fill each blank about the Renaissance.",
+    "words": [
+     "Renaissance",
+     "Humanism",
+     "Medici",
+     "Florence"
+    ],
+    "sentences": [
+     {
+      "text": "The ___ was a rebirth of art and learning in Italy.",
+      "word": "Renaissance"
+     },
+     {
+      "text": "___ was a focus on human achievement and classical texts.",
+      "word": "Humanism"
+     },
+     {
+      "text": "The ___ family funded art in Florence.",
+      "word": "Medici"
+     },
+     {
+      "text": "___ and Venice were rich Italian trade cities.",
+      "word": "Florence"
+     }
+    ]
+   },
+   {
+    "type": "matching",
+    "prompt": "Match each Renaissance term to its meaning.",
+    "pairs": [
+     {
+      "term": "Humanism",
+      "definition": "focus on human achievement and classical texts"
+     },
+     {
+      "term": "Medici",
+      "definition": "wealthy family that funded Renaissance art"
+     },
+     {
+      "term": "Leonardo da Vinci",
+      "definition": "artist and engineer of the Renaissance"
+     },
+     {
+      "term": "Michelangelo",
+      "definition": "artist who made David and the Sistine Chapel"
+     }
+    ]
+   }
+  ],
+  "24": [
+   {
+    "type": "fill_blank",
+    "prompt": "Fill each blank about the printing press.",
+    "words": [
+     "Gutenberg",
+     "type",
+     "press",
+     "1440"
+    ],
+    "sentences": [
+     {
+      "text": "___ invented Europe's printing press.",
+      "word": "Gutenberg"
+     },
+     {
+      "text": "He used movable metal ___ to print letters.",
+      "word": "type"
+     },
+     {
+      "text": "The ___ pushed ink onto paper quickly.",
+      "word": "press"
+     },
+     {
+      "text": "The printing press appeared around the year ___.",
+      "word": "1440"
+     }
+    ]
+   },
+   {
+    "type": "matching",
+    "prompt": "Match each term to its meaning.",
+    "pairs": [
+     {
+      "term": "Gutenberg",
+      "definition": "inventor of Europe's printing press"
+     },
+     {
+      "term": "movable type",
+      "definition": "metal letters that could be rearranged"
+     },
+     {
+      "term": "printing press",
+      "definition": "machine that made books fast and cheap"
+     }
+    ]
+   }
+  ],
+  "25": [
+   {
+    "type": "fill_blank",
+    "prompt": "Fill each blank about the Reformation.",
+    "words": [
+     "Luther",
+     "95 Theses",
+     "indulgences",
+     "Protestant"
+    ],
+    "sentences": [
+     {
+      "text": "Martin ___ protested against church corruption.",
+      "word": "Luther"
+     },
+     {
+      "text": "He posted his ___ in 1517.",
+      "word": "95 Theses"
+     },
+     {
+      "text": "He especially protested the selling of ___.",
+      "word": "indulgences"
+     },
+     {
+      "text": "The result was new ___ churches splitting from the Catholic Church.",
+      "word": "Protestant"
+     }
+    ]
+   },
+   {
+    "type": "matching",
+    "prompt": "Match each Reformation term to its meaning.",
+    "pairs": [
+     {
+      "term": "Martin Luther",
+      "definition": "monk who protested church corruption in 1517"
+     },
+     {
+      "term": "95 Theses",
+      "definition": "the list of protests Luther posted"
+     },
+     {
+      "term": "indulgences",
+      "definition": "payments for forgiveness that Luther opposed"
+     },
+     {
+      "term": "Protestant",
+      "definition": "the new churches that split from the Catholic Church"
+     }
+    ]
+   }
+  ],
+  "26": [
+   {
+    "type": "fill_blank",
+    "prompt": "Fill each blank about the Catholic comeback.",
+    "words": [
+     "Counter-Reformation",
+     "Council of Trent",
+     "Jesuits",
+     "Protestant"
+    ],
+    "sentences": [
+     {
+      "text": "The Catholic Church answered with the ___.",
+      "word": "Counter-Reformation"
+     },
+     {
+      "text": "The ___ fixed church abuses.",
+      "word": "Council of Trent"
+     },
+     {
+      "text": "The ___ built schools and missions worldwide.",
+      "word": "Jesuits"
+     },
+     {
+      "text": "Northern Europe became mostly ___.",
+      "word": "Protestant"
+     }
+    ]
+   },
+   {
+    "type": "matching",
+    "prompt": "Match each term to its meaning.",
+    "pairs": [
+     {
+      "term": "Counter-Reformation",
+      "definition": "the Catholic Church's response to Protestants"
+     },
+     {
+      "term": "Council of Trent",
+      "definition": "meeting that fixed church abuses"
+     },
+     {
+      "term": "Jesuits",
+      "definition": "new order that built schools and missions"
+     }
+    ]
+   }
+  ],
+  "27": [
+   {
+    "type": "fill_blank",
+    "prompt": "Fill each blank about the Scientific Revolution.",
+    "words": [
+     "Copernicus",
+     "Galileo",
+     "Newton",
+     "telescope"
+    ],
+    "sentences": [
+     {
+      "text": "___ said the Sun, not Earth, is at the center.",
+      "word": "Copernicus"
+     },
+     {
+      "text": "___ used a telescope for evidence and was put on trial.",
+      "word": "Galileo"
+     },
+     {
+      "text": "___ explained motion and gravity with math in 1687.",
+      "word": "Newton"
+     },
+     {
+      "text": "Galileo gathered evidence using a ___.",
+      "word": "telescope"
+     }
+    ]
+   },
+   {
+    "type": "matching",
+    "prompt": "Match each scientist to what he did.",
+    "pairs": [
+     {
+      "term": "Copernicus",
+      "definition": "said the Sun is at the center in 1543"
+     },
+     {
+      "term": "Galileo",
+      "definition": "used a telescope and was put on trial"
+     },
+     {
+      "term": "Newton",
+      "definition": "explained motion and gravity with math in 1687"
+     }
+    ]
+   }
+  ],
+  "28": [
+   {
+    "type": "fill_blank",
+    "prompt": "Fill each blank about the scientific method.",
+    "words": [
+     "scientific method",
+     "hypothesis",
+     "experiment",
+     "evidence"
+    ],
+    "sentences": [
+     {
+      "text": "The real revolution was the ___.",
+      "word": "scientific method"
+     },
+     {
+      "text": "A ___ is a testable guess or prediction.",
+      "word": "hypothesis"
+     },
+     {
+      "text": "You test a hypothesis by running an ___.",
+      "word": "experiment"
+     },
+     {
+      "text": "Conclusions should be based on ___ from testing.",
+      "word": "evidence"
+     }
+    ]
+   },
+   {
+    "type": "matching",
+    "prompt": "Match each step to its meaning.",
+    "pairs": [
+     {
+      "term": "hypothesis",
+      "definition": "a testable guess to be tested"
+     },
+     {
+      "term": "experiment",
+      "definition": "the test of the hypothesis"
+     },
+     {
+      "term": "conclusion",
+      "definition": "what you decide from the evidence"
+     }
+    ]
+   }
+  ],
+  "29": [
+   {
+    "type": "fill_blank",
+    "prompt": "Fill each blank about the Age of Exploration.",
+    "words": [
+     "caravels",
+     "Columbus",
+     "da Gama",
+     "Magellan"
+    ],
+    "sentences": [
+     {
+      "text": "New ships called ___ helped sail the open ocean.",
+      "word": "caravels"
+     },
+     {
+      "text": "___ reached the Americas in 1492 by accident.",
+      "word": "Columbus"
+     },
+     {
+      "text": "___ sailed to India in 1498.",
+      "word": "da Gama"
+     },
+     {
+      "text": "___'s crew sailed all the way around the world by 1522.",
+      "word": "Magellan"
+     }
+    ]
+   },
+   {
+    "type": "matching",
+    "prompt": "Match each explorer to what he did.",
+    "pairs": [
+     {
+      "term": "Dias",
+      "definition": "sailed around Africa's tip in 1488"
+     },
+     {
+      "term": "da Gama",
+      "definition": "reached India in 1498"
+     },
+     {
+      "term": "Columbus",
+      "definition": "reached the Americas in 1492"
+     },
+     {
+      "term": "Magellan",
+      "definition": "his crew sailed around the world by 1522"
+     }
+    ]
+   }
+  ],
+  "30": [
+   {
+    "type": "fill_blank",
+    "prompt": "Fill each blank about the Columbian Exchange.",
+    "words": [
+     "Columbian Exchange",
+     "potatoes",
+     "horses",
+     "smallpox"
+    ],
+    "sentences": [
+     {
+      "text": "The swap between hemispheres is called the ___.",
+      "word": "Columbian Exchange"
+     },
+     {
+      "text": "___ and corn came from the Americas to the world.",
+      "word": "potatoes"
+     },
+     {
+      "text": "___ and cattle came from the world to the Americas.",
+      "word": "horses"
+     },
+     {
+      "text": "Diseases like ___ killed most of the Native population.",
+      "word": "smallpox"
+     }
+    ]
+   },
+   {
+    "type": "matching",
+    "prompt": "Match each term to its meaning.",
+    "pairs": [
+     {
+      "term": "Columbian Exchange",
+      "definition": "the swap of plants, animals, and diseases between hemispheres"
+     },
+     {
+      "term": "potatoes",
+      "definition": "a New World food that spread to the rest of the world"
+     },
+     {
+      "term": "horses",
+      "definition": "an Old World animal brought to the Americas"
+     },
+     {
+      "term": "smallpox",
+      "definition": "deadly disease that killed most Native people"
+     }
+    ]
+   }
+  ],
+  "31": [
+   {
+    "type": "matching",
+    "prompt": "Match each Enlightenment thinker to his big idea.",
+    "pairs": [
+     {
+      "term": "Locke",
+      "definition": "natural rights: life, liberty, and property"
+     },
+     {
+      "term": "Montesquieu",
+      "definition": "separation of powers into three branches"
+     },
+     {
+      "term": "Rousseau",
+      "definition": "the social contract"
+     },
+     {
+      "term": "Voltaire",
+      "definition": "free speech and religious tolerance"
+     }
+    ]
+   },
+   {
+    "type": "fill_blank",
+    "prompt": "Fill each blank about the Enlightenment.",
+    "words": [
+     "Locke",
+     "Montesquieu",
+     "1689",
+     "1776"
+    ],
+    "sentences": [
+     {
+      "text": "___ taught natural rights and government by consent.",
+      "word": "Locke"
+     },
+     {
+      "text": "___ argued for separating power into three branches.",
+      "word": "Montesquieu"
+     },
+     {
+      "text": "The English Bill of Rights came in ___.",
+      "word": "1689"
+     },
+     {
+      "text": "The Declaration of Independence came in ___.",
+      "word": "1776"
+     }
+    ]
+   }
+  ],
+  "32": [
+   {
+    "type": "fill_blank",
+    "prompt": "Fill each blank about your course-long story.",
+    "words": [
+     "1789",
+     "fragments",
+     "trade",
+     "printing"
+    ],
+    "sentences": [
+     {
+      "text": "The course timeline runs from 300 CE to ___.",
+      "word": "1789"
+     },
+     {
+      "text": "First, the old world ___ and reorganizes.",
+      "word": "fragments"
+     },
+     {
+      "text": "Next, ___ and ideas connect the continents.",
+      "word": "trade"
+     },
+     {
+      "text": "Finally, ___, science, and the Enlightenment create the modern world.",
+      "word": "printing"
+     }
+    ]
+   },
+   {
+    "type": "matching",
+    "prompt": "Match each part of the big story to its meaning.",
+    "pairs": [
+     {
+      "term": "fragmentation",
+      "definition": "how the old world broke apart and reorganized"
+     },
+     {
+      "term": "trade",
+      "definition": "what connected the continents and spread ideas"
+     },
+     {
+      "term": "Enlightenment",
+      "definition": "ideas that helped create the modern world"
+     }
+    ]
+   }
+  ]
+ },
+ "sci_violet": {
+  "1": [
+   {
+    "type": "matching",
+    "prompt": "Match each word to what it means.",
+    "pairs": [
+     {
+      "term": "Force",
+      "definition": "A push or a pull"
+     },
+     {
+      "term": "Push",
+      "definition": "Moving something away from you"
+     },
+     {
+      "term": "Pull",
+      "definition": "Moving something toward you"
+     }
+    ]
+   },
+   {
+    "type": "fill_blank",
+    "prompt": "Fill each blank with the right word. Use every word once.",
+    "words": [
+     "start",
+     "stop",
+     "direction"
+    ],
+    "sentences": [
+     {
+      "text": "A force can make a still marble ___ moving.",
+      "word": "start"
+     },
+     {
+      "text": "A force can make a rolling marble ___ moving.",
+      "word": "stop"
+     },
+     {
+      "text": "A force can change which ___ something moves.",
+      "word": "direction"
+     }
+    ]
+   }
+  ],
+  "2": [
+   {
+    "type": "fill_blank",
+    "prompt": "Fill each blank. Use every word once.",
+    "words": [
+     "gravity",
+     "higher",
+     "farther"
+    ],
+    "sentences": [
+     {
+      "text": "The force that pulls the car down the ramp is ___.",
+      "word": "gravity"
+     },
+     {
+      "text": "A ___ ramp gives the car a bigger pull.",
+      "word": "higher"
+     },
+     {
+      "text": "A higher ramp makes the car roll ___.",
+      "word": "farther"
+     }
+    ]
+   },
+   {
+    "type": "matching",
+    "prompt": "Match each word to what it means.",
+    "pairs": [
+     {
+      "term": "Gravity",
+      "definition": "The pull that makes the car roll down"
+     },
+     {
+      "term": "Ramp",
+      "definition": "The slope the car races down"
+     },
+     {
+      "term": "Predict",
+      "definition": "Guess what will happen before you test"
+     }
+    ]
+   }
+  ],
+  "3": [
+   {
+    "type": "fill_blank",
+    "prompt": "Fill each blank. Use every word once.",
+    "words": [
+     "friction",
+     "rough",
+     "smooth"
+    ],
+    "sentences": [
+     {
+      "text": "The force that rubs on moving things and slows them is ___.",
+      "word": "friction"
+     },
+     {
+      "text": "A ___ surface makes MORE friction.",
+      "word": "rough"
+     },
+     {
+      "text": "A ___ surface makes LESS friction.",
+      "word": "smooth"
+     }
+    ]
+   },
+   {
+    "type": "matching",
+    "prompt": "Match each word to what it means.",
+    "pairs": [
+     {
+      "term": "Friction",
+      "definition": "A force that slows moving things down"
+     },
+     {
+      "term": "Rough surface",
+      "definition": "Makes more friction"
+     },
+     {
+      "term": "Smooth surface",
+      "definition": "Makes less friction"
+     }
+    ]
+   }
+  ],
+  "4": [
+   {
+    "type": "fill_blank",
+    "prompt": "Fill each blank. Use every word once.",
+    "words": [
+     "back",
+     "forward",
+     "reaction"
+    ],
+    "sentences": [
+     {
+      "text": "Air rushes out the ___ of the balloon.",
+      "word": "back"
+     },
+     {
+      "text": "The balloon then shoots ___.",
+      "word": "forward"
+     },
+     {
+      "text": "Every action has an equal and opposite ___.",
+      "word": "reaction"
+     }
+    ]
+   },
+   {
+    "type": "matching",
+    "prompt": "Match each word to what it means.",
+    "pairs": [
+     {
+      "term": "Action",
+      "definition": "The air pushing out of the balloon"
+     },
+     {
+      "term": "Reaction",
+      "definition": "The balloon pushing the opposite way"
+     },
+     {
+      "term": "Newton",
+      "definition": "The scientist whose idea makes rockets fly"
+     }
+    ]
+   }
+  ],
+  "5": [
+   {
+    "type": "fill_blank",
+    "prompt": "Fill each blank. Use every word once.",
+    "words": [
+     "balanced",
+     "unbalanced",
+     "motion"
+    ],
+    "sentences": [
+     {
+      "text": "When forces are ___, nothing changes.",
+      "word": "balanced"
+     },
+     {
+      "text": "When forces are ___, motion changes.",
+      "word": "unbalanced"
+     },
+     {
+      "text": "Unbalanced forces change an object's ___.",
+      "word": "motion"
+     }
+    ]
+   },
+   {
+    "type": "matching",
+    "prompt": "Match each word to what it means.",
+    "pairs": [
+     {
+      "term": "Balanced forces",
+      "definition": "Equal push and pull, so nothing changes"
+     },
+     {
+      "term": "Unbalanced forces",
+      "definition": "One side wins, so motion changes"
+     },
+     {
+      "term": "Force arrow",
+      "definition": "A drawing that shows how strong a push is"
+     }
+    ]
+   }
+  ],
+  "6": [
+   {
+    "type": "fill_blank",
+    "prompt": "Fill each blank. Use every word once.",
+    "words": [
+     "iron",
+     "attract",
+     "repel"
+    ],
+    "sentences": [
+     {
+      "text": "Magnets stick to things made of ___ or steel.",
+      "word": "iron"
+     },
+     {
+      "text": "When two magnets snap together they ___.",
+      "word": "attract"
+     },
+     {
+      "text": "When two magnets push apart they ___.",
+      "word": "repel"
+     }
+    ]
+   },
+   {
+    "type": "matching",
+    "prompt": "Match each word to what it means.",
+    "pairs": [
+     {
+      "term": "Attract",
+      "definition": "Magnets pull together"
+     },
+     {
+      "term": "Repel",
+      "definition": "Magnets push apart"
+     },
+     {
+      "term": "Iron and steel",
+      "definition": "The metals a magnet grabs"
+     }
+    ]
+   }
+  ],
+  "7": [
+   {
+    "type": "fill_blank",
+    "prompt": "Fill each blank. Use every word once.",
+    "words": [
+     "through",
+     "magnetic",
+     "water"
+    ],
+    "sentences": [
+     {
+      "text": "A magnet's force can pass ___ paper and cardboard.",
+      "word": "through"
+     },
+     {
+      "text": "The push or pull of a magnet is called a ___ force.",
+      "word": "magnetic"
+     },
+     {
+      "text": "In magnet fishing, the force even works through the ___.",
+      "word": "water"
+     }
+    ]
+   },
+   {
+    "type": "matching",
+    "prompt": "Match each word to what it means.",
+    "pairs": [
+     {
+      "term": "Magnetic force",
+      "definition": "The push or pull of a magnet"
+     },
+     {
+      "term": "Ghost drag",
+      "definition": "Moving a nail with a magnet under the table"
+     },
+     {
+      "term": "Power chart",
+      "definition": "A list of which materials the force got through"
+     }
+    ]
+   }
+  ],
+  "8": [
+   {
+    "type": "fill_blank",
+    "prompt": "Fill each blank. Use every word once.",
+    "words": [
+     "magnetize",
+     "north",
+     "compass"
+    ],
+    "sentences": [
+     {
+      "text": "To make the needle magnetic, you ___ it by stroking.",
+      "word": "magnetize"
+     },
+     {
+      "text": "A floating magnetized needle points ___.",
+      "word": "north"
+     },
+     {
+      "text": "The tool you built that finds north is a ___.",
+      "word": "compass"
+     }
+    ]
+   },
+   {
+    "type": "matching",
+    "prompt": "Match each word to what it means.",
+    "pairs": [
+     {
+      "term": "Compass",
+      "definition": "A tool that points north"
+     },
+     {
+      "term": "Magnetize",
+      "definition": "Stroke a magnet on a needle to make it magnetic"
+     },
+     {
+      "term": "North",
+      "definition": "The direction a compass needle points"
+     }
+    ]
+   }
+  ],
+  "9": [
+   {
+    "type": "fill_blank",
+    "prompt": "Fill each blank. Use every word once.",
+    "words": [
+     "rubbing",
+     "charges",
+     "lightning"
+    ],
+    "sentences": [
+     {
+      "text": "You charge the balloon by ___ it on your hair.",
+      "word": "rubbing"
+     },
+     {
+      "text": "Tiny ___ let the balloon pull things without touching.",
+      "word": "charges"
+     },
+     {
+      "text": "A giant-sized version of static electricity is ___.",
+      "word": "lightning"
+     }
+    ]
+   },
+   {
+    "type": "matching",
+    "prompt": "Match each word to what it means.",
+    "pairs": [
+     {
+      "term": "Static electricity",
+      "definition": "Tiny charges that pull without touching"
+     },
+     {
+      "term": "Rubbing",
+      "definition": "How you charge the balloon"
+     },
+     {
+      "term": "Lightning",
+      "definition": "Static electricity, but giant-sized"
+     }
+    ]
+   }
+  ],
+  "10": [
+   {
+    "type": "fill_blank",
+    "prompt": "Fill each blank. Use every word once.",
+    "words": [
+     "fair",
+     "light",
+     "dark"
+    ],
+    "sentences": [
+     {
+      "text": "Changing only ONE thing makes it a ___ test.",
+      "word": "fair"
+     },
+     {
+      "text": "One bag sits in a sunny window with ___.",
+      "word": "light"
+     },
+     {
+      "text": "The other bag sits in a ___ closet.",
+      "word": "dark"
+     }
+    ]
+   },
+   {
+    "type": "matching",
+    "prompt": "Match each word to what it means.",
+    "pairs": [
+     {
+      "term": "Fair test",
+      "definition": "Everything the same except one thing"
+     },
+     {
+      "term": "Window bag",
+      "definition": "The bean bag that gets light"
+     },
+     {
+      "term": "Closet bag",
+      "definition": "The bean bag kept in the dark"
+     }
+    ]
+   }
+  ],
+  "11": [
+   {
+    "type": "fill_blank",
+    "prompt": "Fill each blank. Use every word once.",
+    "words": [
+     "life cycle",
+     "metamorphosis",
+     "reproduce"
+    ],
+    "sentences": [
+     {
+      "text": "The pattern born, grow, reproduce, die is a ___.",
+      "word": "life cycle"
+     },
+     {
+      "text": "When an animal changes its whole body shape it is called ___.",
+      "word": "metamorphosis"
+     },
+     {
+      "text": "Living things make babies when they ___.",
+      "word": "reproduce"
+     }
+    ]
+   },
+   {
+    "type": "matching",
+    "prompt": "Match each word to what it means.",
+    "pairs": [
+     {
+      "term": "Life cycle",
+      "definition": "Born, grow, reproduce, die, and around again"
+     },
+     {
+      "term": "Metamorphosis",
+      "definition": "Changing your whole body shape"
+     },
+     {
+      "term": "Caterpillar",
+      "definition": "The butterfly stage that comes before the chrysalis"
+     }
+    ]
+   }
+  ],
+  "12": [
+   {
+    "type": "fill_blank",
+    "prompt": "Fill each blank. Use every word once.",
+    "words": [
+     "light",
+     "food",
+     "pale"
+    ],
+    "sentences": [
+     {
+      "text": "Plants need ___ to make food.",
+      "word": "light"
+     },
+     {
+      "text": "Plants use light to make their own ___.",
+      "word": "food"
+     },
+     {
+      "text": "Sprouts grown in the dark look ___ and weird.",
+      "word": "pale"
+     }
+    ]
+   },
+   {
+    "type": "matching",
+    "prompt": "Match each word to what it means.",
+    "pairs": [
+     {
+      "term": "Window sprouts",
+      "definition": "Grew healthy because they had light"
+     },
+     {
+      "term": "Closet sprouts",
+      "definition": "Grew pale because they had no light"
+     },
+     {
+      "term": "Light",
+      "definition": "What plants need to make food"
+     }
+    ]
+   }
+  ],
+  "13": [
+   {
+    "type": "fill_blank",
+    "prompt": "Fill each blank. Use every word once.",
+    "words": [
+     "seed",
+     "flower",
+     "fruit"
+    ],
+    "sentences": [
+     {
+      "text": "Every ___ is a plant's baby.",
+      "word": "seed"
+     },
+     {
+      "text": "A plant grows a ___ before it makes fruit.",
+      "word": "flower"
+     },
+     {
+      "text": "Plants make ___ to protect and spread their seeds.",
+      "word": "fruit"
+     }
+    ]
+   },
+   {
+    "type": "matching",
+    "prompt": "Match each word to what it means.",
+    "pairs": [
+     {
+      "term": "Seed",
+      "definition": "A plant's baby, packed to start growing"
+     },
+     {
+      "term": "Flower",
+      "definition": "The plant part that comes before fruit"
+     },
+     {
+      "term": "Fruit",
+      "definition": "Protects and spreads the seeds"
+     }
+    ]
+   }
+  ],
+  "14": [
+   {
+    "type": "fill_blank",
+    "prompt": "Fill each blank. Use every word once.",
+    "words": [
+     "trait",
+     "inherited",
+     "acquired"
+    ],
+    "sentences": [
+     {
+      "text": "A feature of a living thing is a ___.",
+      "word": "trait"
+     },
+     {
+      "text": "Eye color is ___ from your parents.",
+      "word": "inherited"
+     },
+     {
+      "text": "A jiu-jitsu skill is ___ by living and practicing.",
+      "word": "acquired"
+     }
+    ]
+   },
+   {
+    "type": "matching",
+    "prompt": "Match each word to what it means.",
+    "pairs": [
+     {
+      "term": "Trait",
+      "definition": "A feature of a living thing"
+     },
+     {
+      "term": "Inherited trait",
+      "definition": "Passed down from your parents"
+     },
+     {
+      "term": "Acquired trait",
+      "definition": "Learned or gained while living"
+     }
+    ]
+   }
+  ],
+  "15": [
+   {
+    "type": "fill_blank",
+    "prompt": "Fill each blank. Use every word once.",
+    "words": [
+     "acquired",
+     "inherited",
+     "environment"
+    ],
+    "sentences": [
+     {
+      "text": "Riding a bike is an ___ skill.",
+      "word": "acquired"
+     },
+     {
+      "text": "Freckles are ___ from your parents.",
+      "word": "inherited"
+     },
+     {
+      "text": "The ___ around you, like food and light, can shape traits too.",
+      "word": "environment"
+     }
+    ]
+   },
+   {
+    "type": "matching",
+    "prompt": "Match each word to what it means.",
+    "pairs": [
+     {
+      "term": "Inherited",
+      "definition": "Comes from your parents, like eye color"
+     },
+     {
+      "term": "Acquired",
+      "definition": "Gained by living, like riding a bike"
+     },
+     {
+      "term": "Environment",
+      "definition": "Surroundings that can shape how you grow"
+     }
+    ]
+   }
+  ],
+  "16": [
+   {
+    "type": "fill_blank",
+    "prompt": "Fill each blank. Use every word once.",
+    "words": [
+     "vary",
+     "same",
+     "different"
+    ],
+    "sentences": [
+     {
+      "text": "Living things of the same kind still ___.",
+      "word": "vary"
+     },
+     {
+      "text": "Ten leaves from the ___ tree are not identical.",
+      "word": "same"
+     },
+     {
+      "text": "No two beans are exactly alike — each is a little ___.",
+      "word": "different"
+     }
+    ]
+   },
+   {
+    "type": "matching",
+    "prompt": "Match each word to what it means.",
+    "pairs": [
+     {
+      "term": "Vary",
+      "definition": "To be a little different from each other"
+     },
+     {
+      "term": "Same species",
+      "definition": "Living things of the same kind"
+     },
+     {
+      "term": "Ruler",
+      "definition": "The tool used to measure each leaf"
+     }
+    ]
+   }
+  ],
+  "17": [
+   {
+    "type": "fill_blank",
+    "prompt": "Fill each blank. Use every word once.",
+    "words": [
+     "beak",
+     "adaptation",
+     "survive"
+    ],
+    "sentences": [
+     {
+      "text": "A bird's ___ shape matches the food it eats.",
+      "word": "beak"
+     },
+     {
+      "text": "A trait that helps an animal survive is an ___.",
+      "word": "adaptation"
+     },
+     {
+      "text": "Good adaptations help an animal ___ in its home.",
+      "word": "survive"
+     }
+    ]
+   },
+   {
+    "type": "matching",
+    "prompt": "Match each word to what it means.",
+    "pairs": [
+     {
+      "term": "Adaptation",
+      "definition": "A trait that helps a living thing survive"
+     },
+     {
+      "term": "Beak",
+      "definition": "The bird tool whose shape matches its food"
+     },
+     {
+      "term": "Survive",
+      "definition": "To keep living in your home"
+     }
+    ]
+   }
+  ],
+  "18": [
+   {
+    "type": "fill_blank",
+    "prompt": "Fill each blank. Use every word once.",
+    "words": [
+     "camouflage",
+     "hidden",
+     "adaptation"
+    ],
+    "sentences": [
+     {
+      "text": "Blending in with your surroundings is called ___.",
+      "word": "camouflage"
+     },
+     {
+      "text": "Moths that stay ___ are hard to catch.",
+      "word": "hidden"
+     },
+     {
+      "text": "Camouflage is an ___ that helps animals survive.",
+      "word": "adaptation"
+     }
+    ]
+   },
+   {
+    "type": "matching",
+    "prompt": "Match each word to what it means.",
+    "pairs": [
+     {
+      "term": "Camouflage",
+      "definition": "Blending in with your surroundings"
+     },
+     {
+      "term": "Bright moths",
+      "definition": "Easy to spot, so they get caught"
+     },
+     {
+      "term": "Camouflaged moths",
+      "definition": "Hard to spot, so they survive"
+     }
+    ]
+   }
+  ],
+  "19": [
+   {
+    "type": "fill_blank",
+    "prompt": "Fill each blank. Use every word once.",
+    "words": [
+     "fossil",
+     "stone",
+     "extinct"
+    ],
+    "sentences": [
+     {
+      "text": "An imprint left by a living thing is a ___.",
+      "word": "fossil"
+     },
+     {
+      "text": "Real fossils form when buried mud slowly turns to ___.",
+      "word": "stone"
+     },
+     {
+      "text": "Animals that are gone forever, like dinosaurs, are ___.",
+      "word": "extinct"
+     }
+    ]
+   },
+   {
+    "type": "matching",
+    "prompt": "Match each word to what it means.",
+    "pairs": [
+     {
+      "term": "Fossil",
+      "definition": "Nature's photo album of creatures long ago"
+     },
+     {
+      "term": "Imprint fossil",
+      "definition": "A print pressed into dough or mud"
+     },
+     {
+      "term": "Extinct",
+      "definition": "Gone forever, like the dinosaurs"
+     }
+    ]
+   }
+  ],
+  "20": [
+   {
+    "type": "fill_blank",
+    "prompt": "Fill each blank. Use every word once.",
+    "words": [
+     "paleontologist",
+     "underwater",
+     "environment"
+    ],
+    "sentences": [
+     {
+      "text": "A scientist who studies fossils is a ___.",
+      "word": "paleontologist"
+     },
+     {
+      "text": "A fish fossil on a mountain means it used to be ___.",
+      "word": "underwater"
+     },
+     {
+      "text": "An animal's traits fit its ___, like webbed feet for water.",
+      "word": "environment"
+     }
+    ]
+   },
+   {
+    "type": "matching",
+    "prompt": "Match each word to what it means.",
+    "pairs": [
+     {
+      "term": "Paleontologist",
+      "definition": "A scientist who studies fossils"
+     },
+     {
+      "term": "Webbed feet",
+      "definition": "A trait that fits living in water"
+     },
+     {
+      "term": "Thick fur",
+      "definition": "A trait that fits living in the cold"
+     }
+    ]
+   }
+  ],
+  "21": [
+   {
+    "type": "fill_blank",
+    "prompt": "Fill each blank. Use every word once.",
+    "words": [
+     "weather",
+     "today",
+     "rain gauge"
+    ],
+    "sentences": [
+     {
+      "text": "The word for what the sky does today is ___.",
+      "word": "weather"
+     },
+     {
+      "text": "Weather is what the sky is doing ___.",
+      "word": "today"
+     },
+     {
+      "text": "The tool that catches and measures rain is a ___.",
+      "word": "rain gauge"
+     }
+    ]
+   },
+   {
+    "type": "matching",
+    "prompt": "Match each word to what it means.",
+    "pairs": [
+     {
+      "term": "Weather",
+      "definition": "What the sky does today"
+     },
+     {
+      "term": "Rain gauge",
+      "definition": "A tool that measures how much rain fell"
+     },
+     {
+      "term": "Weather log",
+      "definition": "A daily record of temperature, sky, and rain"
+     }
+    ]
+   }
+  ],
+  "22": [
+   {
+    "type": "fill_blank",
+    "prompt": "Fill each blank. Use every word once.",
+    "words": [
+     "cloud",
+     "cumulus",
+     "cirrus",
+     "stratus"
+    ],
+    "sentences": [
+     {
+      "text": "Warm wet air rises, cools, and sticks to tiny bits to make a ___.",
+      "word": "cloud"
+     },
+     {
+      "text": "Puffy, cotton-ball clouds are called ___.",
+      "word": "cumulus"
+     },
+     {
+      "text": "Thin, streaky clouds are called ___.",
+      "word": "cirrus"
+     },
+     {
+      "text": "A gray blanket of cloud is called ___.",
+      "word": "stratus"
+     }
+    ]
+   },
+   {
+    "type": "matching",
+    "prompt": "Match each cloud to how it looks.",
+    "pairs": [
+     {
+      "term": "Cumulus",
+      "definition": "Puffy, cotton-ball clouds"
+     },
+     {
+      "term": "Cirrus",
+      "definition": "Thin, streaky clouds"
+     },
+     {
+      "term": "Stratus",
+      "definition": "A gray blanket covering the sky"
+     }
+    ]
+   }
+  ],
+  "23": [
+   {
+    "type": "fill_blank",
+    "prompt": "Fill each blank. Use every word once.",
+    "words": [
+     "weather",
+     "climate",
+     "years"
+    ],
+    "sentences": [
+     {
+      "text": "Today's sky right now is called ___.",
+      "word": "weather"
+     },
+     {
+      "text": "What a place is USUALLY like is its ___.",
+      "word": "climate"
+     },
+     {
+      "text": "Climate is the weather pattern over many ___.",
+      "word": "years"
+     }
+    ]
+   },
+   {
+    "type": "matching",
+    "prompt": "Match each word to what it means.",
+    "pairs": [
+     {
+      "term": "Weather",
+      "definition": "Today's sky — the day's mood"
+     },
+     {
+      "term": "Climate",
+      "definition": "What a place is usually like over many years"
+     },
+     {
+      "term": "Sacramento's climate",
+      "definition": "Hot dry summers, mild wet winters"
+     }
+    ]
+   }
+  ],
+  "24": [
+   {
+    "type": "fill_blank",
+    "prompt": "Fill each blank. Use every word once.",
+    "words": [
+     "engineers",
+     "damage",
+     "rebuild"
+    ],
+    "sentences": [
+     {
+      "text": "People who design things to make weather safer are ___.",
+      "word": "engineers"
+     },
+     {
+      "text": "Good design REDUCES the ___ from storms.",
+      "word": "damage"
+     },
+     {
+      "text": "If your paper house blows away, you ___ it stronger and test again.",
+      "word": "rebuild"
+     }
+    ]
+   },
+   {
+    "type": "matching",
+    "prompt": "Match each word to what it means.",
+    "pairs": [
+     {
+      "term": "Engineer",
+      "definition": "Someone who designs to reduce storm damage"
+     },
+     {
+      "term": "Wind",
+      "definition": "The dangerous weather in the Fan Test"
+     },
+     {
+      "term": "Iterate",
+      "definition": "Test, improve, and test again"
+     }
+    ]
+   }
+  ],
+  "25": [
+   {
+    "type": "fill_blank",
+    "prompt": "Fill each blank. Use every word once.",
+    "words": [
+     "flooding",
+     "levees",
+     "sandbag"
+    ],
+    "sentences": [
+     {
+      "text": "West Sacramento's biggest weather hazard is ___.",
+      "word": "flooding"
+     },
+     {
+      "text": "Walls that hold back river water are called ___.",
+      "word": "levees"
+     },
+     {
+      "text": "A ___ wall of cotton balls helps block the flood.",
+      "word": "sandbag"
+     }
+    ]
+   },
+   {
+    "type": "matching",
+    "prompt": "Match each word to what it means.",
+    "pairs": [
+     {
+      "term": "Flooding",
+      "definition": "West Sacramento's biggest weather hazard"
+     },
+     {
+      "term": "Levees",
+      "definition": "Walls that hold back the river"
+     },
+     {
+      "term": "Sandbags",
+      "definition": "Stacked bags that block flood water"
+     }
+    ]
+   }
+  ],
+  "26": [
+   {
+    "type": "fill_blank",
+    "prompt": "Fill in the steps a scientist follows. Use every word once.",
+    "words": [
+     "question",
+     "predict",
+     "measure",
+     "evidence"
+    ],
+    "sentences": [
+     {
+      "text": "A scientist starts by asking a ___.",
+      "word": "question"
+     },
+     {
+      "text": "Next a scientist will ___ what will happen.",
+      "word": "predict"
+     },
+     {
+      "text": "A scientist will ___ carefully with tools like a ruler.",
+      "word": "measure"
+     },
+     {
+      "text": "Finally a scientist explains using ___.",
+      "word": "evidence"
+     }
+    ]
+   },
+   {
+    "type": "matching",
+    "prompt": "Match each step to what it means.",
+    "pairs": [
+     {
+      "term": "Ask a question",
+      "definition": "The first thing a scientist does"
+     },
+     {
+      "term": "Predict",
+      "definition": "Guess what will happen before testing"
+     },
+     {
+      "term": "Fair test",
+      "definition": "A test where you change only one thing"
+     },
+     {
+      "term": "Evidence",
+      "definition": "The proof you use to explain what happened"
+     }
+    ]
+   }
+  ]
+ },
+ "sci_kaylin": {
+  "1": [
+   {
+    "type": "matching",
+    "prompt": "Match each state of matter (and temperature) to how its particles behave.",
+    "pairs": [
+     {
+      "term": "Solid",
+      "definition": "particles locked in place, only vibrating"
+     },
+     {
+      "term": "Liquid",
+      "definition": "particles touch but slide past each other"
+     },
+     {
+      "term": "Gas",
+      "definition": "particles fly free with lots of space between them"
+     },
+     {
+      "term": "Temperature",
+      "definition": "a measure of how fast the particles are moving"
+     }
+    ]
+   },
+   {
+    "type": "fill_blank",
+    "prompt": "Fill each blank with the correct word from the bank.",
+    "words": [
+     "particles",
+     "hot",
+     "faster"
+    ],
+    "sentences": [
+     {
+      "text": "All matter is made of tiny ___ that are in constant motion.",
+      "word": "particles"
+     },
+     {
+      "text": "Food coloring spreads ___ in warm water than in ice-cold water.",
+      "word": "faster"
+     },
+     {
+      "text": "The particles in ___ water move more quickly, so they mix the color in sooner.",
+      "word": "hot"
+     }
+    ]
+   }
+  ],
+  "2": [
+   {
+    "type": "fill_blank",
+    "prompt": "Fill each blank with the correct word from the bank.",
+    "words": [
+     "floats",
+     "less",
+     "salt"
+    ],
+    "sentences": [
+     {
+      "text": "An ice ball ___ in water instead of sinking.",
+      "word": "floats"
+     },
+     {
+      "text": "Solid water is ___ dense than liquid water, which is very rare.",
+      "word": "less"
+     },
+     {
+      "text": "Sprinkling ___ on the ice carves melting channels into it.",
+      "word": "salt"
+     }
+    ]
+   },
+   {
+    "type": "matching",
+    "prompt": "Match each part of the ice-balloon lab to what it does or shows.",
+    "pairs": [
+     {
+      "term": "Density of ice",
+      "definition": "less than liquid water, which is why ice floats"
+     },
+     {
+      "term": "Salt on the ice",
+      "definition": "melts channels down into the ice"
+     },
+     {
+      "term": "Food coloring drops",
+      "definition": "reveal the melt rivers running through the ice"
+     }
+    ]
+   }
+  ],
+  "3": [
+   {
+    "type": "fill_blank",
+    "prompt": "Fill each blank with the correct word or number from the bank.",
+    "words": [
+     "0",
+     "100",
+     "phase",
+     "bonds"
+    ],
+    "sentences": [
+     {
+      "text": "Water melts at about ___ degrees Celsius.",
+      "word": "0"
+     },
+     {
+      "text": "Water boils at about ___ degrees Celsius.",
+      "word": "100"
+     },
+     {
+      "text": "During a ___ change the temperature stays flat even though you keep adding heat.",
+      "word": "phase"
+     },
+     {
+      "text": "The added energy goes into breaking particle ___ instead of raising the temperature.",
+      "word": "bonds"
+     }
+    ]
+   },
+   {
+    "type": "matching",
+    "prompt": "Match each item to what it means on your time-vs-temperature graph.",
+    "pairs": [
+     {
+      "term": "Melting point of water",
+      "definition": "the flat spot at about 0°C"
+     },
+     {
+      "term": "Boiling point of water",
+      "definition": "the flat spot at about 100°C"
+     },
+     {
+      "term": "A flat plateau on the graph",
+      "definition": "the fingerprint that a phase change is happening"
+     }
+    ]
+   }
+  ],
+  "4": [
+   {
+    "type": "fill_blank",
+    "prompt": "Fill each blank with the correct word from the bank.",
+    "words": [
+     "density",
+     "sinks",
+     "floats"
+    ],
+    "sentences": [
+     {
+      "text": "___ is how tightly packed matter is (mass per space).",
+      "word": "density"
+     },
+     {
+      "text": "Something denser than a liquid ___ below it.",
+      "word": "sinks"
+     },
+     {
+      "text": "Something less dense than a liquid ___ on top of it.",
+      "word": "floats"
+     }
+    ]
+   },
+   {
+    "type": "matching",
+    "prompt": "Match each term to its meaning in the density tower.",
+    "pairs": [
+     {
+      "term": "Density",
+      "definition": "how tightly packed matter is (mass per space)"
+     },
+     {
+      "term": "A denser object",
+      "definition": "settles lower and sinks in a liquid"
+     },
+     {
+      "term": "A less dense object",
+      "definition": "rises and floats on a liquid"
+     }
+    ]
+   }
+  ],
+  "5": [
+   {
+    "type": "matching",
+    "prompt": "Match each term to its meaning.",
+    "pairs": [
+     {
+      "term": "Chemical reaction",
+      "definition": "a change that makes brand-new substances"
+     },
+     {
+      "term": "Physical change",
+      "definition": "same substance in a new form, like melting ice"
+     },
+     {
+      "term": "Precipitate",
+      "definition": "a solid that appears when things react"
+     },
+     {
+      "term": "Gas bubbles",
+      "definition": "one sign that a chemical reaction happened"
+     }
+    ]
+   },
+   {
+    "type": "fill_blank",
+    "prompt": "Fill each blank with the correct word from the bank.",
+    "words": [
+     "chemical",
+     "physical",
+     "new"
+    ],
+    "sentences": [
+     {
+      "text": "A ___ reaction makes substances that weren't there before.",
+      "word": "chemical"
+     },
+     {
+      "text": "Dissolving sugar in water is a ___ change, not a reaction.",
+      "word": "physical"
+     },
+     {
+      "text": "Rust forming on a nail is evidence that a ___ substance was made.",
+      "word": "new"
+     }
+    ]
+   }
+  ],
+  "6": [
+   {
+    "type": "fill_blank",
+    "prompt": "Fill each blank with the correct word from the bank.",
+    "words": [
+     "conservation",
+     "atoms",
+     "gas"
+    ],
+    "sentences": [
+     {
+      "text": "The law of ___ of mass says mass isn't created or destroyed in a reaction.",
+      "word": "conservation"
+     },
+     {
+      "text": "Mass didn't vanish; the ___ just rearranged into new substances.",
+      "word": "atoms"
+     },
+     {
+      "text": "The unsealed rig weighed less because CO₂ ___ escaped into the air.",
+      "word": "gas"
+     }
+    ]
+   },
+   {
+    "type": "matching",
+    "prompt": "Match each situation to its result on the scale.",
+    "pairs": [
+     {
+      "term": "Conservation of mass",
+      "definition": "mass stays the same; atoms only rearrange"
+     },
+     {
+      "term": "Sealed bottle after the reaction",
+      "definition": "weighs the same as before"
+     },
+     {
+      "term": "Unsealed bottle after the reaction",
+      "definition": "weighs less because gas escaped"
+     }
+    ]
+   }
+  ],
+  "7": [
+   {
+    "type": "matching",
+    "prompt": "Match each reaction type or example to what happens to the temperature.",
+    "pairs": [
+     {
+      "term": "Exothermic reaction",
+      "definition": "releases heat, so the temperature rises"
+     },
+     {
+      "term": "Endothermic reaction",
+      "definition": "absorbs heat, so the temperature drops"
+     },
+     {
+      "term": "Rusting steel wool",
+      "definition": "the test that warmed up, like a hand warmer"
+     },
+     {
+      "term": "Vinegar + baking soda",
+      "definition": "the fizzing test that cooled down"
+     }
+    ]
+   },
+   {
+    "type": "fill_blank",
+    "prompt": "Fill each blank with the correct word from the bank.",
+    "words": [
+     "exothermic",
+     "endothermic",
+     "warmers"
+    ],
+    "sentences": [
+     {
+      "text": "A reaction that releases heat is ___.",
+      "word": "exothermic"
+     },
+     {
+      "text": "A reaction that absorbs heat and gets cold is ___.",
+      "word": "endothermic"
+     },
+     {
+      "text": "Hand ___ work because rusting metal gives off heat.",
+      "word": "warmers"
+     }
+    ]
+   }
+  ],
+  "8": [
+   {
+    "type": "fill_blank",
+    "prompt": "Fill each blank with the correct word from the bank.",
+    "words": [
+     "ratios",
+     "leftovers",
+     "limiting"
+    ],
+    "sentences": [
+     {
+      "text": "Reactions combine their ingredients in fixed ___.",
+      "word": "ratios"
+     },
+     {
+      "text": "Extra ingredient that doesn't get used up is called ___.",
+      "word": "leftovers"
+     },
+     {
+      "text": "The ingredient that runs out first and stops the reaction is the ___ ingredient.",
+      "word": "limiting"
+     }
+    ]
+   },
+   {
+    "type": "matching",
+    "prompt": "Match each term to its meaning in the balloon contest.",
+    "pairs": [
+     {
+      "term": "Fixed ratio",
+      "definition": "the set amounts a reaction combines ingredients in"
+     },
+     {
+      "term": "Leftovers",
+      "definition": "extra ingredient still there after the reaction"
+     },
+     {
+      "term": "Limiting ingredient",
+      "definition": "the one that runs out and stops the reaction"
+     }
+    ]
+   }
+  ],
+  "9": [
+   {
+    "type": "matching",
+    "prompt": "Match each way heat moves to how it travels.",
+    "pairs": [
+     {
+      "term": "Conduction",
+      "definition": "heat moving through direct touch"
+     },
+     {
+      "term": "Convection",
+      "definition": "heat carried by moving fluids like water or air"
+     },
+     {
+      "term": "Radiation",
+      "definition": "heat traveling as rays, like sunshine"
+     },
+     {
+      "term": "Metal spoon",
+      "definition": "the best heat conductor of the three spoons"
+     }
+    ]
+   },
+   {
+    "type": "fill_blank",
+    "prompt": "Fill each blank with the correct word from the bank.",
+    "words": [
+     "hot",
+     "conduction",
+     "convection",
+     "radiation"
+    ],
+    "sentences": [
+     {
+      "text": "Heat always flows from ___ toward cold.",
+      "word": "hot"
+     },
+     {
+      "text": "A metal spoon heating up in a mug is an example of ___.",
+      "word": "conduction"
+     },
+     {
+      "text": "Warm colored water rising through cold water shows ___.",
+      "word": "convection"
+     },
+     {
+      "text": "The sun warming your skin with its rays is ___.",
+      "word": "radiation"
+     }
+    ]
+   }
+  ],
+  "10": [
+   {
+    "type": "matching",
+    "prompt": "Match each cooler material or part to the job it does.",
+    "pairs": [
+     {
+      "term": "Insulation",
+      "definition": "material that slows down heat flow"
+     },
+     {
+      "term": "Foil",
+      "definition": "reflects radiation heat rays"
+     },
+     {
+      "term": "Foam or cotton",
+      "definition": "blocks conduction"
+     },
+     {
+      "term": "Sealed box",
+      "definition": "blocks convection by stopping moving air"
+     }
+    ]
+   },
+   {
+    "type": "fill_blank",
+    "prompt": "Fill each blank with the correct word from the bank.",
+    "words": [
+     "insulation",
+     "control",
+     "foil"
+    ],
+    "sentences": [
+     {
+      "text": "Materials that slow heat flow are called ___.",
+      "word": "insulation"
+     },
+     {
+      "text": "The plain ice cube on a plate is your ___ time to beat.",
+      "word": "control"
+     },
+     {
+      "text": "Shiny ___ keeps heat out by reflecting radiation.",
+      "word": "foil"
+     }
+    ]
+   }
+  ],
+  "11": [
+   {
+    "type": "fill_blank",
+    "prompt": "Fill each blank with the correct word from the bank.",
+    "words": [
+     "score",
+     "one",
+     "fair"
+    ],
+    "sentences": [
+     {
+      "text": "The insulation ___ is the cooler's melt time divided by the plate's melt time.",
+      "word": "score"
+     },
+     {
+      "text": "Changing only ___ thing between tests keeps it a fair comparison.",
+      "word": "one"
+     },
+     {
+      "text": "Testing a single change at a time makes the experiment ___.",
+      "word": "fair"
+     }
+    ]
+   },
+   {
+    "type": "matching",
+    "prompt": "Match each term to its meaning.",
+    "pairs": [
+     {
+      "term": "Insulation score",
+      "definition": "cooler melt time divided by plate melt time"
+     },
+     {
+      "term": "A score of 2.0",
+      "definition": "the cooler kept ice twice as long as nothing"
+     },
+     {
+      "term": "Fair test",
+      "definition": "changing only one thing at a time"
+     }
+    ]
+   }
+  ],
+  "12": [
+   {
+    "type": "matching",
+    "prompt": "Match each thermos trick or heat leak to the type of heat flow it involves.",
+    "pairs": [
+     {
+      "term": "Shiny layer in a thermos",
+      "definition": "reflects radiation"
+     },
+     {
+      "term": "Sealed lid",
+      "definition": "stops convection, the escaping air"
+     },
+     {
+      "term": "Double wall / air gap",
+      "definition": "slows conduction"
+     },
+     {
+      "term": "Gap under a door",
+      "definition": "a convection heat leak"
+     }
+    ]
+   },
+   {
+    "type": "fill_blank",
+    "prompt": "Fill each blank with the correct word from the bank.",
+    "words": [
+     "conduction",
+     "radiation",
+     "convection"
+    ],
+    "sentences": [
+     {
+      "text": "A hot wall you feel by touching it leaks heat by ___.",
+      "word": "conduction"
+     },
+     {
+      "text": "Sunlight streaming through a window brings heat by ___.",
+      "word": "radiation"
+     },
+     {
+      "text": "A gap under the door lets warm air move by ___.",
+      "word": "convection"
+     }
+    ]
+   }
+  ],
+  "13": [
+   {
+    "type": "matching",
+    "prompt": "Match each term to its meaning.",
+    "pairs": [
+     {
+      "term": "Plates",
+      "definition": "the broken pieces of Earth's crust"
+     },
+     {
+      "term": "Pangaea",
+      "definition": "the supercontinent where all land was once joined"
+     },
+     {
+      "term": "San Andreas fault",
+      "definition": "where two plates grind past each other in California"
+     },
+     {
+      "term": "Mantle convection",
+      "definition": "the slowly flowing hot rock that drags the plates"
+     }
+    ]
+   },
+   {
+    "type": "fill_blank",
+    "prompt": "Fill each blank with the correct word from the bank.",
+    "words": [
+     "plates",
+     "Pangaea",
+     "fossils",
+     "earthquakes"
+    ],
+    "sentences": [
+     {
+      "text": "Earth's crust is broken into moving ___.",
+      "word": "plates"
+     },
+     {
+      "text": "Long ago all the continents were joined in one supercontinent called ___.",
+      "word": "Pangaea"
+     },
+     {
+      "text": "Matching coastlines and identical ___ on two continents show they were once joined.",
+      "word": "fossils"
+     },
+     {
+      "text": "California has ___ because the San Andreas fault grinds two plates past each other.",
+      "word": "earthquakes"
+     }
+    ]
+   }
+  ],
+  "14": [
+   {
+    "type": "matching",
+    "prompt": "Match each plate boundary to what happens there (and a real example).",
+    "pairs": [
+     {
+      "term": "Divergent boundary",
+      "definition": "plates pull apart and make new crust"
+     },
+     {
+      "term": "Convergent boundary",
+      "definition": "plates push together and crumple into mountains"
+     },
+     {
+      "term": "Transform boundary",
+      "definition": "plates grind past each other, causing earthquakes"
+     },
+     {
+      "term": "The Himalayas",
+      "definition": "the tall mountain range raised where two plates collide"
+     }
+    ]
+   },
+   {
+    "type": "fill_blank",
+    "prompt": "Fill each blank with the correct word from the bank.",
+    "words": [
+     "divergent",
+     "convergent",
+     "transform"
+    ],
+    "sentences": [
+     {
+      "text": "Plates pulling apart form a ___ boundary.",
+      "word": "divergent"
+     },
+     {
+      "text": "Plates crashing together to build mountains form a ___ boundary.",
+      "word": "convergent"
+     },
+     {
+      "text": "Plates grinding past each other form a ___ boundary.",
+      "word": "transform"
+     }
+    ]
+   }
+  ],
+  "15": [
+   {
+    "type": "matching",
+    "prompt": "Match each rock-cycle stage to how it formed.",
+    "pairs": [
+     {
+      "term": "Sediments",
+      "definition": "small bits made by weathering, like crayon shavings"
+     },
+     {
+      "term": "Sedimentary rock",
+      "definition": "layers squeezed together under pressure"
+     },
+     {
+      "term": "Metamorphic rock",
+      "definition": "changed by heat and pressure but not melted"
+     },
+     {
+      "term": "Igneous rock",
+      "definition": "cooled and hardened from melted liquid rock"
+     }
+    ]
+   },
+   {
+    "type": "fill_blank",
+    "prompt": "Fill each blank with the correct word from the bank.",
+    "words": [
+     "weathering",
+     "sedimentary",
+     "metamorphic",
+     "igneous"
+    ],
+    "sentences": [
+     {
+      "text": "Breaking rock into small bits is called ___.",
+      "word": "weathering"
+     },
+     {
+      "text": "Layers of sediment squeezed together make ___ rock.",
+      "word": "sedimentary"
+     },
+     {
+      "text": "Heat and pressure with no melting make ___ rock.",
+      "word": "metamorphic"
+     },
+     {
+      "text": "Rock that cools and hardens from liquid is ___ rock.",
+      "word": "igneous"
+     }
+    ]
+   }
+  ],
+  "16": [
+   {
+    "type": "fill_blank",
+    "prompt": "Fill each blank with the correct word from the bank.",
+    "words": [
+     "granite",
+     "sediment",
+     "hardness"
+    ],
+    "sentences": [
+     {
+      "text": "Sierra ___ is an example of an igneous rock.",
+      "word": "granite"
+     },
+     {
+      "text": "The Central Valley floor is made of river-dumped ___.",
+      "word": "sediment"
+     },
+     {
+      "text": "You test a rock's ___ by seeing whether a nail can scratch it.",
+      "word": "hardness"
+     }
+    ]
+   },
+   {
+    "type": "matching",
+    "prompt": "Match each California rock clue to what it tells you.",
+    "pairs": [
+     {
+      "term": "Sierra granite",
+      "definition": "an example of an igneous rock"
+     },
+     {
+      "term": "Central Valley floor",
+      "definition": "river-dumped sedimentary material"
+     },
+     {
+      "term": "Scratch-with-a-nail test",
+      "definition": "checks a rock's hardness"
+     }
+    ]
+   }
+  ],
+  "17": [
+   {
+    "type": "fill_blank",
+    "prompt": "Fill each blank with the correct word from the bank.",
+    "words": [
+     "ore",
+     "profit",
+     "cleanup"
+    ],
+    "sentences": [
+     {
+      "text": "The chocolate chips stand for valuable ___ you mine.",
+      "word": "ore"
+     },
+     {
+      "text": "Your ___ is the ore earned minus tools minus fines.",
+      "word": "profit"
+     },
+     {
+      "text": "Breaking up the cookie land costs you ___ fines.",
+      "word": "cleanup"
+     }
+    ]
+   },
+   {
+    "type": "matching",
+    "prompt": "Match each mining idea to its meaning.",
+    "pairs": [
+     {
+      "term": "Ore",
+      "definition": "the valuable material you dig out (the chips)"
+     },
+     {
+      "term": "Cleanup fines",
+      "definition": "the cost of damaging the land"
+     },
+     {
+      "term": "Profit",
+      "definition": "ore earned minus tool and fine costs"
+     },
+     {
+      "term": "Careful mining",
+      "definition": "less damage, so more profit"
+     }
+    ]
+   }
+  ],
+  "18": [
+   {
+    "type": "matching",
+    "prompt": "Match each energy term to its meaning or example.",
+    "pairs": [
+     {
+      "term": "Renewable energy",
+      "definition": "sources that don't run out, like sun and wind"
+     },
+     {
+      "term": "Nonrenewable energy",
+      "definition": "sources that run out, like coal and oil"
+     },
+     {
+      "term": "Fossil fuels",
+      "definition": "coal, oil, and gas made from ancient buried life"
+     },
+     {
+      "term": "Geothermal",
+      "definition": "renewable heat energy from inside the Earth"
+     }
+    ]
+   },
+   {
+    "type": "fill_blank",
+    "prompt": "Fill each blank with the correct word from the bank.",
+    "words": [
+     "renewable",
+     "nonrenewable",
+     "fossil"
+    ],
+    "sentences": [
+     {
+      "text": "Sunlight and wind are ___ because they never run out.",
+      "word": "renewable"
+     },
+     {
+      "text": "Coal and oil are ___ because there is only a limited supply.",
+      "word": "nonrenewable"
+     },
+     {
+      "text": "Coal, oil, and gas are called ___ fuels because they come from ancient life.",
+      "word": "fossil"
+     }
+    ]
+   }
+  ],
+  "19": [
+   {
+    "type": "fill_blank",
+    "prompt": "Fill each blank with the correct word from the bank.",
+    "words": [
+     "trade-offs",
+     "cost",
+     "impact"
+    ],
+    "sentences": [
+     {
+      "text": "Engineering always involves ___ because no option is perfect.",
+      "word": "trade-offs"
+     },
+     {
+      "text": "Every energy choice has a ___, a benefit, and an environmental effect.",
+      "word": "cost"
+     },
+     {
+      "text": "Burning coal has an environmental ___ you have to weigh.",
+      "word": "impact"
+     }
+    ]
+   },
+   {
+    "type": "matching",
+    "prompt": "Match each planning term to its meaning.",
+    "pairs": [
+     {
+      "term": "Trade-off",
+      "definition": "giving up one thing to gain another"
+     },
+     {
+      "term": "Cost",
+      "definition": "the price or downside of a choice"
+     },
+     {
+      "term": "Benefit",
+      "definition": "the advantage a choice gives you"
+     }
+    ]
+   }
+  ],
+  "20": [
+   {
+    "type": "fill_blank",
+    "prompt": "Fill each blank with the correct word from the bank.",
+    "words": [
+     "biodiversity",
+     "species",
+     "stable"
+    ],
+    "sentences": [
+     {
+      "text": "___ means the variety of life in an area.",
+      "word": "biodiversity"
+     },
+     {
+      "text": "Your biodiversity score is the number of different ___ you find.",
+      "word": "species"
+     },
+     {
+      "text": "More variety of life makes an ecosystem more ___.",
+      "word": "stable"
+     }
+    ]
+   },
+   {
+    "type": "matching",
+    "prompt": "Match each term to its meaning in your survey.",
+    "pairs": [
+     {
+      "term": "Biodiversity",
+      "definition": "the variety of living things in an area"
+     },
+     {
+      "term": "Biodiversity score",
+      "definition": "the number of different species found"
+     },
+     {
+      "term": "High biodiversity",
+      "definition": "makes an ecosystem more stable"
+     }
+    ]
+   }
+  ],
+  "21": [
+   {
+    "type": "matching",
+    "prompt": "Match each role in the food web to what it does.",
+    "pairs": [
+     {
+      "term": "Producers",
+      "definition": "plants that make food from sunlight"
+     },
+     {
+      "term": "Primary consumers",
+      "definition": "herbivores that eat plants"
+     },
+     {
+      "term": "Secondary consumers",
+      "definition": "predators that eat other animals"
+     },
+     {
+      "term": "Decomposers",
+      "definition": "recycle dead matter back into the soil"
+     }
+    ]
+   },
+   {
+    "type": "fill_blank",
+    "prompt": "Fill each blank with the correct word from the bank.",
+    "words": [
+     "producers",
+     "consumers",
+     "decomposers",
+     "web"
+    ],
+    "sentences": [
+     {
+      "text": "Plants that make their own food from sunlight are ___.",
+      "word": "producers"
+     },
+     {
+      "text": "Animals that eat other living things are ___.",
+      "word": "consumers"
+     },
+     {
+      "text": "Organisms that recycle the dead back into soil are ___.",
+      "word": "decomposers"
+     },
+     {
+      "text": "Because energy has many paths, it forms a food ___, not just a chain.",
+      "word": "web"
+     }
+    ]
+   }
+  ],
+  "22": [
+   {
+    "type": "fill_blank",
+    "prompt": "Fill each blank with the correct word from the bank.",
+    "words": [
+     "cascade",
+     "connected",
+     "stable"
+    ],
+    "sentences": [
+     {
+      "text": "When removing one species harms many others, it causes a ___ of effects.",
+      "word": "cascade"
+     },
+     {
+      "text": "Removing a highly ___ species breaks more of the web.",
+      "word": "connected"
+     },
+     {
+      "text": "A web with more species stays more ___ when one is lost.",
+      "word": "stable"
+     }
+    ]
+   },
+   {
+    "type": "matching",
+    "prompt": "Match each idea to its meaning.",
+    "pairs": [
+     {
+      "term": "Cascade",
+      "definition": "one loss triggering many more losses"
+     },
+     {
+      "term": "Highly-connected species",
+      "definition": "its removal breaks the most links"
+     },
+     {
+      "term": "Biodiverse web",
+      "definition": "more stable when a species is removed"
+     }
+    ]
+   }
+  ],
+  "23": [
+   {
+    "type": "matching",
+    "prompt": "Match each ecology term to its meaning.",
+    "pairs": [
+     {
+      "term": "Competition",
+      "definition": "the struggle over limited resources"
+     },
+     {
+      "term": "Invasive species",
+      "definition": "an outsider with no local predators"
+     },
+     {
+      "term": "Limited resources",
+      "definition": "food, water, space, and light organisms fight over"
+     }
+    ]
+   },
+   {
+    "type": "fill_blank",
+    "prompt": "Fill each blank with the correct word from the bank.",
+    "words": [
+     "compete",
+     "invasive",
+     "predators"
+    ],
+    "sentences": [
+     {
+      "text": "Organisms ___ for limited food, water, space, and light.",
+      "word": "compete"
+     },
+     {
+      "text": "An ___ species is an outsider that outcompetes the natives.",
+      "word": "invasive"
+     },
+     {
+      "text": "Invasive species often win because they have no local ___.",
+      "word": "predators"
+     }
+    ]
+   }
+  ],
+  "24": [
+   {
+    "type": "fill_blank",
+    "prompt": "Fill each blank with the correct word from the bank.",
+    "words": [
+     "photosynthesis",
+     "oxygen",
+     "light",
+     "sugar"
+    ],
+    "sentences": [
+     {
+      "text": "___ is how plants make food using light, CO₂, and water.",
+      "word": "photosynthesis"
+     },
+     {
+      "text": "The leaf disks floated because they produced ___ gas.",
+      "word": "oxygen"
+     },
+     {
+      "text": "The disks in the dark closet did not float because they had no ___.",
+      "word": "light"
+     },
+     {
+      "text": "Plants make ___ and oxygen during photosynthesis.",
+      "word": "sugar"
+     }
+    ]
+   },
+   {
+    "type": "matching",
+    "prompt": "Match each part of the floating-leaf lab to what it shows.",
+    "pairs": [
+     {
+      "term": "Photosynthesis",
+      "definition": "plants making sugar from light, CO₂, and water"
+     },
+     {
+      "term": "Oxygen",
+      "definition": "the gas that made the leaf disks float"
+     },
+     {
+      "term": "Dark control cup",
+      "definition": "disks that did not float because there was no light"
+     }
+    ]
+   }
+  ],
+  "25": [
+   {
+    "type": "matching",
+    "prompt": "Match each cycle term to its meaning.",
+    "pairs": [
+     {
+      "term": "Evaporation",
+      "definition": "liquid water turning into vapor"
+     },
+     {
+      "term": "Condensation",
+      "definition": "vapor turning back into water drops"
+     },
+     {
+      "term": "Matter (water and carbon)",
+      "definition": "cycles round and round, never used up"
+     },
+     {
+      "term": "Energy",
+      "definition": "flows through the system and out, it does not cycle"
+     }
+    ]
+   },
+   {
+    "type": "fill_blank",
+    "prompt": "Fill each blank with the correct word from the bank.",
+    "words": [
+     "evaporation",
+     "condensation",
+     "cycles",
+     "through"
+    ],
+    "sentences": [
+     {
+      "text": "Water turning into vapor in the bag is ___.",
+      "word": "evaporation"
+     },
+     {
+      "text": "Vapor cooling into drops on the 'sky' is ___.",
+      "word": "condensation"
+     },
+     {
+      "text": "Matter like water and carbon ___ round and round.",
+      "word": "cycles"
+     },
+     {
+      "text": "Energy from the sun flows ___ the system and out, not in circles.",
+      "word": "through"
+     }
+    ]
+   }
+  ],
+  "26": [
+   {
+    "type": "fill_blank",
+    "prompt": "Fill each blank with the correct word from the bank.",
+    "words": [
+     "decomposers",
+     "nutrients",
+     "plastic"
+    ],
+    "sentences": [
+     {
+      "text": "___ like bacteria and fungi break down dead matter.",
+      "word": "decomposers"
+     },
+     {
+      "text": "Decomposers turn dead matter into ___ that plants reuse.",
+      "word": "nutrients"
+     },
+     {
+      "text": "Foil and ___ don't rot because no decomposer eats them.",
+      "word": "plastic"
+     }
+    ]
+   },
+   {
+    "type": "matching",
+    "prompt": "Match each term to its meaning in the decomposition race.",
+    "pairs": [
+     {
+      "term": "Decomposers",
+      "definition": "bacteria and fungi that break down dead matter"
+     },
+     {
+      "term": "Nutrients",
+      "definition": "what decomposers release for plants to reuse"
+     },
+     {
+      "term": "Plastic and foil",
+      "definition": "have no decomposer, so they become litter"
+     }
+    ]
+   }
+  ],
+  "27": [
+   {
+    "type": "matching",
+    "prompt": "Match each engineering design step or idea to its meaning.",
+    "pairs": [
+     {
+      "term": "Define the problem",
+      "definition": "naming what to solve, like impact force cracks eggs"
+     },
+     {
+      "term": "Brainstorm",
+      "definition": "coming up with several different designs"
+     },
+     {
+      "term": "Crumple zone",
+      "definition": "a design that absorbs the hit by crushing"
+     },
+     {
+      "term": "Parachute",
+      "definition": "a design that slows the fall with air resistance"
+     }
+    ]
+   },
+   {
+    "type": "fill_blank",
+    "prompt": "Fill each blank with the correct word from the bank.",
+    "words": [
+     "define",
+     "brainstorm",
+     "impact"
+    ],
+    "sentences": [
+     {
+      "text": "The first step is to ___ the problem you need to solve.",
+      "word": "define"
+     },
+     {
+      "text": "Next you ___ three different designs on paper.",
+      "word": "brainstorm"
+     },
+     {
+      "text": "The ___ force of hitting the ground is what cracks the egg.",
+      "word": "impact"
+     }
+    ]
+   }
+  ],
+  "28": [
+   {
+    "type": "fill_blank",
+    "prompt": "Fill each blank with the correct word from the bank.",
+    "words": [
+     "iterate",
+     "one",
+     "energy"
+    ],
+    "sentences": [
+     {
+      "text": "To ___ means to improve your design and test it again.",
+      "word": "iterate"
+     },
+     {
+      "text": "Change only ___ subsystem at a time so you know what helped.",
+      "word": "one"
+     },
+     {
+      "text": "The impact ___ has to go somewhere: into crumpling, stretching, or air resistance.",
+      "word": "energy"
+     }
+    ]
+   },
+   {
+    "type": "matching",
+    "prompt": "Match each idea to its meaning in the egg-drop test.",
+    "pairs": [
+     {
+      "term": "Iterate",
+      "definition": "improve the design and test it again"
+     },
+     {
+      "term": "Change one subsystem",
+      "definition": "so you know which change actually helped"
+     },
+     {
+      "term": "Impact energy",
+      "definition": "must be absorbed by crumpling, stretching, or air"
+     }
+    ]
+   }
+  ],
+  "29": [
+   {
+    "type": "fill_blank",
+    "prompt": "Fill each blank with the correct word from the bank.",
+    "words": [
+     "client",
+     "requirements",
+     "improve"
+    ],
+    "sentences": [
+     {
+      "text": "You interview your ___ to learn what they actually need.",
+      "word": "client"
+     },
+     {
+      "text": "The needs your build must meet are its ___.",
+      "word": "requirements"
+     },
+     {
+      "text": "After getting client feedback, you ___ your design once.",
+      "word": "improve"
+     }
+    ]
+   },
+   {
+    "type": "matching",
+    "prompt": "Match each term to its meaning in the design job.",
+    "pairs": [
+     {
+      "term": "Client",
+      "definition": "the person you build the solution for"
+     },
+     {
+      "term": "Requirements",
+      "definition": "what the client needs the build to do"
+     },
+     {
+      "term": "Iteration",
+      "definition": "improving the design after feedback"
+     }
+    ]
+   }
+  ],
+  "30": [
+   {
+    "type": "matching",
+    "prompt": "Match each lab-report section to what goes in it.",
+    "pairs": [
+     {
+      "term": "Hypothesis",
+      "definition": "your predicted answer before testing"
+     },
+     {
+      "term": "Procedure",
+      "definition": "the step-by-step method you followed"
+     },
+     {
+      "term": "Data",
+      "definition": "the measurements you recorded in a table or graph"
+     },
+     {
+      "term": "Conclusion (CER)",
+      "definition": "claim, evidence, and reasoning at the end"
+     }
+    ]
+   },
+   {
+    "type": "fill_blank",
+    "prompt": "Fill each blank with the correct word from the bank.",
+    "words": [
+     "hypothesis",
+     "data",
+     "conclusion"
+    ],
+    "sentences": [
+     {
+      "text": "A lab report's ___ is your prediction made before the experiment.",
+      "word": "hypothesis"
+     },
+     {
+      "text": "You record your measurements in the ___ section.",
+      "word": "data"
+     },
+     {
+      "text": "The ___ uses claim, evidence, and reasoning to answer the question.",
+      "word": "conclusion"
+     }
+    ]
+   }
+  ]
+ }
+}

@@ -25,7 +25,7 @@ from curricula.services import apply_blueprint
 from students.models import Student
 from tutor.models import LessonBlock, Material
 
-from ._mission_seed import add_journal, mission_quiz
+from ._mission_seed import add_journal, linkify_searches, mission_quiz
 from ._saxon_seed import validate_blocks
 
 # The RECAP now points to the Explorer's Log (a real place to write it), instead of
@@ -306,7 +306,7 @@ def mission_blocks(m):
     before = []
     if m.get("need"):
         before.append(f"**You'll need:** {m['need']}")
-    before.append(f"**Watch / Read first:** {m['watch']}")
+    before.append(f"**Watch / Read first:** {linkify_searches(m['watch'])}")
     return [
         (LessonBlock.KIND_MASTHEAD, {
             "eyebrow": f"Social Studies · {UNIT_OF[m['n']]} · Mission {m['n']}",

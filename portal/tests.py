@@ -571,7 +571,8 @@ class JournalThemeTests(TestCase):
         resp = self.client.get(self._url(qs.pk))
         self.assertContains(resp, "journal-explorer")
         self.assertContains(resp, "journal-banner")
-        self.assertContains(resp, "Explorer")        # label derived from the title
+        # banner-scoped so the always-rendered card-header title can't satisfy it
+        self.assertContains(resp, 'journal-banner-kicker">Explorer')
         self.assertContains(resp, "🧭")              # emoji mapped from the log name
         self.assertNotContains(resp, "journal-lab")
 
@@ -579,7 +580,7 @@ class JournalThemeTests(TestCase):
         qs = self._set("Science", "Mission 1 · Lab Notebook")
         resp = self.client.get(self._url(qs.pk))
         self.assertContains(resp, "journal-lab")
-        self.assertContains(resp, "Lab Notebook")
+        self.assertContains(resp, 'journal-banner-kicker">Lab Notebook</div>')
         self.assertContains(resp, "🔬")
         self.assertNotContains(resp, "journal-explorer")
 

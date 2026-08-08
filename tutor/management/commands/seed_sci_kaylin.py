@@ -15,7 +15,7 @@ from curricula.blueprints import SCIENCE_G7
 from tutor.models import LessonBlock
 
 from ._mission_seed import (
-    add_journal, mission_quiz, resolve_child, setup_course, upsert_mission,
+    add_journal, linkify_searches, mission_quiz, resolve_child, setup_course, upsert_mission,
 )
 
 SAFETY = ("🛟 **Safety:** Anything with the stove, boiling water, or open flame needs "
@@ -349,7 +349,7 @@ def mission_blocks(m):
         before.append(f"⏰ **Prep the night before:** {m['prep']}")
     if m.get("note"):
         before.append(f"🔁 **Heads up:** {m['note']}")
-    before.append(f"**Hook / lab:** {m['hook']}")
+    before.append(f"**Hook / lab:** {linkify_searches(m['hook'])}")
     before.append(SAFETY)
     return [
         (LessonBlock.KIND_MASTHEAD, {

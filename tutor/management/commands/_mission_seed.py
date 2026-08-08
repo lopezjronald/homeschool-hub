@@ -38,6 +38,68 @@ def mission_quiz(course_key, number):
     return _MISSION_QUIZZES.get(course_key, {}).get(str(number), [])
 
 
+# Known kid-safe video shows — prepended to a search query for precision when the
+# quoted phrase doesn't already name the show (so "Fall of the Roman Empire" becomes
+# a search for "Crash Course World History Fall of the Roman Empire").
+_SEARCH_SHOWS = [
+    "Crash Course World History", "Crash Course", "SciShow Kids", "SciShow",
+    "Generation Genius", "Khan Academy", "NASA Climate Kids", "Climate Kids", "CKHG",
+]
+_YOUTUBE_HINTS = ("youtube", "video", "scishow", "crash course", "generation genius",
+                  "khan academy", "climate kids", "watch ")
+
+
+def _search_url(query, engine):
+    from urllib.parse import quote, quote_plus
+    if engine == "maps":
+        return "https://www.google.com/maps/search/" + quote(query)
+    if engine == "images":
+        return "https://www.google.com/search?tbm=isch&q=" + quote_plus(query)
+    if engine == "youtube":
+        return "https://www.youtube.com/results?search_query=" + quote_plus(query)
+    return "https://www.google.com/search?q=" + quote_plus(query)
+
+
+def _engine_for(line):
+    c = line.lower()
+    if "google maps" in c or "google earth" in c:
+        return "maps"
+    # A named video show (or an explicit youtube/video cue) means the search targets
+    # a video — even if the line also says to look at images of something else.
+    if any(k in c for k in _YOUTUBE_HINTS):
+        return "youtube"
+    if "image" in c or "picture" in c or "photo" in c:
+        return "images"
+    return "web"
+
+
+def linkify_searches(text):
+    """Make quoted search phrases in a resource line clickable, keeping the phrase
+    text (and the word "search") visible — so a printed page, or a link that later
+    goes dead, still shows exactly what to search for.
+
+    Only linkifies lines that are genuinely a search hint: the word "search" is
+    present, or a known video show is named and the line has no real link of its own
+    (so a bare "browse X" section on an already-linked site isn't turned into a bogus
+    search). Existing markdown links are never touched.
+    """
+    if not text or '"' not in text:
+        return text
+    c = text.lower()
+    show = next((s for s in _SEARCH_SHOWS if s.lower() in c), "")
+    has_link = "](http" in text
+    if "search" not in c and not (show and not has_link):
+        return text
+    engine = _engine_for(text)
+
+    def repl(m):
+        phrase = m.group(1)
+        query = phrase if (not show or show.lower() in phrase.lower()) else f"{show} {phrase}"
+        return f'"[{phrase}]({_search_url(query, engine)})"'
+
+    return re.sub(r'"([^"]+)"', repl, text)
+
+
 # Reflection logs aren't tests — the AI grader should celebrate honest, complete
 # work and suggest a level from effort, not correctness. Auto-check quiz answers
 # self-correct in the portal, so the child has already seen right/wrong.
@@ -126,13 +188,19 @@ def _matching_passage(pairs):
 
 
 def _fill_blank_passage(words, sentences):
-    """A ``fill_blank`` vocab passage. The widget splits the blank on exactly six
-    underscores, so normalize any run of underscores to that (and guarantee one)."""
+    """A ``fill_blank`` vocab passage. The widget splits on exactly six underscores
+    and only ever fills the FIRST blank, so each sentence must end up with exactly
+    one — and its answer must be in the bank, or the row can never lock. Fail loudly
+    at seed time so a future regeneration can't silently ship a broken widget."""
     norm = []
     for s in sentences:
         text = re.sub(r"_{2,}", "______", s["text"])
         if "______" not in text:
             text = text.rstrip(". ") + " ______."
+        if text.count("______") != 1:
+            raise CommandError(f"fill-blank must have exactly one blank: {s['text']!r}")
+        if s["word"] not in words:
+            raise CommandError(f"fill-blank answer {s['word']!r} not in bank {words}")
         norm.append({"text": text, "word": s["word"]})
     return json.dumps({"words": words, "sentences": norm}, ensure_ascii=False)
 

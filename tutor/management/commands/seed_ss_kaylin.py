@@ -23,7 +23,7 @@ from curricula.services import apply_blueprint
 from students.models import Student
 from tutor.models import LessonBlock, Material
 
-from ._mission_seed import add_journal, mission_quiz
+from ._mission_seed import add_journal, linkify_searches, mission_quiz
 from ._saxon_seed import validate_blocks
 
 JOURNAL_INTRO = (
@@ -382,7 +382,7 @@ def mission_blocks(m):
         }),
         (LessonBlock.KIND_PURPOSE, {
             "title": "Read / Watch first",
-            "paragraphs": [m["watch"]],
+            "paragraphs": [linkify_searches(m["watch"])],
         }),
         (LessonBlock.KIND_STEPS, {
             "title": "Do this",

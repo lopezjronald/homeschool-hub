@@ -2403,3 +2403,34 @@ class ScienceKaylinSeedTests(TestCase):
         html = render_to_string(
             "portal/_lesson_blocks.html", {"blocks": m3.blocks.order_by("order")})
         self.assertIn("ADULT ASSIST", html)                  # the flagged stove safety banner
+
+
+class LinkifySearchesTests(TestCase):
+    """A "search X" hint becomes a clickable search link but keeps the phrase text
+    visible as a fallback; existing links and "browse X" hints are left alone."""
+
+    def _link(self, text):
+        from tutor.management.commands._mission_seed import linkify_searches
+        return linkify_searches(text)
+
+    def test_search_phrase_becomes_a_link_that_keeps_the_text(self):
+        out = self._link('Search "friction for kids video" (any short one).')
+        self.assertIn("[friction for kids video]", out)      # phrase kept as the link label
+        self.assertIn("youtube.com/results?search_query=friction+for+kids+video", out)
+        self.assertIn("Search", out)                          # the instruction word stays
+
+    def test_show_name_sharpens_the_query(self):
+        out = self._link('**Crash Course World History #12 "Fall of the Roman Empire"** (YouTube).')
+        self.assertIn("search_query=Crash+Course+World+History+Fall+of+the+Roman+Empire", out)
+
+    def test_image_hint_uses_image_search(self):
+        self.assertIn("tbm=isch", self._link('Search images: "Timbuktu manuscripts".'))
+
+    def test_browse_section_on_a_linked_site_is_left_alone(self):
+        raw = ('**NASA Climate Kids** — [climatekids.nasa.gov](https://climatekids.nasa.gov) '
+               '(browse "Weather & Climate").')
+        self.assertEqual(self._link(raw), raw)
+
+    def test_plain_text_without_quotes_is_untouched(self):
+        raw = "Nothing needed — the steps show the setup."
+        self.assertEqual(self._link(raw), raw)

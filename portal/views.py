@@ -846,7 +846,9 @@ def portal_questions(request, token, set_pk):
     # literature/writing/math sets get no skin. The log's own name (Explorer's Log /
     # History Log / Science Log / Lab Notebook) rides in the QuestionSet title.
     subject = (question_set.lesson.chapter.curriculum.subject or "").strip().lower()
-    journal_theme = {"social studies": "explorer", "science": "lab"}.get(subject, "")
+    journal_theme = ""
+    if question_set.mode == QuestionSet.MODE_STUDENT:
+        journal_theme = {"social studies": "explorer", "science": "lab"}.get(subject, "")
     journal_label = journal_emoji = ""
     if journal_theme:
         journal_label = question_set.title.split("·")[-1].strip()

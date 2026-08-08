@@ -719,9 +719,106 @@ SOCIAL_STUDIES_G3 = {
 }
 
 
+WORLD_HISTORY_G7 = {
+    "slug": "world_history_g7",
+    "name": "World History 7 — Medieval & Early Modern Times",
+    "subject": "Social Studies",
+    "grade_level": "G07",
+    "source": "CA HSS Grade 7 (7.1–7.11), ~300–1789 CE. Self-directed 'mission' course "
+              "with a course-long wall timeline. From the family's commissioned research build (2026).",
+    "chapters": [
+        {"number": 1, "title": "Unit 1 — Rome Falls, Byzantium Rises", "lessons": [
+            _ls(1, 1, "Mission 1: Set Up + Why Rome Fell",
+                "Build the wall timeline; explain why the Western Roman Empire fell (7.1)."),
+            _ls(2, 2, "Mission 2: Byzantium — Rome Lives On in the East",
+                "Describe the Byzantine Empire and what it preserved from Rome (7.1)."),
+            _ls(3, 3, "Mission 3: One Empire, Two Churches",
+                "Compare the Roman Catholic West and Orthodox East; the Great Schism (7.1)."),
+        ]},
+        {"number": 2, "title": "Unit 2 — The World of Islam", "lessons": [
+            _ls(1, 4, "Mission 4: Arabia — Crossroads of Trade",
+                "Explain the rise of Islam and the Five Pillars (7.2)."),
+            _ls(2, 5, "Mission 5: An Empire in a Century",
+                "Trace the rapid spread of Islam under the Umayyad and Abbasid caliphates (7.2)."),
+            _ls(3, 6, "Mission 6: The Golden Age — House of Wisdom",
+                "Describe Golden Age scholarship — algebra, medicine, Arabic numerals (7.2)."),
+            _ls(4, 7, "Mission 7: Trade Ties the World Together",
+                "Explain how Muslim trade networks moved goods and ideas across three continents (7.2)."),
+        ]},
+        {"number": 3, "title": "Unit 3 — Medieval Europe", "lessons": [
+            _ls(1, 8, "Mission 8: Feudalism — The Pyramid of Power",
+                "Explain feudalism, the manor, and Charlemagne (7.6)."),
+            _ls(2, 9, "Mission 9: The Church at the Center",
+                "Describe the medieval Church and monasteries copying books (7.6)."),
+            _ls(3, 10, "Mission 10: Crusades & Magna Carta",
+                "Explain the Crusades' effects and the Magna Carta's big idea (7.6)."),
+            _ls(4, 11, "Mission 11: The Black Death",
+                "Link the plague to labor shortage and the decline of feudalism (7.6)."),
+        ]},
+        {"number": 4, "title": "Unit 4 — Imperial China: Tang & Song", "lessons": [
+            _ls(1, 12, "Mission 12: The Exam That Ran an Empire",
+                "Compare the civil-service exam to birth-based power in Europe (7.3)."),
+            _ls(2, 13, "Mission 13: Invented in China",
+                "Describe paper, printing, gunpowder, and the compass (7.3)."),
+            _ls(3, 14, "Mission 14: Silk Road & the Mongols",
+                "Explain the Silk Road and the dual legacy of the Mongols (7.3)."),
+        ]},
+        {"number": 5, "title": "Unit 5 — Medieval Japan", "lessons": [
+            _ls(1, 15, "Mission 15: Islands That Borrowed and Made It Their Own",
+                "Explain how island geography and borrowing from China shaped Japan (7.5)."),
+            _ls(2, 16, "Mission 16: Shoguns & Samurai",
+                "Compare Japanese feudalism/bushido to European knights and chivalry (7.5)."),
+        ]},
+        {"number": 6, "title": "Unit 6 — West African Kingdoms", "lessons": [
+            _ls(1, 17, "Mission 17: Gold for Salt",
+                "Explain the trans-Saharan gold-salt trade and the middleman kingdoms (7.4)."),
+            _ls(2, 18, "Mission 18: Mansa Musa — Richest Man in History",
+                "Describe Mansa Musa's hajj and Mali's fame (7.4)."),
+            _ls(3, 19, "Mission 19: Timbuktu & the Griots",
+                "Compare knowledge-keeping across civilizations; Timbuktu and griots (7.4)."),
+        ]},
+        {"number": 7, "title": "Unit 7 — The Americas: Maya, Aztec, Inca", "lessons": [
+            _ls(1, 20, "Mission 20: Maya — Masters of Time and Number",
+                "Describe Maya math (base-20, zero), writing, and astronomy (7.7)."),
+            _ls(2, 21, "Mission 21: Aztec — City on a Lake",
+                "Explain Tenochtitlán, chinampas, and the Triple Alliance (7.7)."),
+            _ls(3, 22, "Mission 22: Inca — Empire of the Andes",
+                "Describe Inca roads, terrace farming, and quipu (7.7)."),
+        ]},
+        {"number": 8, "title": "Unit 8 — Renaissance & Reformation", "lessons": [
+            _ls(1, 23, "Mission 23: Rebirth in Italy",
+                "Explain humanism, patrons, and Renaissance art/perspective (7.8)."),
+            _ls(2, 24, "Mission 24: The Machine That Changed Everything",
+                "Explain how Gutenberg's press let ideas spread (7.8)."),
+            _ls(3, 25, "Mission 25: Luther Lights the Fuse",
+                "Explain the 95 Theses and the Protestant Reformation (7.9)."),
+            _ls(4, 26, "Mission 26: The Catholic Comeback & a Divided Europe",
+                "Describe the Counter-Reformation and a religiously divided Europe (7.9)."),
+        ]},
+        {"number": 9, "title": "Unit 9 — Scientific Revolution", "lessons": [
+            _ls(1, 27, "Mission 27: The Universe Rearranged",
+                "Trace Copernicus → Galileo → Newton (7.10)."),
+            _ls(2, 28, "Mission 28: The Method Behind It All",
+                "Run one full scientific-method cycle; trace its roots (7.10)."),
+        ]},
+        {"number": 10, "title": "Unit 10 — Exploration & Enlightenment", "lessons": [
+            _ls(1, 29, "Mission 29: The Age of Exploration",
+                "Map the voyages of Dias, da Gama, Columbus, and Magellan (7.11)."),
+            _ls(2, 30, "Mission 30: The Columbian Exchange",
+                "Weigh the gains and terrible costs of the Columbian Exchange (7.11)."),
+            _ls(3, 31, "Mission 31: The Enlightenment — Ideas That Built America",
+                "Match Locke/Montesquieu/Rousseau to the Constitution; Magna Carta→1776 (7.11)."),
+            _ls(4, 32, "Mission 32: Capstone — Museum of a Thousand Years",
+                "Review 7.1–7.11: how the world of 1789 differs from 300 CE."),
+        ]},
+    ],
+}
+
+
 BLUEPRINTS = {
     DIMENSIONS_MATH_3A["slug"]: DIMENSIONS_MATH_3A,
     SOCIAL_STUDIES_G3["slug"]: SOCIAL_STUDIES_G3,
+    WORLD_HISTORY_G7["slug"]: WORLD_HISTORY_G7,
     BLACKBIRD_I_AM_DAVID["slug"]: BLACKBIRD_I_AM_DAVID,
     BLACKBIRD_A_MOUSE_CALLED_WOLF["slug"]: BLACKBIRD_A_MOUSE_CALLED_WOLF,
     ESSENTIALS_IN_WRITING_3["slug"]: ESSENTIALS_IN_WRITING_3,

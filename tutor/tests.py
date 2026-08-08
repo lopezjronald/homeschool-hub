@@ -2141,3 +2141,52 @@ class SocialStudiesVioletSeedTests(TestCase):
         self.assertIn("factcards.califa.org", html)          # resource URL present (link + plain)
         self.assertIn("<a ", html)                            # rendered as a clickable link
         self.assertIn("3 things I learned", html)             # uniform completion block
+
+
+class WorldHistoryKaylinSeedTests(TestCase):
+    """Kaylin's Grade 7 World History mission course: 32 missions across 10 units,
+    each ending with dated timeline cards. Same in-app, no-AI pattern."""
+
+    @classmethod
+    def setUpTestData(cls):
+        User = get_user_model()
+        cls.parent = User.objects.create_user("whkaylin", email="whk@e.com", password="pw")
+        cls.kaylin = Student.objects.create(
+            parent=cls.parent, first_name="Kaylin", grade_level="G07")
+
+    def _seed(self):
+        call_command("seed_ss_kaylin", stdout=StringIO())
+
+    def test_seeds_ten_units_and_32_approved_missions(self):
+        from curricula.models import Chapter, CurriculumPlacement
+        from tutor.models import Material
+        self._seed()
+        curr = Curriculum.objects.get(name__startswith="World History 7")
+        self.assertEqual(curr.grade_level, "G07")
+        self.assertEqual(Chapter.objects.filter(curriculum=curr).count(), 10)
+        self.assertEqual(Lesson.objects.filter(chapter__curriculum=curr).count(), 32)
+        mats = Material.objects.filter(
+            lesson__chapter__curriculum=curr, skill_type=Material.SKILL_LESSON)
+        self.assertEqual(mats.count(), 32)
+        self.assertTrue(all(m.status == Material.APPROVED for m in mats))
+        self.assertTrue(
+            CurriculumPlacement.objects.filter(child=self.kaylin, curriculum=curr).exists())
+
+    def test_missions_carry_dated_timeline_cards_in_completion(self):
+        from tutor.models import LessonBlock, Material
+        self._seed()
+        m1 = Material.objects.get(title__startswith="Mission 1:")
+        recap = m1.blocks.get(kind=LessonBlock.KIND_RECAP)
+        joined = " ".join(recap.data["items"])
+        self.assertIn("wall timeline", joined)               # the timeline-card completion step
+        self.assertIn("476 CE", joined)                       # mission 1's dated card
+
+    def test_a_mission_renders_verbatim(self):
+        from django.template.loader import render_to_string
+        from tutor.models import Material
+        self._seed()
+        m6 = Material.objects.get(title__startswith="Mission 6")
+        html = render_to_string(
+            "portal/_lesson_blocks.html", {"blocks": m6.blocks.order_by("order")})
+        self.assertIn("House of Wisdom", html)               # verbatim content preserved
+        self.assertIn("al-jabr", html)                        # the algebra tie-in

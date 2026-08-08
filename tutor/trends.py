@@ -6,12 +6,16 @@ from collections import defaultdict
 from . import mastery
 
 # Hex colors per level for SVG fills (the Bootstrap badge classes don't help SVG).
+# Kept in sync with the CSS mastery badges (Dawn Harbor) and darkened to AA-legible
+# hues on cream — the old raw Bootstrap hex diverged from the badges AND collapsed
+# to near-identical luminance for colorblind viewers. The sparkline's vertical
+# POSITION is the primary colorblind-safe channel; these hues are the secondary one.
 LEVEL_COLOR = {
-    mastery.NO_EVIDENCE: "#6c757d",
-    mastery.BEGINNING: "#dc3545",
-    mastery.DEVELOPING: "#f0ad4e",
-    mastery.PROFICIENT: "#0dcaf0",
-    mastery.MASTERED: "#198754",
+    mastery.NO_EVIDENCE: "#3F4854",
+    mastery.BEGINNING: "#8E2A20",
+    mastery.DEVELOPING: "#6E4410",
+    mastery.PROFICIENT: "#1C4F77",
+    mastery.MASTERED: "#12603C",   # green — mastered stays green
 }
 _LABELS = dict(mastery.CHOICES)
 

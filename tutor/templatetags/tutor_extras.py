@@ -11,13 +11,15 @@ register = template.Library()
 
 # Links to outside resources (http/https) should open in a new tab so a kid
 # doesn't lose their lesson/journal when they follow a video or article. Only
-# external links are rewritten — internal (relative) links stay in-tab.
-_EXTERNAL_LINK_RE = re.compile(r'<a (?![^>]*\btarget=)href="https?://')
+# external links are rewritten — internal (relative) links stay in-tab. The href
+# itself is matched with a lookahead (never consumed) so the scheme survives; the
+# negative lookahead keeps a second pass from double-injecting target=.
+_EXTERNAL_LINK_RE = re.compile(r'<a (?=href="https?://)(?![^>]*\btarget=)')
 
 
 def _external_links_new_tab(html):
     return _EXTERNAL_LINK_RE.sub(
-        '<a target="_blank" rel="noopener noreferrer" href="', html,
+        '<a target="_blank" rel="noopener noreferrer" ', html,
     )
 
 

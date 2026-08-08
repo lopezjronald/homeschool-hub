@@ -454,11 +454,19 @@ class MaterialTests(TestCase):
         ext = markdownify("[Watch](https://www.youtube.com/watch?v=abc)")
         self.assertIn('target="_blank"', ext)
         self.assertIn('rel="noopener noreferrer"', ext)
+        # The href (scheme included) must survive intact — a scheme-less href would
+        # be a broken relative link, defeating the whole point.
+        self.assertIn('href="https://www.youtube.com/watch?v=abc"', ext)
         # Same treatment for a question prompt rendered inline.
-        self.assertIn('target="_blank"', markdownify_inline("See [this](http://phet.colorado.edu)"))
+        inline = markdownify_inline("See [this](http://phet.colorado.edu)")
+        self.assertIn('target="_blank"', inline)
+        self.assertIn('href="http://phet.colorado.edu"', inline)
         # Internal links are left in-tab (no new window for the kid's own portal).
         internal = markdownify("[Back to portal](/portal/)")
         self.assertNotIn("target=", internal)
+        self.assertIn('href="/portal/"', internal)
+        # Idempotent: a second pass must not double-inject target=.
+        self.assertEqual(markdownify(markdownify("[x](https://a.com)")).count("target="), 1)
 
     def test_parent_can_view_material(self):
         m = Material.objects.create(

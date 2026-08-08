@@ -14,17 +14,39 @@ from django.core.management.base import BaseCommand
 from curricula.blueprints import SCIENCE_G7
 from tutor.models import LessonBlock
 
-from ._mission_seed import resolve_child, setup_course, upsert_mission
+from ._mission_seed import add_journal, resolve_child, setup_course, upsert_mission
 
 SAFETY = ("🛟 **Safety:** Anything with the stove, boiling water, or open flame needs "
           "Dad (those missions are flagged ⚠️). Everything else is solo. Vinegar + "
           "baking soda is always safe — but **never mix cleaning chemicals**.")
 
+# The RECAP now sends her to the lab notebook (a real place to record the CER),
+# instead of just telling her to "write" it with nowhere to put it.
 COMPLETION_ITEMS = [
-    "Write your **CER line**: *I claim ___ because I observed ___, which happens because ___.*",
-    "Write **3 facts** you learned.",
-    "**Snap a photo** of the experiment (or a screenshot of the completed PhET sim).",
+    "Open your **Lab Notebook** below 👇 and write your **CER line** + **3 facts**.",
+    "**Turn it in** so Dad can review your reasoning and stamp the mission complete.",
+    "**Snap a photo** of the experiment (or a PhET screenshot) for your Work Log.",
 ]
+
+JOURNAL_INTRO = (
+    "Think like a scientist. 🔬 Record your Claim–Evidence–Reasoning and the facts you "
+    "found, then press **Turn in** — Dad will review your reasoning and stamp the mission. "
+    "Add your experiment/PhET photo to your Work Log too."
+)
+
+
+def journal_questions(m):
+    """Kaylin's lab-notebook reflection: the CER line + 3 facts."""
+    return [
+        ("application",
+         "**Claim – Evidence – Reasoning.** Finish the frame in full sentences: "
+         "*I claim ___ because I observed ___, which happens because ___.*",
+         "Claim = what you found. Evidence = what you measured/saw. Reasoning = the "
+         "science (particles, forces, energy…) that explains why."),
+        ("application",
+         "**3 facts I learned** in this mission.",
+         "One clear sentence each."),
+    ]
 
 # n, title, time, hook (Hook/PhET/resource — markdown), steps (VERBATIM), check;
 # optional adult / prep / note.
@@ -357,7 +379,14 @@ class Command(BaseCommand):
                 parent_content=f"**Parent check:** {m['check']}\n\n{SAFETY}",
                 blocks=mission_blocks(m),
             )
+            add_journal(
+                curriculum, child, m["n"],
+                title=f"Mission {m['n']} · Lab Notebook",
+                intro=JOURNAL_INTRO,
+                questions=journal_questions(m),
+            )
         self.stdout.write(self.style.SUCCESS(
-            f"Seeded {len(MISSIONS)} Science missions (APPROVED) for {child.first_name} "
-            f"— curriculum #{curriculum.pk}. Complete a mission with a lesson 'done' mark; no AI."
+            f"Seeded {len(MISSIONS)} Science missions + lab notebooks (APPROVED) for "
+            f"{child.first_name} — curriculum #{curriculum.pk}. Turning in the notebook "
+            f"fires AI encouragement + a draft for you to stamp."
         ))

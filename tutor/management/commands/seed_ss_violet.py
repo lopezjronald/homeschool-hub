@@ -2,10 +2,11 @@
 
 Self-contained + idempotent: ensures the Curriculum exists, applies the
 SOCIAL_STUDIES_G3 blueprint (Units -> Missions), places Violet on it, and upserts
-one APPROVED Material per mission built from LessonBlock rows. NO QuestionSet and
-NO AI — a mission is completed by a LessonProgress "done" mark (parent's weekly
-review, or the kid's "I finished this" button), which advances the lesson and
-lights the streak/hours report with zero API cost.
+one APPROVED Material per mission built from LessonBlock rows. Each mission also
+gets an **Explorer's Log** (a student journal QuestionSet, via add_journal): Violet
+writes her 3 things + a log sentence and turns it in, which fires warm AI
+encouragement + a DRAFT mastery assessment the parent reviews and stamps. The
+journal is what lands in the charter record.
 
 Mission text (steps, resource links, parent-check) is transcribed VERBATIM from
 the family's commissioned research build; light markdown only. Resource URLs are
@@ -24,13 +25,34 @@ from curricula.services import apply_blueprint
 from students.models import Student
 from tutor.models import LessonBlock, Material
 
+from ._mission_seed import add_journal
 from ._saxon_seed import validate_blocks
 
+# The RECAP now points to the Explorer's Log (a real place to write it), instead of
+# just telling her to "tell or write" it with nowhere to put it.
 COMPLETION_ITEMS = [
-    "Tell or write **3 things I learned**.",
-    "Write **one sentence** in my log.",
-    "**Snap a photo** of what I made.",
+    "Open your **Explorer's Log** below 👇 and write your **3 things** + a log sentence.",
+    "**Turn it in** so Dad can read it and stamp your mission complete.",
+    "**Snap a photo** of what you made for your Work Log.",
 ]
+
+JOURNAL_INTRO = (
+    "Explorer, log your discovery! 🧭 Write what you learned, then press **Turn in** so "
+    "Dad can read your log and stamp this mission complete. Add your photo to your Work "
+    "Log too!"
+)
+
+
+def journal_questions(m):
+    """Violet's Explorer's Log reflection: 3 things + a log sentence."""
+    return [
+        ("application",
+         "**3 things I learned** — write three things you found out on this mission.",
+         "One short line for each — like a list. 1) … 2) … 3) …"),
+        ("application",
+         "**My log** — write one or two sentences about what you did today.",
+         "Tell the story like an explorer writing in a journal."),
+    ]
 
 # Each mission: n, title, time, need (You'll need), watch (Watch/Read first — may
 # hold a markdown link), steps (VERBATIM "Do this"), check (Parent check).
@@ -373,9 +395,16 @@ class Command(BaseCommand):
                 LessonBlock.objects.update_or_create(
                     material=material, order=order, defaults={"kind": kind, "data": data})
             LessonBlock.objects.filter(material=material, order__gt=len(blocks)).delete()
+            add_journal(
+                curriculum, child, m["n"],
+                title=f"Mission {m['n']} · Explorer's Log",
+                intro=JOURNAL_INTRO,
+                questions=journal_questions(m),
+            )
             seeded += 1
 
         self.stdout.write(self.style.SUCCESS(
-            f"Seeded {seeded} missions (APPROVED) for {child.first_name} — "
-            f"curriculum #{curriculum.pk}. Complete a mission with a lesson 'done' mark; no AI."
+            f"Seeded {seeded} missions + Explorer's Logs (APPROVED) for "
+            f"{child.first_name} — curriculum #{curriculum.pk}. Turning in the log fires "
+            f"AI encouragement + a draft for you to stamp."
         ))

@@ -1,10 +1,12 @@
 """Seed Kaylin's Grade 7 World History "mission" course into the app.
 
-Same integration pattern as seed_ss_violet (self-contained + idempotent, no AI, no
-new UI): ensure the Curriculum, apply the WORLD_HISTORY_G7 blueprint, place Kaylin,
-and upsert one APPROVED Material per mission from uniform LessonBlocks. Kaylin's
-course runs a course-long WALL TIMELINE, so each mission's completion block lists
-the dated timeline card(s) to add. Completion is a LessonProgress 'done' mark.
+Same integration pattern as seed_ss_violet (self-contained + idempotent): ensure the
+Curriculum, apply the WORLD_HISTORY_G7 blueprint, place Kaylin, and upsert one
+APPROVED Material per mission from uniform LessonBlocks. Kaylin's course runs a
+course-long WALL TIMELINE, so each mission's completion block lists the dated
+timeline card(s) to add. Each mission also gets a **History Log** (a student journal
+QuestionSet, via add_journal): Kaylin writes the Big Idea + 3 facts and turns it in,
+which fires AI encouragement + a DRAFT assessment the parent reviews and stamps.
 
 Mission text is transcribed VERBATIM from the family's commissioned research build.
 Per the build rules, "search / Crash Course #N / Khan Academy" resources render as
@@ -21,7 +23,26 @@ from curricula.services import apply_blueprint
 from students.models import Student
 from tutor.models import LessonBlock, Material
 
+from ._mission_seed import add_journal
 from ._saxon_seed import validate_blocks
+
+JOURNAL_INTRO = (
+    "Historian, record what you found. 📜 Write the Big Idea and 3 facts in your own "
+    "words, then press **Turn in** so Dad can review it and stamp this mission complete. "
+    "Add a timeline/build photo to your Work Log too."
+)
+
+
+def journal_questions(m):
+    """Kaylin's History Log reflection: the mission Big Idea + 3 facts."""
+    return [
+        ("application",
+         "**Big Idea** — write this mission's big idea in one sentence, in your own words.",
+         "What's the one thing a historian should take away from this mission?"),
+        ("application",
+         "**3 facts I learned** in this mission.",
+         "One clear sentence each — names, dates, or ideas that stuck with you."),
+    ]
 
 # Each mission: n, title, time, watch (Read/Watch — markdown), steps (VERBATIM "Do"),
 # cards (timeline card text for the completion block), check (Parent check).
@@ -370,10 +391,10 @@ def mission_blocks(m):
         (LessonBlock.KIND_RECAP, {
             "title": "Show what you know",
             "items": [
-                "Write the mission's **Big Idea** in one sentence — your own words.",
-                "Write **3 facts** you learned.",
                 f"**Add to your wall timeline:** {m['cards']}",
-                "**Snap a photo** of anything you built or of your timeline.",
+                "Open your **History Log** below 👇 and write your **Big Idea** + **3 facts**.",
+                "**Turn it in** so Dad can review it and stamp the mission complete.",
+                "**Snap a photo** of your timeline or build for your Work Log.",
             ],
         }),
     ]
@@ -440,9 +461,16 @@ class Command(BaseCommand):
                 LessonBlock.objects.update_or_create(
                     material=material, order=order, defaults={"kind": kind, "data": data})
             LessonBlock.objects.filter(material=material, order__gt=len(blocks)).delete()
+            add_journal(
+                curriculum, child, m["n"],
+                title=f"Mission {m['n']} · History Log",
+                intro=JOURNAL_INTRO,
+                questions=journal_questions(m),
+            )
             seeded += 1
 
         self.stdout.write(self.style.SUCCESS(
-            f"Seeded {seeded} missions (APPROVED) for {child.first_name} — "
-            f"curriculum #{curriculum.pk}. Complete a mission with a lesson 'done' mark; no AI."
+            f"Seeded {seeded} missions + History Logs (APPROVED) for {child.first_name} "
+            f"— curriculum #{curriculum.pk}. Turning in the log fires AI encouragement + "
+            f"a draft for you to stamp."
         ))

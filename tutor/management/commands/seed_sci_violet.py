@@ -14,16 +14,36 @@ from django.core.management.base import BaseCommand
 from curricula.blueprints import SCIENCE_G3
 from tutor.models import LessonBlock
 
-from ._mission_seed import resolve_child, setup_course, upsert_mission
+from ._mission_seed import add_journal, resolve_child, setup_course, upsert_mission
 
 SAFETY = ("🛟 **Safety:** Water and mess are fine. Anything hot, sharp, or plugged in "
           "— get Dad first.")
 
+# The RECAP block now points to the journal (a real place to write it), instead of
+# just telling her to "tell or write" it with nowhere to put it.
 COMPLETION_ITEMS = [
-    "Tell or write **3 things I learned**.",
-    "Write **one sentence** in my science log.",
-    "**Snap a photo** of my experiment.",
+    "Open your **Science Log** below 👇 and write your **3 things** + a log sentence.",
+    "**Turn it in** so Dad can read it and stamp your mission complete.",
+    "**Snap a photo** of your experiment for your Work Log.",
 ]
+
+JOURNAL_INTRO = (
+    "Great work, scientist! 🔬 Write down what you discovered, then press **Turn in** "
+    "so Dad can read your log and stamp this mission complete. Add your experiment photo "
+    "to your Work Log too!"
+)
+
+
+def journal_questions(m):
+    """Violet's science-log reflection for one mission: 3 things + a log sentence."""
+    return [
+        ("application",
+         "**3 things I learned** — write three things you found out in this experiment.",
+         "One short line for each — like a list. 1) … 2) … 3) …"),
+        ("application",
+         "**My science log** — what did you do, and what happened?",
+         "Two or three sentences telling the story of your experiment."),
+    ]
 
 # n, title, time, watch, need, steps (VERBATIM), check; optional adult / prep / note.
 MISSIONS = [
@@ -338,7 +358,14 @@ class Command(BaseCommand):
                 parent_content=f"**Parent check:** {m['check']}\n\n{SAFETY}",
                 blocks=mission_blocks(m),
             )
+            add_journal(
+                curriculum, child, m["n"],
+                title=f"Mission {m['n']} · Science Log",
+                intro=JOURNAL_INTRO,
+                questions=journal_questions(m),
+            )
         self.stdout.write(self.style.SUCCESS(
-            f"Seeded {len(MISSIONS)} Science missions (APPROVED) for {child.first_name} "
-            f"— curriculum #{curriculum.pk}. Complete a mission with a lesson 'done' mark; no AI."
+            f"Seeded {len(MISSIONS)} Science missions + journals (APPROVED) for "
+            f"{child.first_name} — curriculum #{curriculum.pk}. Turning in the journal "
+            f"fires AI encouragement + a draft for you to stamp."
         ))

@@ -446,6 +446,20 @@ class MaterialTests(TestCase):
         self.assertIn("<strong>bold</strong>", html)
         self.assertEqual(markdownify(""), "")
 
+    def test_external_links_open_in_a_new_tab(self):
+        """A kid following a video/article link shouldn't lose their lesson: external
+        links open in a new tab; internal (relative) links stay in the same tab."""
+        from tutor.templatetags.tutor_extras import markdownify, markdownify_inline
+
+        ext = markdownify("[Watch](https://www.youtube.com/watch?v=abc)")
+        self.assertIn('target="_blank"', ext)
+        self.assertIn('rel="noopener noreferrer"', ext)
+        # Same treatment for a question prompt rendered inline.
+        self.assertIn('target="_blank"', markdownify_inline("See [this](http://phet.colorado.edu)"))
+        # Internal links are left in-tab (no new window for the kid's own portal).
+        internal = markdownify("[Back to portal](/portal/)")
+        self.assertNotIn("target=", internal)
+
     def test_parent_can_view_material(self):
         m = Material.objects.create(
             lesson=self.lesson, title="Comic", student_content="hi", family=self.family,
@@ -2140,7 +2154,22 @@ class SocialStudiesVioletSeedTests(TestCase):
         self.assertIn("Nisenan", html)                       # verbatim content preserved
         self.assertIn("factcards.califa.org", html)          # resource URL present (link + plain)
         self.assertIn("<a ", html)                            # rendered as a clickable link
-        self.assertIn("3 things I learned", html)             # uniform completion block
+        self.assertIn("Explorer's Log", html)                # RECAP now points to the journal
+
+    def test_each_mission_has_an_explorers_log_journal(self):
+        """The reflection the charter needs lives in a per-mission student journal —
+        turning it in fires AI encouragement + a draft the parent stamps."""
+        from tutor.models import QuestionSet
+        self._seed()
+        curr = Curriculum.objects.get(name__startswith="Social Studies 3")
+        sets = QuestionSet.objects.filter(lesson__chapter__curriculum=curr)
+        self.assertEqual(sets.count(), 24)                    # one journal per mission
+        self.assertTrue(all(s.status == QuestionSet.APPROVED for s in sets))
+        self.assertTrue(all(s.mode == QuestionSet.MODE_STUDENT for s in sets))
+        m1 = sets.get(title__startswith="Mission 1 ")
+        prompts = " ".join(m1.questions.values_list("prompt", flat=True))
+        self.assertIn("3 things I learned", prompts)          # the reflection moved here
+        self.assertIn("log", prompts.lower())
 
 
 class WorldHistoryKaylinSeedTests(TestCase):
@@ -2191,6 +2220,19 @@ class WorldHistoryKaylinSeedTests(TestCase):
         self.assertIn("House of Wisdom", html)               # verbatim content preserved
         self.assertIn("al-jabr", html)                        # the algebra tie-in
 
+    def test_each_mission_has_a_history_log_journal(self):
+        from tutor.models import QuestionSet
+        self._seed()
+        curr = Curriculum.objects.get(name__startswith="World History 7")
+        sets = QuestionSet.objects.filter(lesson__chapter__curriculum=curr)
+        self.assertEqual(sets.count(), 32)                    # one journal per mission
+        self.assertTrue(all(s.status == QuestionSet.APPROVED for s in sets))
+        self.assertTrue(all(s.mode == QuestionSet.MODE_STUDENT for s in sets))
+        m1 = sets.get(title__startswith="Mission 1 ")
+        prompts = " ".join(m1.questions.values_list("prompt", flat=True))
+        self.assertIn("Big Idea", prompts)                    # the reflection moved here
+        self.assertIn("3 facts", prompts)
+
 
 class ScienceVioletSeedTests(TestCase):
     """Violet's Grade 3 Science mission course: household experiments, safety flags,
@@ -2239,7 +2281,20 @@ class ScienceVioletSeedTests(TestCase):
         html = render_to_string(
             "portal/_lesson_blocks.html", {"blocks": m8.blocks.order_by("order")})
         self.assertIn("compass", html.lower())               # verbatim content
-        self.assertIn("3 things I learned", html)             # completion block
+        self.assertIn("Science Log", html)                    # RECAP now points to the journal
+
+    def test_each_mission_has_a_science_log_journal(self):
+        from tutor.models import QuestionSet
+        self._seed()
+        curr = Curriculum.objects.get(name__startswith="Science 3")
+        sets = QuestionSet.objects.filter(lesson__chapter__curriculum=curr)
+        self.assertEqual(sets.count(), 26)                    # one journal per mission
+        self.assertTrue(all(s.status == QuestionSet.APPROVED for s in sets))
+        self.assertTrue(all(s.mode == QuestionSet.MODE_STUDENT for s in sets))
+        m1 = sets.get(title__startswith="Mission 1 ")
+        prompts = " ".join(m1.questions.values_list("prompt", flat=True))
+        self.assertIn("3 things I learned", prompts)          # the reflection moved here
+        self.assertIn("science log", prompts.lower())
 
 
 class ScienceKaylinSeedTests(TestCase):
@@ -2279,9 +2334,23 @@ class ScienceKaylinSeedTests(TestCase):
         m1 = Material.objects.get(title__startswith="Mission 1:")
         html = render_to_string(
             "portal/_lesson_blocks.html", {"blocks": m1.blocks.order_by("order")})
-        self.assertIn("I claim", html)                        # the CER completion frame
+        self.assertIn("Lab Notebook", html)                  # RECAP now points to the journal
         self.assertIn("phet.colorado.edu", html)              # PhET digital-lab link
         self.assertIn("<a ", html)                            # rendered as a clickable link
+        self.assertIn('target="_blank"', html)                # external lab link opens in a new tab
+
+    def test_each_mission_has_a_lab_notebook_journal(self):
+        from tutor.models import QuestionSet
+        self._seed()
+        curr = Curriculum.objects.get(name__startswith="Science 7")
+        sets = QuestionSet.objects.filter(lesson__chapter__curriculum=curr)
+        self.assertEqual(sets.count(), 30)                    # one journal per mission
+        self.assertTrue(all(s.status == QuestionSet.APPROVED for s in sets))
+        self.assertTrue(all(s.mode == QuestionSet.MODE_STUDENT for s in sets))
+        m1 = sets.get(title__startswith="Mission 1 ")
+        prompts = " ".join(m1.questions.values_list("prompt", flat=True))
+        self.assertIn("I claim", prompts)                     # the CER frame moved here
+        self.assertIn("3 facts", prompts)
 
     def test_stove_mission_carries_the_adult_assist_flag(self):
         from django.template.loader import render_to_string

@@ -538,6 +538,58 @@ class MarkupTests(TestCase):
         self.assertRegex(q.question_set.intro.lower(), r"circle|underline")
 
 
+class JournalThemeTests(TestCase):
+    """Mission-course journals get a themed skin — an Explorer's Log (parchment)
+    for Social Studies, a Lab Notebook (graph paper) for Science. Other subjects
+    (writing/literature/math) stay unthemed."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.parent = User.objects.create_user(username="jth", email="jth@e.com", password="pw")
+        cls.family = Family.objects.create(name="Journal Fam")
+        FamilyMembership.objects.create(user=cls.parent, family=cls.family, role="parent")
+        cls.violet = Student.objects.create(
+            parent=cls.parent, first_name="Violet", grade_level="G03", family=cls.family)
+        cls.token = make_portal_token(cls.violet)
+
+    def _set(self, subject, title):
+        cur = Curriculum.objects.create(
+            parent=self.parent, name=f"{subject} course", subject=subject, family=self.family)
+        ch = Chapter.objects.create(curriculum=cur, number=1, title="U1")
+        lesson = Lesson.objects.create(chapter=ch, order=1, number=1, title="M1")
+        CurriculumPlacement.objects.create(child=self.violet, curriculum=cur, current_lesson=lesson)
+        qs = QuestionSet.objects.create(
+            lesson=lesson, title=title, family=self.family, status=QuestionSet.APPROVED)
+        Question.objects.create(question_set=qs, order=1, category="application", prompt="Reflect.")
+        return qs
+
+    def _url(self, set_pk):
+        return reverse("portal:portal_questions", kwargs={"token": self.token, "set_pk": set_pk})
+
+    def test_social_studies_journal_gets_the_explorer_skin(self):
+        qs = self._set("Social Studies", "Mission 1 · Explorer's Log")
+        resp = self.client.get(self._url(qs.pk))
+        self.assertContains(resp, "journal-explorer")
+        self.assertContains(resp, "journal-banner")
+        self.assertContains(resp, "Explorer")        # label derived from the title
+        self.assertContains(resp, "🧭")              # emoji mapped from the log name
+        self.assertNotContains(resp, "journal-lab")
+
+    def test_science_journal_gets_the_lab_skin(self):
+        qs = self._set("Science", "Mission 1 · Lab Notebook")
+        resp = self.client.get(self._url(qs.pk))
+        self.assertContains(resp, "journal-lab")
+        self.assertContains(resp, "Lab Notebook")
+        self.assertContains(resp, "🔬")
+        self.assertNotContains(resp, "journal-explorer")
+
+    def test_other_subjects_are_not_themed(self):
+        qs = self._set("Writing", "Paragraph practice")
+        resp = self.client.get(self._url(qs.pk))
+        self.assertNotContains(resp, "journal-themed")
+        self.assertNotContains(resp, "journal-banner")
+
+
 class SubmitKicksGradeTests(TestCase):
     """Turning work in starts grading immediately — not only when the feedback
     page's JS fires — so a submission can't sit ungraded."""

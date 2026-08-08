@@ -18,7 +18,7 @@
         </div>
       {% endif %}
 
-      <div class="card portal-card mb-4">
+      <div class="card portal-card mb-4{% if journal_theme %} journal-themed journal-{{ journal_theme }}{% endif %}">
         <div class="card-header d-flex justify-content-between align-items-center">
           <div>
             <h4 class="mb-0">{{ question_set.title }}</h4>
@@ -29,6 +29,18 @@
           {% endif %}
         </div>
         <div class="card-body">
+
+          {% if journal_theme %}
+            <div class="journal-banner">
+              <span class="journal-banner-badge" aria-hidden="true">{{ journal_emoji }}</span>
+              <div class="journal-banner-text">
+                <div class="journal-banner-kicker">{{ journal_label }}</div>
+                <div class="journal-banner-sub">
+                  {% if journal_theme == 'explorer' %}Log what you discovered on this mission, then turn it in.{% else %}Record your findings from this mission, then turn it in.{% endif %}
+                </div>
+              </div>
+            </div>
+          {% endif %}
 
           {% if question_set.reading %}
             <div class="portal-reading-first">

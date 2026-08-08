@@ -840,6 +840,21 @@ def portal_questions(request, token, set_pk):
     # child is supposed to spell the words unaided.
     spelling = is_spelling(question_set.lesson.chapter.curriculum.subject)
 
+    # Mission-course journals get a themed skin: an explorer's log (parchment/map)
+    # for Social Studies, a lab notebook (graph paper) for Science. Those two
+    # subjects are exclusively the mission courses, so keying on subject is safe;
+    # literature/writing/math sets get no skin. The log's own name (Explorer's Log /
+    # History Log / Science Log / Lab Notebook) rides in the QuestionSet title.
+    subject = (question_set.lesson.chapter.curriculum.subject or "").strip().lower()
+    journal_theme = {"social studies": "explorer", "science": "lab"}.get(subject, "")
+    journal_label = journal_emoji = ""
+    if journal_theme:
+        journal_label = question_set.title.split("·")[-1].strip()
+        journal_emoji = {
+            "Explorer's Log": "🧭", "History Log": "📜",
+            "Science Log": "🔬", "Lab Notebook": "🔬",
+        }.get(journal_label, "📓")
+
     return render(request, "portal/portal_questions.html", {
         "student": student,
         "token": token,
@@ -848,6 +863,9 @@ def portal_questions(request, token, set_pk):
         "sheet": sheet,
         "spellcheck_on": not spelling,
         "wordhelp_on": not spelling,
+        "journal_theme": journal_theme,
+        "journal_label": journal_label,
+        "journal_emoji": journal_emoji,
     })
 
 

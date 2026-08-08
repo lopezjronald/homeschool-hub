@@ -2082,3 +2082,62 @@ class LessonToolTemplateContractTests(TestCase):
                              f"{name} reads an attribute the template never writes")
         self.assertGreaterEqual(checked, 5,
                                 f"only {checked} widget modules were checked")
+
+
+class SocialStudiesVioletSeedTests(TestCase):
+    """Violet's Grade 3 Social Studies mission course: self-contained seed, renders
+    on the portal, no AI. Mirrors the discovery-driven Saxon tests."""
+
+    @classmethod
+    def setUpTestData(cls):
+        User = get_user_model()
+        cls.parent = User.objects.create_user("ssviolet", email="ssv@e.com", password="pw")
+        cls.violet = Student.objects.create(
+            parent=cls.parent, first_name="Violet", grade_level="G03")
+
+    def _seed(self):
+        call_command("seed_ss_violet", stdout=StringIO())
+
+    def test_seeds_curriculum_units_missions_and_approved_materials(self):
+        from curricula.models import Chapter, CurriculumPlacement
+        from tutor.models import LessonBlock, Material
+        self._seed()
+        curr = Curriculum.objects.get(name__startswith="Social Studies 3")
+        self.assertEqual(curr.subject, "Social Studies")
+        self.assertEqual(curr.grade_level, "G03")
+        self.assertEqual(Chapter.objects.filter(curriculum=curr).count(), 6)   # 5 units + capstone
+        self.assertEqual(Lesson.objects.filter(chapter__curriculum=curr).count(), 24)
+        mats = Material.objects.filter(
+            lesson__chapter__curriculum=curr, skill_type=Material.SKILL_LESSON)
+        self.assertEqual(mats.count(), 24)
+        self.assertTrue(all(m.status == Material.APPROVED for m in mats),
+                        "missions must seed APPROVED so they're visible day one")
+        # Every mission carries the uniform "do this" + completion blocks.
+        for m in mats:
+            kinds = list(m.blocks.order_by("order").values_list("kind", flat=True))
+            self.assertIn(LessonBlock.KIND_STEPS, kinds, m.title)
+            self.assertIn(LessonBlock.KIND_RECAP, kinds, m.title)
+            self.assertIn("Parent check", m.parent_content, m.title)
+        self.assertTrue(
+            CurriculumPlacement.objects.filter(child=self.violet, curriculum=curr).exists())
+
+    def test_is_idempotent(self):
+        from tutor.models import Material
+        self._seed()
+        self._seed()
+        self.assertEqual(
+            Material.objects.filter(skill_type=Material.SKILL_LESSON).count(), 24)
+
+    def test_a_mission_renders_with_a_clickable_resource_link_and_completion(self):
+        """The 'Watch/Read first' URL must render as a real link (markdownify), and
+        the completion block must appear — proving the no-UI, in-app delivery works."""
+        from django.template.loader import render_to_string
+        from tutor.models import Material
+        self._seed()
+        m5 = Material.objects.get(title__startswith="Mission 5")
+        html = render_to_string(
+            "portal/_lesson_blocks.html", {"blocks": m5.blocks.order_by("order")})
+        self.assertIn("Nisenan", html)                       # verbatim content preserved
+        self.assertIn("factcards.califa.org", html)          # resource URL present (link + plain)
+        self.assertIn("<a ", html)                            # rendered as a clickable link
+        self.assertIn("3 things I learned", html)             # uniform completion block

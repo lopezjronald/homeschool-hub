@@ -647,8 +647,81 @@ SAXON_PREALGEBRA_DIVE = {
 }
 
 
+SOCIAL_STUDIES_G3 = {
+    "slug": "social_studies_g3",
+    "name": "Social Studies 3 — Continuity and Change",
+    "subject": "Social Studies",
+    "grade_level": "G03",
+    "source": "CA HSS Grade 3 (3.1–3.5), Sacramento/West Sacramento local focus. "
+              "Self-directed 'mission' course from the family's commissioned research build (2026).",
+    "chapters": [
+        {"number": 1, "title": "Unit 1 — Maps & Our Place", "lessons": [
+            _ls(1, 1, "Mission 1: Map Detective",
+                "Use a map, compass rose, and key to locate home and the local region (3.1)."),
+            _ls(2, 2, "Mission 2: Landforms of Our Valley",
+                "Name Central Valley landforms — valley, river, delta, foothills, mountains (3.1)."),
+            _ls(3, 3, "Mission 3: Rivers Are Why We're Here",
+                "Explain that rivers flow downhill and why communities grow beside them (3.1)."),
+            _ls(4, 4, "Mission 4: People Change the Land",
+                "Describe how people changed the land with levees and dams (3.1)."),
+        ]},
+        {"number": 2, "title": "Unit 2 — First People: Nisenan & Miwok", "lessons": [
+            _ls(1, 5, "Mission 5: Who Lived Here First?",
+                "Locate the Nisenan, Plains Miwok, and Patwin homelands on a local map (3.2)."),
+            _ls(2, 6, "Mission 6: Acorns & Salmon — Food from the Land",
+                "Connect Nisenan food sources (acorns, salmon) to local geography (3.2)."),
+            _ls(3, 7, "Mission 7: Build a Tule House",
+                "Explain how local materials shaped Nisenan shelter (3.2)."),
+            _ls(4, 8, "Mission 8: Stories, Trade & Daily Life",
+                "Describe Nisenan baskets, trade, and oral storytelling (3.2)."),
+            _ls(5, 9, "Mission 9: The Tribes Today — Wilton Rancheria",
+                "Recognize Wilton Rancheria and tribal continuity to the present (3.2)."),
+        ]},
+        {"number": 3, "title": "Unit 3 — Newcomers & Our Community's Story", "lessons": [
+            _ls(1, 10, "Mission 10: Sutter's Fort — Newcomers Arrive",
+                "Explain how settlers' arrival changed life for Native people (3.3)."),
+            _ls(2, 11, "Mission 11: Gold!",
+                "Describe the Gold Rush and why Sacramento grew from it (3.3)."),
+            _ls(3, 12, "Mission 12: Capital City & the Railroad",
+                "Identify Sacramento as the state capital and railroad starting point (3.3)."),
+            _ls(4, 13, "Mission 13: Then vs. Now",
+                "Define a primary source and compare the community past to present (3.3)."),
+            _ls(5, 14, "Mission 14: Oral History Interview",
+                "Create an oral-history primary source through an interview (3.3)."),
+        ]},
+        {"number": 4, "title": "Unit 4 — Rules, Government & Citizenship", "lessons": [
+            _ls(1, 15, "Mission 15: Why Rules?",
+                "Explain why communities need laws, and name real laws (3.4)."),
+            _ls(2, 16, "Mission 16: The Constitution — Our Rulebook",
+                "Describe the U.S. Constitution as the country's highest law (3.4)."),
+            _ls(3, 17, "Mission 17: Three Branches — the Three-Legged Stool",
+                "Name the legislative, executive, and judicial branches (3.4)."),
+            _ls(4, 18, "Mission 18: Our Local Government",
+                "Distinguish city, state, and national levels of government (3.4)."),
+            _ls(5, 19, "Mission 19: Symbols & Heroes",
+                "Identify national symbols and the deeds of one American hero (3.4)."),
+        ]},
+        {"number": 5, "title": "Unit 5 — Our Local Economy", "lessons": [
+            _ls(1, 20, "Mission 20: Goods & Services",
+                "Sort goods vs. services and producers vs. consumers (3.5)."),
+            _ls(2, 21, "Mission 21: Resources of Our Region",
+                "Classify natural, human, and capital resources in the region (3.5)."),
+            _ls(3, 22, "Mission 22: Where Was It Made?",
+                "Explain why communities trade with other places (3.5)."),
+            _ls(4, 23, "Mission 23: Lemonade Stand Math",
+                "Weigh cost, price, and profit trade-offs in a simple business (3.5)."),
+        ]},
+        {"number": 6, "title": "Capstone", "lessons": [
+            _ls(1, 24, "Mission 24: History Museum Day",
+                "Review 3.1–3.5: how our community has changed and what has stayed the same."),
+        ]},
+    ],
+}
+
+
 BLUEPRINTS = {
     DIMENSIONS_MATH_3A["slug"]: DIMENSIONS_MATH_3A,
+    SOCIAL_STUDIES_G3["slug"]: SOCIAL_STUDIES_G3,
     BLACKBIRD_I_AM_DAVID["slug"]: BLACKBIRD_I_AM_DAVID,
     BLACKBIRD_A_MOUSE_CALLED_WOLF["slug"]: BLACKBIRD_A_MOUSE_CALLED_WOLF,
     ESSENTIALS_IN_WRITING_3["slug"]: ESSENTIALS_IN_WRITING_3,

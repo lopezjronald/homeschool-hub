@@ -18,6 +18,9 @@
   --ss-amber:#EBA83A;
   --ss-amber-soft:#F3C36B;
   --ss-amber-700:#8A5B12;
+  /* Brand "Dawn Book" Ink Navy — the navbar chrome the on-dark logo is drawn for. */
+  --ss-navy:#152A45;
+  --ss-navy-grad:linear-gradient(135deg,#10203A 0%,#152A45 55%,#1B3358 100%);
   --ss-blue:#2F6FB3;
   --ss-parchment:#F6F3EA;
   --ss-paper:#ffffff;
@@ -84,17 +87,16 @@ a:hover { color:var(--ss-green-700); }
    3. CHROME — navbar (.navbar.navbar-dark.bg-dark)
    ------------------------------------------------------------------- */
 .navbar.bg-dark {
-  background:var(--ss-forest-grad) !important;
+  background:var(--ss-navy-grad) !important;
   border-bottom:1px solid rgba(255,255,255,.06);
-  box-shadow:0 10px 30px -22px rgba(11,46,34,.9);
+  box-shadow:0 10px 30px -22px rgba(8,20,40,.9);
 }
 .navbar.navbar-dark .navbar-brand {
   font-weight:700;
   letter-spacing:-.01em;
   color:#fff;
-  padding-left:.55rem;
-  border-left:3px solid var(--ss-amber);
 }
+.navbar.navbar-dark .navbar-brand img { display:block; }
 .navbar.navbar-dark .nav-link {
   position:relative;
   color:rgba(233,244,236,.82) !important;

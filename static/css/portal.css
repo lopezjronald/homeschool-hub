@@ -7,7 +7,6 @@
   background: var(--ss-forest-grad, linear-gradient(135deg, #0B2E22 0%, #0F3D2E 100%));
 }
 .portal-nav .navbar-brand { font-weight: 700; letter-spacing: 0.01em; }
-.portal-brand-icon { font-size: 1.1rem; }
 .portal-level-badge {
   background: var(--ss-amber, #EBA83A);
   color: var(--ss-forest-2, #0B2E22);

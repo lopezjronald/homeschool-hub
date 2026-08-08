@@ -6,6 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="google" content="notranslate">
   <title>{{ story.title }} · Lingua</title>
+  {% include "includes/_favicons.html" %}
   {# CSP-clean: external stylesheet only, no inline styles or CDN (strict LINGUA_CSP, D-13). #}
   <link rel="stylesheet" href="{% static 'lingua/read.css' %}">
 </head>

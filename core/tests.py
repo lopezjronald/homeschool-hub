@@ -1909,3 +1909,24 @@ class CrossAppActivityTests(TestCase):
         agg = aggregate_activity(self.child, today, today)
         self.assertEqual(agg["by_subject"]["math"]["minutes"], 30)   # host signal present
         self.assertNotIn("spanish", agg["by_subject"])               # lingua not consulted
+
+
+class FaviconAndBrandRenderTests(TestCase):
+    """Guards the brand wiring — above all the multi-line {# #} comment that leaked
+    literal template text to the top of EVERY page (HH-161 hotfix). `{# #}` is
+    single-line only; a comment spanning two lines is emitted verbatim."""
+
+    def test_favicon_partial_renders_with_no_leaked_comment(self):
+        from django.template.loader import render_to_string
+        html = render_to_string("includes/_favicons.html")
+        self.assertNotIn("{#", html)             # a multi-line {# #} would survive to output
+        self.assertNotIn("favicon set", html)    # the comment prose must not reach the page
+        self.assertEqual(html.count("<link"), 3)  # ico + svg + apple-touch really present
+
+    def test_landing_page_has_no_leaked_template_text(self):
+        resp = self.client.get(reverse("home"))
+        self.assertEqual(resp.status_code, 200)
+        self.assertNotContains(resp, "{#")          # no raw comment marker anywhere
+        self.assertNotContains(resp, "favicon set")  # the leaked prose specifically
+        self.assertContains(resp, 'rel="apple-touch-icon"')  # the favicon actually wired
+        self.assertContains(resp, "brand/favicon")           # (hashed) icon links present

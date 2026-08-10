@@ -1,0 +1,55 @@
+/* Family calendar — legend, FullCalendar accents, and print layout. */
+
+.cal-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-weight: 600;
+  font-size: 0.92rem;
+  margin-bottom: 0;
+  cursor: pointer;
+}
+.cal-dot {
+  display: inline-block;
+  width: 0.85rem;
+  height: 0.85rem;
+  border-radius: 50%;
+  background: var(--dot, #152A45);
+  flex: none;
+}
+
+/* Weekday checkboxes render as a compact pill row, not a stacked list. */
+.cal-weekday-picker > div { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+.cal-weekday-picker .form-check {
+  padding: 0;
+  margin: 0;
+}
+.cal-weekday-picker .form-check-input { margin-right: 0.3rem; }
+.cal-weekday-picker .form-check-label { font-weight: 600; margin-right: 0.5rem; }
+
+/* FullCalendar accents on the Dawn Harbor palette. */
+#calendar { --fc-button-bg-color: #0A5C63; --fc-button-border-color: #0A5C63;
+            --fc-button-hover-bg-color: #073F44; --fc-button-hover-border-color: #073F44;
+            --fc-button-active-bg-color: #073F44; --fc-button-active-border-color: #073F44;
+            --fc-today-bg-color: rgba(235, 168, 58, 0.12); }
+#calendar .fc-event { border-radius: 6px; }
+#calendar .fc-daygrid-event { padding: 1px 4px; }
+
+/* Projected mission "due dates" (S3) read as outlines, real events as solids. */
+#calendar .cal-layer-missions {
+  background: #fff !important;
+  border: 1.5px solid currentColor;
+}
+
+/* History ✓ (S4): quiet, past-tense. */
+#calendar .cal-layer-history { opacity: 0.75; }
+
+@media print {
+  /* The month grid IS the wall printout: strip everything else. */
+  nav, .navbar, footer, .messages, .d-print-none { display: none !important; }
+  #calendar { width: 100%; }
+  #calendar .fc-header-toolbar .fc-button-group,
+  #calendar .fc-header-toolbar .fc-today-button { display: none; }
+  #calendar .fc-daygrid-day-frame { min-height: 5.2em; }
+  #calendar .fc-event { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}

@@ -123,6 +123,23 @@
         </a>
       </div>
       <div class="col">
+        <a href="{% url 'family_calendar:calendar' %}" class="text-decoration-none">
+          <div class="card h-100 hub-tile"><div class="card-body">
+            <div class="ss-feature-emoji mb-2">🗓️</div>
+            <h5 class="card-title">Family Calendar</h5>
+            {% if upcoming_events %}
+              <ul class="list-unstyled card-text text-muted mb-0 small">
+                {% for occ, event in upcoming_events %}
+                  <li>{{ occ|date:"D M j" }} · {{ event.emoji }} {{ event.title }}{% if event.start_time %} {{ event.start_time|time:"g:i A" }}{% endif %}</li>
+                {% endfor %}
+              </ul>
+            {% else %}
+              <p class="card-text text-muted mb-0">Plan the week — practices, appointments, and every mission's due date in one place.</p>
+            {% endif %}
+          </div></div>
+        </a>
+      </div>
+      <div class="col">
         <a href="{% url 'lingua:progress' %}" class="text-decoration-none">
           <div class="card h-100 hub-tile"><div class="card-body">
             <div class="ss-feature-emoji mb-2">🗣️</div>

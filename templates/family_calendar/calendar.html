@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}Family Calendar · Steadfast Scholars{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/calendar.css' %}">
+{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+
+  <div class="ss-hero mb-3 d-print-none">
+    <div class="ss-kicker">Family Calendar</div>
+    <h1>The week at a glance</h1>
+    <p class="lead mb-0">Practices, appointments, school meetings — everyone's schedule in one place.</p>
+  </div>
+
+  <div class="d-flex flex-wrap align-items-center gap-3 mb-3 d-print-none">
+    <div class="cal-legend d-flex flex-wrap align-items-center gap-3" id="cal-filters">
+      {% for child in children %}
+        <label class="cal-legend-item">
+          <input type="checkbox" class="form-check-input cal-child-filter" value="{{ child.pk }}" checked>
+          <span class="cal-dot" style="--dot: {{ child.color }}"></span>
+          {{ child.first_name }}
+        </label>
+      {% endfor %}
+      <span class="cal-legend-item">
+        <span class="cal-dot" style="--dot: {{ family_color }}"></span> Whole family
+      </span>
+    </div>
+    <div class="ms-auto d-flex gap-2">
+      {% if can_edit %}
+        <a href="{% url 'family_calendar:event_create' %}" class="btn btn-amber">+ Add event</a>
+      {% endif %}
+      <button type="button" class="btn btn-outline-secondary" onclick="window.print()" title="Print this month">🖨️ Print</button>
+    </div>
+  </div>
+
+  <div id="calendar"
+       data-feed-url="{% url 'family_calendar:feed' %}"
+       {% if can_edit %}data-add-url="{% url 'family_calendar:event_create' %}"{% endif %}></div>
+
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.21/index.global.min.js"
+        integrity="sha384-WDvnzcla8X1CQM97EnYyl4OoTCvmMFp5lBiVNO3IjVdvLMOUjwt+iuYb/Mru5A9v"
+        crossorigin="anonymous"></script>
+<script src="{% static 'js/calendar-page.js' %}"></script>
+{% endblock %}

@@ -116,6 +116,7 @@ INSTALLED_APPS = [
     "tutor",  # AI tutor layer (mastery grader)
     "portal",  # Tokenless student portal (kids see only their own work)
     "activities",  # External activities (School of Rock, CodaKid) + check-in nudge
+    "family_calendar",  # Family calendar: events, mission due dates, history, birthdays
     "inbox",  # Parent action inbox (aggregates items needing the parent)
     "lingua",  # Spanish acquisition module (extractable; see lingua/SPEC.md)
     "storages",  # django-storages for R2/S3

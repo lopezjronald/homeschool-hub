@@ -32,40 +32,87 @@ def _scoped_children(request, family):
 
 @login_required
 def calendar_page(request):
+    from curricula.models import CurriculumPlacement
+
     family = get_selected_family(request)
     children = list(_scoped_children(request, family))
     colors = feeds.child_color_map(children)
     for child in children:
         child.color = colors[child.pk]
+    placements = (
+        CurriculumPlacement.objects
+        .filter(child__in=children, is_active=True, curriculum__is_active=True)
+        .select_related("child", "curriculum")
+        .order_by("child__first_name", "curriculum__name")
+    )
     return render(request, "family_calendar/calendar.html", {
         "children": children,
         "family_color": feeds.FAMILY_COLOR,
         "can_edit": can_edit_family_or_global(request.user, family),
+        "placements": placements,
     })
 
 
 @login_required
 @require_GET
 def events_feed(request):
-    """FullCalendar JSON feed: every occurrence in the requested window."""
+    """FullCalendar JSON feed: event occurrences + projected mission due dates."""
+    from curricula.models import CurriculumPlacement
+
     family = get_selected_family(request)
     window = feeds.parse_window(request)
     children = list(_scoped_children(request, family))
     colors = feeds.child_color_map(children)
+    layers = set((request.GET.get("layers") or "events,missions").split(","))
 
-    events = _scoped_events(request, family).select_related("activity")
+    all_events = list(_scoped_events(request, family).select_related("activity"))
     raw_children = request.GET.get("children", "")
+    shown_children = children
+    events = all_events
     if raw_children:
         # Validate against the scoped children — a foreign id is silently dropped,
         # so the filter can never widen access. Whole-family events always pass.
         valid_ids = {c.pk for c in children}
         wanted = {int(v) for v in raw_children.split(",") if v.strip().isdigit()} & valid_ids
-        events = [e for e in events if e.child_id is None or e.child_id in wanted]
+        events = [e for e in all_events if e.child_id is None or e.child_id in wanted]
+        shown_children = [c for c in children if c.pk in wanted]
 
-    payload = feeds.event_layer(
-        events, window, colors,
-        url_for=lambda e: reverse("family_calendar:event_update", args=[e.pk]),
-    )
+    payload = []
+    if "events" in layers:
+        payload += feeds.event_layer(
+            events, window, colors,
+            url_for=lambda e: reverse("family_calendar:event_update", args=[e.pk]),
+        )
+    if "missions" in layers:
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        placements = (
+            CurriculumPlacement.objects
+            .filter(child__in=shown_children, is_active=True,
+                    weekly_pace__isnull=False, curriculum__is_active=True)
+            .select_related("child", "curriculum")
+        )
+        by_child = {}
+        for p in placements:
+            by_child.setdefault(p.child_id, []).append(p)
+        # Breaks must span the PACING window (today → horizon), not the display
+        # window — the feed may be showing a past month while pacing runs forward.
+        today = timezone.localdate()
+        pace_window = (today, today + timedelta(days=56))
+        for child in shown_children:
+            child_placements = by_child.get(child.pk)
+            if not child_placements:
+                continue
+            # A break tagged to another child doesn't pause this child's pacing.
+            breaks = feeds.break_dates(all_events, pace_window, child=child)
+            payload += feeds.mission_layer(
+                child_placements, window, colors, breaks=breaks,
+                label_for=lambda p, l: f"{p.child.first_name} · {l.title or l.code}",
+                url_for=lambda p, l: reverse(
+                    "students:student_lessons", args=[p.child_id, p.curriculum_id]),
+            )
     return JsonResponse(payload, safe=False)
 
 
@@ -137,6 +184,39 @@ def event_delete(request, pk):
         messages.success(request, "Event removed.")
         return redirect("family_calendar:calendar")
     return render(request, "family_calendar/event_confirm_delete.html", {"event": event})
+
+
+@login_required
+@require_POST
+def set_pace(request, placement_pk):
+    """Set (or clear) a placement's weekly pace from the calendar's Pacing panel."""
+    from curricula.models import Curriculum, CurriculumPlacement
+
+    if not user_can_edit(request.user):
+        raise Http404
+    placement = get_object_or_404(
+        CurriculumPlacement.objects.filter(
+            curriculum__in=editable_queryset(Curriculum.objects.all(), request.user),
+        ).select_related("child", "curriculum"),
+        pk=placement_pk,
+    )
+    raw = (request.POST.get("weekly_pace") or "").strip()
+    if raw == "" or raw == "0":
+        placement.weekly_pace = None
+        placement.save(update_fields=["weekly_pace", "updated_at"])
+        messages.info(request, f"{placement.curriculum.name}: due dates off for "
+                               f"{placement.child.first_name}.")
+    elif raw.isdigit() and 1 <= int(raw) <= 10:
+        placement.weekly_pace = int(raw)
+        placement.save(update_fields=["weekly_pace", "updated_at"])
+        messages.success(
+            request,
+            f"{placement.child.first_name} · {placement.curriculum.name}: "
+            f"{raw}/week — due dates updated.",
+        )
+    else:
+        messages.error(request, "Pace must be a number from 1 to 10 (or 0 to turn off).")
+    return redirect("family_calendar:calendar")
 
 
 @login_required

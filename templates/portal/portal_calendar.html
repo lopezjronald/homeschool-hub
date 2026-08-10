@@ -10,6 +10,18 @@
     <p class="mb-0">What's happening today, this week, and beyond.</p>
   </div>
 
+  {% if chips %}
+    <div class="portal-due-chips mb-3">
+      {% for chip in chips %}
+        <a href="{% url 'portal:portal_subject' token=token curriculum_id=chip.curriculum.id %}"
+           class="portal-due-chip {% if chip.days == 0 %}is-today{% endif %}">
+          🎯 {{ chip.lesson.title|default:chip.lesson.code }}
+          <span class="portal-due-when">{{ chip.when }}</span>
+        </a>
+      {% endfor %}
+    </div>
+  {% endif %}
+
   {% if week %}
     <div class="portal-agenda mb-4">
       {% for entry in week %}

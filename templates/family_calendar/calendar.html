@@ -40,6 +40,40 @@
        data-feed-url="{% url 'family_calendar:feed' %}"
        {% if can_edit %}data-add-url="{% url 'family_calendar:event_create' %}"{% endif %}></div>
 
+  {% if can_edit and placements %}
+    <details class="mt-4 d-print-none">
+      <summary class="fw-semibold" style="cursor: pointer;">🎯 Pacing — mission due dates</summary>
+      <div class="card mt-2">
+        <div class="card-body">
+          <p class="text-muted small mb-3">
+            Set how many lessons per week each subject should move — the calendar
+            projects the remaining lessons onto weekdays as 🎯 due dates. They
+            recompute automatically as work is finished (and skip 🌴 break days).
+            Blank or 0 = no due dates for that subject.
+          </p>
+          <div class="row g-2">
+            {% for placement in placements %}
+              <div class="col-12 col-md-6">
+                <form method="post" action="{% url 'family_calendar:set_pace' placement.pk %}"
+                      class="d-flex align-items-center gap-2">
+                  {% csrf_token %}
+                  <span class="flex-grow-1 text-truncate">
+                    <strong>{{ placement.child.first_name }}</strong> · {{ placement.curriculum.name }}
+                  </span>
+                  <input type="number" name="weekly_pace" min="0" max="10"
+                         value="{{ placement.weekly_pace|default_if_none:'' }}"
+                         class="form-control form-control-sm" style="width: 5rem;"
+                         aria-label="Lessons per week for {{ placement.curriculum.name }}">
+                  <button type="submit" class="btn btn-sm btn-outline-secondary">Set</button>
+                </form>
+              </div>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+    </details>
+  {% endif %}
+
 </div>
 {% endblock %}
 

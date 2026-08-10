@@ -352,3 +352,136 @@ class PortalCalendarTests(TestCase):
         self.assertContains(resp, "My Week")
         self.assertContains(resp, self._url("portal_calendar"))
         self.assertContains(resp, "Jiu-jitsu")               # today's event previewed
+
+
+class MissionLayerTests(TestCase):
+    """Auto-paced mission due dates in both feeds — projected live, never stored."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from curricula.models import Chapter, Curriculum, CurriculumPlacement, Lesson
+        from portal.tokens import make_portal_token
+
+        cls.parent = User.objects.create_user(username="ml", email="ml@e.com", password="pw")
+        cls.family = Family.objects.create(name="Mission Fam")
+        FamilyMembership.objects.create(user=cls.parent, family=cls.family, role="parent")
+        cls.violet = Student.objects.create(
+            parent=cls.parent, first_name="Violet", grade_level="G03", family=cls.family)
+        cls.token = make_portal_token(cls.violet)
+
+        cls.cur = Curriculum.objects.create(
+            parent=cls.parent, family=cls.family, name="Science 3 — Test", subject="Science")
+        ch = Chapter.objects.create(curriculum=cls.cur, number=1, title="U1")
+        cls.lessons = [
+            Lesson.objects.create(chapter=ch, order=i, number=i, title=f"Mission {i} fun")
+            for i in range(1, 5)
+        ]
+        cls.placement = CurriculumPlacement.objects.create(
+            child=cls.violet, curriculum=cls.cur, weekly_pace=5)
+
+    def _parent_feed(self):
+        self.client.login(username="ml", password="pw")
+        from datetime import timedelta
+        from django.utils import timezone
+        today = timezone.localdate()
+        return self.client.get(reverse("family_calendar:feed"), {
+            "start": today.isoformat(),
+            "end": (today + timedelta(days=60)).isoformat(),
+        }).json()
+
+    def _portal_feed(self):
+        from datetime import timedelta
+        from django.utils import timezone
+        today = timezone.localdate()
+        return self.client.get(
+            reverse("portal:portal_calendar_feed", kwargs={"token": self.token}),
+            {"start": today.isoformat(), "end": (today + timedelta(days=60)).isoformat()},
+        ).json()
+
+    def test_parent_feed_projects_missions_with_child_label_and_lessons_url(self):
+        missions = [e for e in self._parent_feed()
+                    if e["extendedProps"]["layer"] == "missions"]
+        self.assertEqual(len(missions), 4)                    # all remaining, in order
+        self.assertIn("Violet", missions[0]["title"])
+        self.assertIn("Mission 1 fun", missions[0]["title"])
+        self.assertIn(f"/students/{self.violet.pk}/lessons/{self.cur.pk}/", missions[0]["url"])
+        self.assertTrue(all(m["allDay"] for m in missions))
+        # Dates ascend and never land on a weekend.
+        from datetime import date
+        dates = [date.fromisoformat(m["start"]) for m in missions]
+        self.assertEqual(dates, sorted(dates))
+        self.assertTrue(all(d.weekday() < 5 for d in dates))
+
+    def test_completing_a_lesson_moves_the_projection_live(self):
+        from curricula.models import LessonProgress
+        first = self._parent_feed()
+        first_missions = [e for e in first if e["extendedProps"]["layer"] == "missions"]
+        self.assertIn("Mission 1 fun", first_missions[0]["title"])
+
+        LessonProgress.objects.create(
+            child=self.violet, lesson=self.lessons[0],
+            status=LessonProgress.COMPLETED, marked_by=self.parent)
+        second = self._parent_feed()
+        second_missions = [e for e in second if e["extendedProps"]["layer"] == "missions"]
+        self.assertEqual(len(second_missions), 3)             # one fewer
+        self.assertIn("Mission 2 fun", second_missions[0]["title"])  # next one leads
+
+    def test_pace_none_projects_nothing(self):
+        self.placement.weekly_pace = None
+        self.placement.save()
+        missions = [e for e in self._parent_feed()
+                    if e["extendedProps"]["layer"] == "missions"]
+        self.assertEqual(missions, [])
+
+    def test_portal_feed_mission_urls_carry_the_token_and_no_parent_urls(self):
+        missions = [e for e in self._portal_feed()
+                    if e["extendedProps"]["layer"] == "missions"]
+        self.assertEqual(len(missions), 4)
+        for m in missions:
+            self.assertIn(self.token, m["url"])               # kid's own subject page
+            self.assertNotIn("/students/", m["url"])          # never a parent URL
+        self.assertNotIn("Violet", missions[0]["title"])      # no child prefix for the kid
+
+    def test_family_break_pushes_the_due_dates(self):
+        from datetime import timedelta
+        from django.utils import timezone
+        today = timezone.localdate()
+        # Block the next 10 weekdays for the whole family; every projection must
+        # land after the break ends.
+        CalendarEvent.objects.create(
+            parent=self.parent, family=self.family, title="Break",
+            event_type=CalendarEvent.TYPE_BREAK, date=today,
+            repeats_weekly=True, repeat_weekdays=[0, 1, 2, 3, 4],
+            repeat_until=today + timedelta(days=13),
+        )
+        from datetime import date
+        missions = [e for e in self._parent_feed()
+                    if e["extendedProps"]["layer"] == "missions"]
+        self.assertTrue(missions)
+        for m in missions:
+            self.assertGreater(
+                date.fromisoformat(m["start"]), today + timedelta(days=13))
+
+    def test_portal_page_shows_countdown_chips(self):
+        resp = self.client.get(
+            reverse("portal:portal_calendar", kwargs={"token": self.token}))
+        self.assertContains(resp, "🎯")
+        self.assertContains(resp, "Mission 1 fun")
+        self.assertContains(resp, "due")                      # today/tomorrow/in N days
+
+    def test_pacing_panel_sets_and_clears_pace(self):
+        self.client.login(username="ml", password="pw")
+        page = self.client.get(reverse("family_calendar:calendar"))
+        self.assertContains(page, "Pacing")
+        self.assertContains(page, "Science 3 — Test")
+        resp = self.client.post(
+            reverse("family_calendar:set_pace", args=[self.placement.pk]),
+            {"weekly_pace": "2"})
+        self.assertEqual(resp.status_code, 302)
+        self.placement.refresh_from_db()
+        self.assertEqual(self.placement.weekly_pace, 2)
+        self.client.post(
+            reverse("family_calendar:set_pace", args=[self.placement.pk]),
+            {"weekly_pace": "0"})
+        self.placement.refresh_from_db()
+        self.assertIsNone(self.placement.weekly_pace)

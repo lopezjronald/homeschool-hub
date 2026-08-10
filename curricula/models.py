@@ -255,6 +255,11 @@ class CurriculumPlacement(models.Model):
         help_text="Inactive placements hide this subject from this child's portal only "
                   "(siblings can keep the same curriculum).",
     )
+    weekly_pace = models.PositiveSmallIntegerField(
+        null=True, blank=True,
+        help_text="Project remaining lessons onto the family calendar at this many "
+                  "per week (Mon–Fri). Blank = no due dates for this subject.",
+    )
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:

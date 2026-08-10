@@ -592,14 +592,49 @@ def _student_color(student):
         student.pk, calendar_feeds.CHILD_PALETTE[0])
 
 
+def _paced_placements(student):
+    return (
+        CurriculumPlacement.objects
+        .filter(child=student, is_active=True, weekly_pace__isnull=False,
+                curriculum__is_active=True)
+        .select_related("curriculum")
+    )
+
+
 def portal_calendar(request, token):
-    """The kid's read-only calendar: a Today/This-week agenda strip up top, the
-    full FullCalendar grid below."""
+    """The kid's read-only calendar: countdown chips and a Today/This-week agenda
+    strip up top, the full FullCalendar grid below."""
     from datetime import timedelta
+
+    from curricula.pacing import next_due
 
     student = _resolve_student(token)
     today = timezone.localdate()
     events = list(_visible_calendar_events(student).select_related("activity"))
+    pace_window = (today, today + timedelta(days=56))
+    breaks = calendar_feeds.break_dates(events, pace_window, child=student)
+
+    # Countdown chips: the next projected mission per paced subject.
+    from curricula.models import Lesson
+
+    chips = []
+    for placement in _paced_placements(student):
+        due = next_due(placement, today, skip_dates=breaks)
+        if due is None:
+            continue
+        lesson = Lesson.objects.filter(pk=due[0]).first()
+        if lesson is None:
+            continue
+        days = (due[1] - today).days
+        chips.append({
+            "lesson": lesson,
+            "curriculum": placement.curriculum,
+            "due": due[1],
+            "days": days,
+            "when": "due today" if days == 0 else (
+                "due tomorrow" if days == 1 else f"due in {days} days"),
+        })
+    chips.sort(key=lambda c: c["days"])
 
     # Server-rendered agenda: today's plan plus the coming week, grouped by day.
     week = []
@@ -620,17 +655,32 @@ def portal_calendar(request, token):
         "token": token,
         "week": week,
         "today": today,
+        "chips": chips,
     })
 
 
 @require_GET
 def portal_calendar_feed(request, token):
-    """FullCalendar JSON feed for ONE child — token-authed, read-only, no edit URLs."""
+    """FullCalendar JSON feed for ONE child — token-authed, read-only. Mission
+    due-date links go to the kid's own subject page (token-carrying), never a
+    parent URL."""
+    from datetime import timedelta
+
     student = _resolve_student(token)
     window = calendar_feeds.parse_window(request)
-    events = _visible_calendar_events(student).select_related("activity")
+    events = list(_visible_calendar_events(student).select_related("activity"))
     colors = {student.pk: _student_color(student)}
     payload = calendar_feeds.event_layer(events, window, colors)
+
+    today = timezone.localdate()
+    pace_window = (today, today + timedelta(days=56))
+    breaks = calendar_feeds.break_dates(events, pace_window, child=student)
+    payload += calendar_feeds.mission_layer(
+        _paced_placements(student), window, colors, breaks=breaks,
+        url_for=lambda p, l: reverse(
+            "portal:portal_subject",
+            kwargs={"token": token, "curriculum_id": p.curriculum_id}),
+    )
     return JsonResponse(payload, safe=False)
 
 

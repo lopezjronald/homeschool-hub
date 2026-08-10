@@ -1238,3 +1238,65 @@ class SaxonPreAlgebraBlueprintTests(TestCase):
         self.assertEqual((first.chapter.number, first.order), (8, 1))
         self.assertTrue(Lesson.objects.filter(
             chapter__curriculum=self.cur, chapter__number=11, number=101).exists())
+
+
+class PacingTests(SimpleTestCase):
+    """project_due_dates is pure — inject `today`, assert exact dates."""
+
+    def test_exact_dates_with_iso_week_reset(self):
+        from datetime import date
+        from .pacing import project_due_dates
+
+        # 10 remaining, pace 3, starting Wed Aug 12 2026: 3 slots fill Wed-Fri,
+        # the week counter resets each ISO week, weekends never used.
+        out = project_due_dates(list(range(1, 11)), set(), 3, date(2026, 8, 12))
+        self.assertEqual(out, [
+            (1, date(2026, 8, 12)), (2, date(2026, 8, 13)), (3, date(2026, 8, 14)),
+            (4, date(2026, 8, 17)), (5, date(2026, 8, 18)), (6, date(2026, 8, 19)),
+            (7, date(2026, 8, 24)), (8, date(2026, 8, 25)), (9, date(2026, 8, 26)),
+            (10, date(2026, 8, 31)),
+        ])
+
+    def test_break_day_shifts_the_assignment_but_honors_the_week_cap(self):
+        from datetime import date
+        from .pacing import project_due_dates
+
+        out = project_due_dates(
+            list(range(1, 7)), set(), 3, date(2026, 8, 12),
+            skip_dates={date(2026, 8, 17)},                   # Monday off
+        )
+        self.assertEqual(out[3:], [
+            (4, date(2026, 8, 18)), (5, date(2026, 8, 19)), (6, date(2026, 8, 20)),
+        ])
+
+    def test_resolved_lessons_drop_out(self):
+        from datetime import date
+        from .pacing import project_due_dates
+
+        out = project_due_dates([1, 2, 3, 4], {1, 3}, 2, date(2026, 8, 10))
+        self.assertEqual([lid for lid, _ in out], [2, 4])      # only unresolved
+
+    def test_no_pace_or_nothing_left_means_no_projection(self):
+        from datetime import date
+        from .pacing import project_due_dates
+
+        self.assertEqual(project_due_dates([1, 2], set(), None, date(2026, 8, 10)), [])
+        self.assertEqual(project_due_dates([1, 2], set(), 0, date(2026, 8, 10)), [])
+        self.assertEqual(project_due_dates([1, 2], {1, 2}, 3, date(2026, 8, 10)), [])
+
+    def test_horizon_caps_a_huge_course(self):
+        from datetime import date
+        from .pacing import project_due_dates
+
+        out = project_due_dates(list(range(1, 61)), set(), 5, date(2026, 8, 10))
+        self.assertLessEqual(len(out), 45)                     # ~8 weeks x 5, never 60
+        self.assertGreaterEqual(len(out), 35)
+        last_date = out[-1][1]
+        self.assertLessEqual((last_date - date(2026, 8, 10)).days, 56)
+
+    def test_projection_starts_today_not_tomorrow(self):
+        from datetime import date
+        from .pacing import project_due_dates
+
+        out = project_due_dates([1], set(), 3, date(2026, 8, 12))  # a Wednesday
+        self.assertEqual(out, [(1, date(2026, 8, 12))])

@@ -109,6 +109,56 @@ def event_layer(events, window, colors, *, url_for=None):
     return out
 
 
+def mission_layer(placements, window, colors, *, today=None, breaks=frozenset(),
+                  url_for=None, label_for=None):
+    """Projected "due" events for paced placements (weekly_pace set).
+
+    Never stored: each call re-projects from ``resolved_lesson_ids()``, so
+    completing a lesson moves every remaining due date on the next fetch.
+    Missions render OUTLINED (white fill, child-colored border/text — the CSS
+    keys on layer=missions) so a projection never reads as a hard appointment.
+    """
+    from curricula.models import Lesson
+    from curricula.pacing import project_due_dates
+
+    today = today or timezone.localdate()
+    start, end = window
+    out = []
+    for placement in placements:
+        if not placement.weekly_pace or not placement.is_active:
+            continue
+        ordered, resolved = placement.resolved_lesson_ids()
+        projected = [
+            (lid, due) for lid, due in project_due_dates(
+                ordered, resolved, placement.weekly_pace, today, skip_dates=breaks)
+            if start <= due <= end
+        ]
+        if not projected:
+            continue
+        lessons = Lesson.objects.in_bulk([lid for lid, _ in projected])
+        color = colors.get(placement.child_id, FAMILY_COLOR)
+        for lid, due in projected:
+            lesson = lessons.get(lid)
+            if lesson is None:
+                continue
+            label = label_for(placement, lesson) if label_for else (lesson.title or lesson.code)
+            out.append({
+                "id": f"mission-{placement.pk}-{lid}",
+                "title": f"🎯 {label}",
+                "start": due.isoformat(),
+                "allDay": True,
+                "color": color,
+                "textColor": color,
+                "url": url_for(placement, lesson) if url_for else "",
+                "extendedProps": {
+                    "layer": "missions",
+                    "child_id": placement.child_id,
+                    "curriculum_id": placement.curriculum_id,
+                },
+            })
+    return out
+
+
 def break_dates(events, window, child=None):
     """All break/no-school dates in `window` that apply to `child`.
 

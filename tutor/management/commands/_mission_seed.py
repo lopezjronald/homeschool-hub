@@ -136,8 +136,12 @@ def setup_course(child, blueprint):
         },
     )
     apply_blueprint(curriculum, blueprint)
+    # New placements default to 3 missions/week so the family calendar projects
+    # due dates immediately; the parent tunes (or clears) it from the calendar's
+    # Pacing panel and re-seeding never overwrites their choice.
     CurriculumPlacement.objects.get_or_create(
-        child=child, curriculum=curriculum, defaults={"is_active": True})
+        child=child, curriculum=curriculum,
+        defaults={"is_active": True, "weekly_pace": 3})
     return curriculum
 
 

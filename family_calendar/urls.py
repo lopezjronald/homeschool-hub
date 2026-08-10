@@ -11,4 +11,5 @@ urlpatterns = [
     path("<int:pk>/edit/", views.event_update, name="event_update"),
     path("<int:pk>/delete/", views.event_delete, name="event_delete"),
     path("<int:pk>/skip/", views.occurrence_skip, name="occurrence_skip"),
+    path("pace/<int:placement_pk>/", views.set_pace, name="set_pace"),
 ]

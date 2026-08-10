@@ -19,9 +19,11 @@ from django.db import transaction
 from django.urls import NoReverseMatch, reverse
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
-from django.views.decorators.http import require_POST
+from django.views.decorators.http import require_GET, require_POST
 
 from activities.models import ExternalActivity
+from family_calendar import feeds as calendar_feeds
+from family_calendar.models import CalendarEvent
 from lingua import comprehension as lingua_comprehension
 from lingua import services as lingua_services
 from lingua import storage as lingua_storage
@@ -565,6 +567,73 @@ def _visible_activities(student):
     )
 
 
+def _visible_calendar_events(student):
+    """Calendar events this child may see: theirs + whole-family. Never a
+    sibling's — same shape as _visible_activities, including the null-family
+    fallback that pins whole-family events to the owning parent."""
+    qs = CalendarEvent.objects.all()
+    if student.family_id:
+        return qs.filter(Q(child=student) | Q(child__isnull=True, family=student.family))
+    return qs.filter(
+        Q(child=student)
+        | Q(child__isnull=True, family__isnull=True, parent=student.parent)
+    )
+
+
+def _student_color(student):
+    """The child's event color — same palette position as the parent calendar."""
+    from students.models import Student
+
+    if student.family_id:
+        siblings = list(Student.objects.filter(family=student.family))
+    else:
+        siblings = list(Student.objects.filter(parent=student.parent, family__isnull=True))
+    return calendar_feeds.child_color_map(siblings).get(
+        student.pk, calendar_feeds.CHILD_PALETTE[0])
+
+
+def portal_calendar(request, token):
+    """The kid's read-only calendar: a Today/This-week agenda strip up top, the
+    full FullCalendar grid below."""
+    from datetime import timedelta
+
+    student = _resolve_student(token)
+    today = timezone.localdate()
+    events = list(_visible_calendar_events(student).select_related("activity"))
+
+    # Server-rendered agenda: today's plan plus the coming week, grouped by day.
+    week = []
+    for offset in range(7):
+        day = today + timedelta(days=offset)
+        items = []
+        for event in events:
+            if event.event_type == CalendarEvent.TYPE_BREAK:
+                continue
+            if day in event.occurrences(day, day):
+                items.append(event)
+        items.sort(key=lambda e: (e.start_time is None, e.start_time or timezone.datetime.min.time()))
+        if items:
+            week.append({"day": day, "is_today": offset == 0, "items": items})
+
+    return render(request, "portal/portal_calendar.html", {
+        "student": student,
+        "token": token,
+        "week": week,
+        "today": today,
+    })
+
+
+@require_GET
+def portal_calendar_feed(request, token):
+    """FullCalendar JSON feed for ONE child — token-authed, read-only, no edit URLs."""
+    student = _resolve_student(token)
+    window = calendar_feeds.parse_window(request)
+    events = _visible_calendar_events(student).select_related("activity")
+    colors = {student.pk: _student_color(student)}
+    payload = calendar_feeds.event_layer(events, window, colors)
+    return JsonResponse(payload, safe=False)
+
+
 def _set_is_done(qs):
     """True if this child has already turned in the set."""
     return bool(getattr(qs, "my_response", None) and qs.my_response.is_submitted)
@@ -634,11 +703,15 @@ def _subject_cards(student):
 def portal_home(request, token):
     """The kid's 'Today' surface: one calm card per subject, one next step each."""
     student = _resolve_student(token)
+    next_up = calendar_feeds.upcoming_occurrences(
+        _visible_calendar_events(student), limit=1, days=7)
     return render(request, "portal/portal_home.html", {
         "student": student,
         "token": token,
         "subjects": _subject_cards(student),
         "activities": _visible_activities(student),
+        "calendar_next": next_up[0] if next_up else None,
+        "today": timezone.localdate(),
     })
 
 

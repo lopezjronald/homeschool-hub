@@ -6,6 +6,8 @@ app_name = "portal"
 
 urlpatterns = [
     path("<str:token>/", views.portal_home, name="portal_home"),
+    path("<str:token>/calendar/", views.portal_calendar, name="portal_calendar"),
+    path("<str:token>/calendar/feed/", views.portal_calendar_feed, name="portal_calendar_feed"),
     # Lingua (Spanish) kid surface — tokenless, resolves Student→Learner in this host
     # layer and delegates the reader to lingua.views.render_reader (keeps lingua core
     # free of host imports, D-04).

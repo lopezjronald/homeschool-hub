@@ -277,3 +277,78 @@ class CrudTests(TestCase):
         self.assertContains(resp, "Family Calendar")
         self.assertContains(resp, "Tumbling")
         self.assertContains(resp, reverse("family_calendar:calendar"))
+
+
+class PortalCalendarTests(TestCase):
+    """The kid's calendar: token-scoped, read-only, sibling-tight."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from datetime import time, timedelta
+        from django.utils import timezone
+        from portal.tokens import make_portal_token
+
+        cls.parent = User.objects.create_user(username="pc", email="pc@e.com", password="pw")
+        cls.family = Family.objects.create(name="Portal Cal Fam")
+        FamilyMembership.objects.create(user=cls.parent, family=cls.family, role="parent")
+        cls.violet = Student.objects.create(
+            parent=cls.parent, first_name="Violet", grade_level="G03", family=cls.family)
+        cls.kaylin = Student.objects.create(
+            parent=cls.parent, first_name="Kaylin", grade_level="G07", family=cls.family)
+        cls.token = make_portal_token(cls.violet)
+
+        cls.today = timezone.localdate()
+        cls.hers = CalendarEvent.objects.create(
+            parent=cls.parent, family=cls.family, child=cls.violet,
+            title="Jiu-jitsu", event_type=CalendarEvent.TYPE_ACTIVITY,
+            date=cls.today, start_time=time(16, 30),
+        )
+        cls.siblings = CalendarEvent.objects.create(
+            parent=cls.parent, family=cls.family, child=cls.kaylin,
+            title="Volleyball", event_type=CalendarEvent.TYPE_ACTIVITY,
+            date=cls.today,
+        )
+        cls.family_wide = CalendarEvent.objects.create(
+            parent=cls.parent, family=cls.family, child=None,
+            title="Zoo trip", event_type=CalendarEvent.TYPE_OTHER,
+            date=cls.today + timedelta(days=3),
+        )
+
+    def _url(self, name):
+        return reverse(f"portal:{name}", kwargs={"token": self.token})
+
+    def test_page_agenda_shows_hers_and_family_but_never_siblings(self):
+        resp = self.client.get(self._url("portal_calendar"))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "Jiu-jitsu")
+        self.assertContains(resp, "4:30 PM")                 # timed agenda line
+        self.assertContains(resp, "Zoo trip")                # family-wide included
+        self.assertNotContains(resp, "Volleyball")           # sibling's event NEVER
+        self.assertContains(resp, "⭐ Today")
+
+    def test_feed_is_token_scoped_and_carries_no_edit_urls(self):
+        resp = self.client.get(self._url("portal_calendar_feed"),
+                               {"start": self.today.isoformat(),
+                                "end": (self.today.replace(year=self.today.year + 1)).isoformat()})
+        self.assertEqual(resp.status_code, 200)
+        payload = resp.json()
+        titles = [e["title"] for e in payload]
+        self.assertTrue(any("Jiu-jitsu" in t for t in titles))
+        self.assertTrue(any("Zoo trip" in t for t in titles))
+        self.assertFalse(any("Volleyball" in t for t in titles))
+        self.assertFalse(any(e.get("url") for e in payload))  # read-only: no links out
+
+    def test_feed_and_page_reject_posts(self):
+        self.assertEqual(self.client.post(self._url("portal_calendar_feed")).status_code, 405)
+
+    def test_garbage_token_404s(self):
+        for name in ("portal_calendar", "portal_calendar_feed"):
+            resp = self.client.get(
+                reverse(f"portal:{name}", kwargs={"token": "not-a-token"}))
+            self.assertEqual(resp.status_code, 404)
+
+    def test_portal_home_shows_the_my_week_card(self):
+        resp = self.client.get(reverse("portal:portal_home", kwargs={"token": self.token}))
+        self.assertContains(resp, "My Week")
+        self.assertContains(resp, self._url("portal_calendar"))
+        self.assertContains(resp, "Jiu-jitsu")               # today's event previewed

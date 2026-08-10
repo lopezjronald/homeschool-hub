@@ -74,6 +74,24 @@
     </div>
   {% endif %}
 
+  <div class="portal-subjects mt-3">
+    <a href="{% url 'portal:portal_calendar' token=token %}" class="portal-subject-card">
+      <div class="portal-subject-emoji">📅</div>
+      <div class="portal-subject-body">
+        <div class="portal-subject-name">My Week</div>
+        {% if calendar_next %}
+          <div class="portal-next-line">
+            <span class="portal-next-label">{% if calendar_next.0 == today %}Today{% else %}{{ calendar_next.0|date:"D" }}{% endif %}</span>
+            {{ calendar_next.1.emoji }} {{ calendar_next.1.title }}{% if calendar_next.1.start_time %} at {{ calendar_next.1.start_time|time:"g:i A" }}{% endif %}
+          </div>
+        {% else %}
+          <div class="portal-next-line">See what's coming up 🗓️</div>
+        {% endif %}
+      </div>
+      <div class="portal-subject-go">Open ➜</div>
+    </a>
+  </div>
+
   {% if activities %}
     <h2 class="portal-section-title mt-4">🎸 My activities</h2>
     <div class="row row-cols-2 row-cols-md-3 g-3 mb-4">

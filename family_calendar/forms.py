@@ -1,10 +1,22 @@
 from django import forms
 
-from activities.forms import _child_queryset
 from activities.models import ExternalActivity
 from core.permissions import editable_queryset, scoped_queryset, user_can_edit
+from students.models import Student
 
 from .models import CalendarEvent
+
+
+def _family_child_queryset(user, family):
+    """Children pickable for an event — scoped to the SELECTED family, so a
+    multi-family editor can't file family B's event against family A's child
+    (the HH-140 bug class). Falls back to the editable set only when no family
+    is selected (legacy single-user accounts)."""
+    if user and family:
+        return scoped_queryset(Student.objects.all(), user, family)
+    if user and user_can_edit(user):
+        return editable_queryset(Student.objects.all(), user)
+    return Student.objects.none()
 
 WEEKDAY_CHOICES = [
     (0, "Mon"), (1, "Tue"), (2, "Wed"), (3, "Thu"), (4, "Fri"), (5, "Sat"), (6, "Sun"),
@@ -48,7 +60,7 @@ class CalendarEventForm(forms.ModelForm):
     def __init__(self, *args, user=None, family=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.user = user
-        child_qs = _child_queryset(user, family)
+        child_qs = _family_child_queryset(user, family)
         self.fields["child"].queryset = child_qs
         self.fields["child"].required = False
         self.fields["child"].empty_label = "Whole family"

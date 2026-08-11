@@ -91,7 +91,7 @@ def events_feed(request):
         # Validate against the scoped children — a foreign id is silently dropped,
         # so the filter can never widen access. Whole-family events always pass.
         valid_ids = {c.pk for c in children}
-        wanted = {int(v) for v in raw_children.split(",") if v.strip().isdigit()} & valid_ids
+        wanted = {int(v) for v in raw_children.split(",") if v.strip().isdecimal()} & valid_ids
         events = [e for e in all_events if e.child_id is None or e.child_id in wanted]
         shown_children = [c for c in children if c.pk in wanted]
 
@@ -160,7 +160,7 @@ def event_create(request):
         if preset:
             initial["date"] = preset
         child_id = request.GET.get("child", "")
-        if child_id.isdigit():
+        if child_id.isdecimal():
             initial["child"] = int(child_id)
         form = CalendarEventForm(user=request.user, family=family, initial=initial)
     return render(request, "family_calendar/event_form.html", {"form": form, "action": "Add"})
@@ -213,13 +213,17 @@ def event_delete(request, pk):
 @require_POST
 def set_pace(request, placement_pk):
     """Set (or clear) a placement's weekly pace from the calendar's Pacing panel."""
+    from core.permissions import viewable_queryset
     from curricula.models import Curriculum, CurriculumPlacement
 
     if not user_can_edit(request.user):
         raise Http404
+    # Gate on the curriculum AND the child (mirrors curriculum_set_placement) so a
+    # shared/global curriculum can never let an editor pace another family's kid.
     placement = get_object_or_404(
         CurriculumPlacement.objects.filter(
             curriculum__in=editable_queryset(Curriculum.objects.all(), request.user),
+            child__in=viewable_queryset(Student.objects.all(), request.user),
         ).select_related("child", "curriculum"),
         pk=placement_pk,
     )
@@ -229,7 +233,7 @@ def set_pace(request, placement_pk):
         placement.save(update_fields=["weekly_pace", "updated_at"])
         messages.info(request, f"{placement.curriculum.name}: due dates off for "
                                f"{placement.child.first_name}.")
-    elif raw.isdigit() and 1 <= int(raw) <= 10:
+    elif raw.isdecimal() and 1 <= int(raw) <= 10:
         placement.weekly_pace = int(raw)
         placement.save(update_fields=["weekly_pace", "updated_at"])
         messages.success(

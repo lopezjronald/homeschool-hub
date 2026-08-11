@@ -7,8 +7,9 @@
   font-weight: 600;
   font-size: 0.92rem;
   margin-bottom: 0;
-  cursor: pointer;
 }
+/* Only real controls invite a click — the "Whole family" key is just a key. */
+label.cal-legend-item { cursor: pointer; }
 .cal-dot {
   display: inline-block;
   width: 0.85rem;
@@ -31,14 +32,37 @@
   color: #4a3a17;
 }
 
-/* Weekday checkboxes render as a compact pill row, not a stacked list. */
-.cal-weekday-picker > div { display: flex; flex-wrap: wrap; gap: 0.35rem; }
-.cal-weekday-picker .form-check {
-  padding: 0;
-  margin: 0;
+/* Weekday checkboxes render as a tappable pill row, not a stacked list.
+   Django's CheckboxSelectMultiple emits <div><div><label><input>…</label></div></div>
+   (no form-check classes), so the pills are styled on the labels themselves. */
+.cal-weekday-picker > div { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.cal-weekday-picker > div > div { margin: 0; }
+.cal-weekday-picker label {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.3rem 0.85rem;
+  border: 1.5px solid rgba(10, 92, 99, 0.45);
+  border-radius: 999px;
+  font-weight: 700;
+  color: #0A5C63;
+  background: #fff;
+  cursor: pointer;
+  user-select: none;
 }
-.cal-weekday-picker .form-check-input { margin-right: 0.3rem; }
-.cal-weekday-picker .form-check-label { font-weight: 600; margin-right: 0.5rem; }
+.cal-weekday-picker input[type="checkbox"] {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+.cal-weekday-picker label:has(input:checked) {
+  background: #0A5C63;
+  border-color: #0A5C63;
+  color: #fff;
+}
+.cal-weekday-picker label:focus-within {
+  outline: 3px solid rgba(235, 168, 58, 0.6);
+  outline-offset: 1px;
+}
 
 /* FullCalendar accents on the Dawn Harbor palette. */
 #calendar { --fc-button-bg-color: #0A5C63; --fc-button-border-color: #0A5C63;
@@ -54,8 +78,23 @@
   border: 1.5px solid currentColor;
 }
 
-/* History ✓ (S4): quiet, past-tense. */
-#calendar .cal-layer-history { opacity: 0.75; }
+/* Timed "dot" events: neutral ink for the title — the colored dot carries the
+   child, so an appointment can't read as the wrong kid's teal (UI review 4). */
+#calendar .fc-daygrid-dot-event { color: #172130; }
+
+/* The List view wears the theme too (default FC gray dropped it, UI review 9). */
+#calendar .fc-list-day-cushion { background: #EFEAE0; }
+#calendar .fc-list-day-text, #calendar .fc-list-day-side-text { color: #152A45; font-weight: 700; }
+
+@media (max-width: 576px) {
+  /* Phone-first screen: the calendar itself must be visible without a full
+     flick of scrolling (UI review 3 + 5). */
+  .cal-hero { padding: 0.9rem 1.1rem; }
+  .cal-hero h1 { font-size: 1.35rem; margin-bottom: 0; }
+  .cal-hero .lead, .cal-lrm-alert .cal-lrm-sub { display: none; }
+  #calendar .fc-header-toolbar { flex-wrap: wrap; gap: 0.35rem; }
+  #calendar .fc-toolbar-title { font-size: 1.05rem; }
+}
 
 @media print {
   /* The month grid IS the wall printout: strip everything else. */

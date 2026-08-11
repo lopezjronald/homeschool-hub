@@ -13,16 +13,22 @@
   var phone = window.matchMedia("(max-width: 576px)").matches;
 
   var calendar = new FullCalendar.Calendar(el, {
-    initialView: phone ? "listWeek" : "dayGridMonth",
+    // The agenda strip above already covers this week, so even on phones the
+    // widget's job is the future: month view, not a duplicate week list.
+    initialView: "dayGridMonth",
     timeZone: "local",
     headerToolbar: {
       left: "prev,next today",
       center: "title",
-      right: "dayGridMonth,listWeek",
+      right: "dayGridMonth,listWeek,timeGridDay",
     },
-    buttonText: { today: "Today", dayGridMonth: "Month", listWeek: "List" },
+    buttonText: { today: "Today", dayGridMonth: "Month", listWeek: "List", timeGridDay: "Day" },
     height: "auto",
-    dayMaxEventRows: 3,
+    dayMaxEventRows: phone ? 2 : 3,
+    eventOrder: "prio,start,title",
+    scrollTime: "08:00:00",
+    slotMinTime: "06:00:00",
+    slotMaxTime: "21:00:00",
     events: function (info, success, failure) {
       var params = new URLSearchParams({ start: info.startStr, end: info.endStr });
       fetch(feedUrl + "?" + params.toString(), { credentials: "same-origin" })

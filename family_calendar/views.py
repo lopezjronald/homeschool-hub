@@ -60,6 +60,17 @@ def calendar_page(request):
             if lrm is None or occ < lrm["date"]:
                 lrm = {"event": event, "date": occ}
 
+    # Activities that exist but have no calendar time yet — an ExternalActivity
+    # carries no weekday/time (only a reminder cadence), so it can't be placed
+    # automatically; a one-tap "schedule it" turns the gap into a prefilled form.
+    from activities.models import ExternalActivity
+
+    unscheduled = list(
+        scoped_queryset(ExternalActivity.objects.all(), request.user, family)
+        .filter(is_active=True, calendar_events__isnull=True)
+        .select_related("student")
+    ) if can_edit_family_or_global(request.user, family) else []
+
     return render(request, "family_calendar/calendar.html", {
         "children": children,
         "family_color": feeds.FAMILY_COLOR,
@@ -67,6 +78,7 @@ def calendar_page(request):
         "placements": placements,
         "lrm": lrm,
         "today": today,
+        "unscheduled": unscheduled,
     })
 
 
@@ -81,7 +93,8 @@ def events_feed(request):
     children = list(_scoped_children(request, family))
     colors = feeds.child_color_map(children)
     layers = set(
-        (request.GET.get("layers") or "events,missions,history,birthdays").split(","))
+        (request.GET.get("layers")
+         or "events,missions,history,birthdays,spanish").split(","))
 
     all_events = list(_scoped_events(request, family).select_related("activity"))
     raw_children = request.GET.get("children", "")
@@ -136,6 +149,9 @@ def events_feed(request):
     if "birthdays" in layers:
         # Birthdays ignore the child filter — nobody's birthday gets hidden.
         payload += feeds.birthday_layer(children, window)
+    if "spanish" in layers:
+        # One family chip per day — the per-child pair drowned the month grid.
+        payload += feeds.spanish_layer(shown_children, window, combined=True)
     return JsonResponse(payload, safe=False)
 
 
@@ -154,7 +170,12 @@ def event_create(request):
             messages.success(request, "Event added to the calendar.")
             return redirect("family_calendar:calendar")
     else:
-        # A click on an empty calendar day lands here with ?date=YYYY-MM-DD.
+        # A click on an empty calendar day lands here with ?date=YYYY-MM-DD;
+        # "schedule it" on an activity lands here with ?activity=N prefilled.
+        from django.utils import timezone
+
+        from activities.models import ExternalActivity
+
         initial = {}
         preset = feeds.safe_parse_date(request.GET.get("date"))
         if preset:
@@ -162,6 +183,24 @@ def event_create(request):
         child_id = request.GET.get("child", "")
         if child_id.isdecimal():
             initial["child"] = int(child_id)
+        activity_id = request.GET.get("activity", "")
+        if activity_id.isdecimal():
+            activity = editable_queryset(
+                ExternalActivity.objects.all(), request.user,
+            ).filter(pk=int(activity_id)).first()
+            if activity:
+                initial.setdefault("date", timezone.localdate())
+                initial.update({
+                    "activity": activity.pk,
+                    "title": activity.title,
+                    "event_type": CalendarEvent.TYPE_ACTIVITY,
+                    "repeats_weekly": True,
+                    # Pre-check the chosen date's weekday so "repeats weekly"
+                    # starts from an obviously-right place.
+                    "repeat_weekdays": [initial["date"].weekday()],
+                })
+                if activity.student_id:
+                    initial["child"] = activity.student_id
         form = CalendarEventForm(user=request.user, family=family, initial=initial)
     return render(request, "family_calendar/event_form.html", {"form": form, "action": "Add"})
 

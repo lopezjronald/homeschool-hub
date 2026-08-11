@@ -1268,7 +1268,13 @@ button.portal-subject-card {
                    --fc-today-bg-color: rgba(235, 168, 58, 0.14); }
 #portal-calendar .fc-event { border-radius: 6px; }
 #portal-calendar .cal-layer-missions { background: #fff !important; border: 1.5px solid currentColor; }
-#portal-calendar .cal-layer-history { opacity: 0.75; }
+#portal-calendar .fc-daygrid-dot-event { color: #24303a; }
+#portal-calendar .fc-list-day-cushion { background: #EFEAE0; }
+#portal-calendar .fc-list-day-text, #portal-calendar .fc-list-day-side-text { color: #152A45; font-weight: 700; }
+@media (max-width: 576px) {
+  #portal-calendar .fc-header-toolbar { flex-wrap: wrap; gap: 0.35rem; }
+  #portal-calendar .fc-toolbar-title { font-size: 1.05rem; }
+}
 
 /* ============================================================
    Mission-course journals — themed skins (HH-164)

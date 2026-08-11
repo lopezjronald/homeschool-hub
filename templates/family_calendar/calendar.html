@@ -9,7 +9,7 @@
 {% block content %}
 <div class="container py-4">
 
-  <div class="ss-hero mb-3 d-print-none">
+  <div class="ss-hero cal-hero mb-3 d-print-none">
     <div class="ss-kicker">Family Calendar</div>
     <h1>The week at a glance</h1>
     <p class="lead mb-0">Practices, appointments, school meetings — everyone's schedule in one place.</p>
@@ -43,12 +43,20 @@
       </span>
       <span class="cal-legend-sep" aria-hidden="true"></span>
       <label class="cal-legend-item">
+        <input type="checkbox" class="form-check-input cal-layer-toggle" value="missions" checked>
+        🎯 Due dates
+      </label>
+      <label class="cal-legend-item">
         <input type="checkbox" class="form-check-input cal-layer-toggle" value="history" checked>
         ✓ Done days
       </label>
       <label class="cal-legend-item">
         <input type="checkbox" class="form-check-input cal-layer-toggle" value="birthdays" checked>
         🎂 Birthdays
+      </label>
+      <label class="cal-legend-item">
+        <input type="checkbox" class="form-check-input cal-layer-toggle" value="spanish" checked>
+        📖 Español
       </label>
     </div>
     <div class="ms-auto d-flex gap-2">
@@ -58,6 +66,18 @@
       <button type="button" class="btn btn-outline-secondary" onclick="window.print()" title="Print this month">🖨️ Print</button>
     </div>
   </div>
+
+  {% if unscheduled %}
+    <div class="cal-unscheduled d-flex flex-wrap align-items-center gap-2 mb-3 d-print-none">
+      <span class="text-muted small">Not on the calendar yet:</span>
+      {% for activity in unscheduled %}
+        <a href="{% url 'family_calendar:event_create' %}?activity={{ activity.pk }}"
+           class="btn btn-sm btn-outline-secondary">
+          {{ activity.emoji }} {{ activity.title }} — schedule it
+        </a>
+      {% endfor %}
+    </div>
+  {% endif %}
 
   <div id="calendar"
        data-feed-url="{% url 'family_calendar:feed' %}"

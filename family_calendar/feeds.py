@@ -80,6 +80,7 @@ def event_json(event, occ_date, *, color, url=""):
             "event_type": event.event_type,
             "child_id": event.child_id,
             "location": event.location,
+            "prio": PRIO["events"],
         },
     }
     if end:
@@ -154,17 +155,76 @@ def mission_layer(placements, window, colors, *, today=None, breaks=frozenset(),
                     "layer": "missions",
                     "child_id": placement.child_id,
                     "curriculum_id": placement.curriculum_id,
+                    "prio": PRIO["missions"],
                 },
             })
     return out
 
 
-HISTORY_BG = "#E4F0E9"
-HISTORY_TEXT = "#1E5238"
+# AA at full opacity over the cream page (the old opacity-0.75 treatment
+# composited "done" chips just under 4.5:1 — UI review finding 7).
+HISTORY_BG = "#EAF2ED"
+HISTORY_TEXT = "#2A5A41"
 HISTORY_MAX_LOOKBACK_DAYS = 183
 
+SPANISH_BG = "#FDF3E3"
+SPANISH_TEXT = "#8A5B12"  # amber-700, AA on the cream tint
 
-def history_layer(children, window, *, today=None, muted=False):
+# Within-day sort priority (FullCalendar eventOrder reads it from extendedProps):
+# real appointments never lose their row to daily-habit chips under
+# dayMaxEventRows (UI review finding 1).
+PRIO = {"events": 0, "birthdays": 1, "missions": 2, "spanish": 3, "history": 4}
+
+
+def spanish_layer(children, window, *, today=None, url_for=None, combined=False):
+    """A quiet daily 📖 Español chip on every weekday — Spanish isn't a placed
+    curriculum (it's the lingua module, practiced daily), so it gets its own
+    forward-looking layer instead of a pace. Past days already show in history
+    via the lingua activity provider; this layer starts TODAY and looks forward.
+
+    ``combined=True`` (the parent view) emits ONE family chip per day instead of
+    one per child — two identical daily chips drowned the month grid.
+    """
+    today = today or timezone.localdate()
+    start, end = window
+    start = max(start, today)
+    if not children:
+        return []
+    out = []
+    d = start
+    while d <= end:
+        if d.weekday() < 5:
+            if combined:
+                out.append({
+                    "id": f"esp-fam-{d.isoformat()}",
+                    "title": "📖 Español",
+                    "start": d.isoformat(),
+                    "allDay": True,
+                    "color": SPANISH_BG,
+                    "textColor": SPANISH_TEXT,
+                    "extendedProps": {"layer": "spanish", "child_id": None,
+                                      "prio": PRIO["spanish"]},
+                })
+            else:
+                for child in children:
+                    event = {
+                        "id": f"esp-{child.pk}-{d.isoformat()}",
+                        "title": "📖 Español",
+                        "start": d.isoformat(),
+                        "allDay": True,
+                        "color": SPANISH_BG,
+                        "textColor": SPANISH_TEXT,
+                        "extendedProps": {"layer": "spanish", "child_id": child.pk,
+                                          "prio": PRIO["spanish"]},
+                    }
+                    if url_for:
+                        event["url"] = url_for(child)
+                    out.append(event)
+        d += timedelta(days=1)
+    return out
+
+
+def history_layer(children, window, *, today=None, named=True):
     """One quiet ✓ event per child per past day they did work — the calendar
     doubles as an attendance/record view. Reads core.activity.aggregate_activity
     (the same union the streak and hours report use) and never looks forward or
@@ -192,14 +252,20 @@ def history_layer(children, window, *, today=None, muted=False):
             if not (start <= day <= end):
                 continue
             labels = ", ".join(sorted(subjects)[:3])
+            # On the kid's own calendar her name is redundant — just "✓ subjects".
+            if named:
+                title = f"✓ {child.first_name}" + (f" · {labels}" if labels else "")
+            else:
+                title = f"✓ {labels}" if labels else "✓ done"
             out.append({
                 "id": f"hist-{child.pk}-{day.isoformat()}",
-                "title": f"✓ {child.first_name}" + (f" · {labels}" if labels else ""),
+                "title": title,
                 "start": day.isoformat(),
                 "allDay": True,
                 "color": HISTORY_BG,
                 "textColor": HISTORY_TEXT,
-                "extendedProps": {"layer": "history", "child_id": child.pk},
+                "extendedProps": {"layer": "history", "child_id": child.pk,
+                                  "prio": PRIO["history"]},
             })
     return out
 
@@ -226,7 +292,8 @@ def birthday_layer(children, window):
                     "start": bday.isoformat(),
                     "allDay": True,
                     "color": "#8A5B12",                        # amber-700, AA on white
-                    "extendedProps": {"layer": "birthdays", "child_id": child.pk},
+                    "extendedProps": {"layer": "birthdays", "child_id": child.pk,
+                                      "prio": PRIO["birthdays"]},
                 })
     return out
 

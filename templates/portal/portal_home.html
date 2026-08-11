@@ -79,7 +79,12 @@
       <div class="portal-subject-emoji">📅</div>
       <div class="portal-subject-body">
         <div class="portal-subject-name">My Week</div>
-        {% if calendar_next %}
+        {% if mission_today %}
+          <div class="portal-next-line">
+            <span class="portal-next-label">Today</span>
+            🎯 {{ mission_today.title|default:mission_today.code }} — due today!
+          </div>
+        {% elif calendar_next %}
           <div class="portal-next-line">
             <span class="portal-next-label">{% if calendar_next.0 == today %}Today{% else %}{{ calendar_next.0|date:"D" }}{% endif %}</span>
             {{ calendar_next.1.emoji }} {{ calendar_next.1.title }}{% if calendar_next.1.start_time %} at {{ calendar_next.1.start_time|time:"g:i A" }}{% endif %}

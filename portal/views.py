@@ -637,6 +637,9 @@ def portal_calendar(request, token):
     chips.sort(key=lambda c: c["days"])
 
     # Server-rendered agenda: today's plan plus the coming week, grouped by day.
+    # Weekdays include the daily 📖 Español habit so the day's plan is complete.
+    from types import SimpleNamespace
+
     week = []
     for offset in range(7):
         day = today + timedelta(days=offset)
@@ -647,6 +650,9 @@ def portal_calendar(request, token):
             if day in event.occurrences(day, day):
                 items.append(event)
         items.sort(key=lambda e: (e.start_time is None, e.start_time or timezone.datetime.min.time()))
+        if day.weekday() < 5:
+            items.append(SimpleNamespace(
+                emoji="📖", title="Español", start_time=None, location=""))
         if items:
             week.append({"day": day, "is_today": offset == 0, "items": items})
 
@@ -681,15 +687,20 @@ def portal_calendar_feed(request, token):
             "portal:portal_subject",
             kwargs={"token": token, "curriculum_id": p.curriculum_id}),
     )
-    # Her own ✓ history (a garden of done days) + the whole family's birthdays.
+    # Her own ✓ history (a garden of done days) + the whole family's birthdays
+    # + the daily 📖 Español habit linking straight into her Camino.
     from students.models import Student
 
-    payload += calendar_feeds.history_layer([student], window)
+    payload += calendar_feeds.history_layer([student], window, named=False)
     if student.family_id:
         family_kids = Student.objects.filter(family=student.family)
     else:
         family_kids = Student.objects.filter(parent=student.parent, family__isnull=True)
     payload += calendar_feeds.birthday_layer(family_kids, window)
+    payload += calendar_feeds.spanish_layer(
+        [student], window,
+        url_for=lambda c: reverse("portal:lingua_plan", kwargs={"token": token}),
+    )
     return JsonResponse(payload, safe=False)
 
 
@@ -761,16 +772,30 @@ def _subject_cards(student):
 
 def portal_home(request, token):
     """The kid's 'Today' surface: one calm card per subject, one next step each."""
+    from curricula.models import Lesson
+    from curricula.pacing import next_due
+
     student = _resolve_student(token)
+    today = timezone.localdate()
     next_up = calendar_feeds.upcoming_occurrences(
         _visible_calendar_events(student), limit=1, days=7)
+    # A mission due TODAY beats next week's practice on the My Week card.
+    mission_today = None
+    for placement in _paced_placements(student):
+        due = next_due(placement, today)
+        if due and due[1] == today:
+            lesson = Lesson.objects.filter(pk=due[0]).first()
+            if lesson:
+                mission_today = lesson
+                break
     return render(request, "portal/portal_home.html", {
         "student": student,
         "token": token,
         "subjects": _subject_cards(student),
         "activities": _visible_activities(student),
         "calendar_next": next_up[0] if next_up else None,
-        "today": timezone.localdate(),
+        "mission_today": mission_today,
+        "today": today,
     })
 
 

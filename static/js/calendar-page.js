@@ -21,7 +21,7 @@
   }
 
   function checkedLayers() {
-    var layers = ["events", "missions"];
+    var layers = ["events"];
     Array.prototype.slice
       .call(document.querySelectorAll(".cal-layer-toggle:checked"))
       .forEach(function (box) { layers.push(box.value); });
@@ -36,11 +36,17 @@
     headerToolbar: {
       left: "prev,next today",
       center: "title",
-      right: "dayGridMonth,listWeek",
+      right: "dayGridMonth,listWeek,timeGridDay",
     },
-    buttonText: { today: "Today", dayGridMonth: "Month", listWeek: "List" },
+    buttonText: { today: "Today", dayGridMonth: "Month", listWeek: "List", timeGridDay: "Day" },
     height: "auto",
     dayMaxEventRows: 4,
+    // Real appointments outrank daily-habit chips when a day overflows.
+    eventOrder: "prio,start,title",
+    // The day view is for the schedule, not the 6am-midnight void.
+    scrollTime: "08:00:00",
+    slotMinTime: "06:00:00",
+    slotMaxTime: "21:00:00",
     events: function (info, success, failure) {
       var params = new URLSearchParams({ start: info.startStr, end: info.endStr });
       var ids = checkedChildIds();

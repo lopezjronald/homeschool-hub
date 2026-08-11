@@ -161,6 +161,23 @@ class FeedTests(TestCase):
         resp = self._feed()
         self.assertEqual(resp.status_code, 302)                  # → login
 
+    def test_spanish_is_one_family_chip_per_day_not_one_per_child(self):
+        # Two kids: the parent view must NOT get a pair of identical daily chips
+        # (they drowned the month grid — UI review finding 1).
+        from datetime import date, timedelta
+        from django.utils import timezone
+
+        today = timezone.localdate()
+        self.client.login(username="fa", password="pw")
+        payload = self._feed(start=today.isoformat(),
+                             end=(today + timedelta(days=6)).isoformat()).json()
+        spanish = [e for e in payload if e["extendedProps"]["layer"] == "spanish"]
+        weekdays = sum(1 for i in range(7) if (today + timedelta(days=i)).weekday() < 5)
+        self.assertEqual(len(spanish), weekdays)              # one per day, not ×2
+        self.assertTrue(all(e["title"] == "📖 Español" for e in spanish))
+        # Every layer chip carries a sort priority so real events win the row.
+        self.assertTrue(all("prio" in e["extendedProps"] for e in spanish))
+
     def test_all_day_vs_timed_shapes(self):
         from datetime import time
         CalendarEvent.objects.create(
@@ -336,7 +353,14 @@ class PortalCalendarTests(TestCase):
         self.assertTrue(any("Jiu-jitsu" in t for t in titles))
         self.assertTrue(any("Zoo trip" in t for t in titles))
         self.assertFalse(any("Volleyball" in t for t in titles))
-        self.assertFalse(any(e.get("url") for e in payload))  # read-only: no links out
+        # Read-only: any url must stay inside HER portal (token-authed) — never a
+        # parent-app edit or students path.
+        for e in payload:
+            url = e.get("url", "")
+            if url:
+                self.assertIn(self.token, url)
+                self.assertNotIn("/calendar/", url.replace(f"/portal/{self.token}/calendar/", ""))
+                self.assertNotIn("/students/", url)
 
     def test_feed_and_page_reject_posts(self):
         self.assertEqual(self.client.post(self._url("portal_calendar_feed")).status_code, 405)
@@ -548,6 +572,68 @@ class MissionLayerTests(TestCase):
         page = self.client.get(reverse("family_calendar:calendar"))
         self.assertContains(page, "walk in with the record ready")
         self.assertContains(page, reverse("worklog:charter_report"))
+
+    def test_spanish_layer_daily_on_weekdays_and_toggleable(self):
+        from datetime import date, timedelta
+        from django.utils import timezone
+
+        today = timezone.localdate()
+        self.client.login(username="ml", password="pw")
+        window = {"start": today.isoformat(),
+                  "end": (today + timedelta(days=13)).isoformat()}
+        payload = self.client.get(reverse("family_calendar:feed"), window).json()
+        spanish = [e for e in payload if e["extendedProps"]["layer"] == "spanish"]
+        self.assertEqual(len(spanish), sum(
+            1 for i in range(14) if (today + timedelta(days=i)).weekday() < 5))
+        self.assertTrue(all("Español" in e["title"] for e in spanish))
+        self.assertTrue(all(
+            date.fromisoformat(e["start"]).weekday() < 5 for e in spanish))
+        # And the toggle removes it.
+        window["layers"] = "events,missions"
+        payload = self.client.get(reverse("family_calendar:feed"), window).json()
+        self.assertFalse([e for e in payload if e["extendedProps"]["layer"] == "spanish"])
+
+    def test_portal_spanish_links_into_her_camino(self):
+        from datetime import timedelta
+        from django.utils import timezone
+
+        today = timezone.localdate()
+        payload = self.client.get(
+            reverse("portal:portal_calendar_feed", kwargs={"token": self.token}),
+            {"start": today.isoformat(), "end": (today + timedelta(days=6)).isoformat()},
+        ).json()
+        spanish = [e for e in payload if e["extendedProps"]["layer"] == "spanish"]
+        self.assertTrue(spanish)
+        self.assertTrue(all(self.token in e["url"] for e in spanish))
+        self.assertTrue(all("/lingua/" in e["url"] for e in spanish))
+        # One kid on her own calendar: no name prefix.
+        self.assertEqual(spanish[0]["title"], "📖 Español")
+
+    def test_unscheduled_activity_gets_a_schedule_it_chip_and_prefill(self):
+        from activities.models import ExternalActivity
+
+        guitar = ExternalActivity.objects.create(
+            parent=self.parent, family=self.family, student=self.violet,
+            title="Guitar", provider="School of Rock",
+            url="https://sor.example/", emoji="🎸",
+        )
+        self.client.login(username="ml", password="pw")
+        page = self.client.get(reverse("family_calendar:calendar"))
+        self.assertContains(page, "Guitar — schedule it")
+        self.assertContains(page, f"?activity={guitar.pk}")
+
+        form_page = self.client.get(
+            reverse("family_calendar:event_create"), {"activity": guitar.pk})
+        self.assertContains(form_page, 'value="Guitar"')      # title prefilled
+        self.assertContains(form_page, "checked")             # repeats_weekly on
+        # Once an event links the activity, the chip disappears.
+        from django.utils import timezone
+        CalendarEvent.objects.create(
+            parent=self.parent, family=self.family, child=self.violet,
+            activity=guitar, title="Guitar",
+            event_type=CalendarEvent.TYPE_ACTIVITY, date=timezone.localdate())
+        page = self.client.get(reverse("family_calendar:calendar"))
+        self.assertNotContains(page, "Guitar — schedule it")
 
     def test_pacing_panel_sets_and_clears_pace(self):
         self.client.login(username="ml", password="pw")

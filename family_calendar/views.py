@@ -45,11 +45,28 @@ def calendar_page(request):
         .select_related("child", "curriculum")
         .order_by("child__first_name", "curriculum__name")
     )
+
+    # LRM prep: a charter-school meeting inside the next week gets a callout
+    # pointing at the charter report — walk in with the record already printed.
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    today = timezone.localdate()
+    lrm = None
+    for event in _scoped_events(request, family).filter(
+            event_type=CalendarEvent.TYPE_CHARTER):
+        for occ in event.occurrences(today, today + timedelta(days=7)):
+            if lrm is None or occ < lrm["date"]:
+                lrm = {"event": event, "date": occ}
+
     return render(request, "family_calendar/calendar.html", {
         "children": children,
         "family_color": feeds.FAMILY_COLOR,
         "can_edit": can_edit_family_or_global(request.user, family),
         "placements": placements,
+        "lrm": lrm,
+        "today": today,
     })
 
 
@@ -63,7 +80,8 @@ def events_feed(request):
     window = feeds.parse_window(request)
     children = list(_scoped_children(request, family))
     colors = feeds.child_color_map(children)
-    layers = set((request.GET.get("layers") or "events,missions").split(","))
+    layers = set(
+        (request.GET.get("layers") or "events,missions,history,birthdays").split(","))
 
     all_events = list(_scoped_events(request, family).select_related("activity"))
     raw_children = request.GET.get("children", "")
@@ -113,6 +131,11 @@ def events_feed(request):
                 url_for=lambda p, l: reverse(
                     "students:student_lessons", args=[p.child_id, p.curriculum_id]),
             )
+    if "history" in layers:
+        payload += feeds.history_layer(shown_children, window)
+    if "birthdays" in layers:
+        # Birthdays ignore the child filter — nobody's birthday gets hidden.
+        payload += feeds.birthday_layer(children, window)
     return JsonResponse(payload, safe=False)
 
 

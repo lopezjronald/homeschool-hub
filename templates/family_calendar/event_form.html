@@ -99,6 +99,16 @@
         </div>
       </form>
 
+      {% if event and event.activity %}
+        <div class="card mt-3">
+          <div class="card-body d-flex align-items-center gap-2">
+            <span>{{ event.activity.emoji }} Linked to <strong>{{ event.activity.display_label }}</strong></span>
+            <a href="{% url 'activities:activity_log' event.activity.pk %}"
+               class="btn btn-sm btn-outline-secondary ms-auto">Log a session</a>
+          </div>
+        </div>
+      {% endif %}
+
       {% if event and event.repeats_weekly %}
         <div class="card mt-4">
           <div class="card-header"><h5 class="mb-0">Upcoming dates</h5></div>

@@ -20,6 +20,14 @@
       .map(function (box) { return box.value; });
   }
 
+  function checkedLayers() {
+    var layers = ["events", "missions"];
+    Array.prototype.slice
+      .call(document.querySelectorAll(".cal-layer-toggle:checked"))
+      .forEach(function (box) { layers.push(box.value); });
+    return layers;
+  }
+
   var phone = window.matchMedia("(max-width: 576px)").matches;
 
   var calendar = new FullCalendar.Calendar(el, {
@@ -37,6 +45,7 @@
       var params = new URLSearchParams({ start: info.startStr, end: info.endStr });
       var ids = checkedChildIds();
       if (ids.length) params.set("children", ids.join(","));
+      params.set("layers", checkedLayers().join(","));
       fetch(feedUrl + "?" + params.toString(), { credentials: "same-origin" })
         .then(function (resp) {
           if (!resp.ok) throw new Error("feed " + resp.status);
@@ -55,7 +64,7 @@
   });
   calendar.render();
 
-  document.querySelectorAll(".cal-child-filter").forEach(function (box) {
+  document.querySelectorAll(".cal-child-filter, .cal-layer-toggle").forEach(function (box) {
     box.addEventListener("change", function () { calendar.refetchEvents(); });
   });
 })();

@@ -159,6 +159,78 @@ def mission_layer(placements, window, colors, *, today=None, breaks=frozenset(),
     return out
 
 
+HISTORY_BG = "#E4F0E9"
+HISTORY_TEXT = "#1E5238"
+HISTORY_MAX_LOOKBACK_DAYS = 183
+
+
+def history_layer(children, window, *, today=None, muted=False):
+    """One quiet ✓ event per child per past day they did work — the calendar
+    doubles as an attendance/record view. Reads core.activity.aggregate_activity
+    (the same union the streak and hours report use) and never looks forward or
+    further back than ~6 months, whatever window the client asks for.
+    """
+    from core.activity import aggregate_activity
+
+    today = today or timezone.localdate()
+    start, end = window
+    end = min(end, today - timedelta(days=1))                 # history is the past
+    start = max(start, today - timedelta(days=HISTORY_MAX_LOOKBACK_DAYS))
+    if end < start:
+        return []
+    out = []
+    for child in children:
+        agg = aggregate_activity(child, start=start, end=end)
+        by_day = {}
+        for slug, info in agg.get("by_subject", {}).items():
+            for day in info.get("days", ()):
+                by_day.setdefault(day, set()).add(slug.replace("-", " "))
+        # Days with activity but no subject breakdown still deserve their ✓.
+        for day in agg.get("days", ()):
+            by_day.setdefault(day, set())
+        for day, subjects in sorted(by_day.items()):
+            if not (start <= day <= end):
+                continue
+            labels = ", ".join(sorted(subjects)[:3])
+            out.append({
+                "id": f"hist-{child.pk}-{day.isoformat()}",
+                "title": f"✓ {child.first_name}" + (f" · {labels}" if labels else ""),
+                "start": day.isoformat(),
+                "allDay": True,
+                "color": HISTORY_BG,
+                "textColor": HISTORY_TEXT,
+                "extendedProps": {"layer": "history", "child_id": child.pk},
+            })
+    return out
+
+
+def birthday_layer(children, window):
+    """🎂 all-day events for every birthday that falls inside the window."""
+    from datetime import date
+
+    start, end = window
+    out = []
+    for child in children:
+        dob = child.date_of_birth
+        if not dob:
+            continue
+        for year in range(start.year, end.year + 1):
+            try:
+                bday = date(year, dob.month, dob.day)
+            except ValueError:                                # Feb 29 on a common year
+                bday = date(year, 2, 28)
+            if start <= bday <= end and year >= dob.year:
+                out.append({
+                    "id": f"bday-{child.pk}-{year}",
+                    "title": f"🎂 {child.first_name} turns {year - dob.year}",
+                    "start": bday.isoformat(),
+                    "allDay": True,
+                    "color": "#8A5B12",                        # amber-700, AA on white
+                    "extendedProps": {"layer": "birthdays", "child_id": child.pk},
+                })
+    return out
+
+
 def break_dates(events, window, child=None):
     """All break/no-school dates in `window` that apply to `child`.
 

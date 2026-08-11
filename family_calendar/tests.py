@@ -469,6 +469,86 @@ class MissionLayerTests(TestCase):
         self.assertContains(resp, "Mission 1 fun")
         self.assertContains(resp, "due")                      # today/tomorrow/in N days
 
+    def test_history_layer_shows_done_days_and_stays_in_the_past(self):
+        from datetime import timedelta
+        from django.utils import timezone
+        from worklog.models import WorkLogEntry
+
+        today = timezone.localdate()
+        WorkLogEntry.objects.create(
+            parent=self.parent, family=self.family, child=self.violet,
+            subject="Science", description="Ramp races", date=today - timedelta(days=2))
+        WorkLogEntry.objects.create(  # today's work must NOT appear as history
+            parent=self.parent, family=self.family, child=self.violet,
+            subject="Math", description="today", date=today)
+        self.client.login(username="ml", password="pw")
+        payload = self.client.get(reverse("family_calendar:feed"), {
+            "start": (today - timedelta(days=10)).isoformat(),
+            "end": (today + timedelta(days=10)).isoformat(),
+        }).json()
+        history = [e for e in payload if e["extendedProps"]["layer"] == "history"]
+        self.assertEqual(len(history), 1)
+        self.assertIn("✓ Violet", history[0]["title"])
+        self.assertIn("science", history[0]["title"])
+        self.assertEqual(history[0]["start"], (today - timedelta(days=2)).isoformat())
+
+    def test_layers_param_can_switch_history_off(self):
+        from datetime import timedelta
+        from django.utils import timezone
+        from worklog.models import WorkLogEntry
+
+        today = timezone.localdate()
+        WorkLogEntry.objects.create(
+            parent=self.parent, family=self.family, child=self.violet,
+            subject="Science", description="x", date=today - timedelta(days=1))
+        self.client.login(username="ml", password="pw")
+        payload = self.client.get(reverse("family_calendar:feed"), {
+            "start": (today - timedelta(days=5)).isoformat(),
+            "end": today.isoformat(),
+            "layers": "events,missions",
+        }).json()
+        self.assertFalse([e for e in payload if e["extendedProps"]["layer"] == "history"])
+
+    def test_birthdays_appear_for_every_family_kid_on_both_surfaces(self):
+        from datetime import date, timedelta
+        from django.utils import timezone
+
+        today = timezone.localdate()
+        upcoming = today + timedelta(days=10)
+        self.violet.date_of_birth = date(upcoming.year - 9, upcoming.month, upcoming.day)
+        self.violet.save()
+        self.client.login(username="ml", password="pw")
+        window = {"start": today.isoformat(),
+                  "end": (today + timedelta(days=30)).isoformat()}
+        payload = self.client.get(reverse("family_calendar:feed"), window).json()
+        bdays = [e for e in payload if e["extendedProps"]["layer"] == "birthdays"]
+        self.assertEqual(len(bdays), 1)
+        self.assertEqual(bdays[0]["title"], "🎂 Violet turns 9")
+        self.assertEqual(bdays[0]["start"], upcoming.isoformat())
+        # And on the kid's own feed too.
+        portal = self.client.get(
+            reverse("portal:portal_calendar_feed", kwargs={"token": self.token}),
+            window).json()
+        self.assertTrue(
+            [e for e in portal if e["extendedProps"]["layer"] == "birthdays"])
+
+    def test_lrm_callout_appears_within_a_week_only(self):
+        from datetime import timedelta
+        from django.utils import timezone
+
+        today = timezone.localdate()
+        self.client.login(username="ml", password="pw")
+        lrm = CalendarEvent.objects.create(
+            parent=self.parent, family=self.family, title="LRM with Mrs. Lee",
+            event_type=CalendarEvent.TYPE_CHARTER, date=today + timedelta(days=9))
+        page = self.client.get(reverse("family_calendar:calendar"))
+        self.assertNotContains(page, "walk in with the record ready")   # 9 days out: quiet
+        lrm.date = today + timedelta(days=6)
+        lrm.save()
+        page = self.client.get(reverse("family_calendar:calendar"))
+        self.assertContains(page, "walk in with the record ready")
+        self.assertContains(page, reverse("worklog:charter_report"))
+
     def test_pacing_panel_sets_and_clears_pace(self):
         self.client.login(username="ml", password="pw")
         page = self.client.get(reverse("family_calendar:calendar"))

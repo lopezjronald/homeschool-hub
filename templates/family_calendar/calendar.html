@@ -15,6 +15,20 @@
     <p class="lead mb-0">Practices, appointments, school meetings — everyone's schedule in one place.</p>
   </div>
 
+  {% if lrm %}
+    <div class="alert cal-lrm-alert d-flex flex-wrap align-items-center gap-2 d-print-none" role="alert">
+      <span>
+        🏫 <strong>{{ lrm.event.title }}</strong>
+        {% if lrm.date == today %}is <strong>today</strong>{% else %}on <strong>{{ lrm.date|date:"l, M j" }}</strong>{% endif %}{% if lrm.event.start_time %} at {{ lrm.event.start_time|time:"g:i A" }}{% endif %}
+        — walk in with the record ready.
+      </span>
+      <span class="ms-auto d-flex gap-2">
+        <a href="{% url 'worklog:charter_report' %}" class="btn btn-sm btn-amber">Open the charter report</a>
+        <a href="{% url 'worklog:hours_report' %}" class="btn btn-sm btn-outline-secondary">Hours report</a>
+      </span>
+    </div>
+  {% endif %}
+
   <div class="d-flex flex-wrap align-items-center gap-3 mb-3 d-print-none">
     <div class="cal-legend d-flex flex-wrap align-items-center gap-3" id="cal-filters">
       {% for child in children %}
@@ -27,6 +41,15 @@
       <span class="cal-legend-item">
         <span class="cal-dot" style="--dot: {{ family_color }}"></span> Whole family
       </span>
+      <span class="cal-legend-sep" aria-hidden="true"></span>
+      <label class="cal-legend-item">
+        <input type="checkbox" class="form-check-input cal-layer-toggle" value="history" checked>
+        ✓ Done days
+      </label>
+      <label class="cal-legend-item">
+        <input type="checkbox" class="form-check-input cal-layer-toggle" value="birthdays" checked>
+        🎂 Birthdays
+      </label>
     </div>
     <div class="ms-auto d-flex gap-2">
       {% if can_edit %}

@@ -17,6 +17,19 @@
   background: var(--dot, #152A45);
   flex: none;
 }
+.cal-legend-sep {
+  display: inline-block;
+  width: 1px;
+  height: 1.2rem;
+  background: rgba(21, 42, 69, 0.25);
+}
+
+/* The LRM-prep callout — amber, but calm. */
+.cal-lrm-alert {
+  background: #FFF4DC;
+  border: 1.5px solid #EBA83A;
+  color: #4a3a17;
+}
 
 /* Weekday checkboxes render as a compact pill row, not a stacked list. */
 .cal-weekday-picker > div { display: flex; flex-wrap: wrap; gap: 0.35rem; }

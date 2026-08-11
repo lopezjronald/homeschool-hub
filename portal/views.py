@@ -681,6 +681,15 @@ def portal_calendar_feed(request, token):
             "portal:portal_subject",
             kwargs={"token": token, "curriculum_id": p.curriculum_id}),
     )
+    # Her own ✓ history (a garden of done days) + the whole family's birthdays.
+    from students.models import Student
+
+    payload += calendar_feeds.history_layer([student], window)
+    if student.family_id:
+        family_kids = Student.objects.filter(family=student.family)
+    else:
+        family_kids = Student.objects.filter(parent=student.parent, family__isnull=True)
+    payload += calendar_feeds.birthday_layer(family_kids, window)
     return JsonResponse(payload, safe=False)
 
 

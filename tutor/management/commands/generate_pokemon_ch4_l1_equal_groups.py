@@ -88,9 +88,10 @@ PANELS = [
     {
         "order": 5, "span": MangaPanel.SPAN_FULL,
         "alt": "The twelve berries laid out on a flat wooden drying tray as four rows across with three berries in every row.",
-        "scene": "A flat rectangular wooden drying tray rests low in the frame, and the twelve round red "
-                 "berries are arranged on it in a perfectly tidy rectangle: four straight rows going across, "
-                 "with three berries evenly spaced in every single row. The grid is crisp and easy to read. "
+        "scene": "A flat wooden drying tray, TALLER than it is wide, rests low in the frame, and the twelve "
+                 "round red berries are arranged on it in a perfectly tidy upright rectangle that is exactly "
+                 "THREE berries ACROSS and FOUR berries DOWN — three columns, four rows, twelve berries in "
+                 "total. The grid is crisp, evenly spaced and easy to count. "
                  "PAWMI the electric mouse stands on tiptoe at the lower left admiring it, tiny happy sparks "
                  "at its cheeks; FUECOCO the red crocodile steadies the tray at the lower right. Keep the "
                  "entire upper third of the frame as open, empty sky.",
@@ -104,8 +105,9 @@ PANELS = [
         "order": 6, "span": MangaPanel.SPAN_FULL,
         "alt": "The same tray turned a quarter turn, now showing three rows across with four berries in every row.",
         "scene": "The identical wooden drying tray with the identical twelve round red berries, now rotated a "
-                 "quarter turn so it sits the other way round, low in the frame — the same rectangle of fruit "
-                 "now reads as three straight rows going across with four berries evenly spaced in every row. "
+                 "quarter turn so it lies WIDER than it is tall, low in the frame — the same rectangle of "
+                 "fruit now reads as exactly FOUR berries ACROSS and THREE berries DOWN: four columns, three "
+                 "rows, still twelve berries in total. "
                  "Small motion-arc lines curve close around the tray, low in the frame, showing it has just "
                  "been turned; not one berry has been added or moved on the tray itself. SPRIGATITO the grass "
                  "kitten gapes at the lower left, one paw raised; QUAXLY the duckling nods primly at the lower "

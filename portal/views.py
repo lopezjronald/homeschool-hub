@@ -801,7 +801,7 @@ def portal_home(request, token):
 
 def portal_subject(request, token, curriculum_id):
     """Drill into one subject: chapter → lesson outline with nested manga + sets (HH-148)."""
-    from curricula.models import Chapter
+    from curricula.models import Chapter, Lesson
 
     student = _resolve_student(token)
     placement = (
@@ -878,6 +878,8 @@ def portal_subject(request, token, curriculum_id):
             if les["sets_total"]:
                 done += les["sets_done"]
                 total += les["sets_total"]
+            elif les["lesson"].lesson_type == Lesson.TYPE_OPENER:
+                continue  # openers are never "resolved" — don't make them undone forever
             else:
                 total += 1
                 done += 1 if les["is_resolved"] else 0
@@ -932,10 +934,23 @@ def portal_material(request, token, pk):
         qs for qs in _annotated_question_sets(student)
         if qs.lesson_id == material.lesson_id
     ]
-    is_resolved = LessonProgress.objects.filter(
-        child=student, lesson_id=material.lesson_id,
-        status__in=(LessonProgress.COMPLETED, LessonProgress.SKIPPED),
-    ).exists()
+    # Resolve the same way the subject outline does (marks ∪ submitted work ∪
+    # the placement floor) — otherwise the outline says "Finished ✓" while this
+    # page still offers the finish button for the same lesson.
+    curriculum_id = material.lesson.chapter.curriculum_id
+    placement = CurriculumPlacement.objects.filter(
+        child=student, curriculum_id=curriculum_id, is_active=True,
+        curriculum__is_active=True,
+    ).first()
+    if placement is not None:
+        _, resolved = placement.resolved_lesson_ids()
+        is_resolved = material.lesson_id in resolved
+    else:
+        # A bookmarked material whose placement is shelved: fall back to marks.
+        is_resolved = LessonProgress.objects.filter(
+            child=student, lesson_id=material.lesson_id,
+            status__in=(LessonProgress.COMPLETED, LessonProgress.SKIPPED),
+        ).exists()
     return render(request, "portal/portal_material.html", {
         "student": student,
         "token": token,
@@ -943,6 +958,18 @@ def portal_material(request, token, pk):
         "lesson_sets": lesson_sets,
         "is_resolved": is_resolved,
         "can_mark_done": not lesson_sets and not is_resolved,
+        # The subject page 404s without an active placement, so a bookmarked
+        # link from a shelved subject must go home instead of to a dead end.
+        "back_url": (
+            reverse("portal:portal_subject",
+                    kwargs={"token": token, "curriculum_id": curriculum_id})
+            if placement is not None
+            else reverse("portal:portal_home", kwargs={"token": token})
+        ),
+        "back_label": (
+            material.lesson.chapter.curriculum.name if placement is not None
+            else "my portal"
+        ),
     })
 
 
@@ -1073,10 +1100,11 @@ def portal_questions(request, token, set_pk):
         }.get(journal_label, "📓")
 
     # Mid-log, a kid often needs to re-check a step — link the lesson's material
-    # (the mission instructions) when one exists.
-    lesson_material = next(
-        (m for m in _visible_materials(student)
-         if m.lesson_id == question_set.lesson_id), None)
+    # (the mission instructions) when one exists. Filter in the DB: scanning every
+    # visible material would drag each one's parent teaching guide into a kid
+    # request, and this page is student-layers-only.
+    lesson_material = _visible_materials(student).filter(
+        lesson_id=question_set.lesson_id).first()
 
     return render(request, "portal/portal_questions.html", {
         "student": student,

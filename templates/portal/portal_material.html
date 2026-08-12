@@ -9,8 +9,7 @@
   <div class="row justify-content-center">
     <div class="col-lg-9">
 
-      <a href="{% url 'portal:portal_subject' token=token curriculum_id=material.lesson.chapter.curriculum_id %}"
-         class="btn btn-outline-secondary btn-sm mb-3">← Back to {{ material.lesson.chapter.curriculum.name }}</a>
+      <a href="{{ back_url }}" class="btn btn-outline-secondary btn-sm mb-3">← Back to {{ back_label }}</a>
 
       <div class="card portal-card mb-4">
         <div class="card-header">

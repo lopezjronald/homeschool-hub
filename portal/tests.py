@@ -2136,12 +2136,29 @@ class MaterialWorkflowTests(TestCase):
         self.assertContains(page, "Show what you know")
         self.assertContains(page, "Start · Mission 1 · Science Log")
         self.assertContains(page, self._url("portal_questions", set_pk=self.journal.pk))
-        # Turn it in → the button flips to turned-in.
+        # Turn it in → the button flips to turned-in. Post against the REAL question
+        # pk so the answer actually merges (a bogus key would still submit the sheet
+        # and the flip would pass for the wrong reason).
+        question = self.journal.questions.first()
         self.client.post(
-            self._url("portal_questions", set_pk=self.journal.pk), {"answer_1": "x"})
+            self._url("portal_questions", set_pk=self.journal.pk),
+            {f"answer_{question.pk}": "I learned about pushes"})
+        sheet = ResponseSheet.objects.get(question_set=self.journal, child=self.violet)
+        self.assertTrue(sheet.is_submitted)
+        self.assertEqual(sheet.answers[str(question.pk)], "I learned about pushes")
         page = self.client.get(self._url("portal_material", pk=self.mission.pk))
         self.assertContains(page, "turned in!")
         self.assertNotContains(page, "Start · Mission 1 · Science Log")
+
+    def test_placement_floor_counts_toward_the_chapter_total(self):
+        """The floor (everything before current_lesson) is what makes a chapter jump
+        without any explicit mark — and it's how the parent's own checklist reads."""
+        placement = CurriculumPlacement.objects.get(child=self.violet, curriculum=self.math)
+        placement.current_lesson = self.math_l2
+        placement.save()
+        html = self._subject_html(self.math)
+        self.assertIn("1/2", html)                            # L1 is below the floor
+        self.assertIn("Finished ✓", html)
 
     def test_journal_page_links_back_to_the_mission_instructions(self):
         page = self.client.get(self._url("portal_questions", set_pk=self.journal.pk))

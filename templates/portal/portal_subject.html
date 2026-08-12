@@ -63,12 +63,16 @@
                   </div>
 
                   {% for m in les.materials %}
-                    <a href="{% url 'portal:portal_material' token=token pk=m.pk %}" class="portal-set-row portal-manga-row">
+                    <a href="{% url 'portal:portal_material' token=token pk=m.pk %}" class="portal-set-row portal-manga-row {% if les.is_resolved and not les.sets %}is-done{% endif %}">
                       <span class="portal-set-title">
                         🦸 {{ m.title }}
                         <small class="portal-set-reading">{{ m.get_skill_type_display }}</small>
                       </span>
-                      <span class="badge portal-badge-new">Open ➜</span>
+                      {% if les.is_resolved and not les.sets %}
+                        <span class="badge bg-success">Finished ✓</span>
+                      {% else %}
+                        <span class="badge portal-badge-new">Open ➜</span>
+                      {% endif %}
                     </a>
                   {% endfor %}
 

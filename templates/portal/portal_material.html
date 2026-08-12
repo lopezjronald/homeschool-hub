@@ -9,7 +9,8 @@
   <div class="row justify-content-center">
     <div class="col-lg-9">
 
-      <a href="{% url 'portal:portal_home' token=token %}" class="btn btn-outline-secondary btn-sm mb-3">← Back to my portal</a>
+      <a href="{% url 'portal:portal_subject' token=token curriculum_id=material.lesson.chapter.curriculum_id %}"
+         class="btn btn-outline-secondary btn-sm mb-3">← Back to {{ material.lesson.chapter.curriculum.name }}</a>
 
       <div class="card portal-card mb-4">
         <div class="card-header">
@@ -67,6 +68,44 @@
           {% endif %}
         </div>
       </div>
+
+      {% if lesson_sets %}
+        <div class="card portal-card mb-4 portal-material-next">
+          <div class="card-body">
+            <h5 class="mb-2">✏️ Show what you know</h5>
+            {% for qs in lesson_sets %}
+              {% if qs.my_response.is_submitted %}
+                <a href="{% url 'portal:portal_questions' token=token set_pk=qs.pk %}"
+                   class="btn btn-outline-success mb-2 d-block d-sm-inline-block me-sm-2">
+                  ✓ {{ qs.title }} — turned in!
+                </a>
+              {% else %}
+                <a href="{% url 'portal:portal_questions' token=token set_pk=qs.pk %}"
+                   class="btn btn-amber btn-lg mb-2 d-block d-sm-inline-block me-sm-2">
+                  Start · {{ qs.title }} ➜
+                </a>
+              {% endif %}
+            {% endfor %}
+          </div>
+        </div>
+      {% elif can_mark_done %}
+        <div class="card portal-card mb-4 portal-material-next">
+          <div class="card-body d-flex flex-wrap align-items-center gap-2">
+            <span>All done with this one?</span>
+            <form method="post" action="{% url 'portal:portal_material_done' token=token pk=material.pk %}">
+              {% csrf_token %}
+              <button type="submit" class="btn btn-amber">I finished this ✓</button>
+            </form>
+          </div>
+        </div>
+      {% elif is_resolved %}
+        <div class="card portal-card mb-4 portal-material-next">
+          <div class="card-body">
+            <span class="badge bg-success fs-6">Finished ✓</span>
+            <span class="text-muted ms-2">Nice work — this one's in the books!</span>
+          </div>
+        </div>
+      {% endif %}
 
     </div>
   </div>

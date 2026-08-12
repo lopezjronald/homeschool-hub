@@ -42,6 +42,15 @@
             </div>
           {% endif %}
 
+          {% if lesson_material %}
+            <div class="portal-reading-first">
+              📖 Need the steps again?
+              <a href="{% url 'portal:portal_material' token=token pk=lesson_material.pk %}">
+                Open the mission instructions ➜
+              </a>
+            </div>
+          {% endif %}
+
           {% if question_set.reading %}
             <div class="portal-reading-first">
               📖 <strong>Read first:</strong> {{ question_set.reading }}

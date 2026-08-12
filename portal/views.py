@@ -830,6 +830,10 @@ def portal_subject(request, token, curriculum_id):
     for m in materials:
         materials_by_lesson[m.lesson_id].append(m)
 
+    # One resolution pass for the whole page: parent marks, submitted work, and
+    # the placement floor. This is what lets a manga-only math lesson count.
+    ordered_ids, resolved = placement.resolved_lesson_ids()
+
     next_set = next((qs for qs in sets if not _set_is_done(qs)), None)
     if next_set is not None:
         current_chapter = next_set.lesson.chapter.number
@@ -861,18 +865,29 @@ def portal_subject(request, token, curriculum_id):
                 "sets": les_sets,
                 "sets_done": sum(1 for qs in les_sets if _set_is_done(qs)),
                 "sets_total": len(les_sets),
+                "is_resolved": lesson.pk in resolved,
             })
         if not lessons_out:
             continue
-        set_count = sum(l["sets_total"] for l in lessons_out)
-        set_done = sum(l["sets_done"] for l in lessons_out)
+        # Chapter counter: lessons WITH student sets count by turned-in sets (the
+        # literature/mission behavior, unchanged); material-only lessons count by
+        # resolution (parent mark / kid ✓) — previously they were stuck at 0
+        # forever, which is how math read "0/5" after a finished chapter.
+        done = total = 0
+        for les in lessons_out:
+            if les["sets_total"]:
+                done += les["sets_done"]
+                total += les["sets_total"]
+            else:
+                total += 1
+                done += 1 if les["is_resolved"] else 0
         chapters.append({
             "pk": chapter.pk,
             "number": chapter.number,
             "title": chapter.title,
             "lessons": lessons_out,
-            "done": set_done,
-            "total": set_count or len(lessons_out),
+            "done": done,
+            "total": total,
             "is_current": chapter.number == current_chapter,
         })
     if chapters and not any(ch["is_current"] for ch in chapters):
@@ -880,9 +895,11 @@ def portal_subject(request, token, curriculum_id):
 
     next_material = None
     if next_set is None:
+        # "Continue ➜" points at the first material of an UNFINISHED lesson —
+        # not the first material ever, which pinned math at manga #1 forever.
         for ch in chapters:
             for les in ch["lessons"]:
-                if les["materials"]:
+                if les["materials"] and not les["is_resolved"]:
                     next_material = les["materials"][0]
                     break
             if next_material:
@@ -894,7 +911,7 @@ def portal_subject(request, token, curriculum_id):
         "curriculum": curriculum,
         "emoji": emoji_for(curriculum.subject),
         "placement": placement,
-        "progress": placement.progress(),
+        "progress": placement.progress(precomputed=(ordered_ids, resolved)),
         "current_lesson": placement.current_lesson,
         "next_set": next_set,
         "next_material": next_material,
@@ -903,14 +920,55 @@ def portal_subject(request, token, curriculum_id):
 
 
 def portal_material(request, token, pk):
-    """Kid view of an approved material — student layers only, never the teaching guide."""
+    """Kid view of an approved material — student layers only, never the teaching
+    guide. The lesson's whole workflow lives HERE: its journal/quiz sets render as
+    Start/Turned-in buttons under the lesson, and a set-less lesson (manga math)
+    gets an "I finished this ✓" self-mark instead."""
+    from curricula.models import LessonProgress
+
     student = _resolve_student(token)
     material = get_object_or_404(_visible_materials(student), pk=pk)
+    lesson_sets = [
+        qs for qs in _annotated_question_sets(student)
+        if qs.lesson_id == material.lesson_id
+    ]
+    is_resolved = LessonProgress.objects.filter(
+        child=student, lesson_id=material.lesson_id,
+        status__in=(LessonProgress.COMPLETED, LessonProgress.SKIPPED),
+    ).exists()
     return render(request, "portal/portal_material.html", {
         "student": student,
         "token": token,
         "material": material,
+        "lesson_sets": lesson_sets,
+        "is_resolved": is_resolved,
+        "can_mark_done": not lesson_sets and not is_resolved,
     })
+
+
+@require_POST
+def portal_material_done(request, token, pk):
+    """The kid's own "I finished this ✓" on a material whose lesson has no
+    turn-in work (manga math and friends). Idempotent: a second tap, or a lesson
+    the parent already marked, changes nothing. The parent's weekly checklist
+    (students:student_lessons) can always override."""
+    from curricula.models import LessonProgress
+
+    student = _resolve_student(token)
+    material = get_object_or_404(_visible_materials(student), pk=pk)
+    has_sets = any(
+        qs.lesson_id == material.lesson_id
+        for qs in _visible_question_sets(student)
+    )
+    if not has_sets:
+        LessonProgress.objects.get_or_create(
+            child=student, lesson_id=material.lesson_id,
+            defaults={
+                "status": LessonProgress.COMPLETED,
+                "note": f"{student.first_name} marked it done from the portal.",
+            },
+        )
+    return redirect("portal:portal_material", token=token, pk=material.pk)
 
 
 # Brute-force guard for the parent gate. Per-worker with the default LocMemCache,
@@ -1014,6 +1072,12 @@ def portal_questions(request, token, set_pk):
             "Science Log": "🔬", "Lab Notebook": "🔬",
         }.get(journal_label, "📓")
 
+    # Mid-log, a kid often needs to re-check a step — link the lesson's material
+    # (the mission instructions) when one exists.
+    lesson_material = next(
+        (m for m in _visible_materials(student)
+         if m.lesson_id == question_set.lesson_id), None)
+
     return render(request, "portal/portal_questions.html", {
         "student": student,
         "token": token,
@@ -1025,6 +1089,7 @@ def portal_questions(request, token, set_pk):
         "journal_theme": journal_theme,
         "journal_label": journal_label,
         "journal_emoji": journal_emoji,
+        "lesson_material": lesson_material,
     })
 
 

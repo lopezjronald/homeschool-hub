@@ -381,16 +381,25 @@ def zero_vs_pile(empties, pile, span="full"):
     gap = min(120, (w * 0.42) / max(empties, 1))
     for cx in _row_positions(empties, w * 0.27, gap):
         cup(d, cx, base, w=int(gap * 0.62), h=62)
-    crate_w = min(300, w * 0.34)
-    x0, x1 = w * 0.74 - crate_w / 2, w * 0.74 + crate_w / 2
+    # The right side has to hold BOTH halves of the argument: a row of empty
+    # baskets waiting to be filled, and the pile that never gets divided among
+    # them. Drawing the pile alone reads as "here are six berries" and says
+    # nothing about 6 / 0.
+    crate_cx = w * 0.63
+    crate_w = min(230, w * 0.22)
+    x0, x1 = crate_cx - crate_w / 2, crate_cx + crate_w / 2
     y1 = base
-    y0 = y1 - 128
+    y0 = y1 - 122
     tray(d, x0, y0, x1, y1)
     per_row = min(pile, 3)
     for r_i in range(math.ceil(pile / per_row)):
         in_row = min(per_row, pile - r_i * per_row)
-        for x in _row_positions(in_row, (x0 + x1) / 2, 62):
-            berry(d, x, y0 + 42 + r_i * 52, 18)
+        for x in _row_positions(in_row, crate_cx, min(58, crate_w / (in_row + 0.6))):
+            berry(d, x, y0 + 38 + r_i * 48, 16)
+    empties = 3
+    bgap = min(100, (w * 0.26) / empties)
+    for cx in _row_positions(empties, w * 0.84, bgap):
+        basket(d, cx, base, w=int(bgap * 0.66), h=62)
     return img
 
 

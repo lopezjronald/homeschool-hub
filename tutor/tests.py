@@ -2434,3 +2434,104 @@ class LinkifySearchesTests(TestCase):
     def test_plain_text_without_quotes_is_untouched(self):
         raw = "Nothing needed — the steps show the setup."
         self.assertEqual(self._link(raw), raw)
+
+
+class FolkKeeperSeedTests(TestCase):
+    """Kaylin's Blackbird 'The Folk Keeper' course: the guide's own four uneven
+    sections plus a Glean week, discussion-heavy because Joyce leads it orally."""
+
+    @classmethod
+    def setUpTestData(cls):
+        User = get_user_model()
+        cls.parent = User.objects.create_user("fkmom", email="fk@e.com", password="pw")
+        cls.kaylin = Student.objects.create(
+            parent=cls.parent, first_name="Kaylin", grade_level="G07")
+
+    def _seed(self):
+        call_command("seed_the_folk_keeper", "--for-user", "fkmom", stdout=StringIO())
+
+    def test_seeds_the_guides_own_section_divisions(self):
+        from curricula.models import Chapter, CurriculumPlacement
+        self._seed()
+        curr = Curriculum.objects.get(name__startswith="The Folk Keeper")
+        self.assertEqual(curr.subject, "Literature")
+        self.assertEqual(curr.grade_level, "G07")
+        # Four reading sections + the Glean week; the reading sections are
+        # deliberately uneven (4, 4, 3, 5 chapters) — that is the guide's split.
+        chapters = list(Chapter.objects.filter(curriculum=curr).order_by("number"))
+        self.assertEqual(len(chapters), 5)
+        self.assertIn("1–4", chapters[0].title)
+        self.assertIn("5–8", chapters[1].title)
+        self.assertIn("9–11", chapters[2].title)
+        self.assertIn("12–16", chapters[3].title)
+        self.assertIn("Glean", chapters[4].title)
+        self.assertTrue(
+            CurriculumPlacement.objects.filter(child=self.kaylin, curriculum=curr).exists())
+
+    def test_every_section_carries_the_full_set_of_work(self):
+        from tutor.models import QuestionSet
+        self._seed()
+        curr = Curriculum.objects.get(name__startswith="The Folk Keeper")
+        sets = QuestionSet.objects.filter(lesson__chapter__curriculum=curr)
+        self.assertEqual(sets.count(), 25)                    # 4 x 6 + Glean
+        for n in (1, 2, 3, 4):
+            titles = set(sets.filter(lesson__chapter__number=n).values_list("title", flat=True))
+            for kind in ("Journal", "Vocabulary", "Comprehension",
+                         "Writing Exercise", "Discussion", "Socratic Seminar"):
+                self.assertIn(f"Section {n} · {kind}", titles)
+            # The guide gives six vocabulary words plus the use-five-in-a-sentence task.
+            vocab = sets.get(title=f"Section {n} · Vocabulary")
+            self.assertEqual(vocab.questions.count(), 7)
+            # …and fourteen comprehension questions, every one answer-keyed.
+            comp = sets.get(title=f"Section {n} · Comprehension")
+            self.assertEqual(comp.questions.count(), 14)
+            self.assertIn("answer key", comp.answer_key.lower())
+
+    def test_discussion_and_seminar_are_oral_never_typed(self):
+        """Joyce leads these with Kaylin — they must not land in the kid's portal
+        as forms to fill in."""
+        from tutor.models import QuestionSet
+        self._seed()
+        curr = Curriculum.objects.get(name__startswith="The Folk Keeper")
+        sets = QuestionSet.objects.filter(lesson__chapter__curriculum=curr)
+        oral = sets.filter(mode=QuestionSet.MODE_DISCUSSION)
+        self.assertEqual(oral.count(), 8)                     # a Discussion + a Seminar per section
+        for s in oral:
+            self.assertTrue(
+                s.title.endswith("Discussion") or s.title.endswith("Socratic Seminar"), s.title)
+        # Everything else is the child's own written work.
+        self.assertEqual(sets.filter(mode=QuestionSet.MODE_STUDENT).count(), 17)
+
+    def test_answer_key_content_matches_the_publishers_key(self):
+        from tutor.models import QuestionSet
+        self._seed()
+        curr = Curriculum.objects.get(name__startswith="The Folk Keeper")
+        s1 = QuestionSet.objects.get(
+            lesson__chapter__curriculum=curr, title="Section 1 · Comprehension")
+        self.assertIn("steal Matron's breakfast sausage", s1.answer_key)
+        self.assertIn("cannot bear the light", s1.answer_key)
+        s4 = QuestionSet.objects.get(
+            lesson__chapter__curriculum=curr, title="Section 4 · Comprehension")
+        self.assertIn("amber beads", s4.answer_key)           # Taffy's grave
+        # Vocabulary keys carry the publisher's definitions, teacher-side only.
+        v3 = QuestionSet.objects.get(
+            lesson__chapter__curriculum=curr, title="Section 3 · Vocabulary")
+        self.assertIn("unable to be placated", v3.answer_key)  # implacable
+        self.assertIn("teacher reference only", v3.answer_key)
+
+    def test_teacher_only_answer_key_link_is_attached(self):
+        from curricula.models import CurriculumResource
+        self._seed()
+        curr = Curriculum.objects.get(name__startswith="The Folk Keeper")
+        res = CurriculumResource.objects.get(curriculum=curr)
+        self.assertTrue(res.teacher_only)
+        self.assertIn("the-folk-keeper", res.url)
+
+    def test_is_idempotent(self):
+        from tutor.models import QuestionSet
+        self._seed()
+        self._seed()
+        curr = Curriculum.objects.get(name__startswith="The Folk Keeper")
+        sets = QuestionSet.objects.filter(lesson__chapter__curriculum=curr)
+        self.assertEqual(sets.count(), 25)
+        self.assertEqual(sum(s.questions.count() for s in sets), 171)

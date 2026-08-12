@@ -293,6 +293,39 @@ BLACKBIRD_I_AM_DAVID = {
 }
 
 
+# Blackbird & Company Literature Discovery Guide: The Folk Keeper (Franny
+# Billingsley), Level 3 guide used at grade 7. Same five-week shape as I Am David
+# — four reading sections plus a final project week — but the sections are uneven
+# (4, 4, 3 and 5 chapters), which is the guide's own division, not a mistake.
+# Digitized from the family's purchased guide for private use.
+BLACKBIRD_THE_FOLK_KEEPER = {
+    "slug": "blackbird_the_folk_keeper",
+    "name": "The Folk Keeper — Literature Discovery",
+    "subject": "Literature",
+    "grade_level": "G07",
+    "source": "Blackbird & Company Educational Press — Literature & Writing "
+              "Discovery Guide: The Folk Keeper by Franny Billingsley (Level 3)",
+    "chapters": [
+        _bb_section(1, "1–4"),
+        _bb_section(2, "5–8"),
+        _bb_section(3, "9–11"),
+        _bb_section(4, "12–16"),
+        {
+            "number": 5,
+            "title": "Section 5: Glean — Final Project",
+            "lessons": [
+                _ls(1, 1, "Glean: Final Project",
+                    "Complete one or more of the guide's assignment options: research the "
+                    "mythical sealfolk, research a Celtic feast, write journal entries as "
+                    "Corinna after the novel ends, show how Corin and Corinna differed, "
+                    "build a diorama or draw a scene, or write three poems describing "
+                    "things you find beautiful."),
+            ],
+        },
+    ],
+}
+
+
 BLACKBIRD_A_MOUSE_CALLED_WOLF = {
     "slug": "blackbird_a_mouse_called_wolf",
     "name": "A Mouse Called Wolf — Literature Discovery",
@@ -935,6 +968,7 @@ BLUEPRINTS = {
     SCIENCE_G3["slug"]: SCIENCE_G3,
     SCIENCE_G7["slug"]: SCIENCE_G7,
     BLACKBIRD_I_AM_DAVID["slug"]: BLACKBIRD_I_AM_DAVID,
+    BLACKBIRD_THE_FOLK_KEEPER["slug"]: BLACKBIRD_THE_FOLK_KEEPER,
     BLACKBIRD_A_MOUSE_CALLED_WOLF["slug"]: BLACKBIRD_A_MOUSE_CALLED_WOLF,
     ESSENTIALS_IN_WRITING_3["slug"]: ESSENTIALS_IN_WRITING_3,
     SAXON_PREALGEBRA_DIVE["slug"]: SAXON_PREALGEBRA_DIVE,

@@ -24,13 +24,17 @@ PANELS = [
         "alt": "A picnic blanket at the edge of the berry orchard with a tray of twelve berries in the middle and all five friends flopped around it.",
         "scene": "Wide establishing shot of a red-checked picnic blanket spread on grass at the edge of a "
                  "sunny berry orchard, a low hedge of berry bushes behind. On the blanket sits a shallow "
-                 "wooden tray holding exactly twelve round red berries, loosely heaped but clearly countable. "
-                 "QUAXLY the tidy blue-headed duckling stands beside the tray looking organised; SPRIGATITO "
-                 "the grass kitten, FUECOCO the red crocodile, PAWMI the tiny electric mouse and LECHONK the "
-                 "plump piglet sprawl around the blanket, tired and happy after a morning of picking. Empty "
-                 "wicker picking baskets stacked at the side. Warm, bright, inviting. Stage every character "
-                 "and the tray low, in the bottom two-thirds of the frame, and keep the upper third calm and "
-                 "open bright sky.",
+                 "wooden tray, wider than it is tall, seen from a slightly high three-quarter angle. The tray "
+                 "holds EXACTLY TWELVE round red berries and no more, arranged in two clearly separated "
+                 "straight horizontal rows inside the tray: SIX berries in the back row and SIX berries in the "
+                 "front row, evenly spaced with a visible gap of bare tray wood between every neighbouring "
+                 "berry and between the two rows, so each berry is separate and easy to count. No berry is "
+                 "hidden, cut off by the tray rim, or overlapping another. QUAXLY the tidy blue-headed "
+                 "duckling stands beside the tray looking organised; SPRIGATITO the grass kitten, FUECOCO the "
+                 "red crocodile, PAWMI the tiny electric mouse and LECHONK the plump piglet sprawl around the "
+                 "blanket, tired and happy after a morning of picking. Empty wicker picking baskets stacked at "
+                 "the side. Warm, bright, inviting. Stage every character and the tray low, in the bottom "
+                 "two-thirds of the frame. Keep the entire upper third of the frame as open, empty sky.",
         "refs": CAST,
         "caption": "Twelve berries. One tray. Nobody can agree on how to split them.",
         "bubbles": [
@@ -69,13 +73,22 @@ PANELS = [
     {
         "order": 4, "span": MangaPanel.SPAN_FULL,
         "alt": "Three plates on the blanket, four berries on each, with the tray now empty beside them.",
-        "scene": "Clean, diagram-like arrangement low in the frame: THREE identical plates in a row on the "
-                 "picnic blanket, each holding exactly FOUR round red berries laid out clearly and countably, "
-                 "plus the shallow wooden tray sitting conspicuously EMPTY beside them. FUECOCO the red "
-                 "crocodile at the lower right has just released the very last berry, claw still open above "
-                 "the third plate; QUAXLY the blue-headed duckling at the lower left beams with approval. "
-                 "Simple, uncluttered, easy to count. Keep the entire upper third of the frame as open, empty "
-                 "sky.",
+        "scene": "Clean, diagram-like arrangement low in the frame, seen from a slightly high three-quarter "
+                 "angle. THREE identical round white plates are set out in a single straight row across the "
+                 "picnic blanket, left, middle and right, with clear bare blanket between them so the plates "
+                 "never touch or overlap. Each of the three plates holds EXACTLY FOUR round red berries and no "
+                 "more, and on every plate those four berries are laid out as a simple square of TWO ACROSS "
+                 "and TWO DOWN (2 columns, 2 rows), evenly spaced, not overlapping, all four fully visible "
+                 "inside the rim. The three plates are identical to each other: four, four and four, twelve "
+                 "berries in total across the whole row and no berries anywhere else on the blanket. Behind "
+                 "the row of plates the shallow wooden tray, wider than it is tall, sits conspicuously EMPTY, "
+                 "its bare wooden floor showing and not a single berry left in it. FUECOCO the chunky red "
+                 "crocodile crouches at the lower right, claw still open in the air just above the right-hand "
+                 "plate having released the very last berry; QUAXLY the tidy blue-headed duckling stands at "
+                 "the lower left beaming with approval. Simple, uncluttered, warm and bright, easy to count. "
+                 "Stage both characters, all three plates and the tray in the bottom two-thirds of the frame, "
+                 "with Fuecoco's yellow head crest kept entirely below the top third. Keep the entire upper "
+                 "third of the frame as open, empty sky.",
         "refs": ["fuecoco", "quaxly"],
         "caption": "SHARING — 12 berries shared equally onto 3 plates: how many on EACH?   12 ÷ 3 = 4.   Four berries each. We knew the number of GROUPS; we were hunting the SIZE of each.",
         "bubbles": [
@@ -101,12 +114,21 @@ PANELS = [
     {
         "order": 6, "span": MangaPanel.SPAN_NORMAL,
         "alt": "Fuecoco holds up a plate of four berries in one claw and a small basket of three berries in the other while Pawmi stares in amazement.",
-        "scene": "FUECOCO the red crocodile sits low on the blanket holding up a plate of four round red "
-                 "berries in his left claw and a small wicker basket of three round red berries in his right "
-                 "claw, presenting them side by side like a comparison. PAWMI the tiny electric mouse stares "
-                 "between them with enormous round eyes and an open mouth, thunderstruck, one paw on its head. "
-                 "Warm, funny, the penny-drop moment. Stage both characters low, in the bottom two-thirds of "
-                 "the frame, and keep the upper third calm and open sky.",
+        "scene": "FUECOCO the chunky red crocodile sits low and centred on the picnic blanket, holding up two "
+                 "obviously DIFFERENT containers side by side at the same height, one firmly gripped in each "
+                 "claw so neither floats. In his left claw he holds a round white PLATE carrying EXACTLY FOUR "
+                 "round red berries, laid out as a square of TWO ACROSS and TWO DOWN (2 columns, 2 rows), "
+                 "evenly spaced, all four fully visible and countable. In his right claw he holds a small "
+                 "round WICKER BASKET with a woven arched handle, unmistakably a basket and not a plate, "
+                 "carrying EXACTLY THREE round red berries sitting above the rim in one clear cluster, evenly "
+                 "spaced and countable. The two containers are held at the same height and clearly separated "
+                 "from each other, like a side-by-side comparison. There are no other berries, plates or "
+                 "baskets anywhere in the picture and the blanket around him is bare. PAWMI the tiny electric "
+                 "mouse stands at the right staring back and forth between the plate and the basket with "
+                 "enormous round eyes and an open mouth, thunderstruck, one paw on its head, small sparks "
+                 "flying from its cheeks. Warm, funny, the penny-drop moment. Stage both characters and both "
+                 "containers low, in the bottom two-thirds of the frame. Keep the entire upper third of the "
+                 "frame as open, empty sky.",
         "refs": ["fuecoco", "pawmi"],
         "caption": "Both pictures are 12 ÷ 3 = 4. Sharing answers how many in EACH group. Grouping answers how many GROUPS.",
         "bubbles": [
@@ -133,13 +155,22 @@ PANELS = [
         "order": 8, "span": MangaPanel.SPAN_FULL,
         "alt": "Sunset over the orchard as Lechonk nudges the tray a quarter turn into four rows of three and all five friends lean in to eat.",
         "scene": "Warm golden sunset over the berry orchard. The shallow wooden tray sits low and centred on "
-                 "the picnic blanket, its twelve round red berries now arranged as FOUR straight rows with "
-                 "THREE berries in each row, crisp and countable. LECHONK the plump piglet, still lying down, "
-                 "has just nudged the tray a quarter-turn with one trotter and looks extremely pleased with "
-                 "itself. SPRIGATITO, FUECOCO, QUAXLY and PAWMI lean in around the tray, paws and claws "
-                 "reaching for their first berry, grinning; the empty plates and small wicker baskets are "
-                 "stacked at the edge of the blanket. Joyful, cosy, end-of-lesson finale. Keep the entire "
-                 "upper third of the frame as open, empty sunset sky.",
+                 "the picnic blanket, now clearly turned a quarter-turn so it is DEEPER THAN IT IS WIDE, a "
+                 "narrow upright rectangle running away from the viewer, obviously a different shape and "
+                 "orientation from the wide landscape tray of the previous scene. Its twelve round red berries "
+                 "are arranged as FOUR straight horizontal rows stacked one behind the other, with THREE "
+                 "berries in every row: 3 ACROSS and 4 DOWN (3 columns, 4 rows), evenly spaced with clear gaps "
+                 "of bare tray wood between neighbours so all twelve are separate and countable, seen from a "
+                 "high three-quarter angle. LECHONK the plump piglet, still lying flat on the blanket at the "
+                 "left, has just shoved the tray a quarter-turn with one outstretched trotter that is still "
+                 "resting against the tray's corner, and looks extremely pleased with itself. SPRIGATITO the "
+                 "grass kitten, FUECOCO the red crocodile, QUAXLY the blue-headed duckling and PAWMI the tiny "
+                 "electric mouse crowd in around the tray, paws and claws reaching for their first berry, "
+                 "grinning. The empty plates and small wicker baskets are stacked at the far left and far "
+                 "right edges of the blanket, well clear of the tray so they cannot be mistaken for part of "
+                 "the array. Joyful, cosy, end-of-lesson finale. Stage every character in the bottom "
+                 "two-thirds of the frame, including all head crests and ear tips. Keep the entire upper third "
+                 "of the frame as open, empty sunset sky.",
         "refs": CAST,
         "caption": "★ DIVISION RULE ★   Ask WHICH question first: how many in each group, or how many groups? And turning the tray shows 4 × 3 = 12 too — every division fact has a multiplication fact holding its hand.",
         "bubbles": [

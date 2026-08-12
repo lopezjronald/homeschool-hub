@@ -39,11 +39,19 @@ PANELS = [
     {
         "order": 2, "span": MangaPanel.SPAN_NORMAL,
         "alt": "Sprigatito tips a basket and eight berries roll into a line along the dock while Pawmi looks worried.",
-        "scene": "SPRIGATITO the grass kitten tips a woven basket on its side so that EIGHT round red berries "
-                 "roll out and settle into a tidy line along the wooden dock. PAWMI the tiny electric mouse "
-                 "stands beside the line, paws pressed to its cheeks, tail up, small sparks of worry popping "
-                 "around it. Warm, comic, low camera close to the dock boards. No writing or symbols anywhere. "
-                 "Calm empty sky across the top third.",
+        "scene": "SPRIGATITO the grass kitten stands on the left on the sunlit wooden dock, one front paw "
+                 "resting on a tipped-over woven basket that lies on its side with its open mouth facing "
+                 "right. The basket is COMPLETELY EMPTY — no fruit at all remains inside it, and nothing is "
+                 "tucked behind or under its rim. Spilling out to the right of the basket, EXACTLY EIGHT "
+                 "identical round red berries lie in ONE single straight left-to-right line along the dock "
+                 "boards. All eight berries are the same size, sit at the same height on the boards, and are "
+                 "evenly spaced with a clear strip of bare dock wood visible between each berry and the next, "
+                 "so not one berry overlaps, touches, or is hidden by another berry, by the basket, or by a "
+                 "character. PAWMI the tiny electric mouse stands upright just past the right end of the line, "
+                 "paws pressed to its cheeks, tail up, small yellow sparks of worry popping in the air around "
+                 "it. Warm, comic, low camera close to the dock boards, the basket, all eight berries and both "
+                 "characters staged entirely in the lower two-thirds of the frame. No writing, numbers or "
+                 "symbols anywhere. Keep the entire upper third of the frame as open, empty sky.",
         "refs": ["sprigatito", "pawmi"],
         "caption": "Eight berries, and every boat holds two. Will everybody find a buddy?",
         "bubbles": [
@@ -101,14 +109,24 @@ PANELS = [
     {
         "order": 6, "span": MangaPanel.SPAN_FULL,
         "alt": "On the far shore, two baskets hold four berries each at equal heights; beside them two more baskets hold three and four, clearly uneven.",
-        "scene": "On the grassy far shore, TWO identical open baskets stand side by side, each holding FOUR "
-                 "round red berries, the two heaps exactly level with each other — perfectly fair. A little "
-                 "apart from them stand TWO more identical baskets: the left one holds THREE berries and the "
-                 "right one holds FOUR, so one heap sits visibly lower than the other — clearly uneven. "
-                 "Simple, clean, chart-like, both pairs of baskets low in the frame and easy to compare. "
-                 "FUECOCO stands at the lower-left beside the level pair; QUAXLY at the lower-right beside the "
-                 "uneven pair. No writing, numbers, labels or symbols anywhere. Keep the entire upper third of "
-                 "the frame as open, empty sky.",
+        "scene": "On the grassy far shore in bright daylight, FOUR shallow open wooden trays sit directly on "
+                 "the grass in a left-to-right row, all four the same size and the same distance from the "
+                 "camera. Each tray is much wider than it is tall, like a low seed flat, so its entire "
+                 "contents sit in ONE single row and are fully visible over the low front rim. The LEFT PAIR "
+                 "of trays stands close together as a pair: the first tray holds EXACTLY FOUR round red "
+                 "berries in one row, and the second tray holds EXACTLY FOUR round red berries in one row, the "
+                 "two rows sitting at exactly the same height and the same length so the pair reads instantly "
+                 "as perfectly fair and equal. A wide clear gap of bare green grass separates the left pair "
+                 "from the RIGHT PAIR: the third tray holds EXACTLY THREE round red berries in one row, and "
+                 "the fourth tray holds EXACTLY FOUR round red berries in one row, so the third tray's row is "
+                 "visibly one berry shorter than the fourth tray's row and the pair reads clearly uneven. "
+                 "Every berry is the same size and colour, sits flat in a single row, and is separated from "
+                 "its neighbours by a visible gap — berries are never piled, stacked, heaped or overlapping, "
+                 "and none is hidden behind a rim. FUECOCO the chunky red crocodile stands at the lower-left "
+                 "beside the equal pair; QUAXLY the blue-headed duckling stands at the lower-right beside the "
+                 "uneven pair. Simple, clean, chart-like staging with all four trays low in the frame. No "
+                 "writing, numbers, labels or symbols anywhere. Keep the entire upper third of the frame as "
+                 "open, empty sky.",
         "refs": ["fuecoco", "quaxly"],
         "caption": "EVEN splits into TWO EQUAL groups:  8 = 4 + 4.   Odd can't:  7 = 3 + 4, and 3 is not 4.",
         "bubbles": [
@@ -118,12 +136,21 @@ PANELS = [
     {
         "order": 7, "span": MangaPanel.SPAN_NORMAL,
         "alt": "A long line of loaded leaf boats crosses the pond while Quaxly flings out a wing in discovery and Lechonk dozes on a berry crate.",
-        "scene": "A long line of leaf boats stretches away across the pond, each one loaded with its pair of "
-                 "berries. QUAXLY the tidy duckling stands at the dock edge with one wing flung out "
-                 "dramatically, beak open, struck by a sudden discovery. LECHONK the plump piglet lies "
-                 "sprawled and half-asleep on a stacked berry crate nearby, utterly unbothered, one trotter "
-                 "lazily raised. Comic contrast between them, both staged low in the frame. No writing, "
-                 "numbers or symbols anywhere. Open sky across the top third.",
+        "scene": "A long line of tiny green leaf boats stretches away across the calm sunlit pond, starting "
+                 "large in the lower-left foreground and receding toward the middle distance. EVERY SINGLE "
+                 "boat in the line carries EXACTLY TWO round red berries sitting side by side in its two seats "
+                 "— the big nearest boat, every boat behind it, and the smallest boats far away, all of them "
+                 "exactly two, never one, never three, never four, and never empty. All berries are the same "
+                 "plain round red berries used throughout the story: no strawberries, no blueberries, no "
+                 "leaves or stems, no other fruit anywhere. QUAXLY the tidy blue-headed duckling stands at the "
+                 "dock edge in the lower-left with one wing flung out dramatically to the side, beak open, "
+                 "eyes wide, struck by a sudden discovery. LECHONK the plump piglet lies sprawled and "
+                 "half-asleep on a stacked wooden berry crate at the lower-right, utterly unbothered, one "
+                 "trotter lazily raised. Comic contrast between the two of them, both staged low in the frame. "
+                 "Keep the horizon low and the background simple open water and distant grassy bank — no "
+                 "market stalls, no awnings, no roofs, no poles, no tent tops and no trees rising into the "
+                 "upper part of the picture. No writing, numbers or symbols anywhere. Keep the entire upper "
+                 "third of the frame as open, empty sky.",
         "refs": ["quaxly", "lechonk"],
         "caption": "Count the evens: 2, 4, 6, 8, 10, 12, 14, 16, 18, 20 — the last digit is always 0, 2, 4, 6 or 8. So 34 is even (34 ÷ 2 = 17, nothing left) and 25 is odd (25 ÷ 2 = 12, with 1 left).",
         "bubbles": [

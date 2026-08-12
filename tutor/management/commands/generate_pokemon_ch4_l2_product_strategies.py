@@ -23,13 +23,20 @@ PANELS = [
         "order": 1, "span": MangaPanel.SPAN_WIDE,
         "alt": "Early morning in the orchard drying yard: all five friends stand around a long rack of berries laid out in neat rows.",
         "scene": "Wide establishing shot of a sunny orchard drying yard just after dawn. A long low wooden "
-                 "drying rack rests on trestles in the lower half of the frame, holding small red berries laid "
-                 "out in six neat straight rows of seven, evenly spaced. The tidy blue-headed duckling QUAXLY "
-                 "stands at one end of the rack inspecting it; the grass kitten SPRIGATITO perches on a crate "
-                 "beside it; the red crocodile FUECOCO, the tiny electric mouse PAWMI and the plump piglet "
-                 "LECHONK gather along the front of the rack. Berry trees and stacked crates behind. Warm "
-                 "golden morning light, cheerful, calm. Keep the entire upper third of the frame as open, "
-                 "empty sky.",
+                 "drying rack rests on trestles across the lower half of the frame, turned so its flat top "
+                 "surface is clearly visible and only mildly foreshortened — the rack is wider than it is tall "
+                 "and its rows stay parallel and easy to read rather than racing to a vanishing point. On the "
+                 "rack sit EXACTLY 42 small red berries in one perfect rectangular grid: 7 ACROSS and 6 DOWN "
+                 "(7 columns, 6 rows). Every row contains exactly seven berries and every column exactly six, "
+                 "evenly spaced with generous bare wood between them so each berry is easy to see and count. "
+                 "There are no other berries anywhere on the rack. The tidy blue-headed duckling QUAXLY stands "
+                 "at the left end of the rack inspecting it; the grass kitten SPRIGATITO perches on a wooden "
+                 "crate at the far left; the red crocodile FUECOCO, the tiny electric mouse PAWMI and the "
+                 "plump piglet LECHONK gather along the right-hand front edge of the rack. All five characters "
+                 "are staged in the lower two-thirds, and every ear tip and head crest stays below the middle "
+                 "of the frame. Low berry trees and stacked crates behind them. Warm golden morning light, "
+                 "cheerful, calm. No writing, numerals, letters or signs anywhere in the picture. Keep the "
+                 "entire upper third of the frame as open, empty sky.",
         "refs": CAST,
         "caption": "The big drying rack holds 6 rows of 7 berries.",
         "bubbles": [
@@ -39,11 +46,18 @@ PANELS = [
     {
         "order": 2, "span": MangaPanel.SPAN_NORMAL,
         "alt": "Pawmi counts berries one by one in a panic while Fuecoco gently lowers a claw to stop it.",
-        "scene": "PAWMI the tiny electric mouse leans over the edge of the drying rack and pokes at the "
-                 "berries one at a time with a paw, eyes spinning, tiny sparks popping off its cheeks in "
-                 "panic. FUECOCO the calm red crocodile lowers one broad claw gently in front of PAWMI's paw "
-                 "to stop it, patient and kind, not cross. Both staged low in the frame. Comic, warm, "
-                 "close-in. Keep the upper part of the frame open and plain.",
+        "scene": "Outdoors in the sunny orchard drying yard, right beside the long wooden drying rack, warm "
+                 "morning light with orchard trees kept low and soft in the background. PAWMI the tiny "
+                 "electric mouse leans over the near edge of the wooden drying rack in the LOWER HALF of the "
+                 "frame and pokes at the small red berries one at a time with a paw, eyes spinning in dizzy "
+                 "spirals, tiny sparks popping off its cheeks in panic. FUECOCO the calm red crocodile "
+                 "crouches low beside it on the right and lowers one broad claw gently in front of PAWMI's paw "
+                 "to stop it — patient and kind, not cross. Both characters are drawn small and staged "
+                 "entirely in the lower two-thirds of the frame: the very top of PAWMI's ears and the very top "
+                 "of FUECOCO's yellow head-crest must both sit clearly BELOW the halfway line of the frame, "
+                 "with nothing of either character rising into the upper region. Comic, warm, affectionate. No "
+                 "writing, numerals, letters or signs anywhere in the picture. Keep the entire upper third of "
+                 "the frame as open, empty sky.",
         "refs": ["pawmi", "fuecoco"],
         "bubbles": [
             {"speaker": "Pawmi", "kind": "speech", "x": 32, "y": 12, "text": "One, two, three, four— wait, where was I? Aaah!"},
@@ -71,14 +85,24 @@ PANELS = [
     {
         "order": 4, "span": MangaPanel.SPAN_FULL,
         "alt": "The five-row block of berries glows warmly, its berries softly bundled down the columns into seven little stacks of five, while the leftover row sits dim.",
-        "scene": "The same drying rack from the same high tilted-forward angle, rack in the lower two-thirds, "
-                 "open orchard sky above. The big block of five rows of seven berries GLOWS warm and golden, "
-                 "and inside that glowing block the berries are softly bundled DOWN THE COLUMNS — seven slim "
-                 "columns, five berries in each, every column faintly outlined like a little stack. The single "
-                 "leftover row beyond the slat sits dim and plain, clearly still waiting. The tiny electric "
-                 "mouse PAWMI hops merrily from column to column along the near edge of the block, sparks of "
-                 "delight trailing behind; the duckling QUAXLY watches from the lower-right corner. Bright, "
-                 "clean, diagram-like. Keep the entire upper third of the frame as open, empty sky.",
+        "scene": "The same long wooden drying rack as the previous panel — the same flat slatted rack, the "
+                 "same dark red berries — seen from the same high angle tilted forward so the whole surface "
+                 "reads flat and clear like a diagram, the rack filling the lower two-thirds of the frame with "
+                 "open orchard beyond. A thin pale wooden slat lies straight ACROSS the rack, running "
+                 "horizontally from the left edge to the right edge, exactly as in the previous panel. On the "
+                 "FAR side of the slat is a block of EXACTLY 35 berries arranged 7 ACROSS and 5 DOWN (7 "
+                 "columns, 5 rows): every row holds exactly seven berries and every column exactly five. That "
+                 "whole block GLOWS warm and golden, and inside it the berries are softly bundled DOWN THE "
+                 "COLUMNS — exactly seven slim vertical bundles, five berries in each, every column faintly "
+                 "outlined like its own little stack. On the NEAR side of the slat, lying parallel to it, is "
+                 "ONE single separate row of EXACTLY 7 berries, drawn dim and plain and grey, clearly still "
+                 "waiting; all seven of those berries are fully visible and none is hidden behind a character, "
+                 "a beam or the frame edge. The tiny electric mouse PAWMI hops merrily from column to column "
+                 "along the near edge of the glowing block, sparks of delight trailing behind, staged in the "
+                 "lower-left. The duckling QUAXLY watches from the lower-right corner, standing clear of the "
+                 "berries with its head kept below the middle of the frame. Bright, clean, diagram-like "
+                 "daylight. No writing, numerals, letters or signs anywhere in the picture. Keep the entire "
+                 "upper third of the frame as open, empty sky.",
         "refs": ["pawmi", "quaxly"],
         "caption": "5 × 7 = 35 — five rows of seven. Look down the columns and it is seven fives: 5, 10, 15, 20, 25, 30, 35.     The part we already knew is done — one row is still waiting.",
         "bubbles": [
@@ -88,11 +112,20 @@ PANELS = [
     {
         "order": 5, "span": MangaPanel.SPAN_NORMAL,
         "alt": "Sprigatito slides the leftover row of berries back against the big block, closing the gap in the rack.",
-        "scene": "SPRIGATITO the grass kitten carries the single leftover row of seven berries on a small slat "
-                 "and slides it back up against the big block of berries, closing the gap so the rack is whole "
-                 "again. The duckling QUAXLY stands beside the rack looking pleased and precise. Staged low in "
-                 "the frame, warm daylight, satisfying and tidy. Keep the upper part of the frame open and "
-                 "plain.",
+        "scene": "SPRIGATITO the grass kitten stands at the lower-left and carries a single thin wooden slat "
+                 "holding EXACTLY 7 small red berries in one straight line, sliding it back up against the "
+                 "near edge of the big block of berries so the gap closes and the rack is whole again. The "
+                 "drying rack is one single FLAT wooden surface — not stepped, not tiered, no raised ledges — "
+                 "seen slightly from above and turned so its rows read clearly, wider than it is tall, sitting "
+                 "in the lower two-thirds of the frame. The block already on the rack is EXACTLY 35 berries "
+                 "arranged 7 ACROSS and 5 DOWN (7 columns, 5 rows): every one of the five rows holds exactly "
+                 "seven berries, every column holds exactly five, all five rows are the same length and all of "
+                 "them begin at the same left edge so the block is a clean rectangle. The 7-berry slat comes "
+                 "in flush and parallel with those rows, lining up as a sixth row of the same length. The "
+                 "duckling QUAXLY stands at the lower-right beside the rack looking pleased and precise. Both "
+                 "SPRIGATITO's ear tips and QUAXLY's head must stay below the middle of the frame. Warm "
+                 "daylight, satisfying and tidy. No writing, numerals, letters or signs anywhere in the "
+                 "picture. Keep the entire upper third of the frame as open, empty sky.",
         "refs": ["sprigatito", "quaxly"],
         "caption": "One more ROW is 7 more berries, not 1 more:  35 + 7 = 42.     So 6 × 7 = 42.",
         "bubbles": [
@@ -102,14 +135,23 @@ PANELS = [
     {
         "order": 6, "span": MangaPanel.SPAN_FULL,
         "alt": "A small tray of two rows of eight berries with an identical twin tray sliding against it to make four rows of eight.",
-        "scene": "A smaller square drying tray seen from a high angle, tilted forward so its surface reads "
-                 "flat and clear, sitting in the lower two-thirds of the frame with the open orchard beyond. "
-                 "The tray holds two neat rows of eight berries. An IDENTICAL second tray, matching berry for "
-                 "berry, slides in from the near side and locks against it, so the two trays together now show "
-                 "four rows of eight berries. A soft mirrored glow links the two matching trays to show they "
-                 "are the same. The red crocodile FUECOCO nudges the second tray into place at the "
-                 "lower-right; the tiny electric mouse PAWMI bounces at the lower-left, sparking with "
-                 "surprise. Clean, bright, diagram-like. Keep the entire upper third of the frame as open, "
+        "scene": "Two small drying trays seen from a high angle, tilted forward so both tray surfaces read "
+                 "completely flat and clear like a diagram, sitting in the lower two-thirds of the frame with "
+                 "the open orchard low beyond. Each tray is a wide shallow rectangle, WIDER THAN IT IS TALL. "
+                 "The FAR tray holds EXACTLY 16 berries arranged 8 ACROSS and 2 DOWN (8 columns, 2 rows) — "
+                 "exactly eight berries in each of its two rows. An IDENTICAL second tray, matching it berry "
+                 "for berry, has slid in from the near side and locked flush against the far tray's near edge "
+                 "along one straight shared seam; that near tray also holds EXACTLY 16 berries arranged 8 "
+                 "ACROSS and 2 DOWN. The two trays are the same size and shape, their left edges are perfectly "
+                 "aligned and their eight columns line up with each other, and neither tray overlaps or hides "
+                 "any part of the other, so the pair together reads as one clean rectangle of 8 ACROSS and 4 "
+                 "DOWN — exactly 32 berries in four equal rows of eight, every berry fully visible. A soft "
+                 "mirrored glow links the two matching trays to show they are the same. The red crocodile "
+                 "FUECOCO nudges the near tray into place from the lower-right; the tiny electric mouse PAWMI "
+                 "bounces at the lower-left, sparking with surprise. Both characters are drawn small and low: "
+                 "the top of PAWMI's ears and the top of FUECOCO's yellow head-crest must sit clearly BELOW "
+                 "the halfway line of the frame. Clean, bright, diagram-like daylight. No writing, numerals, "
+                 "letters or signs anywhere in the picture. Keep the entire upper third of the frame as open, "
                  "empty sky.",
         "refs": ["fuecoco", "pawmi"],
         "caption": "DOUBLE IT — 4 × 8 is double 2 × 8.     2 × 8 = 16, and 16 + 16 = 32.     So 4 × 8 = 32.",

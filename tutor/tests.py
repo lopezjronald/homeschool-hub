@@ -2479,9 +2479,18 @@ class FolkKeeperSeedTests(TestCase):
             for kind in ("Journal", "Vocabulary", "Comprehension",
                          "Writing Exercise", "Discussion", "Socratic Seminar"):
                 self.assertIn(f"Section {n} · {kind}", titles)
-            # The guide gives six vocabulary words plus the use-five-in-a-sentence task.
+            # Six vocabulary words, then FIVE separate sentence boxes — the guide
+            # prints five numbered lines, so the child gets five inputs, not one.
             vocab = sets.get(title=f"Section {n} · Vocabulary")
-            self.assertEqual(vocab.questions.count(), 7)
+            self.assertEqual(vocab.questions.count(), 11)
+            sentence_qs = vocab.questions.filter(prompt__contains="Sentence").order_by("order")
+            self.assertEqual(sentence_qs.count(), 5)
+            self.assertEqual(
+                [q.prompt.split("**")[1] for q in sentence_qs],
+                [f"Sentence {i} of 5" for i in range(1, 6)],
+            )
+            # Every one is its own plain typed box.
+            self.assertTrue(all(q.response_type == Question.TYPE_TEXT for q in sentence_qs))
             # …and fourteen comprehension questions, every one answer-keyed.
             comp = sets.get(title=f"Section {n} · Comprehension")
             self.assertEqual(comp.questions.count(), 14)
@@ -2534,4 +2543,4 @@ class FolkKeeperSeedTests(TestCase):
         curr = Curriculum.objects.get(name__startswith="The Folk Keeper")
         sets = QuestionSet.objects.filter(lesson__chapter__curriculum=curr)
         self.assertEqual(sets.count(), 25)
-        self.assertEqual(sum(s.questions.count() for s in sets), 171)
+        self.assertEqual(sum(s.questions.count() for s in sets), 187)

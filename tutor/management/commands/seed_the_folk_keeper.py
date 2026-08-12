@@ -77,12 +77,20 @@ where writing is involved. Assess effort, completeness and creativity.""" + MAST
 
 VOCAB_HINT = "Look it up in a printed dictionary, then write the definition in your own words."
 
+# The guide gives five NUMBERED lines for the sentence task, so it seeds as five
+# separate questions — one input box each — rather than one box to cram five
+# sentences into. Each sentence is then gradeable on its own, the way the printed
+# page reads. This is the house pattern for Blackbird vocabulary from here on;
+# I Am David keeps its single box because Kaylin already has work saved in it.
+SENTENCE_COUNT = 5
 SENTENCE_PROMPT = (
-    "Choose FIVE of your vocabulary words and use each in a complete sentence that "
-    "illustrates your understanding of the word's meaning."
+    "**Sentence {i} of {n}** — choose one of your vocabulary words (a different one "
+    "each time) and use it in a complete sentence that illustrates your understanding "
+    "of the word's meaning."
 )
 SENTENCE_HINT = (
-    "A sentence that shows the meaning beats one that just repeats the definition."
+    "A sentence that shows the meaning beats one that just repeats the definition. "
+    "Underline or capitalize the vocabulary word so it's easy to spot."
 )
 
 RECOLLECT_INTRO = (
@@ -824,12 +832,18 @@ class Command(BaseCommand):
                 ("vocabulary", f"Define: **{word}**", VOCAB_HINT)
                 for word in section["vocab"]
             ]
-            vocab_questions.append(("application", SENTENCE_PROMPT, SENTENCE_HINT))
+            vocab_questions += [
+                ("application",
+                 SENTENCE_PROMPT.format(i=i, n=SENTENCE_COUNT),
+                 SENTENCE_HINT)
+                for i in range(1, SENTENCE_COUNT + 1)
+            ]
             s, q = self._seed_set(
                 acquire, family,
                 title=f"Section {n} · Vocabulary",
                 reading=chs,
-                intro="Use a real dictionary — the paper kind! Define each word in your own words.",
+                intro="Use a real dictionary — the paper kind! Define each word in your own "
+                      "words. Then write five sentences — one per box, a different word in each.",
                 rubric=ACQUIRE_RUBRIC,
                 answer_key=_acquire_answer_key(n),
                 questions=vocab_questions,

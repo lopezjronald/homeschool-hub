@@ -90,6 +90,11 @@ def _row_positions(n, cx, gap):
     return [cx - span / 2 + i * gap for i in range(n)]
 
 
+def _band_top(h):
+    """The lowest y a diagram may touch — everything above belongs to balloons."""
+    return h * 0.36
+
+
 def _fit(img, cols, rows, pad=90, max_gap=96, min_gap=30):
     """The biggest spacing that fits a cols x rows block BELOW the balloon band.
 
@@ -100,7 +105,7 @@ def _fit(img, cols, rows, pad=90, max_gap=96, min_gap=30):
     """
     w, h = img.size
     avail_w = w - pad * 2
-    avail_h = h * 0.66 - pad * 0.7          # everything below the reserved band
+    avail_h = (h - _band_top(h)) - pad * 0.8   # everything below the reserved band
     gw = avail_w / max(cols - 1, 1) if cols > 1 else avail_w
     gh = avail_h / max(rows - 1, 1) if rows > 1 else avail_h
     return max(min(gw, gh, max_gap), min_gap)
@@ -186,8 +191,8 @@ def array(cols, rows, span="full"):
     cx = w / 2
     # Sit the block in the lower band: never above the balloon zone, never off
     # the bottom edge.
-    cy = min(h * 0.62 + gh / 2, h - gh / 2 - 60)
     pad = r + 26
+    cy = max(_band_top(h) + gh / 2 + pad, h - gh / 2 - pad - 24)
     tray(d, cx - gw / 2 - pad, cy - gh / 2 - pad, cx + gw / 2 + pad, cy + gh / 2 + pad)
     _grid(d, cols, rows, cx, cy, gap, r)
     return img
@@ -202,8 +207,8 @@ def split_array(cols, rows_kept, rows_added, span="full"):
     r = max(int(gap * 0.32), 10)
     gw, gh = (cols - 1) * gap, (total - 1) * gap
     cx = w / 2
-    cy = min(h * 0.62 + gh / 2, h - gh / 2 - 55)
     pad = r + 22
+    cy = max(_band_top(h) + gh / 2 + pad, h - gh / 2 - pad - 20)
     tray(d, cx - gw / 2 - pad, cy - gh / 2 - pad, cx + gw / 2 + pad, cy + gh / 2 + pad)
     ys = _row_positions(total, cy, gap)
     for y in ys:
@@ -322,8 +327,70 @@ def groups_and_leftover(groups, group_size, leftover, span="full", show_slot=Fal
         _fill(xs[-1], 0)
         cx = xs[-1]
         top = base - 72
-        for x in _row_positions(min(group_size, 3), cx, 36):
-            d.ellipse([x - 14, top - 20, x + 14, top + 8], outline=WOOD_DARK, width=3)
+        per_row = min(group_size, 3)
+        for r_i in range(math.ceil(group_size / per_row)):
+            in_row = min(per_row, group_size - r_i * per_row)
+            for x in _row_positions(in_row, cx, 36):
+                d.ellipse([x - 14, top - 20 - r_i * 32, x + 14, top + 8 - r_i * 32],
+                          outline=WOOD_DARK, width=3)
+    return img
+
+
+def two_sets(left_counts, right_counts, span="full"):
+    """Two clearly SEPARATED collections of baskets, divided by a rule.
+
+    A comparison is only visible if the eye can tell where one set ends and the
+    other begins: an evenly-spaced row of four baskets cannot show "one basket
+    versus three". Pass an empty list for a side that is meant to be bare — that
+    is how "no groups at all" gets drawn.
+    """
+    img, d = _canvas(span)
+    w, h = img.size
+    base = int(h * 0.86)
+    d.line([(w / 2, base - 150), (w / 2, base + 18)], fill=INK, width=5)
+
+    def _side(counts, cx_centre, half_w):
+        if not counts:
+            return
+        gap = min(190, (half_w - 60) / max(len(counts), 1))
+        bw = int(gap * 0.62)
+        for cx, n in zip(_row_positions(len(counts), cx_centre, gap), counts):
+            top = basket(d, cx, base, w=bw, h=74)
+            per_row = min(max(n, 1), 3)
+            for r_i in range(math.ceil(n / per_row) if n else 0):
+                in_row = min(per_row, n - r_i * per_row)
+                for x in _row_positions(in_row, cx, 38):
+                    berry(d, x, top - 6 - r_i * 32, 14)
+
+    _side(left_counts, w * 0.26, w * 0.44)
+    _side(right_counts, w * 0.74, w * 0.44)
+    return img
+
+
+def zero_vs_pile(empties, pile, span="full"):
+    """N empty shares on one side; an untouched pile still sitting on the other.
+
+    This is the ``6 / 0`` beat: however many empty containers you line up, the
+    six berries have not gone anywhere — so there is no answer. The undivided
+    pile has to be VISIBLE or the argument is only in the caption.
+    """
+    img, d = _canvas(span)
+    w, h = img.size
+    base = int(h * 0.86)
+    d.line([(w / 2, base - 150), (w / 2, base + 18)], fill=INK, width=5)
+    gap = min(120, (w * 0.42) / max(empties, 1))
+    for cx in _row_positions(empties, w * 0.27, gap):
+        cup(d, cx, base, w=int(gap * 0.62), h=62)
+    crate_w = min(300, w * 0.34)
+    x0, x1 = w * 0.74 - crate_w / 2, w * 0.74 + crate_w / 2
+    y1 = base
+    y0 = y1 - 128
+    tray(d, x0, y0, x1, y1)
+    per_row = min(pile, 3)
+    for r_i in range(math.ceil(pile / per_row)):
+        in_row = min(per_row, pile - r_i * per_row)
+        for x in _row_positions(in_row, (x0 + x1) / 2, 62):
+            berry(d, x, y0 + 42 + r_i * 52, 18)
     return img
 
 
@@ -371,26 +438,35 @@ def take_away(total, removed, span="full", cols=8):
     img, d = _canvas(span)
     w, h = img.size
     kept = total - removed
-    rows = math.ceil(total / cols)
-    gap = min(58, (w - 190) / cols)
-    cy = int(h * 0.74)
-    ys = _row_positions(rows, cy, gap * 0.84)
-    i = 0
+    gap = min(56, (w * 0.44) / max(cols, 1))
+    # Two clearly separate zones: what is LEFT on the left, what was EATEN on the
+    # right, with a rule between them. Overlapping the two made 24 - 9 unreadable.
+    left_cx, right_cx = w * 0.30, w * 0.76
+    cy = h * 0.72
     ghosts = []
-    for y in ys:
-        in_row = min(cols, total - i)
-        for x in _row_positions(in_row, w / 2, gap):
-            if i < kept:
-                berry(d, x, y, 16)
-            else:
-                ghosts.append((x, y - 58))
-            i += 1
+
+    def _block(n, cx, keep):
+        rows = math.ceil(n / cols) if n else 0
+        ys = _row_positions(rows, cy, gap * 0.9)
+        drawn = 0
+        for y in ys:
+            in_row = min(cols, n - drawn)
+            for x in _row_positions(in_row, cx, gap):
+                if keep:
+                    berry(d, x, y, 15)
+                else:
+                    ghosts.append((x, y))
+                drawn += 1
+
+    _block(kept, left_cx, True)
+    _block(removed, right_cx, False)
+    d.line([(w * 0.53, cy - 110), (w * 0.53, cy + 110)], fill=INK, width=5)
     if ghosts:
         layer = Image.new("RGBA", img.size, (0, 0, 0, 0))
         gd = ImageDraw.Draw(layer)
         for x, y in ghosts:
-            gd.ellipse([x - 16, y - 16, x + 16, y + 16],
-                       fill=BERRY + (110,), outline=BERRY_SHADE + (140,), width=3)
+            gd.ellipse([x - 15, y - 15, x + 15, y + 15],
+                       fill=BERRY + (95,), outline=BERRY_SHADE + (150,), width=3)
         img = Image.alpha_composite(img.convert("RGBA"), layer).convert("RGB")
     return img
 

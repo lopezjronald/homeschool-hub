@@ -51,22 +51,22 @@ PANELS = [
 
     # ---- L4 Zero and One ----
     ("pokemon-ch4-l4-zero-and-one", 4, "full",
-     lambda s: dg.equal_groups([1, 1, 1, 1, 1], span=s),
-     "seven groups of 1 / five groups -- exact container count matters"),
+     lambda s: dg.equal_groups([0] * 5, span=s),
+     "five baskets, all flipped EMPTY -- the setup for 5 x 0"),
     ("pokemon-ch4-l4-zero-and-one", 5, "full",
-     lambda s: dg.equal_groups([0, 0, 0, 0, 0], span=s),
-     "five groups of 0 -> 5 x 0 = 0 (five EMPTY baskets)"),
+     lambda s: dg.two_sets([0] * 5, [], span=s),
+     "5 x 0 = 0 (five empty baskets) | 0 x 7 = 0 (no groups at all -- bare)"),
     ("pokemon-ch4-l4-zero-and-one", 7, "full",
-     lambda s: dg.equal_groups([0] * 6, span=s),
-     "0 / 6 = 0 -- exactly six empty shares"),
+     lambda s: dg.zero_vs_pile(6, 6, span=s),
+     "0 / 6 = 0 (six empty cups) | 6 / 0 -- the six berries still sit there"),
 
     # ---- L5 Division with Remainders ----
     ("pokemon-ch4-l5-remainders", 1, "wide",
      lambda s: dg.heap(13, span=s, cols=7),
      "13 berries came in on the last cart"),
     ("pokemon-ch4-l5-remainders", 2, "normal",
-     lambda s: dg.equal_groups([4], span=s),
-     "a finished basket holds exactly 4"),
+     lambda s: dg.equal_groups([4, 4, 4], span=s),
+     "every basket the SAME size -- exactly 4 in each"),
     ("pokemon-ch4-l5-remainders", 5, "full",
      lambda s: dg.groups_and_leftover(2, 4, 5, span=s),
      "Pawmi's WRONG try: 2 baskets of 4, and 5 still in the cup -- is 2 R 5 right?"),
@@ -76,13 +76,13 @@ PANELS = [
 
     # ---- L6 Odd and Even ----
     ("pokemon-ch4-l6-odd-even", 2, "normal",
-     lambda s: dg.pairs(8, span=s),
-     "eight berries, every boat holds two"),
+     lambda s: dg.heap(8, span=s, cols=8),
+     "eight LOOSE berries -- will everybody find a buddy?"),
 
     # ---- L7 Bar Models ----
     ("pokemon-ch4-l7-bar-model-word-problems", 1, "wide",
-     lambda s: dg.equal_groups([5] * 6, span=s),
-     "six baskets, five berries in each"),
+     lambda s: dg.equal_groups([0] * 6, span=s),
+     "six baskets still TO FILL -- empty, five will go in each"),
     ("pokemon-ch4-l7-bar-model-word-problems", 4, "full",
      lambda s: dg.bar_model(6, 5, span=s),
      "6 units of 5 -> 6 x 5 = 30"),
@@ -95,8 +95,8 @@ PANELS = [
 
     # ---- L8 Times as Many ----
     ("pokemon-ch4-l8-times-as-many", 1, "wide",
-     lambda s: dg.equal_groups([4, 4, 4, 4], span=s),
-     "Fuecoco's 4, and Quaxly's three times as many"),
+     lambda s: dg.two_sets([4], [4, 4, 4], span=s),
+     "Fuecoco's ONE basket of 4 | Quaxly's THREE -- 3 times as many"),
     ("pokemon-ch4-l8-times-as-many", 4, "full",
      lambda s: dg.compare_bars(4, 3, span=s),
      "two bars from the SAME left edge: 1 unit vs 3 copies"),
@@ -109,8 +109,8 @@ PANELS = [
      lambda s: dg.equal_groups([6, 6, 6, 6], span=s),
      "4 groups of 6"),
     ("pokemon-ch4-l9-two-step", 5, "full",
-     lambda s: dg.heap(24, span=s, cols=8),
-     "STEP 1 -- one heap of 24"),
+     lambda s: dg.heap(24, span=s, cols=6),
+     "STEP 1 -- one pile of 24, in rows of 6 so 6/12/18/24 is traceable"),
     ("pokemon-ch4-l9-two-step", 6, "full",
      lambda s: dg.take_away(24, 9, span=s, cols=8),
      "STEP 2 -- 24 - 9 = 15 left"),

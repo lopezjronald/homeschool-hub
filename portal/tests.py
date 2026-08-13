@@ -1944,7 +1944,9 @@ class PortalOutlineAndDeactivateTests(TestCase):
         shown = self.client.get(reverse("curricula:curriculum_list") + "?show_deactivated=1")
         shown_names = [c.name for c in shown.context["curricula"]]
         self.assertIn("Beast Academy", shown_names)
-        self.assertContains(shown, "Deactivated")
+        # Switched off but never archived, so it reads as waiting rather than finished.
+        self.assertContains(shown, "Ready to start")
+        self.assertNotContains(shown, "Archived")
 
 
 class OnlineSubjectWithInAppLessonsTests(TestCase):

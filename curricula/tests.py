@@ -4,6 +4,7 @@ from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import Client, SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
+from django.utils import timezone
 
 from core.models import Family, FamilyMembership
 from students.models import Student
@@ -1300,3 +1301,292 @@ class PacingTests(SimpleTestCase):
 
         out = project_due_dates([1], set(), 3, date(2026, 8, 12))  # a Wednesday
         self.assertEqual(out, [(1, date(2026, 8, 12))])
+
+
+class CurriculumStateTests(TestCase):
+    """Three states, not one boolean: In use / Ready to start / Archived.
+
+    A shelf of switched-off courses has to distinguish 'loaded ahead of time and
+    waiting' from 'finished and filed away' — otherwise the parent can't tell
+    what is still coming."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.parent = User.objects.create_user(username="stp", email="stp@e.com", password="pw")
+        cls.family = Family.objects.create(name="State Fam")
+        FamilyMembership.objects.create(user=cls.parent, family=cls.family, role="parent")
+        cls.cur = Curriculum.objects.create(
+            parent=cls.parent, family=cls.family, name="Science Genius", subject="Science")
+
+    def setUp(self):
+        self.client.login(username="stp", password="pw")
+
+    def test_the_three_states_are_distinguishable(self):
+        self.assertEqual(self.cur.state, Curriculum.STATE_IN_USE)
+        self.assertEqual(self.cur.state_label, "In use")
+
+        self.cur.is_active = False
+        self.assertEqual(self.cur.state, Curriculum.STATE_READY)   # waiting, not done
+        self.assertTrue(self.cur.is_ready_to_start)
+        self.assertFalse(self.cur.is_archived)
+
+        self.cur.archived_at = timezone.now()
+        self.assertEqual(self.cur.state, Curriculum.STATE_ARCHIVED)
+        self.assertTrue(self.cur.is_archived)
+        self.assertFalse(self.cur.is_ready_to_start)
+
+    def test_turning_off_shelves_rather_than_archives(self):
+        self.client.post(reverse("curricula:curriculum_toggle_active", args=[self.cur.pk]))
+        self.cur.refresh_from_db()
+        self.assertFalse(self.cur.is_active)
+        self.assertIsNone(self.cur.archived_at)                    # off != finished
+        self.assertEqual(self.cur.state, Curriculum.STATE_READY)
+
+    def test_turning_off_a_previously_archived_course_says_waiting_and_means_it(self):
+        """The off message promises "waiting" — the row has to agree.
+
+        Archive, pick it back up, then switch it off again. If a stale stamp
+        survived the trip through 'on', the badge would read Archived while the
+        flash said it was waiting for her."""
+        self.client.post(reverse("curricula:curriculum_toggle_archived", args=[self.cur.pk]))
+        self.client.post(reverse("curricula:curriculum_toggle_active", args=[self.cur.pk]))
+        resp = self.client.post(
+            reverse("curricula:curriculum_toggle_active", args=[self.cur.pk]), follow=True)
+        self.cur.refresh_from_db()
+        self.assertEqual(self.cur.state, Curriculum.STATE_READY)
+        self.assertIsNone(self.cur.archived_at)
+        self.assertContains(resp, "turned off and waiting")
+        self.assertNotContains(resp, "badge bg-secondary ms-1")    # no Archived badge
+
+    def test_the_edit_form_cannot_mint_a_visible_archived_row(self):
+        """Available-now on an archived course must drop the stamp, not keep it.
+
+        A row that is both visible and archived is counted by the shelf button
+        but returned by no filter, so the button advertises courses the parent
+        cannot find."""
+        self.client.post(reverse("curricula:curriculum_toggle_archived", args=[self.cur.pk]))
+        self.client.post(reverse("curricula:curriculum_update", args=[self.cur.pk]), {
+            "name": "Science Genius", "subject": "Science", "grade_level": "",
+            "website_url": "", "is_active": "True",
+        })
+        self.cur.refresh_from_db()
+        self.assertTrue(self.cur.is_active)
+        self.assertIsNone(self.cur.archived_at)
+        self.assertEqual(self.cur.state, Curriculum.STATE_IN_USE)
+
+    def test_a_visible_archived_row_is_impossible_to_save_at_all(self):
+        """Same invariant one level down, where the admin and any script land."""
+        c = Curriculum.objects.create(
+            parent=self.parent, family=self.family, name="Direct Save",
+            subject="Math", is_active=True, archived_at=timezone.now())
+        c.refresh_from_db()
+        self.assertIsNone(c.archived_at)
+
+        c.archived_at = timezone.now()
+        c.is_active = True
+        c.save(update_fields=["archived_at", "is_active", "updated_at"])
+        c.refresh_from_db()
+        self.assertIsNone(c.archived_at)                           # cleared despite update_fields
+
+    def test_archiving_also_hides_it(self):
+        self.client.post(reverse("curricula:curriculum_toggle_archived", args=[self.cur.pk]))
+        self.cur.refresh_from_db()
+        self.assertIsNotNone(self.cur.archived_at)
+        self.assertFalse(self.cur.is_active)                       # archived is never visible
+        self.assertEqual(self.cur.state, Curriculum.STATE_ARCHIVED)
+
+    def test_turning_an_archived_course_back_on_clears_the_archive(self):
+        """Picking a course back up means it is in use, not finished."""
+        self.cur.is_active = False
+        self.cur.archived_at = timezone.now()
+        self.cur.save()
+        self.client.post(reverse("curricula:curriculum_toggle_active", args=[self.cur.pk]))
+        self.cur.refresh_from_db()
+        self.assertTrue(self.cur.is_active)
+        self.assertIsNone(self.cur.archived_at)
+        self.assertEqual(self.cur.state, Curriculum.STATE_IN_USE)
+
+    def test_un_archiving_returns_it_to_the_waiting_shelf(self):
+        self.cur.is_active = False
+        self.cur.archived_at = timezone.now()
+        self.cur.save()
+        self.client.post(reverse("curricula:curriculum_toggle_archived", args=[self.cur.pk]))
+        self.cur.refresh_from_db()
+        self.assertIsNone(self.cur.archived_at)
+        self.assertFalse(self.cur.is_active)                       # back to waiting, still hidden
+        self.assertEqual(self.cur.state, Curriculum.STATE_READY)
+
+    def test_save_for_later_creates_it_hidden(self):
+        resp = self.client.post(reverse("curricula:curriculum_create"), {
+            "name": "Weekly Studies", "subject": "History", "grade_level": "",
+            "website_url": "", "is_active": "False",
+        })
+        self.assertEqual(resp.status_code, 302)
+        made = Curriculum.objects.get(name="Weekly Studies")
+        self.assertFalse(made.is_active)
+        self.assertEqual(made.state, Curriculum.STATE_READY)       # staged, never seen yet
+
+    def test_available_now_is_the_default_when_the_field_is_absent(self):
+        """An older form post (or any submission without the radio) must still
+        create a usable course rather than a silently invisible one."""
+        resp = self.client.post(reverse("curricula:curriculum_create"), {
+            "name": "Straight To Work", "subject": "Math", "grade_level": "", "website_url": "",
+        })
+        self.assertEqual(resp.status_code, 302)
+        self.assertTrue(Curriculum.objects.get(name="Straight To Work").is_active)
+
+    def test_editing_a_shelved_course_does_not_switch_it_on(self):
+        self.cur.is_active = False
+        self.cur.save()
+        self.client.post(reverse("curricula:curriculum_update", args=[self.cur.pk]), {
+            "name": "Science Genius", "subject": "Science", "grade_level": "", "website_url": "",
+        })
+        self.cur.refresh_from_db()
+        self.assertFalse(self.cur.is_active)
+
+    def test_the_list_renders_three_sections_in_order(self):
+        """Alphabetical ordering interleaves the states, so the page has to split
+        them. Names are chosen so plain subject/name ordering would put the
+        finished course FIRST and the live one last — if the sections were not
+        really rendered, the cards would come back in that order instead."""
+        Curriculum.objects.create(
+            parent=self.parent, family=self.family, name="Later Guide",
+            subject="Art", is_active=False)
+        Curriculum.objects.create(
+            parent=self.parent, family=self.family, name="Finished Guide",
+            subject="Anatomy", is_active=False, archived_at=timezone.now())
+        resp = self.client.get(reverse("curricula:curriculum_list"), {"show_deactivated": "1"})
+        body = resp.content.decode()
+
+        # The headings exist, in shelf order.
+        in_use_at = body.index(">In use ")
+        ready_at = body.index(">\n        Ready to start ")
+        archived_at = body.index(">\n        Archived ")
+        self.assertLess(in_use_at, ready_at)
+        self.assertLess(ready_at, archived_at)
+
+        # And each card sits under its own heading, not in one alphabetical run.
+        self.assertLess(in_use_at, body.index("Science Genius"))
+        self.assertLess(ready_at, body.index("Later Guide"))
+        self.assertLess(archived_at, body.index("Finished Guide"))
+        self.assertLess(body.index("Science Genius"), ready_at)
+        self.assertLess(body.index("Later Guide"), archived_at)
+
+    def test_no_section_headings_when_nothing_is_switched_off(self):
+        """A family with only live courses shouldn't be shown an empty filing
+        system — the plain grid is the whole story."""
+        resp = self.client.get(reverse("curricula:curriculum_list"))
+        self.assertContains(resp, "Science Genius")
+        self.assertNotContains(resp, ">In use ")
+        self.assertNotContains(resp, "Ready to start")
+        self.assertNotContains(resp, "Archived")
+
+    def test_the_shelf_button_counts_match_what_the_shelf_shows(self):
+        Curriculum.objects.create(
+            parent=self.parent, family=self.family, name="Later Guide",
+            subject="Art", is_active=False)
+        Curriculum.objects.create(
+            parent=self.parent, family=self.family, name="Finished Guide",
+            subject="Anatomy", is_active=False, archived_at=timezone.now())
+        closed = self.client.get(reverse("curricula:curriculum_list"))
+        self.assertContains(closed, "1 ready")
+        self.assertContains(closed, "1 archived")
+        shown = self.client.get(reverse("curricula:curriculum_list"), {"show_deactivated": "1"})
+        self.assertEqual(shown.context["ready_count"], len(shown.context["ready_to_start"]))
+        self.assertEqual(shown.context["archived_count"], len(shown.context["archived"]))
+
+    def test_hidden_courses_never_reach_a_child_portal(self):
+        """Whatever the reason it is off, the girls must not see it.
+
+        Drives the real portal URLs rather than re-writing the filter in the
+        test — a test that asserts its own queryset would stay green even if
+        every production query dropped its visibility clause."""
+        from students.models import Student
+        from portal.tokens import make_portal_token
+        from tutor.models import Material, QuestionSet
+
+        child = Student.objects.create(
+            parent=self.parent, first_name="Violet", grade_level="G03", family=self.family)
+        chapter = Chapter.objects.create(curriculum=self.cur, number=1, title="Cells")
+        lesson = Lesson.objects.create(chapter=chapter, order=1, number=1, title="Cell Walls")
+        # A realistic placement: started, with a pace set, so the portal builds
+        # its due-date projection for this course rather than skipping it.
+        CurriculumPlacement.objects.create(
+            child=child, curriculum=self.cur, current_lesson=lesson, weekly_pace=3)
+        material = Material.objects.create(
+            lesson=lesson, family=self.family, title="What a cell wall does",
+            student_content="Cell walls hold the shape.", status=Material.APPROVED)
+        # Work PINNED to this child takes the other branch of the portal's
+        # visibility filter — it deliberately survives a shelved placement, so
+        # switching off the whole course is the only thing that hides it. That
+        # is how every manga lesson is assigned, so it's the branch that matters.
+        pinned = Material.objects.create(
+            lesson=lesson, family=self.family, child=child, title="Violet's cell manga",
+            student_content="Panel one.", status=Material.APPROVED)
+        pinned_set = QuestionSet.objects.create(
+            lesson=lesson, family=self.family, child=child, title="Cell check",
+            status=QuestionSet.APPROVED, mode=QuestionSet.MODE_STUDENT)
+
+        token = make_portal_token(child)
+        home_url = reverse("portal:portal_home", kwargs={"token": token})
+        subject_url = reverse("portal:portal_subject", kwargs={
+            "token": token, "curriculum_id": self.cur.pk})
+        # The pages a child would have bookmarked before the course was put away.
+        material_url = reverse("portal:portal_material", kwargs={
+            "token": token, "pk": material.pk})
+        pinned_url = reverse("portal:portal_material", kwargs={
+            "token": token, "pk": pinned.pk})
+        questions_url = reverse("portal:portal_questions", kwargs={
+            "token": token, "set_pk": pinned_set.pk})
+
+        # The calendar surfaces are gated separately from the outline, so they
+        # have to be driven too — and they render the LESSON title, not the
+        # course name, so asserting only on the course name misses a leak there.
+        calendar_url = reverse("portal:portal_calendar", kwargs={"token": token})
+        feed_url = reverse("portal:portal_calendar_feed", kwargs={"token": token})
+
+        self.client.logout()
+        self.assertContains(self.client.get(home_url), "Science Genius")   # visible while on
+        for url in (subject_url, material_url, pinned_url, questions_url):
+            self.assertEqual(self.client.get(url).status_code, 200, url)
+
+        for label, kwargs in (("ready", {"is_active": False, "archived_at": None}),
+                              ("archived", {"is_active": False, "archived_at": timezone.now()})):
+            Curriculum.objects.filter(pk=self.cur.pk).update(**kwargs)
+            for url in (home_url, calendar_url, feed_url):
+                page = self.client.get(url)
+                self.assertNotContains(page, "Science Genius", msg_prefix=f"{label} {url}")
+                self.assertNotContains(page, "Cell Walls", msg_prefix=f"{label} {url}")
+            for url in (subject_url, material_url, pinned_url, questions_url):
+                self.assertEqual(self.client.get(url).status_code, 404, f"{label} {url}")
+
+    def test_only_an_editor_of_that_family_may_archive(self):
+        """Both toggles are writes and must be scoped like every other write."""
+        outsider = User.objects.create_user(
+            username="outsider", email="out@e.com", password="pw")
+        other_family = Family.objects.create(name="Other Fam")
+        FamilyMembership.objects.create(user=outsider, family=other_family, role="parent")
+
+        viewer = User.objects.create_user(username="viewer", email="v@e.com", password="pw")
+        FamilyMembership.objects.create(user=viewer, family=self.family, role="teacher")
+
+        for username in ("outsider", "viewer"):
+            self.client.login(username=username, password="pw")
+            for route in ("curriculum_toggle_archived", "curriculum_toggle_active"):
+                resp = self.client.post(reverse(f"curricula:{route}", args=[self.cur.pk]))
+                self.assertEqual(resp.status_code, 404, f"{username} → {route}")
+                self.cur.refresh_from_db()
+                self.assertTrue(self.cur.is_active)
+                self.assertIsNone(self.cur.archived_at)
+
+    def test_the_toggles_are_post_only_and_need_a_login(self):
+        self.client.logout()
+        for route in ("curriculum_toggle_archived", "curriculum_toggle_active"):
+            url = reverse(f"curricula:{route}", args=[self.cur.pk])
+            self.assertEqual(self.client.post(url).status_code, 302)   # → login
+            self.client.login(username="stp", password="pw")
+            self.assertEqual(self.client.get(url).status_code, 405)    # no GET writes
+            self.client.logout()
+        self.cur.refresh_from_db()
+        self.assertTrue(self.cur.is_active)
+        self.assertIsNone(self.cur.archived_at)

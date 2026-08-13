@@ -4,6 +4,7 @@ from django.db import connection
 from django.db.models import ProtectedError, Q
 from django.db.models.functions import Greatest
 from django.http import Http404
+from django.utils import timezone
 from django.shortcuts import render, redirect, get_object_or_404
 from django.views.decorators.http import require_POST
 
@@ -52,6 +53,8 @@ def curriculum_list(request):
     grade = request.GET.get("grade", "").strip()
     q = request.GET.get("q", "").strip()
 
+    # "Show deactivated" now means "show everything that is switched off", which
+    # covers both the waiting shelf and the archive — the template groups them.
     curricula = base if show_deactivated else base.filter(is_active=True)
     if subject:
         curricula = curricula.filter(subject__iexact=subject)
@@ -70,9 +73,19 @@ def curriculum_list(request):
     present_grades = set(facet_base.exclude(grade_level="").values_list("grade_level", flat=True))
     grade_choices = [(v, label) for v, label in Curriculum.GRADE_CHOICES if v in present_grades]
     deactivated_count = base.filter(is_active=False).count()
+    # Split the switched-off ones so the shelf reads at a glance: what is still
+    # coming vs what is behind us.
+    in_use = [c for c in curricula if c.state == Curriculum.STATE_IN_USE]
+    ready = [c for c in curricula if c.state == Curriculum.STATE_READY]
+    archived = [c for c in curricula if c.state == Curriculum.STATE_ARCHIVED]
 
     return render(request, "curricula/curriculum_list.html", {
         "curricula": curricula,
+        "in_use": in_use,
+        "ready_to_start": ready,
+        "archived": archived,
+        "ready_count": base.filter(is_active=False, archived_at__isnull=True).count(),
+        "archived_count": base.filter(is_active=False, archived_at__isnull=False).count(),
         # Gate the Add/edit controls on the SELECTED family (global content falls back
         # to the global edit right), not on "can edit somewhere" — closes the leak
         # where a viewer of the selected family saw edit controls.
@@ -325,17 +338,49 @@ def curriculum_set_placement(request, pk, child_pk):
 @login_required
 @require_POST
 def curriculum_toggle_active(request, pk):
-    """Shelf or restore a curriculum in the family catalog (HH-149)."""
+    """Turn a curriculum on or off for the girls (HH-149).
+
+    Switching ON always clears any archive stamp: a course you have deliberately
+    picked back up is in use, not finished.
+    """
     curriculum = get_object_or_404(editable_queryset(Curriculum.objects.all(), request.user), pk=pk)
     curriculum.is_active = not curriculum.is_active
+    # Curriculum.save() drops archived_at on the way on, so the off branch can
+    # never be reached with a stale stamp still attached.
     curriculum.save(update_fields=["is_active", "updated_at"])
     if curriculum.is_active:
-        messages.success(request, f'"{curriculum.name}" is active again.')
+        messages.success(request, f'"{curriculum.name}" is in use again — the girls can see it.')
     else:
         messages.success(
             request,
-            f'"{curriculum.name}" deactivated — hidden from Curricula and every child portal.',
+            f'"{curriculum.name}" is turned off and waiting. Nothing is lost — switch it '
+            f'back on whenever she\'s ready.',
         )
+    return redirect("curricula:curriculum_detail", pk=curriculum.pk)
+
+
+@login_required
+@require_POST
+def curriculum_toggle_archived(request, pk):
+    """Retire a finished course, or bring it back to the waiting shelf.
+
+    Archiving is deliberately NOT the same as turning off. Both hide the course,
+    but only one of them means "we're done with this" — without the distinction a
+    shelf of switched-off courses can't tell you what is still coming.
+    """
+    curriculum = get_object_or_404(editable_queryset(Curriculum.objects.all(), request.user), pk=pk)
+    if curriculum.archived_at:
+        curriculum.archived_at = None
+        curriculum.save(update_fields=["archived_at", "updated_at"])
+        messages.success(
+            request,
+            f'"{curriculum.name}" moved back to Ready to start. Turn it on when she is.',
+        )
+    else:
+        curriculum.archived_at = timezone.now()
+        curriculum.is_active = False
+        curriculum.save(update_fields=["archived_at", "is_active", "updated_at"])
+        messages.success(request, f'"{curriculum.name}" archived — finished and filed away.')
     return redirect("curricula:curriculum_detail", pk=curriculum.pk)
 
 

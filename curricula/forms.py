@@ -7,11 +7,39 @@ from .models import Curriculum, CurriculumDocument, CurriculumResource
 
 
 class CurriculumForm(forms.ModelForm):
-    """Form for creating and editing curricula."""
+    """Form for creating and editing curricula.
+
+    The availability choice is asked outright rather than defaulted. Defaulting
+    either way bites: default-on and a course you loaded for next year appears in
+    a child's portal today; default-off and a course you added to start Monday is
+    silently missing with nothing to explain why.
+    """
+
+    is_active = forms.TypedChoiceField(
+        label="Ready for her?",
+        coerce=lambda v: v == "True",
+        choices=(("True", "Available now — she can see it and start"),
+                 ("False", "Save for later — load it now, switch it on when she's ready")),
+        widget=forms.RadioSelect,
+        initial="True",
+        # Optional on purpose: a POST that predates this field (or omits it) must
+        # keep working and mean "available", rather than failing validation or —
+        # worse — silently coercing to hidden.
+        required=False,
+    )
+
+    def clean_is_active(self):
+        # Read the raw post rather than cleaned_data: an absent field and an
+        # explicit "off" both arrive as falsey once coerced, and they must mean
+        # different things. add_prefix so a prefixed form still finds its field.
+        raw = self.data.get(self.add_prefix("is_active"))
+        if raw in (None, ""):
+            return self.instance.is_active if self.instance.pk else True
+        return raw == "True"
 
     class Meta:
         model = Curriculum
-        fields = ["name", "subject", "grade_level", "website_url", "is_online"]
+        fields = ["name", "subject", "grade_level", "website_url", "is_online", "is_active"]
         widgets = {
             "website_url": forms.URLInput(
                 attrs={"placeholder": "https://example.com"}

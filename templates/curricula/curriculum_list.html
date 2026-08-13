@@ -9,14 +9,16 @@
   <div class="d-flex justify-content-between align-items-center mb-3">
     <div>
       <h1 class="mb-0">Curricula</h1>
-      <small class="text-muted">{{ total_count }} on file{% if deactivated_count and not show_deactivated %} · {{ deactivated_count }} deactivated{% endif %}</small>
+      <small class="text-muted">{{ total_count }} on file{% if deactivated_count and not show_deactivated %} · {{ deactivated_count }} switched off{% endif %}</small>
     </div>
     <div class="d-flex gap-2 align-items-center">
       {% if deactivated_count or show_deactivated %}
         {% if show_deactivated %}
-          <a href="?{% if q %}q={{ q }}&{% endif %}{% if active_subject %}subject={{ active_subject }}&{% endif %}{% if active_grade %}grade={{ active_grade }}{% endif %}" class="btn btn-sm btn-outline-secondary">Hide deactivated</a>
+          <a href="?{% if q %}q={{ q }}&{% endif %}{% if active_subject %}subject={{ active_subject }}&{% endif %}{% if active_grade %}grade={{ active_grade }}{% endif %}" class="btn btn-sm btn-outline-secondary">Show only what's in use</a>
         {% else %}
-          <a href="?show_deactivated=1{% if q %}&q={{ q }}{% endif %}{% if active_subject %}&subject={{ active_subject }}{% endif %}{% if active_grade %}&grade={{ active_grade }}{% endif %}" class="btn btn-sm btn-outline-secondary">Show deactivated ({{ deactivated_count }})</a>
+          <a href="?show_deactivated=1{% if q %}&q={{ q }}{% endif %}{% if active_subject %}&subject={{ active_subject }}{% endif %}{% if active_grade %}&grade={{ active_grade }}{% endif %}" class="btn btn-sm btn-outline-secondary">
+            Show the shelf{% if ready_count %} · {{ ready_count }} ready{% endif %}{% if archived_count %} · {{ archived_count }} archived{% endif %}
+          </a>
         {% endif %}
       {% endif %}
       {% if can_edit %}
@@ -62,34 +64,45 @@
   {% endif %}
 
   {% if curricula %}
-    <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4">
-      {% for curriculum in curricula %}
-        <div class="col">
-          <div class="card h-100">
-            <div class="card-body">
-              <div class="ss-feature-emoji mb-2">{{ curriculum.emoji }}</div>
-              <h5 class="card-title mb-1">
-                <a href="{% url 'curricula:curriculum_detail' curriculum.pk %}" class="text-decoration-none">{{ curriculum.name }}</a>
-                {% if not curriculum.is_active %}<span class="badge bg-secondary">Deactivated</span>{% endif %}
-              </h5>
-              <p class="mb-0">
-                {% if curriculum.subject %}<span class="badge bg-light text-dark">{{ curriculum.subject }}</span>{% endif %}
-                {% if curriculum.grade_level %}<span class="badge bg-secondary">{{ curriculum.get_grade_level_display }}</span>{% endif %}
-              </p>
-            </div>
-            <div class="card-footer bg-transparent d-flex gap-2">
-              <a href="{% url 'curricula:curriculum_detail' curriculum.pk %}" class="btn btn-sm btn-outline-primary">Open</a>
-              {% if curriculum.website_url %}
-                <a href="{{ curriculum.website_url }}" target="_blank" rel="noopener noreferrer" class="btn btn-sm btn-outline-secondary">Launch ↗</a>
-              {% endif %}
-              {% if can_edit %}
-                <a href="{% url 'curricula:curriculum_update' curriculum.pk %}" class="btn btn-sm btn-outline-secondary ms-auto">Edit</a>
-              {% endif %}
-            </div>
-          </div>
-        </div>
-      {% endfor %}
-    </div>
+    {% comment %}
+      Three sections, not one mixed grid. Alphabetical ordering interleaves the
+      states, so without the split a finished course sits between two live ones
+      and the shelf tells you nothing at a glance.
+    {% endcomment %}
+    {% if in_use %}
+      {% if ready_to_start or archived %}
+        <h2 class="h5 text-muted mb-3">In use <span class="badge bg-light text-dark">{{ in_use|length }}</span></h2>
+      {% endif %}
+      <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4">
+        {% for curriculum in in_use %}
+          {% include "curricula/_curriculum_card.html" %}
+        {% endfor %}
+      </div>
+    {% endif %}
+
+    {% if ready_to_start %}
+      <h2 class="h5 text-muted mb-1 {% if in_use %}mt-5{% endif %}">
+        Ready to start <span class="badge bg-warning text-dark">{{ ready_to_start|length }}</span>
+      </h2>
+      <p class="text-muted small mb-3">Loaded and waiting. Turn one on when she's ready for it.</p>
+      <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4">
+        {% for curriculum in ready_to_start %}
+          {% include "curricula/_curriculum_card.html" %}
+        {% endfor %}
+      </div>
+    {% endif %}
+
+    {% if archived %}
+      <h2 class="h5 text-muted mb-1 {% if in_use or ready_to_start %}mt-5{% endif %}">
+        Archived <span class="badge bg-secondary">{{ archived|length }}</span>
+      </h2>
+      <p class="text-muted small mb-3">Finished and filed away. Nothing has been deleted.</p>
+      <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4">
+        {% for curriculum in archived %}
+          {% include "curricula/_curriculum_card.html" %}
+        {% endfor %}
+      </div>
+    {% endif %}
   {% elif has_filters %}
     <div class="alert alert-info" role="alert">
       No curricula match your filters. <a href="{% url 'curricula:curriculum_list' %}" class="alert-link">Clear filters</a>.

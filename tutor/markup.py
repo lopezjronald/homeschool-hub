@@ -142,6 +142,15 @@ _LEGACY_HEIGHT = 120
 # passage wraps to, so its box is tall enough to hold the text. Georgia is the
 # first family in the stack; the fallbacks (Times New Roman, serif) are
 # narrower, so these round up rather than down.
+# Control characters that force a new line in CSS (vertical tab, form feed)
+# plus the rest of the control range, which renders unpredictably. Counting
+# each as its own line is the safe direction.
+_HARD_BREAKS = re.compile("[\\x00-\\x08\\x0b\\x0c\\x0e-\\x1f\\x7f]+")
+# Break opportunities inside a line. Capturing, so the separator run comes
+# back alongside the words and can be charged its own width — a tab is a
+# break opportunity too, and wider than a space.
+_BREAK_POINTS = re.compile("([ \\t]+)")
+
 GEORGIA_24 = (
     6.0, 8.0, 10.0, 15.0, 15.0, 20.0, 17.0, 5.0, 9.0, 9.0, 11.0, 15.0, 6.0,
     9.0, 6.0, 11.0, 15.0, 10.0, 13.0, 13.0, 14.0, 13.0, 14.0, 12.0, 14.0,
@@ -204,6 +213,13 @@ class MarkupReplay:
     _WORD_SPACING = 8.4          # 0.35em at 24px, added to each space
     _WIDE_CHAR = 24.0            # a full em: CJK and accented Latin
     _EMOJI_CHAR = 48.0           # emoji render far wider than an em at this size
+    # Control characters and DEL. A tab advances to the next tab stop rather
+    # than by its own width, and a control renders as a glyph box — both wider
+    # than an em, and both would otherwise take the _WIDE_CHAR guess and clip.
+    # Unreachable from real content (a Tab keypress moves focus rather than
+    # inserting one), but the estimate has to be an upper bound for every input,
+    # not just the plausible ones.
+    _CONTROL_CHAR = 48.0
     _SLACK = 0.99                # a hair narrower than reality, so a borderline
                                  # break costs a line here too rather than only
                                  # in the browser
@@ -220,17 +236,24 @@ class MarkupReplay:
         avail = max(1, (self.width - self._SIDE_PADDING) * self._SLACK)
         lines = 0
         for raw in (self.text or "").split("\n") or [""]:
-            lines += self._wrapped_lines(raw, avail)
+            # Vertical tab and form feed break the line in CSS, and the rest of
+            # the control range renders unpredictably; counting each as its own
+            # line is the safe direction.
+            for segment in _HARD_BREAKS.split(raw):
+                lines += self._wrapped_lines(segment, avail)
         return self._PADDING + max(1, lines) * self._LINE_HEIGHT
 
     @classmethod
     def _advance(cls, word):
         total = 0.0
         for ch in word:
-            index = ord(ch) - 32
+            code = ord(ch)
+            index = code - 32
             if 0 <= index < len(GEORGIA_24):
                 total += GEORGIA_24[index]
-            elif ord(ch) >= 0x1F000:
+            elif code < 0x20 or code == 0x7F:
+                total += cls._CONTROL_CHAR
+            elif code >= 0x1F000:
                 total += cls._EMOJI_CHAR
             else:
                 total += cls._WIDE_CHAR
@@ -239,13 +262,26 @@ class MarkupReplay:
 
     @classmethod
     def _wrapped_lines(cls, raw, avail):
-        """Greedy wrap on spaces, matching how the browser breaks the line."""
+        """Greedy wrap, matching how the browser breaks the line.
+
+        Breaks at tabs as well as spaces: a tab is a break opportunity, so
+        splitting on spaces alone treats a tab-separated line as one unbreakable
+        run and under-counts it by however many times it actually wraps.
+        """
         if not raw.strip():
             return 1
-        space = cls._advance(" ") + cls._WORD_SPACING
-        lines, used = 1, 0.0
-        for word in raw.split(" "):
+        # Capturing split keeps the separators, so each one is charged its own
+        # width — a tab advances to a tab stop and is wider than a space.
+        parts = _BREAK_POINTS.split(raw)
+        lines, used, gap = 1, 0.0, 0.0
+        for i, word in enumerate(parts):
+            if i % 2:                       # a separator run
+                gap = sum(cls._CONTROL_CHAR if c == "\t"
+                          else cls._advance(" ") + cls._WORD_SPACING
+                          for c in word)
+                continue
             width = cls._advance(word)
+            space, gap = gap, 0.0
             if width > avail:
                 if used:
                     lines += 1
@@ -259,7 +295,10 @@ class MarkupReplay:
                     lines += max(0, -(-int(width) // int(avail)) - 1)
                     used = width % avail
                 continue
-            step = width if used == 0 else space + width
+            # `space` is the separator run preceding this word, and it takes
+            # room even at the start of a line under pre-wrap — dropping it
+            # there under-counts an indented line.
+            step = space + width
             if used + step > avail:
                 lines += 1
                 used = width

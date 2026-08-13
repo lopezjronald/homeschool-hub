@@ -2985,6 +2985,39 @@ class MarkupReplayTests(SimpleTestCase):
             # And not absurdly generous, or the page fills with empty boxes.
             self.assertLess(r.height, actual_px + 120, name)
 
+    # Measured the same way as HEIGHT_CASES. None of these is reachable from
+    # real content — the passages are seeded ASCII and a Tab keypress moves focus
+    # rather than inserting a character — but the estimate has to be an upper
+    # bound for every input, not only the plausible ones.
+    HOSTILE_HEIGHT_CASES = [
+        # Tab is a BREAK OPPORTUNITY, so splitting on spaces alone treated this
+        # as one unbreakable run and under-counted it.
+        ("tab separated", 120, "Word\there\tand\tmore\twords\tacross\tthe\tline\there"),
+        # Leading whitespace still occupies width under pre-wrap.
+        ("leading tabs", 120, "\t\t\t\t\t\t\t\tindented deeply after eight tabs on this line"),
+        ("control chars", 216,
+         "".join(chr(c) for c in range(1, 32)) + " visible text after controls"),
+        ("nbsp joined", 120, "one\u00a0two\u00a0three\u00a0four\u00a0five\u00a0six\u00a0seven\u00a0eight\u00a0nine\u00a0ten"),
+        ("combining accents", 72, "e\u0301" * 60),
+        ("thai, no spaces", 72, "\u0e2a\u0e27\u0e31\u0e2a\u0e14\u0e35\u0e04\u0e23\u0e31\u0e1a\u0e19\u0e35\u0e48\u0e04\u0e37\u0e2d\u0e02\u0e49\u0e2d\u0e04\u0e27\u0e32\u0e21\u0e17\u0e14\u0e2a\u0e2d\u0e1a"),
+        ("zwj family emoji", 264, "\U0001F468\u200D\U0001F469\u200D\U0001F467\u200D\U0001F466" * 10),
+        ("skin tone emoji", 168, "\U0001F44D\U0001F3FD" * 25),
+        ("very long", 1320, "the quick brown fox jumps over the lazy dog " * 30),
+        ("many spaces", 120, "a" + "  " * 80 + "b"),
+        ("double spaces", 120,
+         "The  cat  sat  on  the  mat  and  then  the  dog  came  over  to  play  too"),
+    ]
+
+    def test_a_legacy_box_holds_hostile_text_too(self):
+        from tutor.markup import replay_for
+        for name, actual_px, text in self.HOSTILE_HEIGHT_CASES:
+            r = replay_for(self._answer(text=text), self._q(write=True))
+            self.assertGreaterEqual(
+                r.height, actual_px,
+                f"{name}: box {r.height}px is shorter than the {actual_px}px the "
+                f"browser needs — the text gets clipped",
+            )
+
     def test_the_line_estimate_beats_a_single_average_char_width(self):
         """Guards the specific regression: an average tuned to lowercase.
 

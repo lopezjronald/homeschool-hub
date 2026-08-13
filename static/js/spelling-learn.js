@@ -8,28 +8,11 @@
   var words = [].slice.call(root.querySelectorAll(".sp-word"));
   var doneBtn = document.getElementById("done-btn");
   var heard = Object.create(null);
-  var voice = null;
-
-  function pickVoice() {
-    var all = (window.speechSynthesis && speechSynthesis.getVoices()) || [];
-    voice = all.filter(function (v) { return /^en[-_]US/i.test(v.lang); })[0]
-         || all.filter(function (v) { return /^en/i.test(v.lang); })[0] || null;
-  }
-  if (window.speechSynthesis) { pickVoice(); speechSynthesis.onvoiceschanged = pickVoice; }
-
-  function say(text) {
-    if (!window.speechSynthesis) return;
-    speechSynthesis.cancel();
-    var u = new SpeechSynthesisUtterance(text);
-    u.lang = "en-US"; u.rate = 0.85;
-    if (voice) u.voice = voice;
-    speechSynthesis.speak(u);
-  }
 
   words.forEach(function (btn) {
     btn.addEventListener("click", function () {
       var w = btn.dataset.word;
-      say(w);
+      spellingSpeaker.word({ word: w, audio: btn.dataset.audio || '' });
       btn.classList.add("is-heard");
       heard[w] = true;
       var left = words.length - Object.keys(heard).length;

@@ -18,22 +18,7 @@
   var buckets = [].slice.call(root.querySelectorAll(".sp-bucket"));
   var heartIndex = buckets.length - 1;      // the last column is Heart Words
   var selected = null, placed = 0, tries = 0, wrong = 0;
-  var voice = null;
 
-  function pickVoice() {
-    var all = (window.speechSynthesis && speechSynthesis.getVoices()) || [];
-    voice = all.filter(function (v) { return /^en[-_]US/i.test(v.lang); })[0]
-         || all.filter(function (v) { return /^en/i.test(v.lang); })[0] || null;
-  }
-  if (window.speechSynthesis) { pickVoice(); speechSynthesis.onvoiceschanged = pickVoice; }
-  function say(text) {
-    if (!window.speechSynthesis) return;
-    speechSynthesis.cancel();
-    var u = new SpeechSynthesisUtterance(text);
-    u.lang = "en-US"; u.rate = 0.85;
-    if (voice) u.voice = voice;
-    speechSynthesis.speak(u);
-  }
 
   // Shuffle so the answer isn't the printed order. Fisher-Yates.
   for (var s = items.length - 1; s > 0; s--) {
@@ -47,10 +32,14 @@
     btn.className = "sp-chip";
     btn.textContent = item.word;
     btn.dataset.target = item.heart ? heartIndex : item.bucket;
+    btn.dataset.audio = item.audio || "";
     btn.addEventListener("click", function () {
       if (selected) selected.classList.remove("is-picked");
       selected = (selected === btn) ? null : btn;
-      if (selected) { selected.classList.add("is-picked"); say(item.word); }
+      if (selected) {
+        selected.classList.add("is-picked");
+        spellingSpeaker.word(item);
+      }
     });
     pool.appendChild(btn);
   });
@@ -71,7 +60,8 @@
         if (placed === items.length) finish();
       } else {
         wrong += 1;
-        say(selected.textContent);
+        spellingSpeaker.word({ word: selected.textContent,
+                               audio: selected.dataset.audio || '' });
         selected.classList.add("is-bounce");
         var chip = selected;
         setTimeout(function () { chip.classList.remove("is-bounce"); }, 400);

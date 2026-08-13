@@ -63,6 +63,47 @@
     </form>
   {% endif %}
 
+  {% if spelling_children %}
+    {% comment %}
+      Spelling has its own models rather than a Curriculum row, but a parent
+      looking for "everything she studies" looks on this page, so it belongs here.
+    {% endcomment %}
+    <div class="card mb-4">
+      <div class="card-body">
+        <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+          <div>
+            <h5 class="mb-1">🔤 Spelling</h5>
+            <div class="text-muted small">
+              Pattern-based spelling with spaced review — its own programme, not a
+              curriculum you place lessons in.
+            </div>
+          </div>
+        </div>
+        <ul class="list-group list-group-flush mt-2">
+          {% for row in spelling_children %}
+            <li class="list-group-item d-flex justify-content-between align-items-center flex-wrap gap-2 px-0">
+              <span>
+                <strong>{{ row.child.first_name }}</strong>
+                {% if row.week %}
+                  · Week {{ row.week.number }} of 36 · {{ row.week.pattern }}
+                {% else %}
+                  · not started
+                {% endif %}
+                {% if not row.placement.is_active %}
+                  <span class="badge bg-secondary ms-1">Turned off</span>
+                {% elif row.placement.repeat_flagged_on %}
+                  <span class="badge bg-warning text-dark ms-1">Repeating this week</span>
+                {% endif %}
+              </span>
+              <a href="{% url 'spelling:parent_dashboard' row.child.pk %}"
+                 class="btn btn-sm btn-outline-primary">How she's doing</a>
+            </li>
+          {% endfor %}
+        </ul>
+      </div>
+    </div>
+  {% endif %}
+
   {% if curricula %}
     {% comment %}
       Three sections, not one mixed grid. Alphabetical ordering interleaves the

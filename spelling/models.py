@@ -63,6 +63,19 @@ class SpellingWord(models.Model):
         max_length=120, blank=True,
         help_text="For heart words: which bit breaks the rule, e.g. \"ai says /e/\".",
     )
+    audio_url = models.URLField(
+        blank=True, max_length=500,
+        help_text="Baked pronunciation of the word (spelling_audio). Blank falls "
+                  "back to the browser's own voice.",
+    )
+    sentence_audio_url = models.URLField(
+        blank=True, max_length=500,
+        help_text="Baked reading of the dictation sentence.",
+    )
+    audio_voice = models.CharField(
+        max_length=40, blank=True,
+        help_text="Which Polly voice was baked, so a voice change is visible.",
+    )
     sort_bucket = models.PositiveSmallIntegerField(
         default=0,
         help_text="Index into the week's sort_buckets — which column this word "

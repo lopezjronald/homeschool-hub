@@ -16,22 +16,7 @@
 
   var el = function (id) { return document.getElementById(id); };
   var i = 0, right = 0, awaitingFix = false;
-  var voice = null;
 
-  function pickVoice() {
-    var all = (window.speechSynthesis && speechSynthesis.getVoices()) || [];
-    voice = all.filter(function (v) { return /^en[-_]US/i.test(v.lang); })[0]
-         || all.filter(function (v) { return /^en/i.test(v.lang); })[0] || null;
-  }
-  if (window.speechSynthesis) { pickVoice(); speechSynthesis.onvoiceschanged = pickVoice; }
-  function say(text, rate) {
-    if (!window.speechSynthesis) return;
-    speechSynthesis.cancel();
-    var u = new SpeechSynthesisUtterance(text);
-    u.lang = "en-US"; u.rate = rate || 1.0;
-    if (voice) u.voice = voice;
-    speechSynthesis.speak(u);
-  }
 
   function check(typed, item) {
     var problems = [];
@@ -55,7 +40,7 @@
     el("d-next").hidden = true;
     el("d-form").hidden = false;
     awaitingFix = false;
-    say(item.sentence);
+    spellingSpeaker.sentence(item);
     el("d-typed").focus();
   }
 
@@ -67,7 +52,7 @@
     show();
   });
 
-  el("d-say").addEventListener("click", function () { say(items[i].sentence); });
+  el("d-say").addEventListener("click", function () { spellingSpeaker.sentence(items[i]); });
 
   el("d-form").addEventListener("submit", function (e) {
     e.preventDefault();
@@ -90,7 +75,7 @@
       awaitingFix = true;
       el("d-fix").value = "";
       el("d-fix").focus();
-      say(item.sentence);
+      spellingSpeaker.sentence(item);
     }
   });
 

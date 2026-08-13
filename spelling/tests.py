@@ -202,7 +202,8 @@ class KidSurfaceTests(SpellingBase):
         items = json.loads(resp.context["items_json"])
         self.assertTrue(items)
         self.assertEqual(
-            set(items[0]), {"card", "word", "sentence", "heart", "tricky"})
+            set(items[0]),
+            {"card", "word", "sentence", "heart", "tricky", "audio", "sentence_audio"})
 
     def test_an_answer_moves_the_card(self):
         services.ensure_cards(self.child, self.week)
@@ -410,3 +411,103 @@ class DiscoverabilityTests(SpellingBase):
         self.assertContains(
             resp, reverse("spelling:parent_dashboard", args=[self.child.pk]))
         self.assertContains(resp, self.week.pattern)
+
+
+class AudioTests(SpellingBase):
+    """Baked speech, and the fallback for words that don't have it yet.
+
+    The device's own voice is whatever the machine ships — on Windows a flat
+    robotic reader. A child asked to spell a word she has only heard needs it
+    said clearly and the same way every time.
+    """
+
+    def test_a_word_carries_its_baked_audio_to_the_quiz(self):
+        SpellingWord.objects.filter(word="cat").update(
+            audio_url="https://cdn.example/spelling/word/abc.mp3",
+            sentence_audio_url="https://cdn.example/spelling/sentence/def.mp3")
+        services.ensure_cards(self.child, self.week)
+        resp = self.client.get(reverse("spelling:quiz", args=[self.token]))
+        item = next(i for i in json.loads(resp.context["items_json"]) if i["word"] == "cat")
+        self.assertEqual(item["audio"], "https://cdn.example/spelling/word/abc.mp3")
+        self.assertEqual(item["sentence_audio"], "https://cdn.example/spelling/sentence/def.mp3")
+
+    def test_an_unbaked_word_sends_empty_urls_rather_than_breaking(self):
+        """Blank means "use the device voice" — it must not become the string
+        'None' or a broken URL the player would choke on."""
+        services.ensure_cards(self.child, self.week)
+        resp = self.client.get(reverse("spelling:quiz", args=[self.token]))
+        for item in json.loads(resp.context["items_json"]):
+            self.assertEqual(item["audio"], "")
+            self.assertEqual(item["sentence_audio"], "")
+
+    def test_every_activity_loads_the_shared_speaker(self):
+        for name in ("quiz", "learn", "sort", "dictation"):
+            resp = self.client.get(reverse(f"spelling:{name}", args=[self.token]))
+            self.assertContains(resp, "js/spelling-speak.", msg_prefix=name)
+
+    def test_the_learn_buttons_carry_their_audio(self):
+        SpellingWord.objects.filter(word="cat").update(
+            audio_url="https://cdn.example/spelling/word/abc.mp3")
+        resp = self.client.get(reverse("spelling:learn", args=[self.token]))
+        self.assertContains(resp, 'data-audio="https://cdn.example/spelling/word/abc.mp3"')
+
+    def test_the_key_changes_with_the_voice(self):
+        """A re-bake with a new voice must write a NEW object, not leave the old
+        audio sitting under the same name."""
+        from spelling import audio as spelling_audio
+        a = spelling_audio.key_for("cat", voice="Joanna", engine="neural",
+                                   rate="85%", kind="word")
+        b = spelling_audio.key_for("cat", voice="Danielle", engine="neural",
+                                   rate="85%", kind="word")
+        c = spelling_audio.key_for("cat", voice="Joanna", engine="neural",
+                                   rate="95%", kind="word")
+        self.assertNotEqual(a, b)
+        self.assertNotEqual(a, c)
+        self.assertEqual(a, spelling_audio.key_for(
+            "cat", voice="Joanna", engine="neural", rate="85%", kind="word"))
+
+    def test_an_apostrophe_cannot_break_the_ssml(self):
+        """The text reaches an XML parser, so "Dad's" must not end the element."""
+        from spelling import audio as spelling_audio
+        body = spelling_audio._ssml("Dad's <hat> & \"map\"", "85%")
+        self.assertIn("&amp;", body)
+        self.assertIn("&lt;hat&gt;", body)
+        self.assertNotIn("<hat>", body)
+        self.assertTrue(body.startswith("<speak>") and body.endswith("</speak>"))
+
+    def test_synthesis_asks_polly_for_the_right_voice_and_pace(self):
+        from spelling import audio as spelling_audio
+
+        class FakeStream:
+            def read(self):
+                return b"mp3-bytes"
+
+        seen = {}
+
+        class FakePolly:
+            def synthesize_speech(self, **kwargs):
+                seen.update(kwargs)
+                return {"AudioStream": FakeStream()}
+
+        audio, key = spelling_audio.synthesize(
+            "cat", kind="word", voice="Danielle", engine="neural", client=FakePolly())
+        self.assertEqual(audio, b"mp3-bytes")
+        self.assertEqual(seen["VoiceId"], "Danielle")
+        self.assertEqual(seen["Engine"], "neural")
+        self.assertEqual(seen["OutputFormat"], "mp3")
+        self.assertIn('rate="85%"', seen["Text"])       # a word is said slowly
+        sent, _ = spelling_audio.synthesize(
+            "The cat sat.", kind="sentence", client=FakePolly())
+        self.assertIn('rate="95%"', seen["Text"])       # a sentence is not
+
+    def test_a_polly_failure_is_a_clean_error_not_a_traceback(self):
+        from spelling import audio as spelling_audio
+
+        class Broken:
+            def synthesize_speech(self, **kwargs):
+                raise RuntimeError("throttled")
+
+        with self.assertRaises(spelling_audio.SpellingTTSError):
+            spelling_audio.synthesize("cat", client=Broken())
+        with self.assertRaises(spelling_audio.SpellingTTSError):
+            spelling_audio.synthesize("   ", client=Broken())

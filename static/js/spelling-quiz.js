@@ -6,8 +6,9 @@
  * — and the MISS is what gets recorded, not the retype, or the box would go up
  * for a word she got wrong.
  *
- * Speech uses the browser's own voice. iOS will not speak until the page has
- * had a real tap, hence the start gate.
+ * Speech goes through spellingSpeaker: baked Polly audio where we have it,
+ * the device voice where we don't. iOS will not speak until the page has had
+ * a real tap, hence the start gate.
  */
 (function () {
   "use strict";
@@ -22,34 +23,6 @@
   var i = 0, right = 0, missed = [], mastered = 0, awaitingFix = false;
 
   /* ---- speech ------------------------------------------------------- */
-  var voice = null;
-  function pickVoice() {
-    var all = (window.speechSynthesis && speechSynthesis.getVoices()) || [];
-    voice = all.filter(function (v) { return /^en[-_]US/i.test(v.lang); })[0]
-         || all.filter(function (v) { return /^en/i.test(v.lang); })[0]
-         || null;
-  }
-  if (window.speechSynthesis) {
-    pickVoice();
-    speechSynthesis.onvoiceschanged = pickVoice;
-  }
-  function say(text, rate, then) {
-    if (!window.speechSynthesis) { if (then) then(); return; }
-    var u = new SpeechSynthesisUtterance(text);
-    u.lang = "en-US";
-    u.rate = rate;
-    if (voice) u.voice = voice;
-    if (then) u.onend = then;
-    speechSynthesis.speak(u);
-  }
-  function sayItem(item) {
-    // Word, then the sentence for context, then the word again — the way a
-    // teacher dictates, so she hears it in use and not just in isolation.
-    speechSynthesis.cancel();
-    say(item.word, 0.85, function () {
-      say(item.sentence, 1.0, function () { say(item.word, 0.85); });
-    });
-  }
 
   /* ---- plumbing ------------------------------------------------------ */
   function post(url, body) {
@@ -79,7 +52,7 @@
     el("heart").hidden = !item.heart;
     if (item.heart) el("tricky").textContent = item.tricky || "watch this one";
     awaitingFix = false;
-    sayItem(item);
+    spellingSpeaker.dictate(item);
     el("typed").focus();
   }
 
@@ -107,7 +80,7 @@
     show(items[0]);
   });
 
-  el("say").addEventListener("click", function () { sayItem(items[i]); });
+  el("say").addEventListener("click", function () { spellingSpeaker.dictate(items[i]); });
 
   el("form").addEventListener("submit", function (e) {
     e.preventDefault();
@@ -137,7 +110,7 @@
       awaitingFix = true;
       el("fix").value = "";
       el("fix").focus();
-      say(item.word, 0.8);
+      spellingSpeaker.word(item);
     }
   });
 

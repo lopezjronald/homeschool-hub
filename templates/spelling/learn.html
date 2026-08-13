@@ -13,7 +13,8 @@
 
   <div class="sp-wordgrid">
     {% for w in words %}
-      <button type="button" class="sp-word" data-word="{{ w.word }}">{{ w.word }}</button>
+      <button type="button" class="sp-word" data-word="{{ w.word }}"
+              data-audio="{{ w.audio_url }}">{{ w.word }}</button>
     {% endfor %}
   </div>
 
@@ -21,7 +22,8 @@
     <div class="sp-hearts">
       <div class="sp-hearts-title">💗 Heart words — these break the rule</div>
       {% for w in heart_words %}
-        <button type="button" class="sp-word sp-word--heart" data-word="{{ w.word }}">
+        <button type="button" class="sp-word sp-word--heart" data-word="{{ w.word }}"
+                data-audio="{{ w.audio_url }}">
           {{ w.word }}<small>{{ w.tricky_part }}</small>
         </button>
       {% endfor %}
@@ -35,6 +37,7 @@
 {% endblock %}
 
 {% block extra_js %}
+<script src="{% static 'js/spelling-speak.js' %}"></script>
 <script src="{% static 'js/spelling-post.js' %}"></script>
 <script src="{% static 'js/spelling-learn.js' %}"></script>
 {% endblock %}

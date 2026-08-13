@@ -79,8 +79,29 @@ def curriculum_list(request):
     ready = [c for c in curricula if c.state == Curriculum.STATE_READY]
     archived = [c for c in curricula if c.state == Curriculum.STATE_ARCHIVED]
 
+    # Spelling is its own programme, not a Curriculum row — but a parent looking
+    # for "everything she studies" looks here, so it has to appear here.
+    spelling_children = []
+    try:
+        from spelling.models import SpellingPlacement, SpellingWeek
+
+        for placement in (
+            SpellingPlacement.objects.filter(
+                child__in=viewable_queryset(Student.objects.all(), request.user))
+            .select_related("child")
+        ):
+            spelling_children.append({
+                "child": placement.child,
+                "placement": placement,
+                "week": SpellingWeek.objects.filter(
+                    number=placement.current_week).first(),
+            })
+    except Exception:
+        spelling_children = []
+
     return render(request, "curricula/curriculum_list.html", {
         "curricula": curricula,
+        "spelling_children": spelling_children,
         "in_use": in_use,
         "ready_to_start": ready,
         "archived": archived,

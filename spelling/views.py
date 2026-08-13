@@ -91,6 +91,10 @@ def quiz(request, token):
             "sentence": c.word.sentence,
             "heart": c.word.is_heart,
             "tricky": c.word.tricky_part,
+            # Baked speech when we have it; the client falls back to the
+            # browser's own voice when we don't.
+            "audio": c.word.audio_url,
+            "sentence_audio": c.word.sentence_audio_url,
         }
         for c in cards
     ]
@@ -156,7 +160,8 @@ def sort_words(request, token):
         raise Http404
     buckets = list(week.sort_buckets or [])
     words = [
-        {"word": w.word, "bucket": w.sort_bucket, "heart": w.is_heart}
+        {"word": w.word, "bucket": w.sort_bucket, "heart": w.is_heart,
+         "audio": w.audio_url}
         for w in week.words.all()
     ]
     return render(request, "spelling/sort.html", {
@@ -176,8 +181,11 @@ def dictation(request, token):
     picks = list(week.pattern_words[:3])
     return render(request, "spelling/dictation.html", {
         "token": token, "student": student, "week": week,
-        "items_json": json.dumps(
-            [{"word": w.word, "sentence": w.sentence} for w in picks]),
+        "items_json": json.dumps([
+            {"word": w.word, "sentence": w.sentence,
+             "audio": w.audio_url, "sentence_audio": w.sentence_audio_url}
+            for w in picks
+        ]),
     })
 
 

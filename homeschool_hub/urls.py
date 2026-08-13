@@ -82,6 +82,7 @@ urlpatterns = [
     path("calendar/", include(("family_calendar.urls", "family_calendar"), namespace="family_calendar")),
     path("core/", include(("core.urls", "core"), namespace="core")),
     path("lingua/", include(("lingua.urls", "lingua"), namespace="lingua")),
+    path("spelling/", include(("spelling.urls", "spelling"), namespace="spelling")),
 ]
 
 # Serve static files in DEBUG mode (fallback if WhiteNoise isn't handling them)

@@ -1,0 +1,10 @@
+{% extends "portal/base_portal.html" %}
+{% load static %}
+{% block title %}Spelling · {{ student.first_name }}{% endblock %}
+{% block extra_css %}<link href="{% static 'css/spelling.css' %}" rel="stylesheet">{% endblock %}
+
+{% block content %}
+<div class="container" style="max-width:720px;">
+  {% block spelling %}{% endblock %}
+</div>
+{% endblock %}

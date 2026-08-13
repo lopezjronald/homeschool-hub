@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}{{ child.first_name }} · Spelling{% endblock %}
+{% block extra_css %}<link href="{% static 'css/spelling.css' %}" rel="stylesheet">{% endblock %}
+
+{% block content %}
+<div class="container py-4" style="max-width:820px;">
+
+  <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
+    <div>
+      <h1 class="mb-1">{{ child.first_name }}'s spelling</h1>
+      {% if week %}
+        <div class="text-muted">Week {{ week.number }} of 36 · {{ week.unit }} · {{ week.pattern }}</div>
+      {% else %}
+        <div class="text-muted">Not started yet.</div>
+      {% endif %}
+    </div>
+    {% if sessions_this_week >= 4 %}
+      <span class="badge bg-success align-self-center">On track this week</span>
+    {% elif sessions_this_week >= 2 %}
+      <span class="badge bg-warning text-dark align-self-center">{{ sessions_this_week }} of 4 done</span>
+    {% else %}
+      <span class="badge bg-light text-dark align-self-center">{{ sessions_this_week }} of 4 done</span>
+    {% endif %}
+  </div>
+
+  {% if repeat_flagged %}
+    <div class="alert alert-warning">
+      <strong>Repeating week {{ week.number }}.</strong>
+      More than 40% of this week's words are still coming back daily, so the app
+      held her here rather than moving on. That's the phonics gap showing itself —
+      worth five minutes of the trouble words below.
+    </div>
+  {% endif %}
+
+  <div class="row g-3 mb-4">
+    <div class="col-6 col-md-3">
+      <div class="sp-stat"><div class="n">{{ mastery_pct }}%</div><div class="lbl">Words strong</div></div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="sp-stat"><div class="n">{{ strong }}/{{ introduced }}</div><div class="lbl">Of those met</div></div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="sp-stat"><div class="n">{{ sessions_this_week }}</div><div class="lbl">Sessions this week</div></div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="sp-stat"><div class="n">{{ streak }}</div><div class="lbl">Day streak</div></div>
+    </div>
+  </div>
+
+  <div class="card mb-4">
+    <div class="card-header"><h5 class="mb-0">🎯 Trouble words</h5></div>
+    <div class="card-body">
+      {% if trouble %}
+        <p class="text-muted small">Missed three or more times. These are your two-minute
+          car-ride drill — she'll keep meeting them in the app either way.</p>
+        <div class="sp-trouble">
+          {% for card in trouble %}
+            <span class="sp-trouble-word">{{ card.word.word }}
+              <small>{{ card.misses }}&times;</small></span>
+          {% endfor %}
+        </div>
+      {% else %}
+        <p class="text-muted mb-0">Nothing stuck yet — no word has been missed three times.</p>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header"><h5 class="mb-0">Recent sessions</h5></div>
+    <div class="card-body">
+      {% if recent %}
+        <ul class="list-group list-group-flush">
+          {% for s in recent %}
+            <li class="list-group-item d-flex justify-content-between align-items-center">
+              <span>{{ s.on_date|date:"D, M j" }} · {{ s.get_kind_display }}</span>
+              <span>
+                {% if s.asked %}<span class="badge bg-light text-dark">{{ s.score_display }}</span>{% endif %}
+                {% if s.missed_words %}
+                  <small class="text-muted ms-2">missed {{ s.missed_words|join:", " }}</small>
+                {% endif %}
+              </span>
+            </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <p class="text-muted mb-0">No sessions yet.</p>
+      {% endif %}
+    </div>
+  </div>
+
+</div>
+{% endblock %}

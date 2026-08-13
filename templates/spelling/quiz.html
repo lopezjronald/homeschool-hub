@@ -1,0 +1,79 @@
+{% extends "spelling/base_spelling.html" %}
+{% load static %}
+
+{% block spelling %}
+<div class="sp-card" id="quiz"
+     data-items="{{ items_json }}"
+     data-answer-url="{% url 'spelling:answer' token=token %}"
+     data-finish-url="{% url 'spelling:finish' token=token %}"
+     data-home-url="{% url 'spelling:home' token=token %}">
+  {% csrf_token %}
+  <div class="alert alert-warning" id="savewarn" hidden>
+    Your answers aren't saving right now — tell a grown-up.
+  </div>
+
+  <div class="sp-progress"><div class="sp-progress-bar" id="bar"></div></div>
+  <div class="sp-count"><span id="at">1</span> of <span id="total">{{ count }}</span></div>
+
+  {% if count %}
+    <div id="gate" class="text-center">
+      <p class="sp-rule">Listen to each word, then type it.</p>
+      <button type="button" class="sp-go" id="start">🔊 Turn on sound and start</button>
+      <div class="sp-sub">Your device has to hear a tap before it can talk.</div>
+    </div>
+
+    <div id="play" hidden>
+      <div class="text-center">
+        <button type="button" class="sp-speak" id="say" aria-label="Say the word again">
+          🔊 <span>Say it again</span>
+        </button>
+        <div class="sp-heart" id="heart" hidden>💗 Heart word — <span id="tricky"></span></div>
+      </div>
+
+      <form id="form" autocomplete="off">
+        <label class="sp-label" for="typed">Type the word</label>
+        <input class="sp-input" id="typed" name="typed" type="text"
+               autocomplete="off" autocorrect="off" autocapitalize="off"
+               spellcheck="false" data-gramm="false" enterkeyhint="go">
+        <button type="submit" class="sp-go sp-go--wide">Check</button>
+      </form>
+
+      <div id="feedback" hidden>
+        <div class="sp-verdict" id="verdict"></div>
+        <div class="sp-compare" id="compare" hidden>
+          <div class="sp-compare-row"><span class="sp-compare-label">You wrote</span>
+            <span class="sp-yours" id="yours"></span></div>
+          <div class="sp-compare-row"><span class="sp-compare-label">The word is</span>
+            <span class="sp-right" id="right"></span></div>
+        </div>
+        <div id="fixbox" hidden>
+          <label class="sp-label" for="fix">Now type it correctly</label>
+          <input class="sp-input" id="fix" type="text" autocomplete="off"
+                 autocorrect="off" autocapitalize="off" spellcheck="false" data-gramm="false">
+          <div class="sp-sub" id="fixhint" hidden>Not quite — look at it and try again.</div>
+        </div>
+        <button type="button" class="sp-go sp-go--wide" id="next" hidden>Next word ➜</button>
+      </div>
+    </div>
+
+    <div id="done" hidden class="text-center">
+      <div class="sp-done-emoji" aria-hidden="true">🎉</div>
+      <div class="sp-done-text">Nice work!</div>
+      <div class="sp-score" id="score"></div>
+      <div class="sp-sub" id="moved"></div>
+      <a class="sp-go" id="back" href="{% url 'spelling:home' token=token %}">Back to spelling</a>
+    </div>
+  {% else %}
+    <div class="text-center">
+      <div class="sp-done-emoji" aria-hidden="true">✅</div>
+      <div class="sp-done-text">Nothing due right now.</div>
+      <a class="sp-go" href="{% url 'spelling:home' token=token %}">Back to spelling</a>
+    </div>
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'js/spelling-post.js' %}"></script>
+<script src="{% static 'js/spelling-quiz.js' %}"></script>
+{% endblock %}

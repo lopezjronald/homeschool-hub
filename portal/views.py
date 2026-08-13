@@ -770,6 +770,35 @@ def _subject_cards(student):
     return cards
 
 
+
+def _spelling_card(student, today):
+    """Her spelling programme, or None if a parent hasn't placed her in it.
+
+    Imported lazily and defensively: spelling is a separate programme, and the
+    portal home is the page every child lands on — it must not break because a
+    sibling programme is mid-migration or switched off.
+    """
+    try:
+        from spelling import services as spelling_services
+        from spelling.models import SpellingPlacement
+    except Exception:
+        return None
+    placement = SpellingPlacement.objects.filter(child=student, is_active=True).first()
+    if placement is None:
+        return None
+    kind, week = spelling_services.next_activity(student, today=today)
+    if week is None:
+        return None
+    labels = {
+        "learn": "Learn", "sort": "Sort", "quiz": "Spell", "dictation": "Write",
+    }
+    return {
+        "label": labels.get(kind, "Done"),
+        "pattern": week.pattern if kind else "all done this week!",
+        "week": week,
+    }
+
+
 def portal_home(request, token):
     """The kid's 'Today' surface: one calm card per subject, one next step each."""
     from curricula.models import Lesson
@@ -791,6 +820,7 @@ def portal_home(request, token):
     return render(request, "portal/portal_home.html", {
         "student": student,
         "token": token,
+        "spelling": _spelling_card(student, today),
         "subjects": _subject_cards(student),
         "activities": _visible_activities(student),
         "calendar_next": next_up[0] if next_up else None,

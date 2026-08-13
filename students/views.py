@@ -120,11 +120,27 @@ def student_detail(request, pk):
             reverse("portal:portal_home", kwargs={"token": make_portal_token(student)})
         )
 
+    # Spelling is a separate programme; show its card only when a parent has
+    # actually placed her in it. Guarded so this page never breaks over a
+    # sibling app.
+    spelling_placement = spelling_week = None
+    try:
+        from spelling.models import SpellingPlacement, SpellingWeek
+
+        spelling_placement = SpellingPlacement.objects.filter(child=student).first()
+        if spelling_placement:
+            spelling_week = SpellingWeek.objects.filter(
+                number=spelling_placement.current_week).first()
+    except Exception:
+        spelling_placement = spelling_week = None
+
     return render(request, "students/student_detail.html", {
         "student": student,
         "can_edit": can_edit,
         "curricula": curricula,
         "portal_url": portal_url,
+        "spelling_placement": spelling_placement,
+        "spelling_week": spelling_week,
     })
 
 

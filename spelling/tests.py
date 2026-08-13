@@ -369,3 +369,44 @@ class CsrfTests(SpellingBase):
             self.assertContains(resp, "csrfmiddlewaretoken", msg_prefix=name)
             # Hash-suffixed by manifest storage, so match the stem.
             self.assertContains(resp, "js/spelling-post.", msg_prefix=name)
+
+
+class DiscoverabilityTests(SpellingBase):
+    """Shipped-but-unreachable is not shipped.
+
+    The first deploy of this was live and correct at its own URL and linked from
+    nowhere, so the only way in was a URL nobody had.
+    """
+
+    def setUp(self):
+        services.placement_for(self.child)
+
+    def test_her_portal_home_offers_spelling(self):
+        resp = self.client.get(reverse("portal:portal_home", args=[self.token]))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, reverse("spelling:home", args=[self.token]))
+        self.assertContains(resp, "Spelling")
+
+    def test_the_card_names_what_she_would_be_doing(self):
+        resp = self.client.get(reverse("portal:portal_home", args=[self.token]))
+        self.assertEqual(resp.context["spelling"]["label"], "Learn")
+        self.assertEqual(resp.context["spelling"]["pattern"], self.week.pattern)
+
+    def test_a_child_not_placed_in_spelling_is_not_offered_it(self):
+        SpellingPlacement.objects.filter(child=self.child).delete()
+        resp = self.client.get(reverse("portal:portal_home", args=[self.token]))
+        self.assertIsNone(resp.context["spelling"])
+        self.assertNotContains(resp, reverse("spelling:home", args=[self.token]))
+
+    def test_switched_off_spelling_disappears_from_her_portal(self):
+        SpellingPlacement.objects.filter(child=self.child).update(is_active=False)
+        resp = self.client.get(reverse("portal:portal_home", args=[self.token]))
+        self.assertIsNone(resp.context["spelling"])
+
+    def test_the_parent_page_links_to_the_dashboard(self):
+        self.client.login(username="sp", password="pw")
+        resp = self.client.get(reverse("students:student_detail", args=[self.child.pk]))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(
+            resp, reverse("spelling:parent_dashboard", args=[self.child.pk]))
+        self.assertContains(resp, self.week.pattern)

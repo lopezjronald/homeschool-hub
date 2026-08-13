@@ -2,7 +2,8 @@
 {% load static %}
 {% load tutor_extras %}
 {% block title %}{{ student.first_name }} · {{ question_set.title }}{% endblock %}
-{% block extra_css %}<link href="{% static 'css/portal.css' %}" rel="stylesheet">{% endblock %}
+{% block extra_css %}<link href="{% static 'css/portal.css' %}" rel="stylesheet">
+<link href="{% static 'css/markup-replay.css' %}" rel="stylesheet">{% endblock %}
 
 {% block content %}
 <div class="container py-4">

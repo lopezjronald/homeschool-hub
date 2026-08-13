@@ -32,20 +32,29 @@ def _colour(raw):
 
 def _width(raw):
     try:
-        return max(1.0, min(float(raw), 12.0))
+        width = float(raw)
     except (TypeError, ValueError):
         return 3.0
+    if width != width:      # NaN compares false against everything, so clamping
+        return 3.0          # it silently yields the low bound rather than the pen
+    return max(1.0, min(width, 12.0))
 
 
 def _points(stroke):
     out = []
-    for point in stroke.get("p") or []:
+    for point in (stroke.get("p") or [])[:MAX_POINTS]:
         try:
             x, y = float(point[0]), float(point[1])
         except (TypeError, ValueError, IndexError, KeyError):
             continue
-        if x != x or y != y:          # NaN survives float(); it would poison the path
+        # NaN survives float() and both infinities format as literal "inf"/"-inf"
+        # in the path data; a huge finite formats as hundreds of digits. Drop the
+        # unusable and clamp the rest.
+        if x != x or y != y:
             continue
+        if not (COORD_MIN <= x <= COORD_MAX and COORD_MIN <= y <= COORD_MAX):
+            x = min(max(x, COORD_MIN), COORD_MAX)
+            y = min(max(y, COORD_MIN), COORD_MAX)
         out.append((x * VIEW, y * VIEW))
     return out
 
@@ -60,7 +69,7 @@ def strokes_svg(strokes):
     if not isinstance(strokes, list):
         return ""
     paths = []
-    for stroke in strokes:
+    for stroke in strokes[:MAX_STROKES]:
         if not isinstance(stroke, dict):
             continue
         pts = _points(stroke)
@@ -99,9 +108,22 @@ def _lines(text):
     return lines
 
 
-# The width a replayed surface is scaled down to fit. Comfortably inside both
-# the parent's work card and a printed Letter page's content column.
-TARGET_WIDTH = 620
+# Widths a replayed surface is scaled down to fit. Screen and print differ and
+# must be measured, not assumed: the report's Bootstrap .container keeps a
+# 540px max-width in print (its media query carries no media type), so a single
+# "comfortably fits both" number silently cropped every printed drawing.
+SCREEN_TARGET = 620
+PRINT_TARGET = 600
+
+# Bounds on child-supplied drawing data. Autosave stores whatever the client
+# posts, and one stored answer fans out into ~34x its size as SVG path text, so
+# an unbounded answer is an unopenable report page rather than a big drawing.
+MAX_STROKES = 400
+MAX_POINTS = 2000
+# Coordinates are normalized 0..1; allow a little overdraw past the edges and
+# reject the rest. Without this, inf reaches the path data as literal "inf" and
+# 1e300 as a 302-digit number.
+COORD_MIN, COORD_MAX = -1.0, 2.0
 
 # What the portal's drawing surface is on a typical laptop. Only used for answers
 # saved before the surface size was recorded, where any choice is a guess.
@@ -118,9 +140,14 @@ class MarkupReplay:
     Scaling after layout moves the ink and the words together.
     """
 
-    def __init__(self, text, strokes, marks, unread, surface=None):
+    def __init__(self, text, strokes, marks, unread, surface=None, typed=False):
         self.text = text
-        self.lines = _lines(text)
+        # Words she typed herself are mirrored into the portal's drawing surface
+        # verbatim under white-space:pre-wrap, so re-joining them on whitespace
+        # would shift every word after a double space. A printed passage is
+        # rebuilt from its words; a typed one is reproduced as typed.
+        self.typed = typed
+        self.lines = [] if typed else _lines(text)
         self.svg = strokes_svg(strokes)
         self.marks = marks
         self.unread = unread
@@ -142,21 +169,34 @@ class MarkupReplay:
     def has_drawing(self):
         return bool(self.svg)
 
+    def _scale(self, target):
+        """Shrink-to-fit only — a small drawing is never blown up."""
+        return min(1.0, target / self.width)
+
     @property
     def scale(self):
-        """Shrink-to-fit only — a small drawing is never blown up."""
-        return min(1.0, TARGET_WIDTH / self.width)
+        return self._scale(SCREEN_TARGET)
 
     @property
-    def surface_style(self):
-        return (f"width:{self.width}px;height:{self.height}px;"
-                f"transform:scale({self.scale:.4f});transform-origin:top left;")
+    def print_scale(self):
+        return self._scale(PRINT_TARGET)
 
     @property
-    def wrapper_style(self):
-        """Reserve the post-scale footprint; a transform does not affect layout."""
-        return (f"width:{self.width * self.scale:.0f}px;"
-                f"height:{self.height * self.scale:.0f}px;max-width:100%;")
+    def style_vars(self):
+        """Custom properties for markup-replay.css.
+
+        Screen and print get their own scale and their own reserved footprint —
+        a transform does not affect layout, so the wrapper has to carry the
+        post-scale size, and the two contexts have different room.
+        """
+        s, p = self.scale, self.print_scale
+        return (
+            f"--mr-w:{self.width}px;--mr-h:{self.height}px;"
+            f"--mr-scale:{s:.4f};--mr-fit-w:{self.width * s:.0f}px;"
+            f"--mr-fit-h:{self.height * s:.0f}px;"
+            f"--mr-print-scale:{p:.4f};--mr-print-w:{self.width * p:.0f}px;"
+            f"--mr-print-h:{self.height * p:.0f}px;"
+        )
 
     @property
     def summary(self):
@@ -209,9 +249,7 @@ def replay_for(raw, question):
         unread = int(data.get("unread") or 0)
     except (TypeError, ValueError):
         unread = 0
-    if getattr(question, "is_write_markup", False):
-        text = str(data.get("text", "")).strip()
-    else:
-        text = question.passage or ""
+    typed = bool(getattr(question, "is_write_markup", False))
+    text = str(data.get("text", "")) if typed else (question.passage or "")
 
-    return MarkupReplay(text, strokes, marks, unread, data.get("surface"))
+    return MarkupReplay(text, strokes, marks, unread, data.get("surface"), typed=typed)

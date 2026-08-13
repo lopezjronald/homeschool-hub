@@ -450,7 +450,10 @@ class StudentWorkBrowserTests(TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertContains(resp, "<polyline")                # the ink itself
         self.assertContains(resp, "#2b6cb0")                  # in her pen colour
-        self.assertContains(resp, "width:702px")              # rebuilt at the width she drew on
+        self.assertContains(resp, "--mr-w:702px")             # rebuilt at the width she drew on
+        self.assertContains(resp, "--mr-print-scale:")        # and print gets its own scale
+        # Sized by the shared sheet (name is hash-suffixed by manifest storage).
+        self.assertContains(resp, "css/markup-replay.")
         self.assertContains(resp, "Read as:")                 # with the reading beside it
         self.assertContains(resp, "underlined")
 

@@ -2621,6 +2621,120 @@ class EIWLessonTenTests(SimpleTestCase):
         self.assertLess(intro.index("Underline the pronouns"), intro.index("List of Pronouns"))
 
 
+class MarkupSurfaceRecordedTests(SimpleTestCase):
+    """BOTH drawing widgets must record the surface they were drawn on.
+
+    There are two: portal-markup.js (draw on a printed sentence) and
+    portal-writemarkup.js (type your own sentence, then draw on it). They have
+    separate persist() functions, and teaching only one of them to record the
+    surface is silent — the replay still renders, it just rebuilds the box at a
+    guessed width, re-wraps the sentence, and puts her underline under a
+    different word than the one she marked. Worse than showing nothing.
+    """
+
+    WIDGETS = ["static/js/portal-markup.js", "static/js/portal-writemarkup.js"]
+
+    def test_both_widgets_record_the_surface_size(self):
+        from django.contrib.staticfiles import finders
+        for path in self.WIDGETS:
+            src = open(finders.find(path.split("static/", 1)[1]), encoding="utf-8").read()
+            self.assertIn("surface:", src, path)
+            self.assertIn("getBoundingClientRect", src, path)
+            # Width AND height — the width is what fixes the wrap, but the
+            # height keeps the box the shape she drew in.
+            self.assertRegex(src, r"w:\s*Math\.round", path)
+            self.assertRegex(src, r"h:\s*Math\.round", path)
+
+    def test_the_replay_treats_a_missing_surface_as_a_guess(self):
+        """So that forgetting the JS half shows the caveat rather than passing a
+        misaligned drawing off as exact."""
+        from tutor.markup import replay_for
+        from tutor.models import Question
+        import json
+        q = Question(response_type=Question.TYPE_WRITE_MARKUP, passage="")
+        raw = json.dumps({"text": "My dog is soft.",
+                          "strokes": [{"c": "#333333", "w": 3, "p": [[0.1, 0.5], [0.3, 0.5]]}]})
+        self.assertFalse(replay_for(raw, q).exact)
+
+
+class CharterReportMarkupTests(TestCase):
+    """The charter report is the surface this feature exists for — the packet
+    South Sutter is shown at the Learning Record Meeting. A work sample of a
+    mark-the-sentence exercise has to carry the actual circles and underlines."""
+
+    @classmethod
+    def setUpTestData(cls):
+        import json
+        from django.contrib.auth import get_user_model
+        from django.utils import timezone
+        from core.models import Family, FamilyMembership
+        from curricula.models import Chapter, Curriculum, Lesson
+        from students.models import Student
+        from worklog.models import WorkLogEntry
+        from tutor.models import Question, QuestionSet, ResponseSheet
+
+        User = get_user_model()
+        cls.parent = User.objects.create_user(
+            username="chp", email="chp@e.com", password="pw")
+        cls.family = Family.objects.create(name="Charter Fam")
+        FamilyMembership.objects.create(user=cls.parent, family=cls.family, role="parent")
+        cls.child = Student.objects.create(
+            parent=cls.parent, first_name="Violet", grade_level="G03", family=cls.family)
+        cur = Curriculum.objects.create(
+            parent=cls.parent, family=cls.family, name="Writing", subject="Writing")
+        chap = Chapter.objects.create(curriculum=cur, number=1, title="Pronouns")
+        lesson = Lesson.objects.create(chapter=chap, order=1, number=1, title="Pronouns")
+        qset = QuestionSet.objects.create(
+            lesson=lesson, title="Underline the pronouns", family=cls.family,
+            status=QuestionSet.APPROVED)
+        q = Question.objects.create(
+            question_set=qset, order=1, category="editing",
+            response_type=Question.TYPE_MARKUP,
+            passage="Jim sang a song. It was so pretty!")
+        entry = WorkLogEntry.objects.create(
+            parent=cls.parent, child=cls.child, family=cls.family, curriculum=cur,
+            subject="Writing", date=timezone.localdate(), description="Lesson 10")
+        ResponseSheet.objects.create(
+            question_set=qset, child=cls.child, work_entry=entry,
+            submitted_at=timezone.now(),
+            answers={str(q.pk): json.dumps({
+                "strokes": [{"c": "#2b6cb0", "w": 3, "p": [[0.34, 0.73], [0.37, 0.73]]}],
+                "marks": [{"word": "It", "kind": "underlined"}],
+                "unread": 0,
+                "surface": {"w": 702, "h": 74},
+            })},
+        )
+
+    def test_the_report_carries_the_drawing(self):
+        self.client.login(username="chp", password="pw")
+        resp = self.client.get(reverse("worklog:charter_report"))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "<polyline")
+        self.assertContains(resp, "#2b6cb0")
+        self.assertContains(resp, "--mr-w:702px")
+        self.assertContains(resp, "Read as:")
+
+    def test_the_report_asks_for_its_own_print_scale(self):
+        """Print gets a narrower column than the screen. One shared scale plus
+        overflow:hidden is what silently cropped a quarter off every printed
+        drawing, so the print size must reach the page separately."""
+        self.client.login(username="chp", password="pw")
+        resp = self.client.get(reverse("worklog:charter_report"))
+        self.assertContains(resp, "--mr-print-scale:")
+        self.assertContains(resp, "--mr-print-w:")
+        self.assertContains(resp, "css/markup-replay.")
+
+    def test_the_stylesheet_gives_print_its_own_rules(self):
+        """Guards the two lines that make it print: the container override and
+        the print-specific scale. Both are invisible on screen."""
+        from django.contrib.staticfiles import finders
+        css = open(finders.find("css/markup-replay.css"), encoding="utf-8").read()
+        media = css[css.index("@media print"):]
+        self.assertIn("max-width: 100%", media)          # Bootstrap .container in print
+        self.assertIn("--mr-print-scale", media)
+        self.assertNotIn("overflow: hidden", css)        # clipping is the bug
+
+
 class MarkupReplayTests(SimpleTestCase):
     """Her drawn work has to survive out of the portal and onto a printed page.
 
@@ -2662,12 +2776,23 @@ class MarkupReplayTests(SimpleTestCase):
         words = [w["text"] for line in r.lines for w in line]
         self.assertEqual(words[:4], ["Jim", "sang", "a", "song."])
 
-    def test_a_typed_sentence_is_the_passage_for_write_then_mark(self):
-        """She wrote it herself, so it lives in the answer, not the question."""
+    def test_a_typed_sentence_is_reproduced_exactly_as_she_typed_it(self):
+        """She wrote it herself, so it lives in the answer, not the question —
+        and it is mirrored into the portal's drawing surface verbatim under
+        white-space:pre-wrap. Re-joining it on whitespace would shift every word
+        after a double space out from under her marks."""
         from tutor.markup import replay_for
-        raw = self._answer(text="My dog is soft. He naps a lot.")
-        r = replay_for(raw, self._q(write=True))
-        self.assertIn("dog", [w["text"] for line in r.lines for w in line])
+        typed = "My dog is soft.  He naps a lot."
+        r = replay_for(self._answer(text=typed), self._q(write=True))
+        self.assertTrue(r.typed)
+        self.assertEqual(r.text, typed)          # both spaces survive
+        self.assertEqual(r.lines, [])            # not rebuilt from words
+
+    def test_a_printed_passage_is_rebuilt_from_its_words(self):
+        from tutor.markup import replay_for
+        r = replay_for(self._answer(), self._q())
+        self.assertFalse(r.typed)
+        self.assertIn("Jim", [w["text"] for line in r.lines for w in line])
 
     def test_nothing_drawn_means_nothing_to_replay(self):
         from tutor.markup import replay_for
@@ -2702,16 +2827,88 @@ class MarkupReplayTests(SimpleTestCase):
         self.assertIn("2 more mark", replay_for(raw, self._q()).summary)
 
     def test_a_hostile_colour_cannot_escape_into_the_page(self):
-        """Answers are child-supplied JSON; the colour lands in an SVG attribute."""
+        """Answers are child-supplied JSON and the colour lands, via mark_safe,
+        straight into an SVG attribute.
+
+        The probes deliberately include values with a VALID hex prefix and
+        trailing junk: drop the anchors on the colour pattern and those match,
+        carrying the payload into the attribute. An oracle of "no <script>"
+        would not notice, since an event handler needs no script tag — so this
+        asserts the whole attribute instead."""
         from tutor.markup import replay_for
-        for bad in ('"><script>alert(1)</script>', "url(javascript:alert(1))", "red; x", None):
-            raw = self._answer(strokes=[{"c": bad, "w": 3, "p": [[0, 0], [1, 1]]}])
-            svg = replay_for(raw, self._q()).svg
-            self.assertNotIn("script", svg.lower())
-            self.assertIn("#333333", svg)          # falls back to the pencil
-        # A width can't blow the page up either.
-        raw = self._answer(strokes=[{"c": "#333333", "w": 9e9, "p": [[0, 0], [1, 1]]}])
-        self.assertIn('stroke-width="12.0"', replay_for(raw, self._q()).svg)
+        hostile = [
+            '"><script>alert(1)</script>',
+            "url(javascript:alert(1))",
+            "red; x",
+            None,
+            "#333 onmouseover=alert(document.cookie) x=",
+            '#333333" onload="alert(1)',
+            '#fff\n" onload="x',
+            "&#106;avascript:alert(1)",
+            "\uff03\uff46\uff46\uff46",
+            "#333333;background:url(x)",
+            ["#ff0000"],
+            {"c": "#ff0000"},
+            True,
+            "#" + "f" * 5000,
+        ]
+        for bad in hostile:
+            svg = replay_for(
+                self._answer(strokes=[{"c": bad, "w": 3, "p": [[0, 0], [1, 1]]}]),
+                self._q(),
+            ).svg
+            self.assertIn('stroke="#333333"', svg, repr(bad))
+            for probe in ("script", "onload", "onmouseover", "javascript:", "&#"):
+                self.assertNotIn(probe, svg.lower(), repr(bad))
+            self.assertEqual(svg.count('stroke="'), 1, repr(bad))
+
+    def test_a_valid_colour_is_kept_exactly(self):
+        """The guard must not be a blanket rewrite — her pen colours are the work."""
+        from tutor.markup import replay_for
+        for good in ("#2b6cb0", "#d64545", "#1E7A50", "#333333", "#abc"):
+            svg = replay_for(
+                self._answer(strokes=[{"c": good, "w": 3, "p": [[0, 0], [1, 1]]}]),
+                self._q(),
+            ).svg
+            self.assertIn('stroke="' + good + '"', svg)
+
+    def test_a_width_cannot_blow_the_page_up(self):
+        from tutor.markup import replay_for
+        cases = [(9e9, "12.0"), (float("inf"), "12.0"), (-5, "1.0"),
+                 ("1e400", "12.0"), (float("nan"), "3.0")]
+        for bad, want in cases:
+            raw = self._answer(strokes=[{"c": "#333333", "w": bad, "p": [[0, 0], [1, 1]]}])
+            self.assertIn('stroke-width="' + want + '"',
+                          replay_for(raw, self._q()).svg, repr(bad))
+
+    def test_an_enormous_answer_cannot_produce_an_unopenable_page(self):
+        """Autosave stores whatever the client posts, and one stored byte fans out
+        into many bytes of SVG path text. The charter report loops over every
+        entry, so an unbounded answer is an unopenable report, not a big drawing."""
+        from tutor.markup import replay_for, MAX_STROKES, MAX_POINTS
+        raw = self._answer(strokes=[
+            {"c": "#333333", "w": 3, "p": [[i / 5000, 0.5] for i in range(5000)]}
+            for _ in range(MAX_STROKES + 50)
+        ])
+        svg = replay_for(raw, self._q()).svg
+        self.assertEqual(svg.count("<polyline"), MAX_STROKES)
+        # Points are capped per stroke too, so one gigantic stroke cannot
+        # sidestep the stroke cap.
+        first = svg.split('points="')[1].split('"')[0]
+        self.assertLessEqual(len(first.split()), MAX_POINTS)
+
+    def test_infinite_and_giant_coordinates_never_reach_the_path(self):
+        """inf formats as the literal "inf"; 1e300 as 300-odd digits."""
+        from tutor.markup import replay_for
+        raw = self._answer(strokes=[{"c": "#333333", "w": 3, "p": [
+            [float("inf"), 0.5], [-float("inf"), 0.5], [1e300, 1e300], [0.5, 0.5],
+        ]}])
+        svg = replay_for(raw, self._q()).svg
+        self.assertNotIn("inf", svg.lower())
+        self.assertNotIn("e+", svg.lower())
+        for chunk in svg.split('points="')[1].split('"')[0].split():
+            for n in chunk.split(","):
+                self.assertLess(len(n), 10, n)
 
     def test_garbage_points_are_skipped_not_fatal(self):
         from tutor.markup import replay_for
@@ -2727,23 +2924,27 @@ class MarkupReplayTests(SimpleTestCase):
         The type is sized in absolute pixels, so a box of the same aspect but a
         different width re-wraps the sentence and moves the words out from under
         her marks."""
-        from tutor.markup import replay_for, TARGET_WIDTH
+        from tutor.markup import replay_for, SCREEN_TARGET, PRINT_TARGET
         r = replay_for(self._answer(surface={"w": 900, "h": 260}), self._q())
         self.assertTrue(r.exact)
         self.assertEqual((r.width, r.height), (900, 260))
-        self.assertIn("width:900px;height:260px", r.surface_style)
-        # Too wide for the column, so the whole surface is scaled down as a unit.
-        self.assertAlmostEqual(r.scale, TARGET_WIDTH / 900, places=4)
-        self.assertIn("transform:scale(0.6889)", r.surface_style)
-        self.assertIn("transform-origin:top left", r.surface_style)
-        # The wrapper reserves the POST-scale footprint; a transform doesn't.
-        self.assertIn("height:179px", r.wrapper_style)
+        self.assertIn("--mr-w:900px;--mr-h:260px", r.style_vars)
+        # Too wide for either column, so the whole surface scales down as a unit.
+        self.assertAlmostEqual(r.scale, SCREEN_TARGET / 900, places=4)
+        self.assertAlmostEqual(r.print_scale, PRINT_TARGET / 900, places=4)
+        # Print gets its OWN scale: the report column is narrower on paper, and
+        # one shared number is what cropped every printed drawing.
+        self.assertLess(r.print_scale, r.scale)
+        # Both contexts reserve their post-scale footprint; a transform doesn't.
+        self.assertIn("--mr-fit-h:179px", r.style_vars)
+        self.assertIn("--mr-print-h:173px", r.style_vars)
 
     def test_a_small_drawing_is_never_blown_up(self):
         from tutor.markup import replay_for
         r = replay_for(self._answer(surface={"w": 320, "h": 110}), self._q())
         self.assertEqual(r.scale, 1.0)
-        self.assertIn("transform:scale(1.0000)", r.surface_style)
+        self.assertEqual(r.print_scale, 1.0)
+        self.assertIn("--mr-scale:1.0000", r.style_vars)
 
     def test_answers_drawn_before_the_size_was_recorded_say_so(self):
         """Any width is a guess for these, and the page admits it rather than

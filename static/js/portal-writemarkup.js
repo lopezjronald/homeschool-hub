@@ -71,8 +71,20 @@
 
     function persist() {
       var text = textarea.value;
+      var srect = surface.getBoundingClientRect();
+      // Record the surface size for the same reason portal-markup.js does: the
+      // strokes are normalized to this box but the sentence inside it is sized
+      // in absolute pixels, so replaying it in the parent's work browser or the
+      // charter report at a different WIDTH re-wraps the sentence and leaves her
+      // underline sitting under a different word. Doubly true here, where the
+      // sentence is whatever she typed.
       input.value = (text.trim() || strokes.length)
-        ? JSON.stringify({ text: text, strokes: strokes }) : "";
+        ? JSON.stringify({
+            text: text, strokes: strokes,
+            surface: srect.width
+              ? { w: Math.round(srect.width), h: Math.round(srect.height) }
+              : null,
+          }) : "";
       input.dataset.answered = text.trim() ? "1" : "0";
       if (window.portalMarkDirty) window.portalMarkDirty();
     }

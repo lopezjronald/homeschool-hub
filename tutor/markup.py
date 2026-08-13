@@ -41,8 +41,15 @@ def _width(raw):
 
 
 def _points(stroke):
+    # Answers are child-supplied JSON stored verbatim by autosave, so `p` is not
+    # guaranteed to be a list: an int slices with TypeError and a dict with
+    # KeyError, and one poisoned row would 500 the whole report for that date
+    # range rather than degrading to "nothing drawn".
+    points = stroke.get("p")
+    if not isinstance(points, list):
+        return []
     out = []
-    for point in (stroke.get("p") or [])[:MAX_POINTS]:
+    for point in points[:MAX_POINTS]:
         try:
             x, y = float(point[0]), float(point[1])
         except (TypeError, ValueError, IndexError, KeyError):
@@ -152,6 +159,15 @@ class MarkupReplay:
         self.marks = marks
         self.unread = unread
         self.width, self.height, self.exact = self._surface(surface)
+        if not self.exact:
+            # No recorded height, so estimate one from the text rather than
+            # pinning a guess. A box that is too short hides the end of a long
+            # sentence and prints it over the caption; letting it size to its own
+            # content instead (height:auto) collapses the percentage-height ink
+            # overlay to nothing when Chrome lays the page out for PRINT — the
+            # drawing then renders on screen and silently vanishes on paper.
+            # A definite height keeps one code path for both.
+            self.height = self._estimated_height()
 
     @staticmethod
     def _surface(surface):
@@ -164,6 +180,19 @@ class MarkupReplay:
             if 80 <= w <= 4000 and 20 <= h <= 4000:
                 return round(w), round(h), True
         return _LEGACY_WIDTH, _LEGACY_HEIGHT, False
+
+    # Text metrics of .markup-replay-text, used only to size a legacy box.
+    _PADDING = 12 * 2 + 4        # vertical padding, plus a little slack
+    _LINE_HEIGHT = 48
+    _CHAR_PX = 14                # deliberately wide: over-estimating lines leaves
+                                 # slack, under-estimating clips the sentence
+
+    def _estimated_height(self):
+        per_line = max(1, int((self.width - 32) / self._CHAR_PX))
+        lines = 0
+        for raw in (self.text or "").splitlines() or [""]:
+            lines += max(1, -(-len(raw) // per_line))    # ceil
+        return self._PADDING + max(1, lines) * self._LINE_HEIGHT
 
     @property
     def has_drawing(self):
@@ -213,7 +242,10 @@ class MarkupReplay:
             if words:
                 parts.append(f"{kind} " + ", ".join(f'“{w}”' for w in words))
         if not parts:
-            return ""
+            # Still say something when nothing could be named. Silence here reads
+            # as "she marked nothing", which is the opposite of what happened.
+            return (f"{self.unread} mark(s) the reader could not name"
+                    if self.unread else "")
         text = "; ".join(parts)
         if self.unread:
             text += f" (plus {self.unread} more mark(s) the reader could not name)"
@@ -244,7 +276,11 @@ def replay_for(raw, question):
     if not strokes:
         return None
 
-    marks = [m for m in (data.get("marks") or []) if isinstance(m, dict)]
+    raw_marks = data.get("marks")
+    # Same reason as the stroke points: a non-list here is a 500, not a
+    # bad answer. `{"marks": 5}` reaches this from autosave.
+    marks = ([m for m in raw_marks if isinstance(m, dict)]
+             if isinstance(raw_marks, list) else [])
     try:
         unread = int(data.get("unread") or 0)
     except (TypeError, ValueError):
@@ -252,4 +288,8 @@ def replay_for(raw, question):
     typed = bool(getattr(question, "is_write_markup", False))
     text = str(data.get("text", "")) if typed else (question.passage or "")
 
-    return MarkupReplay(text, strokes, marks, unread, data.get("surface"), typed=typed)
+    replay = MarkupReplay(text, strokes, marks, unread, data.get("surface"), typed=typed)
+    # Strokes that yield no drawable ink (every point unusable) are nothing to
+    # replay: fall back to the old rendering, which says "[nothing marked on …]"
+    # rather than showing an empty box and implying she left it blank.
+    return replay if replay.has_drawing else None

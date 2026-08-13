@@ -6,21 +6,30 @@
  * DIFFERENT scales, which is why these rules live in a stylesheet rather than
  * inline: a media query cannot go in a style attribute.
  *
- * The per-answer sizes arrive as custom properties from MarkupReplay.style_vars.
+ * Per-answer sizes arrive as custom properties from MarkupReplay.style_vars.
  */
 
 .markup-replay { margin: .35rem 0 .5rem; }
 
 .markup-replay-fit {
-  width: var(--mr-fit-w);
-  height: var(--mr-fit-h);
   max-width: 100%;
-  /* Never clip her work. If the column is narrower than the drawing, scroll it
-     — cutting it off silently is how a report ends up showing half a sentence. */
+  /* Never clip her work. If the column really is narrower than the drawing,
+     scroll it — cutting it off silently is how a report ends up showing half a
+     sentence. No overflow-y rule: a transform does not shrink scrollWidth, so
+     pairing auto-x with a fixed height put a scrollbar under every drawing and
+     then ate the bottom of the box with it. */
   overflow-x: auto;
-  overflow-y: hidden;
   page-break-inside: avoid;
   break-inside: avoid;
+}
+
+/* Reserves the POST-scale footprint. A transform paints smaller but still
+   occupies its original box, so without this the drawing would leave a
+   drawing-sized hole in the page — and the scroller would measure the
+   unscaled width and show a scrollbar that isn't needed. */
+.markup-replay-box {
+  width: var(--mr-fit-w);
+  height: var(--mr-fit-h);
 }
 
 .markup-replay-surface {
@@ -37,10 +46,10 @@
   print-color-adjust: exact;
 }
 
-/* Padding lives on the text, not the surface, so the surface's padding box and
-   border box coincide — the ink overlay below is positioned against the same
-   box the strokes were normalized against in the portal. */
 .markup-replay-text {
+  /* Padding lives here, not on the surface, so the surface's padding box and
+     border box coincide and the ink overlay lands on the box the strokes were
+     normalized against. */
   padding: 12px 16px;
   font-family: Georgia, "Times New Roman", serif;
   font-size: 1.5rem;
@@ -55,9 +64,7 @@
 
 .markup-replay-ink-layer {
   position: absolute;
-  /* Out to the border box: the portal normalizes strokes against the surface's
-     border box, so matching only the padding box drifts by the border width. */
-  inset: -1.5px;
+  inset: 0;
   z-index: 2;
   pointer-events: none;
 }
@@ -69,13 +76,14 @@
 @media print {
   /* Bootstrap's .container keeps its 540px max-width when printing — the rule
      carries no media type — which squeezed the work sample into ~440px and, with
-     the old overflow:hidden, cropped roughly a quarter off every drawing. */
-  .container { max-width: 100% !important; }
+     the old overflow:hidden, cropped roughly a quarter off every drawing.
+     Scoped to the report's own container rather than every .container. */
+  .report-print-wide { max-width: 100% !important; }
 
-  .markup-replay-fit {
+  .markup-replay-fit { overflow: visible; }   /* no scrollbars on paper */
+  .markup-replay-box {
     width: var(--mr-print-w);
     height: var(--mr-print-h);
-    overflow: visible;      /* no scrollbars on paper; the scale already fits */
   }
   .markup-replay-surface { transform: scale(var(--mr-print-scale)); }
 }

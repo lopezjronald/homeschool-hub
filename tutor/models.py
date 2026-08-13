@@ -855,7 +855,10 @@ class ResponseSheet(models.Model):
             return data, [], 0
         if not isinstance(data, dict):
             return [], [], 0
-        marks = [m for m in (data.get("marks") or []) if isinstance(m, dict)]
+        raw_marks = data.get("marks")
+        # A non-list here is a 500 on every page that renders the answer.
+        marks = ([m for m in raw_marks if isinstance(m, dict)]
+                 if isinstance(raw_marks, list) else [])
         # Autosave accepts whatever the client posts, and this is parsed inside the
         # transaction that turns the work in — so a junk `unread` must degrade, not
         # raise, or a child cannot submit at all.

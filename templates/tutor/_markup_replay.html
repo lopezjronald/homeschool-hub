@@ -3,19 +3,21 @@ One marked-up answer, redrawn: the sentence with her own pen strokes over it.
 
 Sizing and the screen/print scales live in static/css/markup-replay.css — a
 media query cannot go in a style attribute, and print needs its own scale
-because the report's column is narrower on paper than on screen. Both pages
-that include this partial must load that stylesheet.
+because the report's column is narrower on paper. Both pages that include this
+partial must load that stylesheet.
 
 `replay` is a tutor.markup.MarkupReplay.
 {% endcomment %}
 <div class="markup-replay" style="{{ replay.style_vars }}">
   <div class="markup-replay-fit">
-    <div class="markup-replay-surface">
-      <div class="markup-replay-text">{% if replay.typed %}{{ replay.text }}{% else %}{% for line in replay.lines %}{% for w in line %}<span>{{ w.text }}</span>{% if not forloop.last %} {% endif %}{% endfor %}{% if not forloop.last %}<br>{% endif %}{% endfor %}{% endif %}</div>
-      {% if replay.has_drawing %}
-        {% comment %}Stretched back over the same normalized space the strokes were recorded in.{% endcomment %}
-        <div class="markup-replay-ink-layer">{{ replay.svg }}</div>
-      {% endif %}
+    <div class="markup-replay-box">
+      <div class="markup-replay-surface">
+        <div class="markup-replay-text">{% if replay.typed %}{{ replay.text }}{% else %}{% for line in replay.lines %}{% for w in line %}<span>{{ w.text }}</span>{% if not forloop.last %} {% endif %}{% endfor %}{% if not forloop.last %}<br>{% endif %}{% endfor %}{% endif %}</div>
+        {% if replay.has_drawing %}
+          {% comment %}Stretched back over the same normalized space the strokes were recorded in.{% endcomment %}
+          <div class="markup-replay-ink-layer">{{ replay.svg }}</div>
+        {% endif %}
+      </div>
     </div>
   </div>
   {% if replay.summary %}

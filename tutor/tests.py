@@ -2918,6 +2918,43 @@ class MarkupReplayTests(SimpleTestCase):
         svg = replay_for(raw, self._q()).svg
         self.assertIn("200.0,200.0 400.0,400.0", svg)
 
+    def test_junk_in_place_of_a_stroke_path_does_not_500_the_report(self):
+        """`p` is child-supplied and stored verbatim by autosave. An int slices
+        with TypeError and a dict with KeyError, and one poisoned row would take
+        down the whole charter report for that date range."""
+        from tutor.markup import replay_for
+        for bad in (5, True, {"0": 1}, "x", None, 3.5):
+            raw = self._answer(strokes=[{"c": "#333333", "w": 3, "p": bad}])
+            self.assertIsNone(replay_for(raw, self._q()), repr(bad))
+        # A good stroke beside a bad one still draws.
+        raw = self._answer(strokes=[
+            {"c": "#333333", "w": 3, "p": 5},
+            {"c": "#333333", "w": 3, "p": [[0.1, 0.5], [0.3, 0.5]]},
+        ])
+        self.assertEqual(replay_for(raw, self._q()).svg.count("<polyline"), 1)
+
+    def test_junk_in_place_of_marks_does_not_500_the_report(self):
+        from tutor.markup import replay_for
+        for bad in (5, True, "x", {"a": 1}):
+            raw = self._answer(marks=bad)
+            r = replay_for(raw, self._q())
+            self.assertIsNotNone(r, repr(bad))
+            self.assertEqual(r.summary, "", repr(bad))
+
+    def test_unreadable_marks_are_reported_even_when_none_could_be_named(self):
+        """Silence here reads as "she marked nothing", the opposite of the truth."""
+        from tutor.markup import replay_for
+        raw = self._answer(marks=[], unread=3)
+        self.assertIn("3 mark", replay_for(raw, self._q()).summary)
+
+    def test_an_answer_with_no_recorded_size_is_not_pinned_to_a_guessed_box(self):
+        """Every answer that predates surface recording takes this path. A pinned
+        box that is too short hides the end of a long sentence on screen and
+        prints it over the caption, so these size to their own text instead."""
+        from tutor.markup import replay_for
+        r = replay_for(self._answer(surface=None), self._q())
+        self.assertFalse(r.exact)
+
     def test_the_surface_is_rebuilt_at_the_width_she_drew_on(self):
         """Normalized strokes only land right at the ORIGINAL pixel width.
 

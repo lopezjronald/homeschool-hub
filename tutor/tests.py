@@ -2947,6 +2947,59 @@ class MarkupReplayTests(SimpleTestCase):
         raw = self._answer(marks=[], unread=3)
         self.assertIn("3 mark", replay_for(raw, self._q()).summary)
 
+    # Heights measured in Chrome against the real markup-replay.css at the
+    # legacy width (700px), which is the only width this path ever uses. The
+    # estimate must be >= actual: too short clips the sentence behind a
+    # scrollbar on screen and prints it on top of the caption.
+    HEIGHT_CASES = [
+        ("lowercase", 168,
+         "Callie and John are siblings. They are my friends, and they both play "
+         "the piano. Callie likes to play rag music."),
+        # A single average char width tuned to lowercase under-counts these by a
+        # third: Georgia runs 5px (l) to 23px (W).
+        ("uppercase", 168,
+         "A BIG STORM BLEW THROUGH A SMALL TOWN AND THE WIND KNOCKED DOWN THREE "
+         "OLD TREES ON THE MAIN ROAD NEAR THE SCHOOL"),
+        ("child typing in caps", 168,
+         "I WENT TO THE ZOO WITH MY MOM AND MY DAD AND WE SAW A BIG LION AND "
+         "MANY BIRDS!"),
+        ("widest glyphs", 120, "WWWWW MMMMM WWWWW MMMMM WWWWW MMMMM WWWWW MMMMM WWWWW MMMMM"),
+        ("explicit newlines", 216, "One line.\nTwo line.\nThree line.\nFour line."),
+        ("narrow glyphs", 72, "iiiii iiiii iiiii iiiii iiiii iiiii iiiii iiiii iiiii iiiii iiiii iiiii"),
+        ("short", 72, "The cat sat."),
+        # Breaks between characters rather than at spaces.
+        ("emoji", 168, "\U0001F600" * 40),
+        # Does not break mid-word; overflows on one line, as the portal does.
+        ("unbreakable run", 72, "supercalifragilisticexpialidociousandthensome"),
+    ]
+
+    def test_a_legacy_box_is_tall_enough_for_its_text(self):
+        from tutor.markup import replay_for
+        for name, actual_px, text in self.HEIGHT_CASES:
+            r = replay_for(self._answer(text=text), self._q(write=True))
+            self.assertGreaterEqual(
+                r.height, actual_px,
+                f"{name}: box {r.height}px is shorter than the {actual_px}px the "
+                f"browser needs — the sentence gets clipped",
+            )
+            # And not absurdly generous, or the page fills with empty boxes.
+            self.assertLess(r.height, actual_px + 120, name)
+
+    def test_the_line_estimate_beats_a_single_average_char_width(self):
+        """Guards the specific regression: an average tuned to lowercase.
+
+        Same word count, same character count — only the case differs. Any model
+        using one width per character gives these the same height, and the
+        upper-case one then clips."""
+        from tutor.markup import replay_for
+        lower = ("the quick brown fox jumps over the lazy dog while nine happy "
+                 "children watch from the green hill")
+        upper = lower.upper()
+        low = replay_for(self._answer(text=lower), self._q(write=True)).height
+        up = replay_for(self._answer(text=upper), self._q(write=True)).height
+        self.assertEqual(len(lower), len(upper))
+        self.assertGreater(up, low)
+
     def test_an_answer_with_no_recorded_size_is_not_pinned_to_a_guessed_box(self):
         """Every answer that predates surface recording takes this path. A pinned
         box that is too short hides the end of a long sentence on screen and
@@ -2969,12 +3022,12 @@ class MarkupReplayTests(SimpleTestCase):
         # Too wide for either column, so the whole surface scales down as a unit.
         self.assertAlmostEqual(r.scale, SCREEN_TARGET / 900, places=4)
         self.assertAlmostEqual(r.print_scale, PRINT_TARGET / 900, places=4)
-        # Print gets its OWN scale: the report column is narrower on paper, and
-        # one shared number is what cropped every printed drawing.
-        self.assertLess(r.print_scale, r.scale)
+        # Print gets its OWN scale, independent of the screen's: one shared
+        # number is what cropped every printed drawing.
+        self.assertNotEqual(r.print_scale, r.scale)
         # Both contexts reserve their post-scale footprint; a transform doesn't.
-        self.assertIn("--mr-fit-h:179px", r.style_vars)
-        self.assertIn("--mr-print-h:173px", r.style_vars)
+        self.assertIn(f"--mr-fit-h:{round(260 * r.scale)}px", r.style_vars)
+        self.assertIn(f"--mr-print-h:{round(260 * r.print_scale)}px", r.style_vars)
 
     def test_a_small_drawing_is_never_blown_up(self):
         from tutor.markup import replay_for

@@ -864,7 +864,7 @@ class ResponseSheet(models.Model):
         # raise, or a child cannot submit at all.
         try:
             unread = int(data.get("unread") or 0)
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, OverflowError):   # 1e400 -> inf -> int() raises
             unread = 0
         strokes = data.get("strokes")
         return (strokes if isinstance(strokes, list) else []), marks, unread

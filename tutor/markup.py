@@ -119,7 +119,7 @@ def _lines(text):
 # must be measured, not assumed: the report's Bootstrap .container keeps a
 # 540px max-width in print (its media query carries no media type), so a single
 # "comfortably fits both" number silently cropped every printed drawing.
-SCREEN_TARGET = 620
+SCREEN_TARGET = 560   # the work card is ~582px wide at 992-1199px viewports
 PRINT_TARGET = 600
 
 # Bounds on child-supplied drawing data. Autosave stores whatever the client
@@ -136,6 +136,22 @@ COORD_MIN, COORD_MAX = -1.0, 2.0
 # saved before the surface size was recorded, where any choice is a guess.
 _LEGACY_WIDTH = 700
 _LEGACY_HEIGHT = 120
+
+# Measured advance widths of Georgia at 24px (the size .markup-replay-text
+# renders at), for ASCII 32..126. Used only to work out how many lines a legacy
+# passage wraps to, so its box is tall enough to hold the text. Georgia is the
+# first family in the stack; the fallbacks (Times New Roman, serif) are
+# narrower, so these round up rather than down.
+GEORGIA_24 = (
+    6.0, 8.0, 10.0, 15.0, 15.0, 20.0, 17.0, 5.0, 9.0, 9.0, 11.0, 15.0, 6.0,
+    9.0, 6.0, 11.0, 15.0, 10.0, 13.0, 13.0, 14.0, 13.0, 14.0, 12.0, 14.0,
+    14.0, 8.0, 8.0, 15.0, 15.0, 15.0, 11.0, 22.0, 16.0, 16.0, 15.0, 18.0,
+    16.0, 14.0, 17.0, 20.0, 9.0, 12.0, 17.0, 14.0, 22.0, 18.0, 18.0, 15.0,
+    18.0, 17.0, 13.0, 15.0, 18.0, 16.0, 23.0, 17.0, 15.0, 14.0, 9.0, 11.0,
+    9.0, 15.0, 15.0, 12.0, 12.0, 13.0, 11.0, 14.0, 12.0, 8.0, 12.0, 14.0,
+    7.0, 7.0, 13.0, 7.0, 21.0, 14.0, 13.0, 14.0, 13.0, 10.0, 10.0, 8.0,
+    14.0, 12.0, 18.0, 12.0, 12.0, 11.0, 10.0, 9.0, 10.0, 15.0,
+)
 
 
 class MarkupReplay:
@@ -181,18 +197,75 @@ class MarkupReplay:
                 return round(w), round(h), True
         return _LEGACY_WIDTH, _LEGACY_HEIGHT, False
 
-    # Text metrics of .markup-replay-text, used only to size a legacy box.
     _PADDING = 12 * 2 + 4        # vertical padding, plus a little slack
     _LINE_HEIGHT = 48
-    _CHAR_PX = 14                # deliberately wide: over-estimating lines leaves
-                                 # slack, under-estimating clips the sentence
+    _SIDE_PADDING = 16 * 2 + 3   # padding plus the surface's 1.5px borders
+    _LETTER_SPACING = 0.48       # 0.02em at 24px
+    _WORD_SPACING = 8.4          # 0.35em at 24px, added to each space
+    _WIDE_CHAR = 24.0            # a full em: CJK and accented Latin
+    _EMOJI_CHAR = 48.0           # emoji render far wider than an em at this size
+    _SLACK = 0.99                # a hair narrower than reality, so a borderline
+                                 # break costs a line here too rather than only
+                                 # in the browser
 
     def _estimated_height(self):
-        per_line = max(1, int((self.width - 32) / self._CHAR_PX))
+        """Height a legacy box needs, by wrapping the text the way the page will.
+
+        A single average character width cannot do this: Georgia at 24px runs
+        from 5px (l) to 23px (W), so an average tuned to lowercase under-counts
+        an upper-case sentence by a third and the box clips it — on screen behind
+        a scrollbar, in print on top of the caption. These are the real measured
+        advances, so ordinary text lands exactly and unknown glyphs round up.
+        """
+        avail = max(1, (self.width - self._SIDE_PADDING) * self._SLACK)
         lines = 0
-        for raw in (self.text or "").splitlines() or [""]:
-            lines += max(1, -(-len(raw) // per_line))    # ceil
+        for raw in (self.text or "").split("\n") or [""]:
+            lines += self._wrapped_lines(raw, avail)
         return self._PADDING + max(1, lines) * self._LINE_HEIGHT
+
+    @classmethod
+    def _advance(cls, word):
+        total = 0.0
+        for ch in word:
+            index = ord(ch) - 32
+            if 0 <= index < len(GEORGIA_24):
+                total += GEORGIA_24[index]
+            elif ord(ch) >= 0x1F000:
+                total += cls._EMOJI_CHAR
+            else:
+                total += cls._WIDE_CHAR
+            total += cls._LETTER_SPACING
+        return total
+
+    @classmethod
+    def _wrapped_lines(cls, raw, avail):
+        """Greedy wrap on spaces, matching how the browser breaks the line."""
+        if not raw.strip():
+            return 1
+        space = cls._advance(" ") + cls._WORD_SPACING
+        lines, used = 1, 0.0
+        for word in raw.split(" "):
+            width = cls._advance(word)
+            if width > avail:
+                if used:
+                    lines += 1
+                if word.isascii():
+                    # A long Latin run does not break mid-word; it overflows the
+                    # box on one line, exactly as the portal renders it.
+                    used = avail
+                else:
+                    # CJK and emoji break between characters, so a long run of
+                    # them wraps onto as many lines as it needs.
+                    lines += max(0, -(-int(width) // int(avail)) - 1)
+                    used = width % avail
+                continue
+            step = width if used == 0 else space + width
+            if used + step > avail:
+                lines += 1
+                used = width
+            else:
+                used += step
+        return lines
 
     @property
     def has_drawing(self):
@@ -283,7 +356,7 @@ def replay_for(raw, question):
              if isinstance(raw_marks, list) else [])
     try:
         unread = int(data.get("unread") or 0)
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):   # 1e400 -> inf -> int() raises
         unread = 0
     typed = bool(getattr(question, "is_write_markup", False))
     text = str(data.get("text", "")) if typed else (question.passage or "")

@@ -1,0 +1,41 @@
+{% comment %}
+One marked-up answer, redrawn: the sentence with her own pen strokes over it.
+
+The surface is rebuilt at the exact pixel width she drew on, so the sentence
+wraps as it did and the words stay under her marks, then the whole thing is
+scaled to fit the column. Scaling after layout moves the ink and the words
+together; matching only the aspect ratio does not, because the type is sized in
+absolute pixels.
+
+Styles are inline because this renders on three surfaces — the parent's work
+browser, the charter report, and print — and the print stylesheet does not load
+the portal's CSS. The type metrics mirror .markup-passage exactly.
+
+`replay` is a tutor.markup.MarkupReplay.
+{% endcomment %}
+<div class="markup-replay" style="margin:.35rem 0 .5rem;">
+  <div class="markup-replay-fit" style="overflow:hidden;page-break-inside:avoid;break-inside:avoid;{{ replay.wrapper_style }}">
+    <div class="markup-replay-surface" style="position:relative;background:#fffdf7;
+         border:1.5px solid rgba(15,61,46,0.2);border-radius:10px;padding:12px 16px;
+         box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact;
+         {{ replay.surface_style }}">
+      <div class="markup-replay-text" style="font-family:Georgia,'Times New Roman',serif;
+           font-size:1.5rem;line-height:48px;letter-spacing:0.02em;word-spacing:0.35em;
+           color:#24303a;white-space:pre-wrap;position:relative;z-index:1;">{% for line in replay.lines %}{% for w in line %}<span>{{ w.text }}</span>{% if not forloop.last %} {% endif %}{% endfor %}{% if not forloop.last %}<br>{% endif %}{% endfor %}</div>
+      {% if replay.has_drawing %}
+        {# Stretched back over the same normalized space the strokes were recorded in. #}
+        <div style="position:absolute;inset:0;z-index:2;pointer-events:none;">{{ replay.svg }}</div>
+      {% endif %}
+    </div>
+  </div>
+  {% if replay.summary %}
+    <div class="markup-replay-read" style="font-size:.85rem;color:#4b5563;margin-top:.3rem;">
+      Read as: {{ replay.summary }}
+    </div>
+  {% endif %}
+  {% if not replay.exact %}
+    <div class="markup-replay-note" style="font-size:.75rem;color:#9ca3af;margin-top:.15rem;">
+      Drawn before the app recorded page size — marks may sit slightly off the words.
+    </div>
+  {% endif %}
+</div>

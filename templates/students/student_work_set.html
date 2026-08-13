@@ -51,12 +51,19 @@
             {% if row.question.prompt %}
               <div class="fw-semibold mb-2">{{ row.question.prompt|markdownify_inline }}</div>
             {% endif %}
-            {% if row.question.is_markup %}
+            {% if row.replay %}
+              {% comment %}Her actual pen work, replacing the bare sentence plus a
+              prose summary of it: on these exercises the marks ARE the answer.{% endcomment %}
+              <p class="text-muted mb-1">{{ student.first_name }}'s marked-up work:</p>
+              {% include "tutor/_markup_replay.html" with replay=row.replay %}
+            {% elif row.question.is_markup %}
               <p class="text-muted mb-1">Sentence to mark up:</p>
               <p class="mb-2" style="font-family:Georgia,serif;font-size:1.15rem;">{{ row.question.passage }}</p>
             {% endif %}
 
-            {% if row.answered %}
+            {% if row.replay %}
+              {# Nothing more to say: the drawing above is the answer. #}
+            {% elif row.answered %}
               <div class="ss-answer-block">{{ row.answer }}</div>
             {% else %}
               <div class="text-muted fst-italic">No answer.</div>

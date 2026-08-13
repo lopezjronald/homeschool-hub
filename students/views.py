@@ -209,6 +209,7 @@ def student_work_set(request, pk, set_pk):
             # Derive from the rendered display so an empty structured answer
             # (e.g. only-wrong matching attempts → "(no answer)") reads as unanswered.
             "answered": display not in ("", "(no answer)"),
+            "replay": sheet.answer_replay(q) if sheet else None,
             "coach": (sheet.draft_feedback or {}).get(str(q.pk)) if sheet else None,
         })
 

@@ -348,6 +348,9 @@ def _report_item(entry, mastery):
                 "question": q,
                 "answer": display,
                 "answered": display not in ("", "(no answer)"),
+                # The drawn work itself, so a printed sample of a
+                # mark-the-sentence exercise shows the marks.
+                "replay": sheet.answer_replay(q),
             })
 
     ext = os.path.splitext(entry.attachment.name)[1].lower() if entry.attachment else ""

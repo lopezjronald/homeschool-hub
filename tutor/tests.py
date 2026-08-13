@@ -2619,3 +2619,137 @@ class EIWLessonTenTests(SimpleTestCase):
         intro = build_intro(self.blocks[0], wants_pen_hint=True)
         self.assertTrue(intro.startswith("**Underline the pronouns.**"), intro[:80])
         self.assertLess(intro.index("Underline the pronouns"), intro.index("List of Pronouns"))
+
+
+class MarkupReplayTests(SimpleTestCase):
+    """Her drawn work has to survive out of the portal and onto a printed page.
+
+    Reports used to show the sentence and a line of prose about it ("she
+    underlined 'It'"). For a mark-the-sentence exercise the marks ARE the work,
+    so a report without them isn't a report of that exercise.
+    """
+
+    def _q(self, passage="Jim sang a song. It was so pretty!", write=False):
+        from tutor.models import Question
+        return Question(
+            response_type=Question.TYPE_WRITE_MARKUP if write else Question.TYPE_MARKUP,
+            passage="" if write else passage,
+        )
+
+    def _answer(self, **over):
+        data = {
+            "strokes": [{"c": "#2b6cb0", "w": 3, "p": [[0.1, 0.5], [0.3, 0.5]]}],
+            "marks": [{"word": "It", "kind": "underlined"}],
+            "unread": 0,
+        }
+        data.update(over)
+        return json.dumps(data)
+
+    def test_the_strokes_reach_the_page_as_drawable_svg(self):
+        from tutor.markup import replay_for
+        r = replay_for(self._answer(), self._q())
+        self.assertTrue(r.has_drawing)
+        self.assertIn("<polyline", r.svg)
+        self.assertIn("#2b6cb0", r.svg)
+        # Normalized 0..1 scaled into the viewBox — 0.1 -> 100, 0.3 -> 300.
+        self.assertIn("100.0,500.0 300.0,500.0", r.svg)
+        self.assertIn('preserveAspectRatio="none"', r.svg)
+        self.assertIn("non-scaling-stroke", r.svg)   # pen stays a pen when stretched
+
+    def test_the_sentence_comes_back_word_by_word(self):
+        from tutor.markup import replay_for
+        r = replay_for(self._answer(), self._q())
+        words = [w["text"] for line in r.lines for w in line]
+        self.assertEqual(words[:4], ["Jim", "sang", "a", "song."])
+
+    def test_a_typed_sentence_is_the_passage_for_write_then_mark(self):
+        """She wrote it herself, so it lives in the answer, not the question."""
+        from tutor.markup import replay_for
+        raw = self._answer(text="My dog is soft. He naps a lot.")
+        r = replay_for(raw, self._q(write=True))
+        self.assertIn("dog", [w["text"] for line in r.lines for w in line])
+
+    def test_nothing_drawn_means_nothing_to_replay(self):
+        from tutor.markup import replay_for
+        for raw in ("", "not json", "[]", json.dumps({"strokes": []}), json.dumps({})):
+            self.assertIsNone(replay_for(raw, self._q()), raw)
+
+    def test_pre_marks_answers_still_replay(self):
+        """The oldest answers are a bare stroke list. The drawing is still hers."""
+        from tutor.markup import replay_for
+        raw = json.dumps([{"c": "#333333", "w": 3, "p": [[0.2, 0.4], [0.6, 0.4]]}])
+        r = replay_for(raw, self._q())
+        self.assertTrue(r.has_drawing)
+        self.assertEqual(r.summary, "")      # nothing can be named, and it says so
+
+    def test_a_single_tap_still_draws(self):
+        from tutor.markup import replay_for
+        raw = self._answer(strokes=[{"c": "#333333", "w": 3, "p": [[0.5, 0.5]]}])
+        self.assertIn("<polyline", replay_for(raw, self._q()).svg)
+
+    def test_the_reading_is_shown_next_to_the_drawing(self):
+        from tutor.markup import replay_for
+        raw = self._answer(marks=[{"word": "It", "kind": "underlined"},
+                                  {"word": "Jim", "kind": "circled"}])
+        s = replay_for(raw, self._q()).summary
+        self.assertIn("underlined", s)
+        self.assertIn("circled", s)
+        self.assertIn("Jim", s)
+
+    def test_unreadable_marks_are_declared_not_hidden(self):
+        from tutor.markup import replay_for
+        raw = self._answer(unread=2)
+        self.assertIn("2 more mark", replay_for(raw, self._q()).summary)
+
+    def test_a_hostile_colour_cannot_escape_into_the_page(self):
+        """Answers are child-supplied JSON; the colour lands in an SVG attribute."""
+        from tutor.markup import replay_for
+        for bad in ('"><script>alert(1)</script>', "url(javascript:alert(1))", "red; x", None):
+            raw = self._answer(strokes=[{"c": bad, "w": 3, "p": [[0, 0], [1, 1]]}])
+            svg = replay_for(raw, self._q()).svg
+            self.assertNotIn("script", svg.lower())
+            self.assertIn("#333333", svg)          # falls back to the pencil
+        # A width can't blow the page up either.
+        raw = self._answer(strokes=[{"c": "#333333", "w": 9e9, "p": [[0, 0], [1, 1]]}])
+        self.assertIn('stroke-width="12.0"', replay_for(raw, self._q()).svg)
+
+    def test_garbage_points_are_skipped_not_fatal(self):
+        from tutor.markup import replay_for
+        raw = self._answer(strokes=[
+            {"c": "#333333", "w": 3, "p": [["x", "y"], [0.2, 0.2], None, [0.4, 0.4]]},
+        ])
+        svg = replay_for(raw, self._q()).svg
+        self.assertIn("200.0,200.0 400.0,400.0", svg)
+
+    def test_the_surface_is_rebuilt_at_the_width_she_drew_on(self):
+        """Normalized strokes only land right at the ORIGINAL pixel width.
+
+        The type is sized in absolute pixels, so a box of the same aspect but a
+        different width re-wraps the sentence and moves the words out from under
+        her marks."""
+        from tutor.markup import replay_for, TARGET_WIDTH
+        r = replay_for(self._answer(surface={"w": 900, "h": 260}), self._q())
+        self.assertTrue(r.exact)
+        self.assertEqual((r.width, r.height), (900, 260))
+        self.assertIn("width:900px;height:260px", r.surface_style)
+        # Too wide for the column, so the whole surface is scaled down as a unit.
+        self.assertAlmostEqual(r.scale, TARGET_WIDTH / 900, places=4)
+        self.assertIn("transform:scale(0.6889)", r.surface_style)
+        self.assertIn("transform-origin:top left", r.surface_style)
+        # The wrapper reserves the POST-scale footprint; a transform doesn't.
+        self.assertIn("height:179px", r.wrapper_style)
+
+    def test_a_small_drawing_is_never_blown_up(self):
+        from tutor.markup import replay_for
+        r = replay_for(self._answer(surface={"w": 320, "h": 110}), self._q())
+        self.assertEqual(r.scale, 1.0)
+        self.assertIn("transform:scale(1.0000)", r.surface_style)
+
+    def test_answers_drawn_before_the_size_was_recorded_say_so(self):
+        """Any width is a guess for these, and the page admits it rather than
+        presenting a misaligned drawing as exact."""
+        from tutor.markup import replay_for
+        for surface in (None, {}, {"w": 0, "h": 0}, {"w": "wide", "h": 3}, {"w": 9e9, "h": 9e9}):
+            r = replay_for(self._answer(surface=surface), self._q())
+            self.assertFalse(r.exact, surface)
+            self.assertTrue(r.width > 0 and r.height > 0)

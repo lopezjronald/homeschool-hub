@@ -764,6 +764,18 @@ class ResponseSheet(models.Model):
             return raw or "(no answer)"  # legacy plain-text answer from before this was a markup box
         return raw or "(no answer)"
 
+    def answer_replay(self, question):
+        """Her drawn work for one question, redrawn — or None if she drew nothing.
+
+        The text rendering from ``answer_display`` says what the marks were read
+        as; this is the marks themselves. A report of a mark-the-sentence
+        exercise that shows only prose about the marks isn't showing the work.
+        """
+        if not (question.is_markup or question.is_write_markup):
+            return None
+        from .markup import replay_for
+        return replay_for(str(self.answer_for(question)).strip(), question)
+
     def as_worklog_text(self):
         """Format the Q&A as readable text for the work log / grader."""
         lines = []

@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.core.management import call_command
-from django.test import TestCase, override_settings
+from django.test import SimpleTestCase, TestCase, override_settings
 from django.utils import timezone
 from django.urls import reverse
 
@@ -2544,3 +2544,78 @@ class FolkKeeperSeedTests(TestCase):
         sets = QuestionSet.objects.filter(lesson__chapter__curriculum=curr)
         self.assertEqual(sets.count(), 25)
         self.assertEqual(sum(s.questions.count() for s in sets), 187)
+
+
+class EIWLessonTenTests(SimpleTestCase):
+    """Lesson 10 (Pronouns and Antecedents) against the printed workbook, pp.35-41.
+
+    Every exercise here used to seed as "Mark the sentences (n)", so the child
+    opening her list could not tell underline-the-pronouns from
+    circle-the-antecedents from rewrite-the-sentence — and two rewrite exercises
+    handed her a drawing pen for a task the workbook asks her to write out.
+    """
+
+    @property
+    def blocks(self):
+        from tutor.management.commands._eiw_content import EXERCISES
+        return EXERCISES[10]
+
+    def test_every_workbook_page_is_present(self):
+        """p.41 (Complete Assessment 4) was missing entirely, so the lesson
+        stopped one exercise short of the book."""
+        pages = [b["workbook_page"] for b in self.blocks]
+        self.assertEqual(pages, [35, 35, 36, 37, 37, 38, 39, 40, 41])
+        self.assertTrue(any(b["assessment"] for b in self.blocks))
+
+    def test_each_exercise_names_the_action_it_wants(self):
+        labels = [b["label"] for b in self.blocks]
+        self.assertEqual(len(labels), len(set(labels)), "duplicate labels are the bug")
+        for b in self.blocks:
+            verb = b["instructions"].split()[0].strip("*").lower()
+            self.assertIn(verb, {"underline", "circle", "rewrite", "read", "write"})
+            # The label has to carry the action too — it is what she reads in the list.
+            self.assertRegex(b["label"].lower(), r"underline|circle|rewrite|missing|write")
+
+    def test_rewrite_exercises_are_typed_not_drawn(self):
+        """A pen tool cannot rewrite a sentence."""
+        for b in self.blocks:
+            if b["instructions"].lower().startswith("rewrite"):
+                self.assertNotEqual(b["kind"], "sentence-editing", b["label"])
+
+    def test_marking_exercises_stay_drawable(self):
+        for b in self.blocks:
+            first = b["instructions"].split()[0].lower()
+            if first in ("underline", "circle"):
+                self.assertEqual(b["kind"], "sentence-editing", b["label"])
+
+    def test_the_words_to_replace_are_marked(self):
+        """The workbook underlines the nouns to swap out; without that the
+        rewrite exercises are ambiguous."""
+        for b in self.blocks:
+            if "underlined" in b["instructions"]:
+                for item in b["items"]:
+                    self.assertIn("<u>", item, b["label"])
+
+    def test_the_pronoun_chart_is_exactly_the_workbook_list(self):
+        import re
+        from tutor.management.commands._eiw_content import pronoun_list_html
+        printed = "I me my you your he they them their our we us him his she her it its"
+        shown = re.findall(r">([A-Za-z]+)</span>", pronoun_list_html())
+        self.assertEqual(
+            sorted({w.lower() for w in shown}),
+            sorted({w.lower() for w in printed.split()}),
+        )
+
+    def test_the_worked_example_shows_both_marks(self):
+        from tutor.management.commands._eiw_content import antecedent_model_html
+        html = antecedent_model_html("Tyrone", "made a cake.", "He", "made a cake.")
+        self.assertIn("border-radius:999px", html)   # circled antecedent
+        self.assertIn("border-bottom", html)         # underlined pronoun
+        self.assertIn("antecedent", html)
+        self.assertIn("pronoun", html)
+
+    def test_the_instruction_comes_first_in_what_she_reads(self):
+        from tutor.management.commands.seed_eiw_violet import build_intro
+        intro = build_intro(self.blocks[0], wants_pen_hint=True)
+        self.assertTrue(intro.startswith("**Underline the pronouns.**"), intro[:80])
+        self.assertLess(intro.index("Underline the pronouns"), intro.index("List of Pronouns"))

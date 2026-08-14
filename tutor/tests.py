@@ -2670,6 +2670,7 @@ class CharterReportMarkupTests(TestCase):
         from core.models import Family, FamilyMembership
         from curricula.models import Chapter, Curriculum, Lesson
         from students.models import Student
+        from tutor.models import Question, QuestionSet, ResponseSheet
         from worklog.models import WorkLogEntry
         from tutor.models import Question, QuestionSet, ResponseSheet
 
@@ -3077,3 +3078,148 @@ class MarkupReplayTests(SimpleTestCase):
             r = replay_for(self._answer(surface=surface), self._q())
             self.assertFalse(r.exact, surface)
             self.assertTrue(r.width > 0 and r.height > 0)
+
+
+class LexiconContentTests(SimpleTestCase):
+    """Operation Lexicon against the printed guide.
+
+    Every answer must be one of that week's ten words: the exercise is choosing
+    between ten plausible traits, so an answer outside the list makes the
+    question unanswerable rather than merely hard.
+    """
+
+    @property
+    def weeks(self):
+        from tutor.management.commands._lexicon_content import WEEKS
+        return WEEKS
+
+    def test_ten_weeks_ten_words_ten_sentences(self):
+        self.assertEqual(len(self.weeks), 10)
+        for wk in self.weeks:
+            self.assertEqual(len(wk["words"]), 10, wk["number"])
+            self.assertEqual(len(wk["sentences"]), 10, wk["number"])
+
+    def test_it_is_a_hundred_words(self):
+        from tutor.management.commands._lexicon_content import all_words
+        self.assertEqual(len(all_words()), 100)
+
+    def test_every_answer_is_one_of_that_weeks_words(self):
+        for wk in self.weeks:
+            words = {w for w, _d in wk["words"]}
+            answers = {a for _t, a in wk["sentences"]}
+            self.assertEqual(answers, words, f"week {wk['number']}")
+
+    def test_no_word_is_used_for_two_sentences_in_a_week(self):
+        """Ten words, ten sentences, one each — otherwise one word has no home."""
+        for wk in self.weeks:
+            answers = [a for _t, a in wk["sentences"]]
+            self.assertEqual(len(answers), len(set(answers)), f"week {wk['number']}")
+
+    def test_every_sentence_has_somewhere_to_write(self):
+        for wk in self.weeks:
+            for text, _a in wk["sentences"]:
+                self.assertIn("_____", text, f"week {wk['number']}: {text[:40]}")
+
+    def test_every_word_has_a_definition(self):
+        for wk in self.weeks:
+            for word, definition in wk["words"]:
+                self.assertTrue(definition.strip(), f"{word} has no definition")
+                self.assertTrue(definition.rstrip().endswith("."), word)
+
+    def test_every_week_names_its_book(self):
+        """The words are anchored to a story; without the book they're a list."""
+        for wk in self.weeks:
+            for field in ("person", "role", "book", "author"):
+                self.assertTrue(wk[field].strip(), f"week {wk['number']} {field}")
+
+
+class HandwritingTests(TestCase):
+    """Writing by hand, not typing.
+
+    A third grader practising writing should be forming letters. Typing these
+    would swap the skill for keyboard hunting.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        import json
+        from django.contrib.auth import get_user_model
+        from core.models import Family, FamilyMembership
+        from curricula.models import Chapter, Curriculum, Lesson
+        from students.models import Student
+        from tutor.models import Question, QuestionSet, ResponseSheet
+
+        User = get_user_model()
+        cls.parent = User.objects.create_user(
+            username="hw", email="hw@e.com", password="pw")
+        cls.family = Family.objects.create(name="HW Fam")
+        FamilyMembership.objects.create(user=cls.parent, family=cls.family, role="parent")
+        cls.child = Student.objects.create(
+            parent=cls.parent, first_name="Violet", grade_level="G03", family=cls.family)
+        from curricula.models import CurriculumPlacement
+
+        cur = Curriculum.objects.create(
+            parent=cls.parent, family=cls.family, name="Lexicon", subject="Language Arts")
+        chap = Chapter.objects.create(curriculum=cur, number=1, title="Traits")
+        # Shared (not child-pinned) work is only visible through a placement —
+        # the portal's own gate, so the fixture has to place her.
+        CurriculumPlacement.objects.create(child=cls.child, curriculum=cur)
+        cls.lesson = Lesson.objects.create(chapter=chap, order=1, number=1, title="Erdős")
+        cls.qset = QuestionSet.objects.create(
+            lesson=cls.lesson, title="What amazed you?", family=cls.family,
+            status=QuestionSet.APPROVED)
+        cls.q = Question.objects.create(
+            question_set=cls.qset, order=1, category="writing",
+            response_type=Question.TYPE_HANDWRITING, prompt="Amazing thing #1")
+        cls.answer = json.dumps({
+            "strokes": [{"c": "#1d3557", "w": 3, "p": [[0.05, 0.2], [0.4, 0.22]]}],
+            "surface": {"w": 702, "h": 192},
+        })
+
+    def test_a_handwritten_answer_is_not_reported_as_blank(self):
+        """"(no answer)" against a full page of writing would mark her down for
+        work she actually did."""
+        sheet = ResponseSheet.objects.create(
+            question_set=self.qset, child=self.child,
+            answers={str(self.q.pk): self.answer})
+        display = sheet.answer_display(self.q)
+        self.assertNotIn("no answer", display.lower())
+        self.assertIn("handwritten", display.lower())
+
+    def test_writing_nothing_still_reads_as_nothing(self):
+        sheet = ResponseSheet.objects.create(
+            question_set=self.qset, child=self.child, answers={str(self.q.pk): ""})
+        self.assertIn("nothing written", sheet.answer_display(self.q).lower())
+
+    def test_her_handwriting_replays_for_the_parent(self):
+        """The whole point: the parent and the charter report see the writing."""
+        sheet = ResponseSheet.objects.create(
+            question_set=self.qset, child=self.child,
+            answers={str(self.q.pk): self.answer})
+        replay = sheet.answer_replay(self.q)
+        self.assertIsNotNone(replay)
+        self.assertTrue(replay.has_drawing)
+        self.assertTrue(replay.exact)               # surface size was recorded
+        self.assertEqual((replay.width, replay.height), (702, 192))
+        self.assertIn("#1d3557", replay.svg)
+
+    def test_the_portal_gives_her_a_pen_not_a_keyboard(self):
+        from portal.tokens import make_portal_token
+        token = make_portal_token(self.child)
+        resp = self.client.get(
+            reverse("portal:portal_questions", args=[token, self.qset.pk]))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "handwriting-canvas")
+        self.assertContains(resp, "js/portal-handwriting.")
+        # No text input for this question — typing is the thing we're avoiding.
+        self.assertNotContains(resp, f'class="form-control portal-answer" ')
+
+    def test_a_typed_question_is_untouched(self):
+        typed = Question.objects.create(
+            question_set=self.qset, order=2, category="writing",
+            response_type=Question.TYPE_TEXT, prompt="Type this one")
+        sheet = ResponseSheet.objects.create(
+            question_set=self.qset, child=self.child,
+            answers={str(typed.pk): "I typed my answer."})
+        self.assertEqual(sheet.answer_display(typed), "I typed my answer.")
+        self.assertIsNone(sheet.answer_replay(typed))

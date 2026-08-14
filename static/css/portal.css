@@ -1344,3 +1344,34 @@ button.portal-subject-card {
   color: #fff;
 }
 .journal-lab .journal-banner-sub { color: rgba(255, 255, 255, 0.92); }
+
+/* ---- Handwriting: write the answer by hand on ruled lines ---- */
+.handwriting-widget { margin-top: 0.5rem; }
+.handwriting-hint { font-size: 0.85rem; color: #6b7280; margin-bottom: 0.4rem; }
+.handwriting-surface {
+  position: relative;
+  /* Ruled like handwriting paper: a solid baseline every 48px with a dashed
+     midline, so letter height has something to sit against. */
+  background:
+    repeating-linear-gradient(transparent, transparent 23px, rgba(30,122,80,0.20) 23px, rgba(30,122,80,0.20) 24px),
+    repeating-linear-gradient(transparent, transparent 47px, rgba(15,61,46,0.35) 47px, rgba(15,61,46,0.35) 48px),
+    #fffdf7;
+  border: 1.5px solid rgba(15, 61, 46, 0.2);
+  border-radius: 10px;
+  height: 192px;                 /* four writing lines */
+  touch-action: none;
+}
+.handwriting-canvas {
+  position: absolute; inset: 0; z-index: 2;
+  cursor: crosshair; border-radius: 10px;
+}
+.handwriting-empty {
+  position: absolute; top: 8px; left: 16px; z-index: 1;
+  color: #b6c2bd; font-family: Georgia, serif; font-size: 1.3rem;
+  pointer-events: none;
+}
+.handwriting-pen {
+  width: 30px; height: 30px; border-radius: 50%;
+  border: 2px solid rgba(15,61,46,0.25); background: var(--pen); cursor: pointer;
+}
+.handwriting-pen.is-active { outline: 3px solid rgba(10,92,99,0.45); }

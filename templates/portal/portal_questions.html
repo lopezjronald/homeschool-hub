@@ -166,6 +166,27 @@
                     </div>
                     <input type="hidden" name="answer_{{ q.pk }}" data-question="{{ q.pk }}" value="{{ q.my_answer }}">
                   </div>
+                {% elif q.is_handwriting %}
+                  <div class="handwriting-widget" data-question-widget="{{ q.pk }}"
+                       data-readonly="{% if sheet.is_submitted %}1{% else %}0{% endif %}">
+                    <div class="handwriting-hint">✍️ Write your answer by hand — use your finger or your pen.</div>
+                    {% if not sheet.is_submitted %}
+                      <div class="markup-toolbar" role="toolbar" aria-label="Pens">
+                        <span class="markup-tool-label">Pens:</span>
+                        <button type="button" class="handwriting-pen is-active" data-color="#1d3557" style="--pen:#1d3557" title="Blue pencil" aria-label="Blue pencil"></button>
+                        <button type="button" class="handwriting-pen" data-color="#333333" style="--pen:#333333" title="Pencil" aria-label="Pencil"></button>
+                        <button type="button" class="handwriting-pen" data-color="#1E7A50" style="--pen:#1E7A50" title="Green pen" aria-label="Green pen"></button>
+                        <span class="markup-tool-sep"></span>
+                        <button type="button" class="markup-btn" data-tool="undo">↶ Undo</button>
+                        <button type="button" class="markup-btn" data-tool="clear">Erase all</button>
+                      </div>
+                    {% endif %}
+                    <div class="handwriting-surface">
+                      <div class="handwriting-empty">Write here…</div>
+                      <canvas class="handwriting-canvas"></canvas>
+                    </div>
+                    <input type="hidden" name="answer_{{ q.pk }}" data-question="{{ q.pk }}" value="{{ q.my_answer }}">
+                  </div>
                 {% elif q.is_write_markup %}
                   <div class="writemark-widget" data-question-widget="{{ q.pk }}">
                     <textarea class="form-control portal-answer writemark-input" rows="2"
@@ -290,6 +311,7 @@
 <script src="{% static 'js/portal-autosave.js' %}"></script>
 <script src="{% static 'js/portal-markup.js' %}"></script>
 <script src="{% static 'js/portal-writemarkup.js' %}"></script>
+<script src="{% static 'js/portal-handwriting.js' %}"></script>
 <script src="{% static 'js/portal-characters.js' %}"></script>
 <script src="{% static 'js/portal-paragraph.js' %}"></script>
 <script src="{% static 'js/portal-vocab.js' %}"></script>

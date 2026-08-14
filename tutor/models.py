@@ -473,6 +473,7 @@ class Question(models.Model):
     TYPE_CLOZE = "cloze"
     TYPE_PARAGRAPH = "paragraph"
     TYPE_WRITE_MARKUP = "write_markup"
+    TYPE_HANDWRITING = "handwriting"
     RESPONSE_TYPES = [
         (TYPE_TEXT, "Typed answer"),
         (TYPE_MARKUP, "Mark up the sentence (draw)"),
@@ -482,6 +483,7 @@ class Question(models.Model):
         (TYPE_CLOZE, "Fill in the blanks with your own words"),
         (TYPE_PARAGRAPH, "Paragraph: rough draft (sections) → final draft"),
         (TYPE_WRITE_MARKUP, "Write a sentence, then mark it up (draw)"),
+        (TYPE_HANDWRITING, "Handwriting: write it by hand on ruled lines"),
     ]
 
     # The rough-draft sections a paragraph question shows by default (the standard
@@ -556,6 +558,17 @@ class Question(models.Model):
     @property
     def is_paragraph(self):
         return self.response_type == self.TYPE_PARAGRAPH
+
+    @property
+    def is_handwriting(self):
+        """Written by hand with a finger or pen, not typed.
+
+        Third-grade writing IS handwriting — asking her to type it trades the
+        skill being practised for keyboard hunting. The strokes are stored the
+        same way markup strokes are, so the parent's work browser and the
+        printed report replay them.
+        """
+        return self.response_type == self.TYPE_HANDWRITING
 
     @property
     def is_write_markup(self):
@@ -753,6 +766,8 @@ class ResponseSheet(models.Model):
             return self._format_cloze(raw, question)
         if question.is_paragraph:
             return self._format_paragraph(raw, question)
+        if question.is_handwriting:
+            return self._format_handwriting(raw, question)
         if question.is_write_markup:
             data = self._parse_json_answer(raw)
             if data:
@@ -771,7 +786,8 @@ class ResponseSheet(models.Model):
         as; this is the marks themselves. A report of a mark-the-sentence
         exercise that shows only prose about the marks isn't showing the work.
         """
-        if not (question.is_markup or question.is_write_markup):
+        if not (question.is_markup or question.is_write_markup
+                or question.is_handwriting):
             return None
         from .markup import replay_for
         return replay_for(str(self.answer_for(question)).strip(), question)
@@ -784,6 +800,19 @@ class ResponseSheet(models.Model):
             lines.append(f"A: {self.answer_display(q)}")
             lines.append("")
         return "\n".join(lines).strip()
+
+    @classmethod
+    def _format_handwriting(cls, raw, question):
+        """There is no text to read back — the writing IS the answer.
+
+        Says how much she wrote rather than pretending to transcribe it: a
+        grader who sees "(no answer)" for a full page of handwriting would mark
+        her down for work she did.
+        """
+        strokes, _marks, _unread = cls._parse_markup(raw)
+        if not strokes:
+            return "(nothing written yet)"
+        return f"[handwritten answer — {len(strokes)} pen stroke(s); see the drawing]"
 
     @staticmethod
     def _format_characters(raw):

@@ -11,12 +11,12 @@ from itertools import groupby
 from core.permissions import (
     editable_queryset, user_can_edit, viewable_queryset, can_edit_family_or_global,
 )
-from curricula.models import Curriculum
+from curricula.models import Curriculum, CurriculumPlacement
 from worklog.models import WorkLogEntry
 
 from . import ai, grading, mastery, spend
 from .forms import AssessmentRequestForm, FinalizeForm
-from .models import MasteryAssessment, Material, QuestionSet
+from .models import MasteryAssessment, Material, QuestionSet, ResponseSheet
 
 
 def _entry_objectives(entry):
@@ -237,6 +237,55 @@ def _materials_for(user, editable=False):
     curricula = scope(Curriculum.objects.all(), user)
     return Material.objects.filter(lesson__chapter__curriculum__in=curricula)
 
+
+
+@login_required
+def lexicon_guide(request, curriculum_pk):
+    """Parent guide for Operation Lexicon — the booklet's own front matter.
+
+    The printed guide opens with how to run the unit; the app swallowed that,
+    leaving the parent to infer the method from the child's pages. It also says
+    plainly which of the guide's materials this version still needs (the ten
+    books) and which it has taken over (the poster, the coloured pencils).
+    """
+    from students.models import Student
+    from tutor import lexicon
+
+    curriculum = get_object_or_404(
+        viewable_queryset(Curriculum.objects.all(), request.user), pk=curriculum_pk,
+    )
+    if curriculum.name != lexicon.CURRICULUM_NAME:
+        raise Http404
+
+    children = []
+    for placement in CurriculumPlacement.objects.filter(
+        curriculum=curriculum,
+        child__in=viewable_queryset(Student.objects.all(), request.user),
+    ).select_related("child"):
+        done = set(
+            ResponseSheet.objects.filter(
+                child=placement.child,
+                question_set__lesson__chapter__curriculum=curriculum,
+                status=ResponseSheet.SUBMITTED,
+            ).values_list("question_set__lesson__number", flat=True)
+        )
+        children.append({
+            "child": placement.child,
+            "weeks_done": len(done),
+            "words": len(done) * 10,
+            "next_week": next(
+                (w for w in lexicon.WEEKS if w["number"] not in done), None),
+        })
+
+    return render(request, "tutor/lexicon_guide.html", {
+        "curriculum": curriculum,
+        "epigraph": lexicon.EPIGRAPH,
+        "why": lexicon.WHY_IT_EXISTS,
+        "how_to_proceed": lexicon.HOW_TO_PROCEED,
+        "materials": lexicon.MATERIALS,
+        "weeks": lexicon.WEEKS,
+        "children": children,
+    })
 
 @login_required
 def discussion_guide(request, curriculum_pk):

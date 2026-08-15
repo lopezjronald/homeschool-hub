@@ -187,7 +187,11 @@ def curriculum_detail(request, pk):
             "next": placement.next_lesson() if placement else None,
         })
 
+    from tutor.lexicon import CURRICULUM_NAME as LEXICON_NAME
+
     return render(request, "curricula/curriculum_detail.html", {
+        # Only this unit has a parent guide; the link must not appear elsewhere.
+        "is_lexicon": curriculum.name == LEXICON_NAME,
         "curriculum": curriculum,
         "can_edit": can_edit,
         "chapters": chapters,

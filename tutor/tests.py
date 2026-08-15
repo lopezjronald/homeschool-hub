@@ -3466,10 +3466,10 @@ class LexiconOnePageTests(TestCase):
             lesson__number=1, lesson__chapter__curriculum__parent=self.parent).first()
         kinds = [q.response_type for q in qset.questions.order_by("order")]
         self.assertEqual(kinds.count(Question.TYPE_CLOZE), 10)
-        self.assertEqual(kinds.count(Question.TYPE_HANDWRITING), 3)
+        self.assertEqual(kinds.count(Question.TYPE_TEXT), 3)
         # Sentences first, writing last — the order the book uses.
         self.assertEqual(kinds[:10], [Question.TYPE_CLOZE] * 10)
-        self.assertEqual(kinds[10:], [Question.TYPE_HANDWRITING] * 3)
+        self.assertEqual(kinds[10:], [Question.TYPE_TEXT] * 3)
 
         resp = self.client.get(
             reverse("portal:portal_questions", args=[self.token, qset.pk]))
@@ -3478,7 +3478,7 @@ class LexiconOnePageTests(TestCase):
         self.assertContains(resp, "The Boy Who Loved Math")  # the book to read
         self.assertContains(resp, "inquisitive")          # a word and its meaning
         self.assertContains(resp, "eager for knowledge")
-        self.assertContains(resp, "handwriting-canvas")   # and the writing
+        self.assertContains(resp, "lxa-input")            # and the three writing boxes
 
     def test_the_word_list_never_reaches_her_as_raw_markdown(self):
         """It shipped once showing "## Week 1" and "**focused**" with the
@@ -3547,3 +3547,71 @@ class LexiconOnePageTests(TestCase):
             status=ResponseSheet.SUBMITTED, submitted_at=timezone.now())
         resp = self.client.get(reverse("portal:lexicon_poster", args=[self.token]))
         self.assertEqual(resp.context["collected"], 10)
+
+
+class LexiconWritingBoxTests(LexiconOnePageTests):
+    """The three "what amazes you" boxes.
+
+    This is the one place in the week she writes her own thought, so it is
+    deliberately not a stack of form fields — and deliberately not handwriting
+    either: the unit teaches vocabulary and thinking, not penmanship.
+    """
+
+    def _page(self):
+        from tutor.models import QuestionSet
+
+        self._seed()
+        qset = QuestionSet.objects.filter(
+            lesson__number=1, lesson__chapter__curriculum__parent=self.parent).first()
+        return self.client.get(
+            reverse("portal:portal_questions", args=[self.token, qset.pk])
+        ).content.decode()
+
+    def test_she_gets_three_typed_boxes_not_a_pen(self):
+        html = self._page()
+        self.assertEqual(html.count("lxa-input"), 3)
+        self.assertNotIn("handwriting-canvas", html)
+
+    def test_the_question_is_asked_once_above_the_boxes(self):
+        """Asking it three times would read as three separate assignments."""
+        html = self._page()
+        self.assertEqual(html.count("What are three things that amaze you"), 1)
+        self.assertIn("Paul Erdős", html)
+
+    def test_each_box_has_a_visible_label_rather_than_a_placeholder(self):
+        """Placeholder text disappears exactly when a slow typist wants it, and
+        makes a poor accessible name."""
+        html = self._page()
+        self.assertEqual(html.count("Amazing thing 1"), 1)
+        self.assertIn('class="lxa-label"', html)
+        # No placeholder on these boxes.
+        start = html.index("lxa-box")
+        self.assertNotIn("placeholder", html[start:html.index("Turn it in")])
+
+    def test_spellcheck_is_on_here(self):
+        """Spelling isn't being assessed, and suppressing the squiggle would make
+        the app worse than paper for no pedagogical gain."""
+        html = self._page()
+        box = html[html.index("lxa-input"):]
+        self.assertIn('spellcheck="true"', box[:600])
+        self.assertIn('autocapitalize="sentences"', box[:600])
+
+    def test_the_generic_question_chrome_stands_down(self):
+        """The medallion and label already say the number and the task; the
+        badge, chip and prompt would say all three a second time."""
+        html = self._page()
+        self.assertEqual(html.count("own-chrome"), 3)
+        self.assertEqual(html.count("portal-qnum"), 10)   # the ten cloze rows only
+
+    def test_the_week_tint_reaches_the_boxes(self):
+        """The medallions are coloured by the week; without the class on a
+        common ancestor they fall back to teal on every week."""
+        html = self._page()
+        self.assertIn("lx-week-1", html)
+
+    def test_turning_it_in_is_never_blocked_by_an_empty_box(self):
+        """She works alone. A dead button with no explanation reads as broken,
+        and punishes exactly the child who is already stuck."""
+        html = self._page()
+        button = html[html.index("Turn it in") - 400:html.index("Turn it in")]
+        self.assertNotIn("disabled", button)

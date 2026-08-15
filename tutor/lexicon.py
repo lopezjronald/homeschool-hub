@@ -494,3 +494,59 @@ def poster_rows(earned_weeks):
             ],
         })
     return rows
+
+
+# ---------------------------------------------------------------------------
+# The guide's own front matter, for the parent page. Transcribed from the
+# introduction and "How to Proceed" pages of the purchased guide.
+# ---------------------------------------------------------------------------
+
+EPIGRAPH = ("By words the mind is winged.", "Aristophanes")
+
+WHY_IT_EXISTS = (
+    "Finding just the right word can be a mighty struggle for students and "
+    "seasoned writers alike. Operation Lexicon: Traits of Character is a golden "
+    "opportunity for students to meet the struggle head-on, while exploring the "
+    "wonder of words that describe human characteristics. The English language "
+    "has a plethora of words for describing people — their diverse personality, "
+    "their diverse character and their diverse temperament. Each week, as they "
+    "collect descriptive words, teasing out their meaning and playing with "
+    "application, students will discover the astonishing potential of a singular "
+    "word."
+)
+
+HOW_TO_PROCEED = [
+    "Over the course of 10 weeks, your students will be introduced to 100 "
+    "exceptional words that are exemplified by ten exceptional people. This "
+    "guide can be completed in 10 weeks, one sitting per week, but can also be "
+    "slowed down and completed at leisure over the course of a semester. Simply "
+    "divide the tasks for each lesson.",
+
+    "Listening to the book twice, whether following along or not, will help the "
+    "character traits settle into the accessible memory.",
+
+    "Each week, after listening to a story about a larger-than-life person, "
+    "students will complete simple sentences using the character trait word list "
+    "to describe the person being featured. While this unit is connected to "
+    "read-aloud stories, it will only amplify the experience when students follow "
+    "along in their own copy of the book.",
+
+    "At the end of each lesson, students will colour the new words on their "
+    "poster so that at the end of the 10 lessons they will have a poster of 100 "
+    "new words to describe people and the characters they read about in specific "
+    "and wonderful ways.",
+]
+
+# What the printed guide asks you to have. Ours differs where the app already
+# does the job — said plainly rather than left for the parent to discover.
+MATERIALS = [
+    ("The ten picture books", True,
+     "One per week. The publisher narrates them, but a copy to follow along in "
+     "is what makes the words land. Library requests are the one job this unit "
+     "really needs from you."),
+    ("A pencil and coloured pencils", False,
+     "Not needed here — she answers on screen and writes with her finger or the "
+     "pen."),
+    ("The Traits of Character coloring poster", False,
+     "Not needed here — her poster fills itself in as she finishes each week."),
+]

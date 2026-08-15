@@ -73,6 +73,18 @@ class Command(BaseCommand):
             raise CommandError(f"No child named '{options['child_name']}'.")
 
         family = get_active_family(user)
+
+        if options["dry_run"]:
+            # Before any writes. Checking further down and `continue`-ing still
+            # created and committed the curriculum, the chapter and every
+            # lesson, and then reported that nothing had been written.
+            for week in WEEKS:
+                self.stdout.write(
+                    f"  Week {week['number']:>2}: {week['person']} — would build "
+                    f"one page of {len(week['sentences']) + 3} questions")
+            self.stdout.write(self.style.WARNING("Dry run — nothing written."))
+            return
+
         curriculum, created = Curriculum.objects.get_or_create(
             parent=user, name=CURRICULUM_NAME,
             defaults={"subject": "Language Arts", "grade_level": "G03",
@@ -99,12 +111,6 @@ class Command(BaseCommand):
                     ),
                 },
             )
-            if options["dry_run"]:
-                self.stdout.write(
-                    f"  Week {week['number']:>2}: {week['person']} — would build "
-                    f"one page of {len(week['sentences']) + 3} questions")
-                continue
-
             qset, _ = QuestionSet.objects.update_or_create(
                 lesson=lesson, title=set_title(week),
                 defaults={
@@ -153,10 +159,6 @@ class Command(BaseCommand):
             self.stdout.write(
                 f"  Week {week['number']:>2}: {week['person']} — one page, "
                 f"{order} questions")
-
-        if options["dry_run"]:
-            self.stdout.write(self.style.WARNING("Dry run — nothing written."))
-            return
 
         first = Lesson.objects.filter(chapter=chapter).order_by("order").first()
         _, made = CurriculumPlacement.objects.get_or_create(

@@ -447,6 +447,9 @@ WEEKS = [
                 "day": 1,
                 "word": "inebriate",
                 "definition": "a drunkard",
+                "note": "The guide prints “Debachee” in these lines. Dickinson "
+                        "wrote “Debauchee” — copy it as the guide has it if you "
+                        "like, but the word is spelled Debauchee.",
                 "example": "Inebriate of Air—am I—\nAnd Debachee of "
                            "Dew—\nReeling—thro endless summer days—\nFrom inns "
                            "of Molten Blue—",
@@ -822,6 +825,11 @@ WEEKS = [
                 "day": 1,
                 "word": "quench",
                 "definition": "satisfy one's thirst by drinking.",
+                "note": "The guide's definition is about thirst, but Dickinson "
+                        "is using the other sense here — to put a fire or a "
+                        "light OUT. The sunset is “Quenching—in Purple!” Write "
+                        "your own sentence for whichever sense you like, as "
+                        "long as it fits.",
                 "example": "Blazing in Gold—and\nQuenching—in Purple!",
                 "example_kind": "poem",
                 "citation": "Hart, 68 pg. 104",

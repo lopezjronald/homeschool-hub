@@ -80,7 +80,9 @@
           {% if by_hand.copy_example %}written by hand{% else %}typed{% endif %}</li>
         <li><strong>Craft a sentence of your own</strong> —
           {% if by_hand.own_sentence %}written by hand{% else %}typed{% endif %}</li>
-        <li><strong>Day 3, the word she chose and the micro-story</strong> —
+        <li><strong>Day 3, the word she chose</strong> —
+          {% if by_hand.favorite_word %}written by hand{% else %}typed{% endif %}</li>
+        <li><strong>Day 3, the micro-story</strong> —
           {% if by_hand.micro_story %}written by hand{% else %}typed{% endif %},
           because a 150-word story wants revising and the skill there is the
           writing rather than the letters</li>

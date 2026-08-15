@@ -107,6 +107,22 @@ class Command(BaseCommand):
             raise CommandError(f"No child named '{options['child_name']}'.")
 
         family = get_active_family(user)
+
+        if options["dry_run"]:
+            # Before any writes. Checking further down and `continue`-ing meant
+            # the curriculum, the chapter and all 23 lessons were created and
+            # committed, and then the command said "nothing written" — leaving a
+            # phantom course in the parent's list.
+            for week in WEEKS:
+                self.stdout.write(
+                    "  Week %2d: %-6s %s"
+                    % (week["number"], week["letter"],
+                       ", ".join(w["word"] for w in week["words"])))
+            self.stdout.write(self.style.WARNING(
+                "Dry run — nothing written. Would seed %d weeks, %d days, "
+                "%d questions." % (len(WEEKS), len(WEEKS) * 3, len(WEEKS) * 14)))
+            return
+
         curriculum, created = Curriculum.objects.get_or_create(
             parent=user, name=CURRICULUM_NAME,
             defaults={"subject": "Language Arts", "grade_level": "G07",
@@ -135,12 +151,6 @@ class Command(BaseCommand):
                     ),
                 },
             )
-            if options["dry_run"]:
-                self.stdout.write(
-                    "  Week %2d: %s — would build 3 days, 14 questions"
-                    % (week["number"], week["letter"]))
-                continue
-
             for day in (1, 2, 3):
                 qset = self._day_set(lesson, family, week, day)
                 questions += self._fill(qset, week, day)
@@ -150,10 +160,6 @@ class Command(BaseCommand):
                 "  Week %2d: %-6s %s"
                 % (week["number"], week["letter"],
                    ", ".join(w["word"] for w in week["words"])))
-
-        if options["dry_run"]:
-            self.stdout.write(self.style.WARNING("Dry run — nothing written."))
-            return
 
         first = Lesson.objects.filter(chapter=chapter).order_by("order").first()
         _, made = CurriculumPlacement.objects.get_or_create(

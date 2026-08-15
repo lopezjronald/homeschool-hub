@@ -3,8 +3,11 @@ questions could not be matched to their words — the words themselves, so the
 page never asks her to copy something it hasn't shown her.{% endcomment %}
 <div class="dk-head">
   <div class="dk-eyebrow">Operation Lexicon · Emily Dickinson</div>
-  <h2 class="dk-title">Week {{ dickinson_day.week.number }} · Day {{ dickinson_day.day }}</h2>
-  {% if dickinson_day.day == 3 %}
+  <h2 class="dk-title">Week {{ dickinson_day.week.number }}{% if dickinson_day.day %} · Day {{ dickinson_day.day }}{% endif %}</h2>
+  {% if not dickinson_day.day %}
+    <p class="dk-lede">All four of this week's words are below — find the ones
+      your page asks for.</p>
+  {% elif dickinson_day.day == 3 %}
     <p class="dk-lede">Look back over this week's four words: {% for w in dickinson_day.week.words %}<em>{{ w.word }}</em>{% if not forloop.last %}, {% endif %}{% endfor %}.</p>
   {% else %}
     <p class="dk-lede">Two words today. Read each one slowly, copy it out by hand,

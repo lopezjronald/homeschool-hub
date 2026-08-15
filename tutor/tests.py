@@ -3889,12 +3889,20 @@ class DickinsonSeedTests(TestCase):
         that isn't on the page."""
         self._seed()
         qset = self._set(1, 1)
-        qset.questions.order_by("order").last().delete()   # now 5, not 6
+        # Delete the FIRST question, not the last. Removing the last one is the
+        # single case where the unguarded path still happens to render correctly,
+        # so a test built on it cannot tell the fallback from the bug.
+        qset.questions.order_by("order").first().delete()
         html = self.client.get(reverse(
             "portal:portal_questions", args=[self.token, qset.pk])).content.decode()
         self.assertEqual(html.count("dk-word"), 2)
         self.assertIn("an ornamental stone", html)
         self.assertIn("a fine-grained, translucent form of gypsum", html)
+        # Header mode puts BOTH words above ALL the questions. Paired mode
+        # interleaves them. That position is the only thing in the HTML that
+        # tells the two apart — the card markup itself is identical.
+        self.assertLess(html.index("a fine-grained, translucent form of gypsum"),
+                        html.index("— copy the word and the definition"))
 
     def test_reseeding_changes_nothing(self):
         from tutor.models import Question, QuestionSet
@@ -3998,3 +4006,101 @@ class DickinsonGuideTests(DickinsonSeedTests):
             reverse("curricula:curriculum_detail", args=[other.pk])).content.decode()
         self.assertNotIn("dickinson-guide", detail)
         self.assertNotIn("lexicon-guide", detail)
+
+
+class DickinsonSeamTests(DickinsonSeedTests):
+    """The ways the page could show her the wrong thing to copy."""
+
+    def _html(self, qset):
+        return self.client.get(reverse(
+            "portal:portal_questions", args=[self.token, qset.pk])).content.decode()
+
+    def test_the_cards_and_the_answers_stay_in_step(self):
+        """Positional pairing is only as good as its guard. A delete PLUS an
+        insert leaves the count unchanged and shifts every word one slot, so
+        she would be told to copy alabaster's definition while looking at
+        agate's card — wrong, with nothing on the page to reveal it."""
+        from tutor.models import Question
+
+        self._seed()
+        qset = self._set(1, 1)
+        qset.questions.order_by("order").first().delete()
+        Question.objects.create(
+            question_set=qset, order=7, category="writing",
+            response_type=Question.TYPE_HANDWRITING, prompt="an inserted extra")
+        html = self._html(qset)
+        # Count is back to six, but the prompts no longer match the words, so
+        # the page falls back instead of pairing them wrongly.
+        self.assertEqual(qset.questions.count(), 6)
+        self.assertEqual(html.count("dk-word"), 2)
+        # Both cards above all the questions = header mode. If the count-only
+        # guard let this pair up, alabaster's card would sit BETWEEN them.
+        self.assertLess(html.index("a fine-grained, translucent form of gypsum"),
+                        html.index("— copy the lines from Dickinson"))
+
+    def test_the_happy_path_really_does_pair_each_word_with_its_own_answers(self):
+        """The whole seam. Without an ordering assertion, mispairing the words
+        still renders two cards and passes every other test here."""
+        self._seed()
+        html = self._html(self._set(1, 1))
+        agate_card = html.index("an ornamental stone")
+        alabaster_card = html.index("a fine-grained, translucent form of gypsum")
+        agate_q = html.index("agate — copy the word and the definition")
+        alabaster_q = html.index("alabaster — copy the word and the definition")
+        self.assertLess(agate_card, agate_q)
+        self.assertLess(agate_q, alabaster_card)
+        self.assertLess(alabaster_card, alabaster_q)
+
+    def test_a_renamed_set_shows_the_whole_week_not_a_guessed_day(self):
+        """Guessing the day from the set's position among its siblings put Day
+        2's words above Day 1's prompts. Showing her the wrong words while
+        telling her she is on the right day is worse than showing none."""
+        self._seed()
+        qset = self._set(1, 3)
+        qset.title = "Week 1 · something else"
+        qset.save(update_fields=["title"])
+        html = self._html(qset)
+        self.assertNotIn("Day 2", html)
+        self.assertEqual(html.count("dk-word"), 4)   # the whole week
+        for definition in ("an ornamental stone", "food or nourishment"):
+            self.assertIn(definition, html)
+
+    def test_a_dry_run_writes_nothing(self):
+        """It created the curriculum, the chapter and all 23 lessons, then said
+        "nothing written" — leaving a phantom course in the parent's list."""
+        from io import StringIO
+        from django.core.management import call_command
+        from curricula.models import Chapter, Curriculum, Lesson
+
+        out = StringIO()
+        call_command("seed_lexicon_kaylin", "--for-user", "dk", "--dry-run",
+                     stdout=out)
+        self.assertIn("nothing written", out.getvalue())
+        self.assertEqual(Curriculum.objects.count(), 0)
+        self.assertEqual(Chapter.objects.count(), 0)
+        self.assertEqual(Lesson.objects.count(), 0)
+
+    def test_reseeding_restores_a_question_that_was_tampered_with(self):
+        """update_or_create has to actually refresh the row. The prod Lexicon
+        deploy was already bitten once by a response_type left stale."""
+        from tutor.models import Question
+
+        self._seed()
+        q = self._set(1, 1).questions.order_by("order").first()
+        Question.objects.filter(pk=q.pk).update(
+            response_type=Question.TYPE_TEXT, prompt="STALE")
+        self._seed()
+        q.refresh_from_db()
+        self.assertEqual(q.response_type, Question.TYPE_HANDWRITING)
+        self.assertTrue(q.prompt.startswith("agate"))
+
+    def test_the_guides_own_confusions_are_flagged_on_her_card(self):
+        """Two places where copying the guide exactly would teach her something
+        false. She still copies what is printed — the card just says so."""
+        self._seed()
+        html = self._html(self._set(9, 1))
+        self.assertIn("Debachee", html)          # as printed
+        self.assertIn("Debauchee", html)         # and what the word really is
+        html = self._html(self._set(17, 1))
+        self.assertIn("Quenching—in Purple", html)
+        self.assertIn("put a fire or a light OUT", html)

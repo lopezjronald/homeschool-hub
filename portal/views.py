@@ -1181,22 +1181,22 @@ def _dickinson_day(question_set, questions):
     week = week_by_number(question_set.lesson.number)
     if week is None:
         return None
-    title = question_set.title or ""
-    day = next((d for d in (1, 2, 3) if title.endswith("Day %d" % d)), None)
-    if day is None:
-        # The title is how the seed names the day, but a rename must not cost
-        # her the words — fall back to this set's position within its lesson.
-        siblings = list(question_set.lesson.question_sets.order_by("pk")
-                        .values_list("pk", flat=True))
-        if question_set.pk in siblings:
-            day = siblings.index(question_set.pk) + 1
-        if day not in (1, 2, 3):
-            return None
-
     for q in questions:
         q.dk_word = None
         q.dk_first = False
         q.dk_slot = 0
+
+    title = question_set.title or ""
+    day = next((d for d in (1, 2, 3) if title.endswith("Day %d" % d)), None)
+    if day is None:
+        # A renamed set: show the WHOLE week and let her find her place. Working
+        # the day out from the set's position among its siblings looked helpful
+        # and was worse than useless — a set created out of order resolved to the
+        # wrong day and put Day 2's words above Day 1's prompts, which is her
+        # copying the wrong thing while being told she is right.
+        return {"week": week, "day": None, "words": week["words"],
+                "header": True, "starters": []}
+
     info = {"week": week, "day": day, "words": [], "header": False,
             "starters": STORY_STARTERS if day == 3 else []}
     if day == 3:
@@ -1204,8 +1204,15 @@ def _dickinson_day(question_set, questions):
 
     words = words_for_day(week, day)
     info["words"] = words
-    # Three answers per word, in the book's order, is what the seed builds.
-    if len(questions) != 3 * len(words):
+    # Three answers per word, in the book's order, is what the seed builds. The
+    # count alone is not enough: deleting one question and adding another leaves
+    # it at six and silently shifts every word one slot, so each answer ends up
+    # under the wrong card. The seed puts the headword at the front of every
+    # prompt, so check that they actually line up.
+    paired = len(questions) == 3 * len(words) and all(
+        q.prompt.startswith(words[i // 3]["word"])
+        for i, q in enumerate(questions))
+    if not paired:
         info["header"] = True
         return info
     for i, q in enumerate(questions):

@@ -82,6 +82,29 @@
               set, or a row the re-seed hasn't reached yet, would render with no
               question text at all.{% endcomment %}
               <div class="portal-question{% if q.lexicon_slot %} portal-question--own-chrome{% endif %}">
+                {% comment %}The question is asked once, above the three answers,
+                and it is asked whichever widget they end up with — it appears
+                nowhere else on the page.{% endcomment %}
+                {% if q.lexicon_asks %}
+                  <div class="lxa-head">
+                    <span class="lxa-rule" aria-hidden="true"></span>
+                    <div class="lxa-eyebrow">In your own words</div>
+                    <p class="lxa-question">
+                      What are three things that amaze you about
+                      <em>{{ lexicon_week.person }}</em>?
+                    </p>
+                    {% if not sheet.is_submitted %}
+                      <details class="lxa-stems">
+                        <summary>Need an idea to start?</summary>
+                        <ul>
+                          <li>I never knew that…</li>
+                          <li>It amazed me that…</li>
+                          <li>I couldn't believe…</li>
+                        </ul>
+                      </details>
+                    {% endif %}
+                  </div>
+                {% endif %}
                 {% if not q.lexicon_slot %}
                   <div class="d-flex align-items-center gap-2 mb-1">
                     <span class="portal-qnum">{{ q.order }}</span>
@@ -101,31 +124,11 @@
                 {% comment %}The lexicon writing branch is FIRST on purpose. These
                 questions are handwriting questions, so the generic
                 q.is_handwriting branch below would otherwise claim them and she
-                would lose the card, the medallion and the shared heading.
+                would lose the card, the medallion and the label.
 
                 lexicon_slot is set by the view, which can see the response_type
                 and the shape of the set — see _mark_lexicon_writing_slots.{% endcomment %}
                 {% if q.lexicon_slot %}
-                  {% if q.lexicon_slot == 1 %}
-                    <div class="lxa-head">
-                      <span class="lxa-rule" aria-hidden="true"></span>
-                      <div class="lxa-eyebrow">In your own words</div>
-                      <p class="lxa-question">
-                        What are three things that amaze you about
-                        <em>{{ lexicon_week.person }}</em>?
-                      </p>
-                      {% if not sheet.is_submitted %}
-                        <details class="lxa-stems">
-                          <summary>Need an idea to start?</summary>
-                          <ul>
-                            <li>I never knew that…</li>
-                            <li>It amazed me that…</li>
-                            <li>I couldn't believe…</li>
-                          </ul>
-                        </details>
-                      {% endif %}
-                    </div>
-                  {% endif %}
                   <div class="lxa-box{% if q.my_answer %} is-filled{% endif %}">
                     <span class="lxa-num" aria-hidden="true">{{ q.lexicon_slot }}</span>
                     <span class="lxa-label">

@@ -3227,6 +3227,19 @@ class HandwritingTests(TestCase):
         self.assertEqual(html.count("handwriting-canvas"), 1)
         self.assertEqual(html.count("portal-answer"), 0)
 
+    def test_an_emptied_drawing_is_not_read_back_as_her_answer(self):
+        """_parse_markup accepts a bare array as a legacy stroke shape, so
+        checking only the first character would hand "[]" or "null" to the
+        grader and the report as if she had written that."""
+        for payload in ("[]", "null", '{"strokes": [], "surface": null}'):
+            with self.subTest(payload=payload):
+                sheet = ResponseSheet.objects.create(
+                    question_set=self.qset, child=self.child,
+                    answers={str(self.q.pk): payload})
+                self.assertEqual(sheet.answer_display(self.q),
+                                 "(nothing written yet)")
+                sheet.delete()
+
     def test_words_she_typed_before_the_switch_are_not_lost(self):
         """A question can change instrument under an answer she already gave —
         Lexicon's three boxes were typed for a few days. Reading her sentence
@@ -3625,9 +3638,14 @@ class LexiconWritingBoxTests(LexiconOnePageTests):
         ).content.decode()
         self.assertNotIn("handwriting-canvas", html)
         self.assertNotIn("lxa-box", html)
-        # And she is not left staring at three unlabelled boxes either.
+        # And she is not left staring at three unlabelled boxes either. The
+        # question is asked in this state too — it appears nowhere else on the
+        # page, and this is exactly the state prod is in between a deploy and
+        # the re-seed.
         self.assertEqual(html.count("portal-qnum"), 13)
         self.assertIn("Amazing thing 1", html)
+        self.assertEqual(html.count("What are three things that amaze you"), 1)
+        self.assertIn("Paul Erdős", html)
 
     def test_an_older_set_is_left_alone(self):
         """The seed KEEPS the earlier three-part sets when a child has work in
@@ -3651,7 +3669,9 @@ class LexiconWritingBoxTests(LexiconOnePageTests):
         html = self.client.get(
             reverse("portal:portal_questions", args=[self.token, old.pk])
         ).content.decode()
-        self.assertNotIn("-9", html)
+        # Not a bare "-9": the portal token is base64 and contains that pair
+        # about one page in a hundred, which would fail this for no reason.
+        self.assertNotIn("Amazing thing -9", html)
         self.assertNotIn("lxa-box", html)
         # It falls back to the ordinary handwriting widget, which asks the
         # question in the prompt the way every other page does.

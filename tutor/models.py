@@ -831,8 +831,9 @@ class ResponseSheet(models.Model):
                 "NOTE TO THE GRADER: every answer here was written BY HAND on the "
                 "page and cannot be read as text. Do not judge the content, "
                 "spelling, or sentence structure — you cannot see it. Report that "
-                "this work is handwritten and needs a person's eyes, and do not "
-                "propose a mastery level." + privately + "\n\n" + text
+                "this work is handwritten and needs a person's eyes, and return a "
+                'level of "no_evidence" for me to set myself.' + privately
+                + "\n\n" + text
             )
         elif hand:
             which = ", ".join(f"Q{o}" for o in hand)
@@ -861,7 +862,15 @@ class ResponseSheet(models.Model):
         # words are still sitting in the sheet; reporting "nothing written" would
         # hide work she did from the grader, the work browser and the report.
         typed = str(raw or "").strip()
-        if typed and not typed.startswith("{"):
+        if not typed:
+            return "(nothing written yet)"
+        try:
+            json.loads(typed)
+        except ValueError:
+            # Not JSON at all, so it can only be something she typed. Testing
+            # the first character instead would hand "[]" and "null" back as if
+            # they were her sentence — both are stroke payloads that parsed to
+            # nothing, and _parse_markup accepts a bare array as a legacy shape.
             return typed
         return "(nothing written yet)"
 

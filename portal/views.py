@@ -1178,14 +1178,27 @@ def _mark_lexicon_writing_slots(questions):
       grader would be handed raw coordinate JSON as her sentence.
 
     Deciding here, where the rows are actually visible, means a question gets
-    the pen only if the database says it takes one.
+    the pen only if the database says it takes one — and ``lexicon_asks`` makes
+    sure she is asked the question either way.
     """
-    writing = [q for q in questions if q.response_type == Question.TYPE_HANDWRITING]
     for q in questions:
         q.lexicon_slot = 0
-    # Only the one-page weekly shape gets the designed cards. Anything else is
-    # an older set that still renders fine with the ordinary widget.
-    if len(writing) == 3 and len(questions) == len(writing) + 10:
+        q.lexicon_asks = False
+
+    # Only the one-page weekly shape gets any of this. Anything else is an older
+    # set that still renders fine with the ordinary widget.
+    writing = [q for q in questions if q.category == "writing"]
+    if len(writing) != 3 or len(questions) != len(writing) + 10:
+        return
+
+    # The question itself is asked once, above the three, and it is asked in
+    # BOTH states — the cards and the plain fallback. It lives nowhere else on
+    # the page, so gating it on the cards meant that between a deploy and the
+    # re-seed she opened the page to three boxes labelled only "Amazing thing
+    # 1/2/3" with nothing telling her what to write.
+    writing[0].lexicon_asks = True
+
+    if all(q.response_type == Question.TYPE_HANDWRITING for q in writing):
         for slot, q in enumerate(writing, start=1):
             q.lexicon_slot = slot
 

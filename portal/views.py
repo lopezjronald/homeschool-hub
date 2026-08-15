@@ -35,7 +35,7 @@ from lingua.models import Story as LinguaStory
 from curricula.models import Curriculum, CurriculumPlacement
 from curricula.subjects import emoji_for, is_spelling
 from tutor import ai, grading
-from tutor.models import Material, QuestionSet, ResponseSheet
+from tutor.models import Material, Question, QuestionSet, ResponseSheet
 from worklog.models import WorkLogEntry
 
 from tutor.lexicon import CURRICULUM_NAME as LEXICON_CURRICULUM_NAME
@@ -1160,6 +1160,36 @@ def _sheet_for(student, question_set):
     return sheet
 
 
+def _mark_lexicon_writing_slots(questions):
+    """Number the three "what amazed you" answers 1, 2, 3 for the page.
+
+    The template used to work this out itself, from ``category == 'writing'``
+    and ``order - 10``. Both assumptions are things only the seed guarantees,
+    and the template had no way to check them:
+
+    - ``order - 10`` assumes the ten sentences come first. An older three-part
+      set — which the seed deliberately KEEPS when a child has work in it —
+      holds the same three writing questions at orders 1, 2 and 3, so the page
+      offered her medallions reading -9, -8 and -7 and asked no question at all.
+
+    - Nothing tied the widget to ``response_type``. The seed is a manual step
+      after a deploy, so the page could hand her a pen while the row still said
+      "text": her strokes would be stored as an answer nobody replays, and the
+      grader would be handed raw coordinate JSON as her sentence.
+
+    Deciding here, where the rows are actually visible, means a question gets
+    the pen only if the database says it takes one.
+    """
+    writing = [q for q in questions if q.response_type == Question.TYPE_HANDWRITING]
+    for q in questions:
+        q.lexicon_slot = 0
+    # Only the one-page weekly shape gets the designed cards. Anything else is
+    # an older set that still renders fine with the ordinary widget.
+    if len(writing) == 3 and len(questions) == len(writing) + 10:
+        for slot, q in enumerate(writing, start=1):
+            q.lexicon_slot = slot
+
+
 def portal_questions(request, token, set_pk):
     """The response form: no autocorrect, autosaves as the child types."""
     student = _resolve_student(token)
@@ -1218,6 +1248,7 @@ def portal_questions(request, token, set_pk):
 
         lexicon_week = next(
             (w for w in WEEKS if w["number"] == question_set.lesson.number), None)
+        _mark_lexicon_writing_slots(questions)
 
     return render(request, "portal/portal_questions.html", {
         "student": student,

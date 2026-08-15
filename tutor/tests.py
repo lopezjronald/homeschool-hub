@@ -3227,6 +3227,18 @@ class HandwritingTests(TestCase):
         self.assertEqual(html.count("handwriting-canvas"), 1)
         self.assertEqual(html.count("portal-answer"), 0)
 
+    def test_words_she_typed_before_the_switch_are_not_lost(self):
+        """A question can change instrument under an answer she already gave —
+        Lexicon's three boxes were typed for a few days. Reading her sentence
+        back as "(nothing written yet)" would hide real work from the grader,
+        the parent's work browser and the printed report."""
+        sheet = ResponseSheet.objects.create(
+            question_set=self.qset, child=self.child,
+            answers={str(self.q.pk): "I never knew Kandinsky could hear colours."})
+        self.assertEqual(sheet.answer_display(self.q),
+                         "I never knew Kandinsky could hear colours.")
+        self.assertIsNone(sheet.answer_replay(self.q))   # there is nothing to draw
+
     def test_a_typed_question_is_untouched(self):
         typed = Question.objects.create(
             question_set=self.qset, order=2, category="writing",
@@ -3595,6 +3607,58 @@ class LexiconWritingBoxTests(LexiconOnePageTests):
         self.assertEqual(html.count("lxa-hand"), 3)
         self.assertNotIn("handwriting-hint", html)
 
+    def test_the_page_never_hands_her_a_pen_the_database_disagrees_with(self):
+        """The seed is a manual step after a deploy, so the template can be live
+        while the rows still say "text". If the page decided on its own that
+        these three are handwriting, her strokes would be stored against a text
+        question: nothing would replay them, and the grader would be handed raw
+        coordinate JSON as her sentence."""
+        from tutor.models import Question, QuestionSet
+
+        self._seed()
+        qset = QuestionSet.objects.filter(
+            lesson__number=1, lesson__chapter__curriculum__parent=self.parent).first()
+        qset.questions.filter(order__gt=10).update(
+            response_type=Question.TYPE_TEXT)   # the not-yet-re-seeded state
+        html = self.client.get(
+            reverse("portal:portal_questions", args=[self.token, qset.pk])
+        ).content.decode()
+        self.assertNotIn("handwriting-canvas", html)
+        self.assertNotIn("lxa-box", html)
+        # And she is not left staring at three unlabelled boxes either.
+        self.assertEqual(html.count("portal-qnum"), 13)
+        self.assertIn("Amazing thing 1", html)
+
+    def test_an_older_set_is_left_alone(self):
+        """The seed KEEPS the earlier three-part sets when a child has work in
+        them, and those hold the same three writing questions at orders 1-3. The
+        page used to number its cards `order - 10`, so it offered her medallions
+        reading -9, -8, -7 — and, because the shared heading only renders above
+        card 1, asked her no question at all."""
+        from tutor.models import Question, QuestionSet
+
+        self._seed()
+        lesson = Lesson.objects.get(
+            number=1, chapter__curriculum__parent=self.parent)
+        old = QuestionSet.objects.create(
+            lesson=lesson, family=self.family, status=QuestionSet.APPROVED,
+            title="Week 1 · Paul Erdős — what amazed you?")
+        for i in (1, 2, 3):
+            Question.objects.create(
+                question_set=old, order=i, category="writing",
+                response_type=Question.TYPE_HANDWRITING,
+                prompt=f"Amazing thing {i}")
+        html = self.client.get(
+            reverse("portal:portal_questions", args=[self.token, old.pk])
+        ).content.decode()
+        self.assertNotIn("-9", html)
+        self.assertNotIn("lxa-box", html)
+        # It falls back to the ordinary handwriting widget, which asks the
+        # question in the prompt the way every other page does.
+        self.assertEqual(html.count("handwriting-canvas"), 3)
+        self.assertEqual(html.count("portal-qnum"), 3)
+        self.assertIn("Amazing thing 1", html)
+
     def test_the_question_is_asked_once_above_the_boxes(self):
         """Asking it three times would read as three separate assignments."""
         html = self._page()
@@ -3654,6 +3718,12 @@ class LexiconWritingBoxTests(LexiconOnePageTests):
         self.assertIn("Grade only the other questions", text)
         self.assertNotIn("every answer here was written BY HAND", text)
         self.assertNotIn('"strokes"', text)
+        # And it is told to keep that between itself and me. The highlights and
+        # the encouragement are printed straight onto her feedback page, and
+        # "a grown-up will have to read your writing" lands on a nine-year-old
+        # as "what you did was no good".
+        self.assertIn("never in the encouragement", text)
+        self.assertIn("child-facing highlights", text)
 
     def test_the_generic_question_chrome_stands_down(self):
         """The medallion and label already say the number and the task; the

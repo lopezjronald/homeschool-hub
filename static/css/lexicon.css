@@ -284,30 +284,11 @@
 .lxa-check { color: #1E7A50; opacity: 0; margin-left: .3rem; }
 .lxa-box.is-filled .lxa-check { opacity: 1; }
 
-.lxa-input {
-  width: 100%; border: 0; outline: 0; background: transparent; resize: none;
-  font: 400 1.1875rem/34px Georgia, "Times New Roman", serif;
-  color: #1a2b24; min-height: 102px; padding: 0;
-  /* line-height and rule period are both 34px, so her writing rides the line.
-     `local` keeps the rules with the text if the box ever scrolls. */
-  background-image: repeating-linear-gradient(to bottom,
-    transparent 0 33px, rgba(20, 35, 28, .13) 33px 34px);
-  background-attachment: local;
-  background-position: 0 15px;
-}
-.lxa-box:focus-within {
-  border-color: var(--lx-tint, #0A5C63);
-  box-shadow: 0 0 0 3px rgba(10, 92, 99, .22), 0 6px 18px rgba(20, 35, 28, .10);
-}
 /* Filled: a spine like the word cards — her sentence joined the vocabulary.
    inset so it costs no reflow. */
 .lxa-box.is-filled {
   box-shadow: inset 5px 0 0 var(--lx-tint, #0A5C63);
   padding-left: 27px;
-}
-.lxa-box.is-filled .lxa-input {
-  background-image: repeating-linear-gradient(to bottom,
-    transparent 0 33px, rgba(20, 35, 28, .08) 33px 34px);
 }
 
 /* These questions carry their own medallion and label; the generic badge,
@@ -320,11 +301,6 @@
   .lxa-num { position: static; display: inline-block; margin-bottom: .4rem;
              box-shadow: none; }
   .lxa-box { padding: 18px 16px; }
-  .lxa-input {
-    font-size: 1.0625rem; line-height: 32px; min-height: 96px;
-    background-image: repeating-linear-gradient(to bottom,
-      transparent 0 31px, rgba(20, 35, 28, .13) 31px 32px);
-  }
   .lxa-question { font-size: 1.3rem; }
 }
 

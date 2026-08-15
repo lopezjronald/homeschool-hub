@@ -817,14 +817,22 @@ class ResponseSheet(models.Model):
         # never saw. A MIXED sheet needs this just as much: a Lexicon week is ten
         # typed sentences plus three handwritten ones, and only the ten are
         # readable.
+        # Whatever it is told here, it must not be repeated to the child. The
+        # child-facing fields are hers to read, and "a grown-up will have to read
+        # your writing" lands on a nine-year-old as "what you did was no good".
+        privately = (
+            " Say this in the summary and the parent pointers only — never in "
+            "the encouragement or the child-facing highlights, and never tell "
+            "the child anything about her handwriting being unreadable."
+        )
         hand = self._handwriting_orders
         if self.is_handwritten_only:
             text = (
                 "NOTE TO THE GRADER: every answer here was written BY HAND on the "
                 "page and cannot be read as text. Do not judge the content, "
-                "spelling, or sentence structure — you cannot see it. Say that "
+                "spelling, or sentence structure — you cannot see it. Report that "
                 "this work is handwritten and needs a person's eyes, and do not "
-                "propose a mastery level.\n\n" + text
+                "propose a mastery level." + privately + "\n\n" + text
             )
         elif hand:
             which = ", ".join(f"Q{o}" for o in hand)
@@ -832,8 +840,8 @@ class ResponseSheet(models.Model):
                 f"NOTE TO THE GRADER: {which} were written BY HAND on the page "
                 "and cannot be read as text. Grade only the other questions. Do "
                 "not judge the content, spelling, or sentence structure of the "
-                "handwritten ones — you cannot see them — and say they need a "
-                "person's eyes.\n\n" + text
+                "handwritten ones — you cannot see them — and report that they "
+                "need a person's eyes." + privately + "\n\n" + text
             )
         return text
 
@@ -846,9 +854,16 @@ class ResponseSheet(models.Model):
         her down for work she did.
         """
         strokes, _marks, _unread = cls._parse_markup(raw)
-        if not strokes:
-            return "(nothing written yet)"
-        return f"[handwritten answer — {len(strokes)} pen stroke(s); see the drawing]"
+        if strokes:
+            return f"[handwritten answer — {len(strokes)} pen stroke(s); see the drawing]"
+        # A question can change instrument under an answer she already gave —
+        # Operation Lexicon's three writing boxes were typed for a few days. Her
+        # words are still sitting in the sheet; reporting "nothing written" would
+        # hide work she did from the grader, the work browser and the report.
+        typed = str(raw or "").strip()
+        if typed and not typed.startswith("{"):
+            return typed
+        return "(nothing written yet)"
 
     @staticmethod
     def _format_characters(raw):

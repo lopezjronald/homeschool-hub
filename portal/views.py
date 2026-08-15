@@ -38,6 +38,7 @@ from tutor import ai, grading
 from tutor.models import Material, Question, QuestionSet, ResponseSheet
 from worklog.models import WorkLogEntry
 
+from tutor.dickinson import CURRICULUM_NAME as DICKINSON_CURRICULUM_NAME
 from tutor.lexicon import CURRICULUM_NAME as LEXICON_CURRICULUM_NAME
 
 from .tokens import student_from_token
@@ -1160,6 +1161,60 @@ def _sheet_for(student, question_set):
     return sheet
 
 
+def _dickinson_day(question_set, questions):
+    """Attach Dickinson's words to the day's questions, or hand back a header.
+
+    She cannot copy a definition she cannot see, so the words, the quotations
+    and the citations have to reach the page. They live in tutor.dickinson
+    rather than on the questions, so that fixing a definition never means
+    re-seeding — which means the view has to put them back together here.
+
+    Returns a dict for the template. ``cards`` is the normal path: each word is
+    rendered above its own three answers. If the set does not have the shape the
+    seed builds — an older set, a pruned question, content edited to a different
+    number of words — the questions are left plain and ``header`` carries the
+    words instead, so the page is never a list of instructions to copy something
+    that isn't there.
+    """
+    from tutor.dickinson import STORY_STARTERS, week_by_number, words_for_day
+
+    week = week_by_number(question_set.lesson.number)
+    if week is None:
+        return None
+    title = question_set.title or ""
+    day = next((d for d in (1, 2, 3) if title.endswith("Day %d" % d)), None)
+    if day is None:
+        # The title is how the seed names the day, but a rename must not cost
+        # her the words — fall back to this set's position within its lesson.
+        siblings = list(question_set.lesson.question_sets.order_by("pk")
+                        .values_list("pk", flat=True))
+        if question_set.pk in siblings:
+            day = siblings.index(question_set.pk) + 1
+        if day not in (1, 2, 3):
+            return None
+
+    for q in questions:
+        q.dk_word = None
+        q.dk_first = False
+        q.dk_slot = 0
+    info = {"week": week, "day": day, "words": [], "header": False,
+            "starters": STORY_STARTERS if day == 3 else []}
+    if day == 3:
+        return info
+
+    words = words_for_day(week, day)
+    info["words"] = words
+    # Three answers per word, in the book's order, is what the seed builds.
+    if len(questions) != 3 * len(words):
+        info["header"] = True
+        return info
+    for i, q in enumerate(questions):
+        q.dk_word = words[i // 3]
+        q.dk_slot = (i % 3) + 1
+        q.dk_first = q.dk_slot == 1
+    return info
+
+
 def _mark_lexicon_writing_slots(questions):
     """Number the three "what amazed you" answers 1, 2, 3 for the page.
 
@@ -1263,11 +1318,17 @@ def portal_questions(request, token, set_pk):
             (w for w in WEEKS if w["number"] == question_set.lesson.number), None)
         _mark_lexicon_writing_slots(questions)
 
+    # Kaylin's guide: the words she is copying from have to reach the page.
+    dickinson_day = None
+    if question_set.lesson.chapter.curriculum.name == DICKINSON_CURRICULUM_NAME:
+        dickinson_day = _dickinson_day(question_set, questions)
+
     return render(request, "portal/portal_questions.html", {
         "student": student,
         "token": token,
         "question_set": question_set,
         "lexicon_week": lexicon_week,
+        "dickinson_day": dickinson_day,
         "questions": questions,
         "sheet": sheet,
         "spellcheck_on": not spelling,

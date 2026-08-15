@@ -1366,10 +1366,13 @@ button.portal-subject-card {
   cursor: crosshair; border-radius: 10px;
 }
 .handwriting-empty {
-  /* Sit IN the first writing row, resting on its baseline — at the old offset
-     the ruled line crossed the words and read as strikethrough. */
-  position: absolute; top: 0; left: 16px; z-index: 1;
-  height: 48px; line-height: 44px;
+  /* Sit in the LOWER half of the first writing row, between the dashed midline
+     at 24px and the solid baseline at 48px, so the prompt rides the line the
+     way her writing will. Centring it in the whole row instead puts the midline
+     straight through the words, which reads as a strikethrough — as if the
+     invitation to write had already been crossed out. */
+  position: absolute; top: 24px; left: 16px; z-index: 1;
+  height: 24px; line-height: 24px;
   color: #c6d0cc; font-family: Georgia, serif; font-size: 1.25rem;
   pointer-events: none;
 }

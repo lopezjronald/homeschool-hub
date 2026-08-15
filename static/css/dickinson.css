@@ -1,0 +1,95 @@
+/* Operation Lexicon: Emily Dickinson — Kaylin's copywork pages.
+ *
+ * The guide's own look, carried over deliberately: a banded strip for the
+ * headword and its definition, then the quotation set apart and centred with a
+ * small citation beneath. She is copying from this, so the type is large, the
+ * measure is short, and nothing decorative sits near the words she must get
+ * exactly right — the em dashes and capitals are the assignment.
+ */
+
+.dk-head { margin: 0 0 1.75rem; }
+.dk-eyebrow {
+  font: 600 .72rem/1 system-ui, sans-serif;
+  letter-spacing: .14em; text-transform: uppercase;
+  color: #6b7280;
+}
+.dk-title {
+  font: 400 2rem/1.15 Georgia, "Times New Roman", serif;
+  color: #14232b; margin: .35rem 0 .5rem;
+}
+.dk-lede {
+  font: 400 1.0625rem/1.6 system-ui, sans-serif; color: #4b5563;
+  max-width: 46ch; margin: 0;
+}
+
+.dk-word { margin: 2.25rem 0 1rem; }
+
+/* The banded strip the guide prints its headwords in. */
+.dk-band {
+  background: linear-gradient(180deg, #e9edf0 0%, #dfe5ea 100%);
+  border: 1px solid rgba(20, 35, 43, .14);
+  border-radius: 999px;
+  padding: .7rem 1.4rem;
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: .55rem;
+}
+.dk-headword {
+  font: 700 1.4rem/1.25 system-ui, sans-serif; color: #14232b;
+}
+.dk-dot { color: #64748b; }
+.dk-def {
+  font: 400 1.0625rem/1.45 system-ui, sans-serif; color: #293b45;
+  flex: 1 1 16ch; min-width: 0;
+}
+
+/* Where the printed guide has an error she would otherwise copy out by hand. */
+.dk-note {
+  margin: .6rem 0 0; padding: .6rem .9rem;
+  background: #fff8e6; border: 1px solid #f0d9a0; border-radius: 10px;
+  font: 400 .9rem/1.5 system-ui, sans-serif; color: #6b4f14;
+}
+
+.dk-example { margin: 1.1rem 0 0; padding-left: .25rem; }
+.dk-example-label {
+  font: 700 .68rem/1 system-ui, sans-serif;
+  letter-spacing: .16em; text-transform: uppercase; color: #64748b;
+  margin-bottom: .5rem;
+}
+.dk-quote {
+  margin: 0; padding: 0 0 0 1rem;
+  border-left: 3px solid rgba(20, 35, 43, .18);
+  font: italic 400 1.1875rem/1.7 Georgia, "Times New Roman", serif;
+  color: #14232b;
+  /* Her line breaks ARE the poem. Keep every one of them. */
+  white-space: pre-wrap;
+  max-width: 52ch;
+}
+.dk-quote--verse { font-size: 1.25rem; }
+.dk-cite {
+  display: block; margin: .5rem 0 0 1rem;
+  font: 400 .8rem/1.4 system-ui, sans-serif; color: #6b7280; font-style: normal;
+}
+
+/* The three answers belonging to a word sit closer to it than to each other's
+   neighbours, so a word and its work read as one block. */
+.portal-question--dk { border-top: 0; padding-top: .5rem; }
+
+.dk-starters { margin-top: 1.25rem; font-size: .95rem; }
+.dk-starters summary {
+  cursor: pointer; font-weight: 600; color: #0A5C63; width: fit-content;
+}
+.dk-starters ul {
+  margin: .6rem 0 0; padding-left: 1.2rem;
+  font-family: Georgia, serif; font-style: italic; color: #4b5563;
+}
+.dk-starters-note {
+  margin: .6rem 0 0; color: #6b7280;
+  font: 400 .9rem/1.5 system-ui, sans-serif;
+}
+
+@media (max-width: 480px) {
+  .dk-title { font-size: 1.6rem; }
+  .dk-band { border-radius: 16px; padding: .7rem 1rem; }
+  .dk-headword { font-size: 1.25rem; }
+  .dk-quote { font-size: 1.0625rem; }
+  .dk-quote--verse { font-size: 1.125rem; }
+}

@@ -3764,3 +3764,143 @@ class LexiconWritingBoxTests(LexiconOnePageTests):
         html = self._page()
         button = html[html.index("Turn it in") - 400:html.index("Turn it in")]
         self.assertNotIn("disabled", button)
+
+
+class DickinsonSeedTests(TestCase):
+    """Kaylin's Operation Lexicon: Emily Dickinson.
+
+    23 weeks, three days each, the way the guide numbers itself. The copying is
+    done with a pen — that is the skill the guide is teaching.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        from django.contrib.auth import get_user_model
+        from core.models import Family, FamilyMembership
+        from portal.tokens import make_portal_token
+
+        User = get_user_model()
+        cls.parent = User.objects.create_user(
+            username="dk", email="dk@e.com", password="pw")
+        cls.family = Family.objects.create(name="DK Fam")
+        FamilyMembership.objects.create(
+            user=cls.parent, family=cls.family, role="parent")
+        cls.child = Student.objects.create(
+            parent=cls.parent, first_name="Kaylin", grade_level="G07",
+            family=cls.family)
+        cls.token = make_portal_token(cls.child)
+
+    def _seed(self):
+        from io import StringIO
+        from django.core.management import call_command
+        call_command("seed_lexicon_kaylin", "--for-user", "dk", stdout=StringIO())
+
+    def _set(self, week, day):
+        from tutor.dickinson import CURRICULUM_NAME
+        from tutor.models import QuestionSet
+        return QuestionSet.objects.get(
+            lesson__number=week, title__endswith="Day %d" % day,
+            lesson__chapter__curriculum__name=CURRICULUM_NAME,
+            lesson__chapter__curriculum__parent=self.parent)
+
+    def _page(self, week=1, day=1):
+        return self.client.get(reverse(
+            "portal:portal_questions", args=[self.token, self._set(week, day).pk])
+        ).content.decode()
+
+    def test_the_guide_is_laid_out_as_twenty_three_weeks_of_three_days(self):
+        from curricula.models import Curriculum, Lesson
+        from tutor.dickinson import CURRICULUM_NAME
+        from tutor.models import QuestionSet
+
+        self._seed()
+        cur = Curriculum.objects.get(name=CURRICULUM_NAME, parent=self.parent)
+        lessons = Lesson.objects.filter(chapter__curriculum=cur)
+        self.assertEqual(lessons.count(), 23)
+        for lesson in lessons:
+            sets = QuestionSet.objects.filter(lesson=lesson)
+            self.assertEqual(sets.count(), 3, "week %s" % lesson.number)
+        # Two words a day, three steps each; day 3 is the word and the story.
+        self.assertEqual(self._set(1, 1).questions.count(), 6)
+        self.assertEqual(self._set(1, 2).questions.count(), 6)
+        self.assertEqual(self._set(1, 3).questions.count(), 2)
+
+    def test_the_copying_is_done_with_a_pen(self):
+        """The guide teaches handwriting and 'contemplative attention to
+        detail' through the copying. Typed, it practises neither."""
+        from tutor.models import Question
+
+        self._seed()
+        for day in (1, 2):
+            kinds = [q.response_type
+                     for q in self._set(1, day).questions.order_by("order")]
+            self.assertEqual(kinds, [Question.TYPE_HANDWRITING] * 6,
+                             "day %d" % day)
+        # Day 3 is a 150-word story that wants revising — that one is typed.
+        self.assertEqual(
+            [q.response_type for q in self._set(1, 3).questions.order_by("order")],
+            [Question.TYPE_TEXT] * 2)
+
+    def test_she_can_see_what_she_is_copying(self):
+        """The words live in tutor.dickinson, not on the questions, so the page
+        has to put them back. Without the card there is nothing to copy from —
+        just an instruction to copy something invisible."""
+        html = self._seed() or self._page(1, 1)
+        self.assertEqual(html.count("dk-word"), 2)          # two words today
+        self.assertIn("agate", html)
+        self.assertIn("an ornamental stone", html)          # the definition
+        self.assertIn("To joint this Agate were a work", html)   # her lines
+        self.assertIn("1134 pg. 509", html)                 # the citation
+        self.assertEqual(html.count("handwriting-canvas"), 6)
+
+    def test_dickinsons_line_breaks_reach_the_page(self):
+        """Her line breaks are the poem. Collapsed into a paragraph, Kaylin
+        would copy out prose and the exercise would be pointless.
+
+        This pins the breaks into the HTML; keeping them VISIBLE is
+        `white-space: pre-wrap` on .dk-quote, which no request-level test can
+        see — that half is checked by looking at the rendered page.
+        """
+        self._seed()
+        html = self._page(1, 2)
+        self.assertIn("But if they only stay\nAmpler to fly away", html)
+
+    def test_the_guides_own_misspelling_is_flagged_where_she_will_copy_it(self):
+        """Week 16 prints "perrenial". She is copying it out by hand, so the
+        page says so rather than letting her learn it wrong."""
+        self._seed()
+        html = self._page(16, 1)
+        self.assertIn("perrenial", html)      # as printed — she copies the book
+        self.assertIn("dk-note", html)
+        self.assertIn("perennial", html)      # and is told the real spelling
+
+    def test_day_three_asks_for_the_story_and_offers_the_starters(self):
+        self._seed()
+        html = self._page(1, 3)
+        self.assertIn("micro-story", html)
+        self.assertIn("COURAGE is a lion", html)
+        self.assertNotIn("handwriting-canvas", html)   # typed, for revising
+        self.assertEqual(html.count("dk-word"), 0)     # no words to copy today
+
+    def test_a_set_that_does_not_match_the_book_still_shows_the_words(self):
+        """If a question is pruned, or the content is edited to a different
+        number of words, the cards can no longer be matched one-to-one. Falling
+        back to no words at all would leave her instructions to copy something
+        that isn't on the page."""
+        self._seed()
+        qset = self._set(1, 1)
+        qset.questions.order_by("order").last().delete()   # now 5, not 6
+        html = self.client.get(reverse(
+            "portal:portal_questions", args=[self.token, qset.pk])).content.decode()
+        self.assertEqual(html.count("dk-word"), 2)
+        self.assertIn("an ornamental stone", html)
+        self.assertIn("a fine-grained, translucent form of gypsum", html)
+
+    def test_reseeding_changes_nothing(self):
+        from tutor.models import Question, QuestionSet
+
+        self._seed()
+        before = (QuestionSet.objects.count(), Question.objects.count())
+        self._seed()
+        self.assertEqual(
+            (QuestionSet.objects.count(), Question.objects.count()), before)

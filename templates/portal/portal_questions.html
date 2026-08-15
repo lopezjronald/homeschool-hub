@@ -2,7 +2,8 @@
 {% load static %}
 {% load tutor_extras %}
 {% block title %}{{ question_set.title }} · Steadfast Scholars{% endblock %}
-{% block extra_css %}<link href="{% static 'css/lexicon.css' %}" rel="stylesheet">{% endblock %}
+{% block extra_css %}<link href="{% static 'css/lexicon.css' %}" rel="stylesheet">
+<link href="{% static 'css/dickinson.css' %}" rel="stylesheet">{% endblock %}
 
 {% block content %}
 <div class="container{% if lexicon_week %} lx-week-{{ lexicon_week.number }}{% endif %}">
@@ -62,6 +63,10 @@
             {% include "portal/_lexicon_week.html" %}
           {% endif %}
 
+          {% if dickinson_day %}
+            {% include "portal/_dickinson_day.html" %}
+          {% endif %}
+
           {% if question_set.intro %}
             <div class="lesson-intro">
               <div class="lesson-intro-label">Before you start</div>
@@ -81,7 +86,10 @@
               gives up the generic number, chip and prompt — otherwise a legacy
               set, or a row the re-seed hasn't reached yet, would render with no
               question text at all.{% endcomment %}
-              <div class="portal-question{% if q.lexicon_slot %} portal-question--own-chrome{% endif %}">
+              {% if q.dk_first %}
+                {% include "portal/_dickinson_word.html" with w=q.dk_word %}
+              {% endif %}
+              <div class="portal-question{% if q.lexicon_slot %} portal-question--own-chrome{% endif %}{% if q.dk_word %} portal-question--dk{% endif %}">
                 {% comment %}The question is asked once, above the three answers,
                 and it is asked whichever widget they end up with — it appears
                 nowhere else on the page.{% endcomment %}

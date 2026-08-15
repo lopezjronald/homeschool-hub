@@ -1,0 +1,32 @@
+{% comment %}The head of a Dickinson day: which week, which day, and — when the
+questions could not be matched to their words — the words themselves, so the
+page never asks her to copy something it hasn't shown her.{% endcomment %}
+<div class="dk-head">
+  <div class="dk-eyebrow">Operation Lexicon · Emily Dickinson</div>
+  <h2 class="dk-title">Week {{ dickinson_day.week.number }} · Day {{ dickinson_day.day }}</h2>
+  {% if dickinson_day.day == 3 %}
+    <p class="dk-lede">Look back over this week's four words: {% for w in dickinson_day.week.words %}<em>{{ w.word }}</em>{% if not forloop.last %}, {% endif %}{% endfor %}.</p>
+  {% else %}
+    <p class="dk-lede">Two words today. Read each one slowly, copy it out by hand,
+      then write a sentence that could only be about that word.</p>
+  {% endif %}
+</div>
+
+{% if dickinson_day.header %}
+  {% comment %}Fallback: the questions did not line up with the words, so the
+  words go here instead of above each answer.{% endcomment %}
+  {% for w in dickinson_day.words %}
+    {% include "portal/_dickinson_word.html" with w=w %}
+  {% endfor %}
+{% endif %}
+
+{% if dickinson_day.starters %}
+  <details class="dk-starters">
+    <summary>Story-poem starters — if nothing comes</summary>
+    <ul>
+      {% for s in dickinson_day.starters %}<li>{{ s }}</li>{% endfor %}
+    </ul>
+    <p class="dk-starters-note">Begin with a sentence or two, then break it into
+      lines. Rhyme if it comes; never force it.</p>
+  </details>
+{% endif %}

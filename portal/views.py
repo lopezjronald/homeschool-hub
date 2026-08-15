@@ -40,6 +40,7 @@ from worklog.models import WorkLogEntry
 
 from tutor.dickinson import CURRICULUM_NAME as DICKINSON_CURRICULUM_NAME
 from tutor.lexicon import CURRICULUM_NAME as LEXICON_CURRICULUM_NAME
+from tutor.onetrue import CURRICULUM_NAME as ONETRUE_CURRICULUM_NAME
 
 from .tokens import student_from_token
 
@@ -1222,6 +1223,25 @@ def _dickinson_day(question_set, questions):
     return info
 
 
+def _onetrue_week(question_set):
+    """The week's tool of style, for the page she is on.
+
+    Only the lesson page carries the explanation and the sentence she copies —
+    the practice page is her own writing, and putting the model sentence back in
+    front of her there would invite copying it again instead of composing.
+
+    Unlike the Dickinson pages this needs no per-question pairing: everything is
+    a header, so there is nothing to get out of step.
+    """
+    from tutor.onetrue import week_by_number
+
+    week = week_by_number(question_set.lesson.number)
+    if week is None:
+        return None
+    title = question_set.title or ""
+    return {"week": week, "is_practice": title.endswith("now you try!")}
+
+
 def _mark_lexicon_writing_slots(questions):
     """Number the three "what amazed you" answers 1, 2, 3 for the page.
 
@@ -1330,12 +1350,18 @@ def portal_questions(request, token, set_pk):
     if question_set.lesson.chapter.curriculum.name == DICKINSON_CURRICULUM_NAME:
         dickinson_day = _dickinson_day(question_set, questions)
 
+    # Violet's Tools of Style: the explanation and the model sentence.
+    onetrue_week = None
+    if question_set.lesson.chapter.curriculum.name == ONETRUE_CURRICULUM_NAME:
+        onetrue_week = _onetrue_week(question_set)
+
     return render(request, "portal/portal_questions.html", {
         "student": student,
         "token": token,
         "question_set": question_set,
         "lexicon_week": lexicon_week,
         "dickinson_day": dickinson_day,
+        "onetrue_week": onetrue_week,
         "questions": questions,
         "sheet": sheet,
         "spellcheck_on": not spelling,

@@ -398,3 +398,55 @@ def material_approve(request, pk):
         material.save(update_fields=["status", "approved_at", "updated_at"])
         messages.success(request, f'"{material.title}" is approved and ready for the student.')
     return redirect("tutor:material_detail", pk=material.pk)
+
+
+@login_required
+def onetrue_guide(request, curriculum_pk):
+    """Parent guide for One True Sentence: Tools of Style.
+
+    The book's "For the Teacher" page plus its Sentence Construction Basics —
+    the reference the weekly lessons quietly assume you already know, and which
+    a parent otherwise has to reconstruct from Violet's answers.
+    """
+    from students.models import Student
+    from tutor import onetrue
+    from tutor.management.commands.seed_onetrue_violet import WRITTEN_BY_HAND
+
+    curriculum = get_object_or_404(
+        viewable_queryset(Curriculum.objects.all(), request.user), pk=curriculum_pk,
+    )
+    if curriculum.name != onetrue.CURRICULUM_NAME:
+        raise Http404
+
+    children = []
+    for placement in CurriculumPlacement.objects.filter(
+        curriculum=curriculum,
+        child__in=viewable_queryset(Student.objects.all(), request.user),
+    ).select_related("child"):
+        # A week is the lesson AND the practice — one of the two is half a week.
+        by_week = {}
+        for number, set_pk in ResponseSheet.objects.filter(
+            child=placement.child,
+            question_set__lesson__chapter__curriculum=curriculum,
+            status=ResponseSheet.SUBMITTED,
+        ).values_list("question_set__lesson__number", "question_set_id"):
+            by_week.setdefault(number, set()).add(set_pk)
+        done = {n for n, sets in by_week.items() if len(sets) >= 2}
+        children.append({
+            "child": placement.child,
+            "weeks_done": len(done),
+            "sets_done": sum(len(s) for s in by_week.values()),
+            "next_week": next(
+                (w for w in onetrue.WEEKS if w["number"] not in done), None),
+        })
+
+    return render(request, "tutor/onetrue_guide.html", {
+        "curriculum": curriculum,
+        "epigraph": onetrue.EPIGRAPH,
+        "for_the_teacher": onetrue.FOR_THE_TEACHER,
+        "how_it_teaches": onetrue.HOW_IT_TEACHES,
+        "basics": onetrue.BASICS,
+        "weeks": onetrue.WEEKS,
+        "by_hand": WRITTEN_BY_HAND,
+        "children": children,
+    })

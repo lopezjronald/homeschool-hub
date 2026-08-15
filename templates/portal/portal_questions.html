@@ -3,7 +3,8 @@
 {% load tutor_extras %}
 {% block title %}{{ question_set.title }} · Steadfast Scholars{% endblock %}
 {% block extra_css %}<link href="{% static 'css/lexicon.css' %}" rel="stylesheet">
-<link href="{% static 'css/dickinson.css' %}" rel="stylesheet">{% endblock %}
+<link href="{% static 'css/dickinson.css' %}" rel="stylesheet">
+<link href="{% static 'css/onetrue.css' %}" rel="stylesheet">{% endblock %}
 
 {% block content %}
 <div class="container{% if lexicon_week %} lx-week-{{ lexicon_week.number }}{% endif %}">
@@ -65,6 +66,10 @@
 
           {% if dickinson_day %}
             {% include "portal/_dickinson_day.html" %}
+          {% endif %}
+
+          {% if onetrue_week %}
+            {% include "portal/_onetrue_week.html" %}
           {% endif %}
 
           {% if question_set.intro %}

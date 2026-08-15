@@ -1,0 +1,88 @@
+/* One True Sentence: Tools of Style — Violet's pages.
+ *
+ * The book's own furniture, carried over: a tinted explanation box with the
+ * worked example indented inside it, then each model sentence tagged
+ * SENTENCE 1 / SENTENCE 2 in a dark chip with the source credited underneath.
+ * She is copying Sentence 1 by hand, so it is set large, in a short measure,
+ * with nothing decorative near it.
+ */
+
+.ot-head { margin: 0 0 1.25rem; }
+.ot-eyebrow {
+  font: 600 .72rem/1 system-ui, sans-serif;
+  letter-spacing: .14em; text-transform: uppercase; color: #6b7280;
+}
+.ot-title {
+  font: 400 1.9rem/1.2 Georgia, "Times New Roman", serif;
+  color: #14232b; margin: .35rem 0 0;
+}
+.ot-title::first-line { font-weight: 400; }
+
+/* The guide prints its explanation in a soft grey rounded panel. */
+.ot-explain {
+  background: linear-gradient(180deg, #eef1f3 0%, #e4e9ec 100%);
+  border: 1px solid rgba(20, 35, 43, .12);
+  border-radius: 18px;
+  padding: 1.1rem 1.35rem;
+  margin-bottom: 1.75rem;
+}
+.ot-explain-label {
+  font: 700 .74rem/1 system-ui, sans-serif;
+  letter-spacing: .1em; text-transform: uppercase; color: #3d4d57;
+  margin-bottom: .45rem;
+}
+.ot-explain-body {
+  margin: 0; color: #1b2a33;
+  font: 400 1.0625rem/1.6 system-ui, sans-serif;
+}
+.ot-example { margin: .9rem 0 0 .75rem; }
+.ot-example-label {
+  font: 700 .66rem/1 system-ui, sans-serif;
+  letter-spacing: .14em; text-transform: uppercase; color: #56656f;
+  margin-bottom: .3rem;
+}
+.ot-example-text {
+  font: italic 400 1.0625rem/1.65 Georgia, "Times New Roman", serif;
+  color: #1b2a33;
+  white-space: pre-wrap;   /* the examples are lists, one per line */
+}
+
+.ot-sentence { margin: 0 0 1.5rem; }
+/* The book tags each one in a black chip. */
+.ot-tag {
+  display: inline-block;
+  background: #14232b; color: #fff;
+  font: 700 .66rem/1 system-ui, sans-serif;
+  letter-spacing: .14em; text-transform: uppercase;
+  padding: .38rem .6rem; border-radius: 5px;
+  margin-bottom: .55rem;
+}
+.ot-tag--two { background: #3d4d57; }
+.ot-quote {
+  margin: 0; padding: 0 0 0 1rem;
+  border-left: 3px solid rgba(20, 35, 43, .18);
+  font: italic 400 1.25rem/1.7 Georgia, "Times New Roman", serif;
+  color: #14232b;
+  white-space: pre-wrap;
+  max-width: 54ch;
+}
+.ot-cite {
+  display: block; margin: .45rem 0 0 1rem;
+  font: 400 .8rem/1.4 system-ui, sans-serif; color: #6b7280; font-style: normal;
+}
+
+.ot-aloud {
+  background: #fff8e6; border: 1px solid #f0d9a0; border-radius: 10px;
+  padding: .7rem 1rem; margin: 0 0 .5rem;
+  font: 400 .95rem/1.5 system-ui, sans-serif; color: #6b4f14;
+}
+.ot-lede {
+  font: 400 1.0625rem/1.6 system-ui, sans-serif; color: #4b5563;
+  max-width: 52ch;
+}
+
+@media (max-width: 480px) {
+  .ot-title { font-size: 1.5rem; }
+  .ot-explain { border-radius: 14px; padding: 1rem; }
+  .ot-quote { font-size: 1.125rem; }
+}

@@ -16,4 +16,5 @@ urlpatterns = [
     path("curricula/<int:curriculum_pk>/discussion/", views.discussion_guide, name="discussion_guide"),
     path("curricula/<int:curriculum_pk>/lexicon-guide/", views.lexicon_guide, name="lexicon_guide"),
     path("curricula/<int:curriculum_pk>/dickinson-guide/", views.dickinson_guide, name="dickinson_guide"),
+    path("curricula/<int:curriculum_pk>/onetrue-guide/", views.onetrue_guide, name="onetrue_guide"),
 ]

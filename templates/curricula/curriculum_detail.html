@@ -271,6 +271,15 @@
             Parent guide
           </a>
         </div>
+      {% elif is_onetrue %}
+        <div class="alert alert-light d-flex justify-content-between align-items-center flex-wrap gap-2">
+          <span>📘 <strong>New to this one?</strong> How a week runs, which parts
+            she writes by hand, and the sentence-construction basics the lessons
+            assume you know.</span>
+          <a href="{% url 'tutor:onetrue_guide' curriculum.pk %}" class="btn btn-sm btn-primary">
+            Parent guide
+          </a>
+        </div>
       {% endif %}
 
       <div class="d-flex justify-content-between">

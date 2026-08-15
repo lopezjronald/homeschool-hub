@@ -4104,3 +4104,229 @@ class DickinsonSeamTests(DickinsonSeedTests):
         html = self._html(self._set(17, 1))
         self.assertIn("Quenching—in Purple", html)
         self.assertIn("put a fire or a light OUT", html)
+
+
+class OneTrueSentenceTests(TestCase):
+    """Violet's One True Sentence: Tools of Style.
+
+    Twenty weeks, each a lesson page and a practice page, the way the book is
+    laid out. The copying and her own sentences are done with the pen.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        from django.contrib.auth import get_user_model
+        from core.models import Family, FamilyMembership
+        from portal.tokens import make_portal_token
+
+        User = get_user_model()
+        cls.parent = User.objects.create_user(
+            username="ot", email="ot@e.com", password="pw")
+        cls.family = Family.objects.create(name="OT Fam")
+        FamilyMembership.objects.create(
+            user=cls.parent, family=cls.family, role="parent")
+        cls.child = Student.objects.create(
+            parent=cls.parent, first_name="Violet", grade_level="G03",
+            family=cls.family)
+        cls.token = make_portal_token(cls.child)
+
+    def _seed(self):
+        from io import StringIO
+        from django.core.management import call_command
+        call_command("seed_onetrue_violet", "--for-user", "ot", stdout=StringIO())
+
+    def _set(self, week, practice=False):
+        from tutor.models import QuestionSet
+        from tutor.onetrue import CURRICULUM_NAME
+        qs = QuestionSet.objects.filter(
+            lesson__number=week,
+            lesson__chapter__curriculum__name=CURRICULUM_NAME,
+            lesson__chapter__curriculum__parent=self.parent)
+        return (qs.filter(title__endswith="now you try!").get() if practice
+                else qs.exclude(title__endswith="now you try!").get())
+
+    def _page(self, week=1, practice=False):
+        return self.client.get(reverse(
+            "portal:portal_questions",
+            args=[self.token, self._set(week, practice).pk])).content.decode()
+
+    def test_twenty_weeks_each_a_lesson_and_a_practice(self):
+        from curricula.models import Curriculum, Lesson
+        from tutor.models import QuestionSet
+        from tutor.onetrue import CURRICULUM_NAME
+
+        self._seed()
+        cur = Curriculum.objects.get(name=CURRICULUM_NAME, parent=self.parent)
+        lessons = Lesson.objects.filter(chapter__curriculum=cur)
+        self.assertEqual(lessons.count(), 20)
+        for lesson in lessons:
+            self.assertEqual(
+                QuestionSet.objects.filter(lesson=lesson).count(), 2,
+                "week %s" % lesson.number)
+
+    def test_the_copying_and_her_own_sentences_use_the_pen(self):
+        """Copying a Caldecott sentence at a keyboard is transcription, not
+        noticing how it is built. And she is nine — five sentences hunted out on
+        a keyboard is an endurance test, not sentence craft."""
+        from tutor.models import Question
+
+        self._seed()
+        lesson = list(self._set(1).questions.order_by("order"))
+        self.assertEqual(lesson[0].response_type, Question.TYPE_HANDWRITING)
+        self.assertTrue(lesson[0].prompt.startswith("Read and copy"))
+        # The noticing questions are typed, so the grader can read them.
+        self.assertTrue(all(q.response_type == Question.TYPE_TEXT
+                            for q in lesson[1:]))
+        practice = list(self._set(1, practice=True).questions.all())
+        self.assertEqual([q.response_type for q in practice],
+                         [Question.TYPE_HANDWRITING] * 5)
+
+    def test_she_can_see_the_sentence_she_is_copying(self):
+        self._seed()
+        html = self._page(1)
+        self.assertIn("Vivid and descriptive", html)          # the explanation
+        self.assertIn("Wordsworth, Daffodils", html)          # its example
+        self.assertIn("chuckleberry blossoms", html)          # Sentence 1
+        self.assertIn("Margaret Wise Brown, The Little Island", html)
+        self.assertIn("pastel hues", html)                    # Sentence 2
+        self.assertIn("whispered tone", html)
+
+    def test_the_practice_page_does_not_show_the_model_sentence(self):
+        """She is composing there. Leaving the model sentence on screen invites
+        copying it a second time instead of writing her own."""
+        self._seed()
+        html = self._page(1, practice=True)
+        self.assertIn("Vivid and descriptive", html)     # the tool, still
+        self.assertNotIn("chuckleberry blossoms", html)  # but not the model
+        self.assertNotIn("Margaret Wise Brown", html)
+        self.assertEqual(html.count("handwriting-canvas"), 5)
+
+    def test_the_weeks_that_split_into_groups_ask_for_the_right_number(self):
+        """The practice page is not always five. Week 3 splits into two groups
+        of three, week 7 into three pairs, week 20 into two and two."""
+        self._seed()
+        for week, expected in ((1, 5), (3, 6), (7, 6), (18, 6), (20, 4)):
+            self.assertEqual(
+                self._set(week, practice=True).questions.count(), expected,
+                "week %d" % week)
+        prompts = " ".join(
+            q.prompt for q in self._set(3, practice=True).questions.all())
+        self.assertIn("using you", prompts)
+        self.assertIn("your", prompts)
+
+    def test_the_paired_weeks_ask_for_both_halves(self):
+        """Weeks 8 and 19 are craft-then-rewrite: a fragment then the whole
+        sentence, a run-on then the split version. One box each would lose half
+        the exercise."""
+        self._seed()
+        eight = list(self._set(8, practice=True).questions.order_by("order"))
+        self.assertEqual(len(eight), 8)            # four items, two answers each
+        self.assertIn("(fragment)", eight[0].prompt)
+        self.assertIn("(sentence)", eight[1].prompt)
+        nineteen = list(self._set(19, practice=True).questions.order_by("order"))
+        self.assertEqual(len(nineteen), 6)         # three items, two answers each
+        self.assertIn("(run-on)", nineteen[0].prompt)
+        self.assertIn("(rewritten)", nineteen[1].prompt)
+
+    def test_a_dry_run_writes_nothing(self):
+        from io import StringIO
+        from django.core.management import call_command
+        from curricula.models import Curriculum, Lesson
+
+        out = StringIO()
+        call_command("seed_onetrue_violet", "--for-user", "ot", "--dry-run",
+                     stdout=out)
+        self.assertIn("nothing written", out.getvalue())
+        self.assertEqual(Curriculum.objects.count(), 0)
+        self.assertEqual(Lesson.objects.count(), 0)
+
+    def test_reseeding_changes_nothing(self):
+        from tutor.models import Question, QuestionSet
+
+        self._seed()
+        before = (QuestionSet.objects.count(), Question.objects.count())
+        self._seed()
+        self.assertEqual(
+            (QuestionSet.objects.count(), Question.objects.count()), before)
+
+
+class OneTrueGuideTests(OneTrueSentenceTests):
+    """The parent guide."""
+
+    def _guide(self):
+        from curricula.models import Curriculum
+        from tutor.onetrue import CURRICULUM_NAME
+
+        self._seed()
+        cur = Curriculum.objects.get(name=CURRICULUM_NAME, parent=self.parent)
+        self.client.force_login(self.parent)
+        return cur, self.client.get(reverse("tutor:onetrue_guide", args=[cur.pk]))
+
+    def test_it_carries_the_books_own_reference_material(self):
+        from tutor.onetrue import WEEKS
+
+        _cur, resp = self._guide()
+        self.assertEqual(resp.status_code, 200)
+        html = resp.content.decode()
+        self.assertIn("Sentence construction basics", html)
+        self.assertIn("Part 3: Phrases", html)          # the reference section
+        self.assertIn("Because the sun was shining", html)
+        # escape(): the apostrophe in "You're / Your" reaches the page as
+        # &#x27; — asserting the raw topic would fail for reasons that have
+        # nothing to do with whether the week is listed.
+        from django.utils.html import escape
+        for week in WEEKS:                              # every tool, in a table
+            self.assertIn(escape(week["topic"]), html)
+
+    def test_it_says_which_parts_she_writes_by_hand(self):
+        _cur, resp = self._guide()
+        html = resp.content.decode()
+        start = html.index("Which parts she writes by hand")
+        block = html[start:start + 1800]
+        self.assertEqual(block.count("written by hand"), 2)   # copy + her own
+        self.assertIn("typed", block)                          # the noticing qs
+
+    def test_a_week_counts_as_done_only_when_both_pages_are_in(self):
+        from django.utils import timezone
+        from tutor.models import ResponseSheet
+
+        self._seed()
+        ResponseSheet.objects.create(
+            question_set=self._set(1), child=self.child, answers={},
+            status=ResponseSheet.SUBMITTED, submitted_at=timezone.now())
+        _cur, resp = self._guide()
+        self.assertEqual(resp.context["children"][0]["weeks_done"], 0)
+        ResponseSheet.objects.create(
+            question_set=self._set(1, practice=True), child=self.child,
+            answers={}, status=ResponseSheet.SUBMITTED,
+            submitted_at=timezone.now())
+        _cur, resp = self._guide()
+        row = resp.context["children"][0]
+        self.assertEqual(row["weeks_done"], 1)
+        self.assertEqual(row["next_week"]["number"], 2)
+
+    def test_the_guide_is_not_reachable_for_other_curricula(self):
+        from curricula.models import Curriculum
+
+        self._seed()
+        other = Curriculum.objects.create(
+            parent=self.parent, name="Something Else", subject="Math",
+            family=self.family)
+        self.client.force_login(self.parent)
+        self.assertEqual(
+            self.client.get(
+                reverse("tutor:onetrue_guide", args=[other.pk])).status_code, 404)
+
+    def test_the_link_shows_only_on_this_curriculum(self):
+        from curricula.models import Curriculum
+
+        cur, _resp = self._guide()
+        detail = self.client.get(
+            reverse("curricula:curriculum_detail", args=[cur.pk])).content.decode()
+        self.assertIn("onetrue-guide", detail)
+        other = Curriculum.objects.create(
+            parent=self.parent, name="Something Else", subject="Math",
+            family=self.family)
+        detail = self.client.get(
+            reverse("curricula:curriculum_detail", args=[other.pk])).content.decode()
+        self.assertNotIn("onetrue-guide", detail)

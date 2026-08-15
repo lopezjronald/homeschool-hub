@@ -1,0 +1,45 @@
+{% comment %}The week's tool of style, set the way the book sets it: the
+explanation in a tinted box with its worked example, then Sentence 1 — the one
+she copies — labelled and credited, then Sentence 2 for the noticing questions.
+
+The practice page deliberately shows the explanation but NOT the sentences. She
+is composing there, and a model sentence still on screen invites copying it
+again.{% endcomment %}
+<div class="ot-head">
+  <div class="ot-eyebrow">One True Sentence · Tools of Style</div>
+  <h2 class="ot-title">Week {{ onetrue_week.week.number }}: {{ onetrue_week.week.topic }}</h2>
+</div>
+
+<div class="ot-explain">
+  <div class="ot-explain-label">{{ onetrue_week.week.explanation_label }}</div>
+  <p class="ot-explain-body">{{ onetrue_week.week.explanation }}</p>
+  {% if onetrue_week.week.example %}
+    <div class="ot-example">
+      <div class="ot-example-label">Example</div>
+      <div class="ot-example-text">{{ onetrue_week.week.example.text }}</div>
+      {% if onetrue_week.week.example.citation %}
+        <cite class="ot-cite">({{ onetrue_week.week.example.citation }})</cite>
+      {% endif %}
+    </div>
+  {% endif %}
+</div>
+
+{% if onetrue_week.is_practice %}
+  <p class="ot-lede">Now you try. Write each one by hand, and make sure the tool
+    is really doing something — a sentence that reads the same without it hasn't
+    used it.</p>
+{% else %}
+  <div class="ot-sentence">
+    <span class="ot-tag">Sentence 1</span>
+    <blockquote class="ot-quote">{{ onetrue_week.week.sentence_one.text }}</blockquote>
+    <cite class="ot-cite">({{ onetrue_week.week.sentence_one.citation }})</cite>
+  </div>
+
+  <div class="ot-sentence">
+    <span class="ot-tag ot-tag--two">Sentence 2</span>
+    <blockquote class="ot-quote">{{ onetrue_week.week.sentence_two.text }}</blockquote>
+  </div>
+
+  <p class="ot-aloud">📖 Read Sentence 1 silently, then read it again, slowly, in
+    a whispered tone.</p>
+{% endif %}

@@ -287,6 +287,62 @@ def lexicon_guide(request, curriculum_pk):
         "children": children,
     })
 
+
+@login_required
+def dickinson_guide(request, curriculum_pk):
+    """Parent guide for Operation Lexicon: Emily Dickinson.
+
+    Same reason as the guide above: the booklet opens by explaining how a week
+    runs, and the app was swallowing that and leaving the parent to infer the
+    method from Kaylin's pages. This one also has to say which portions she
+    writes by hand and why, because that is the guide's actual pedagogy rather
+    than a preference of ours.
+    """
+    from students.models import Student
+    from tutor import dickinson
+    from tutor.management.commands.seed_lexicon_kaylin import WRITTEN_BY_HAND
+
+    curriculum = get_object_or_404(
+        viewable_queryset(Curriculum.objects.all(), request.user), pk=curriculum_pk,
+    )
+    if curriculum.name != dickinson.CURRICULUM_NAME:
+        raise Http404
+
+    children = []
+    for placement in CurriculumPlacement.objects.filter(
+        curriculum=curriculum,
+        child__in=viewable_queryset(Student.objects.all(), request.user),
+    ).select_related("child"):
+        # A week counts as done when all three of its days are turned in — one
+        # day in is progress, not a finished week.
+        by_week = {}
+        for number, set_pk in ResponseSheet.objects.filter(
+            child=placement.child,
+            question_set__lesson__chapter__curriculum=curriculum,
+            status=ResponseSheet.SUBMITTED,
+        ).values_list("question_set__lesson__number", "question_set_id"):
+            by_week.setdefault(number, set()).add(set_pk)
+        done = {n for n, sets in by_week.items() if len(sets) >= 3}
+        children.append({
+            "child": placement.child,
+            "weeks_done": len(done),
+            "days_done": sum(len(s) for s in by_week.values()),
+            "words": len(done) * 4,
+            "next_week": next(
+                (w for w in dickinson.WEEKS if w["number"] not in done), None),
+        })
+
+    return render(request, "tutor/dickinson_guide.html", {
+        "curriculum": curriculum,
+        "epigraph": dickinson.EPIGRAPH,
+        "why": dickinson.WHY_IT_EXISTS,
+        "how_a_day_runs": dickinson.HOW_A_DAY_RUNS,
+        "starters": dickinson.STORY_STARTERS,
+        "weeks": dickinson.WEEKS,
+        "by_hand": WRITTEN_BY_HAND,
+        "children": children,
+    })
+
 @login_required
 def discussion_guide(request, curriculum_pk):
     """Teacher-facing discussion guide: the oral, Socratic sets for a curriculum.

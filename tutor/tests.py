@@ -3904,3 +3904,97 @@ class DickinsonSeedTests(TestCase):
         self._seed()
         self.assertEqual(
             (QuestionSet.objects.count(), Question.objects.count()), before)
+
+
+class DickinsonGuideTests(DickinsonSeedTests):
+    """The parent guide — the booklet's front matter, which the app was
+    otherwise swallowing."""
+
+    def _guide(self):
+        from curricula.models import Curriculum
+        from tutor.dickinson import CURRICULUM_NAME
+
+        self._seed()
+        cur = Curriculum.objects.get(name=CURRICULUM_NAME, parent=self.parent)
+        self.client.force_login(self.parent)
+        return cur, self.client.get(reverse("tutor:dickinson_guide", args=[cur.pk]))
+
+    def test_it_explains_the_method_and_lists_every_word(self):
+        _cur, resp = self._guide()
+        self.assertEqual(resp.status_code, 200)
+        html = resp.content.decode()
+        self.assertIn("How a week runs", html)
+        self.assertIn("Copy the word and its definition", html)
+        # All 92 words, with their definitions, at a glance.
+        from tutor.dickinson import all_words
+        for entry in all_words():
+            self.assertIn(entry["word"], html)
+
+    def test_it_says_which_portions_are_written_by_hand(self):
+        """This is the guide's pedagogy, not a preference of ours, and the
+        parent has no other way to find out which portions take the pen."""
+        _cur, resp = self._guide()
+        html = resp.content.decode()
+        self.assertIn("Why the copying is done by hand", html)
+        start = html.index("Why the copying is done by hand")
+        block = html[start:start + 1400]
+        self.assertEqual(block.count("written by hand"), 3)   # the three copy steps
+        self.assertIn("typed", block)                          # day 3
+
+    def test_it_carries_the_printed_guides_misspelling_forward(self):
+        _cur, resp = self._guide()
+        html = resp.content.decode()
+        self.assertIn("perrenial", html)
+        self.assertIn("perennial", html)
+
+    def test_a_week_counts_as_done_only_when_all_three_days_are_in(self):
+        """One day turned in is progress, not a finished week — counting it as
+        one would tell the parent she is three times further along."""
+        from django.utils import timezone
+        from tutor.models import ResponseSheet
+
+        self._seed()
+        ResponseSheet.objects.create(
+            question_set=self._set(1, 1), child=self.child, answers={},
+            status=ResponseSheet.SUBMITTED, submitted_at=timezone.now())
+        _cur, resp = self._guide()
+        row = resp.context["children"][0]
+        self.assertEqual(row["weeks_done"], 0)
+        self.assertEqual(row["days_done"], 1)
+        for day in (2, 3):
+            ResponseSheet.objects.create(
+                question_set=self._set(1, day), child=self.child, answers={},
+                status=ResponseSheet.SUBMITTED, submitted_at=timezone.now())
+        _cur, resp = self._guide()
+        row = resp.context["children"][0]
+        self.assertEqual(row["weeks_done"], 1)
+        self.assertEqual(row["words"], 4)
+        self.assertEqual(row["next_week"]["number"], 2)
+
+    def test_the_guide_is_not_reachable_for_other_curricula(self):
+        """The URL takes any curriculum id; without the name check it would
+        render Dickinson's front matter over somebody else's course."""
+        from curricula.models import Curriculum
+
+        self._seed()
+        other = Curriculum.objects.create(
+            parent=self.parent, name="Something Else", subject="Math",
+            family=self.family)
+        self.client.force_login(self.parent)
+        resp = self.client.get(reverse("tutor:dickinson_guide", args=[other.pk]))
+        self.assertEqual(resp.status_code, 404)
+
+    def test_the_link_shows_on_this_curriculum_and_not_on_others(self):
+        from curricula.models import Curriculum
+
+        cur, _resp = self._guide()
+        detail = self.client.get(
+            reverse("curricula:curriculum_detail", args=[cur.pk])).content.decode()
+        self.assertIn("dickinson-guide", detail)
+        other = Curriculum.objects.create(
+            parent=self.parent, name="Something Else", subject="Math",
+            family=self.family)
+        detail = self.client.get(
+            reverse("curricula:curriculum_detail", args=[other.pk])).content.decode()
+        self.assertNotIn("dickinson-guide", detail)
+        self.assertNotIn("lexicon-guide", detail)

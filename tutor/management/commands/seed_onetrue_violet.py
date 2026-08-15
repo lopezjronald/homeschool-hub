@@ -196,13 +196,21 @@ class Command(BaseCommand):
         else:
             for group in week["practice"]:
                 pair = group.get("paired")
+                # The instruction can run to four lines (week 8 carries a worked
+                # example). Repeating it in full above all eight boxes, with the
+                # only thing that differs at the very end, is a wall of identical
+                # text to a nine-year-old — so the ask leads, and the instruction
+                # appears once, on the first box of the group.
+                ask, _, rest = group["instruction"].partition("\n")
                 for n in range(1, group["count"] + 1):
                     for label in (pair or (None,)):
                         order += 1
-                        prompt = "%s — %d" % (group["instruction"], n)
-                        if label:
-                            prompt = "%s — %d (%s)" % (
-                                group["instruction"], n, label)
+                        head = ("%s %d" % (label.capitalize(), n) if label
+                                else "Sentence %d of %d" % (n, group["count"]))
+                        first = n == 1 and label == (pair or (None,))[0]
+                        prompt = "%s — %s" % (head, ask) if first else head
+                        if first and rest:
+                            prompt = "%s\n%s" % (prompt, rest)
                         Question.objects.update_or_create(
                             question_set=qset, order=order,
                             defaults={

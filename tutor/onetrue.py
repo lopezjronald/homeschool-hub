@@ -15,6 +15,8 @@ seed_onetrue_violet and only the parts that actually differ live here:
     sentence_two     a second sentence, used for the noticing questions
     questions_two    what to notice in sentence two
     questions_one    what to notice in sentence one
+    note             an optional warning where the printed guide is wrong
+                     in a way she would otherwise copy or reason from
     practice         the "Now you try!" groups — usually one group of five,
                      but some weeks split into two groups of three
 
@@ -568,6 +570,11 @@ WEEKS = [
                     "crumbs.",
             "citation": "",
         },
+        "note": "Sentence 2 has a mistake in the guide: it says Dorothy "
+                "snatched the cookie from Dorothy's OWN hand. Someone can't "
+                "snatch something from herself — it should be another girl's "
+                "name. Answer the questions about “then” and “than” anyway; "
+                "that part still works.",
         "questions_two": [
             "Why is “than” used in the first part of the sentence?",
             "What is the comparison word?",
@@ -742,6 +749,10 @@ WEEKS = [
             "text": "But he couldn't talk. He had no voice. He was stone drunk.",
             "citation": "William Steig, Sylvester and the Magic Pebble",
         },
+        "note": "The guide prints “stone drunk”. Steig actually wrote “stone-"
+                "dumb” — Sylvester has been turned INTO a stone and cannot "
+                "speak, so the joke is that he is stone and dumb at once. Copy "
+                "it as the guide has it, but the real sentence is “stone-dumb.”",
         "sentence_two": {
             "text": "The wallflowers at the dance lined themselves up on either "
                     "side of the room.",

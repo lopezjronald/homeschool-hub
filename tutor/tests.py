@@ -4211,8 +4211,10 @@ class OneTrueSentenceTests(TestCase):
                 "week %d" % week)
         prompts = " ".join(
             q.prompt for q in self._set(3, practice=True).questions.all())
-        self.assertIn("using you", prompts)
-        self.assertIn("your", prompts)
+        # "using you" is a substring of "using your", so asserting it proves
+        # nothing — two "your" groups and no "you're" group would pass.
+        self.assertIn("using you're", prompts)
+        self.assertIn("using your", prompts)
 
     def test_the_paired_weeks_ask_for_both_halves(self):
         """Weeks 8 and 19 are craft-then-rewrite: a fragment then the whole
@@ -4221,12 +4223,12 @@ class OneTrueSentenceTests(TestCase):
         self._seed()
         eight = list(self._set(8, practice=True).questions.order_by("order"))
         self.assertEqual(len(eight), 8)            # four items, two answers each
-        self.assertIn("(fragment)", eight[0].prompt)
-        self.assertIn("(sentence)", eight[1].prompt)
+        self.assertTrue(eight[0].prompt.startswith("Fragment 1"))
+        self.assertTrue(eight[1].prompt.startswith("Sentence 1"))
         nineteen = list(self._set(19, practice=True).questions.order_by("order"))
         self.assertEqual(len(nineteen), 6)         # three items, two answers each
-        self.assertIn("(run-on)", nineteen[0].prompt)
-        self.assertIn("(rewritten)", nineteen[1].prompt)
+        self.assertTrue(nineteen[0].prompt.startswith("Run-on 1"))
+        self.assertTrue(nineteen[1].prompt.startswith("Rewritten 1"))
 
     def test_a_dry_run_writes_nothing(self):
         from io import StringIO
@@ -4330,3 +4332,76 @@ class OneTrueGuideTests(OneTrueSentenceTests):
         detail = self.client.get(
             reverse("curricula:curriculum_detail", args=[other.pk])).content.decode()
         self.assertNotIn("onetrue-guide", detail)
+
+
+class OneTrueSeamTests(OneTrueSentenceTests):
+    """Things the build could get wrong quietly."""
+
+    def test_the_practice_prompts_lead_with_what_makes_them_different(self):
+        """Week 8's instruction runs to four lines. Repeated in full above all
+        eight boxes with the only difference at the very end, it is a wall of
+        identical text to a nine-year-old."""
+        self._seed()
+        prompts = [q.prompt for q in
+                   self._set(8, practice=True).questions.order_by("order")]
+        self.assertTrue(prompts[0].startswith("Fragment 1 —"))
+        self.assertTrue(prompts[1].startswith("Sentence 1"))
+        self.assertTrue(prompts[2].startswith("Fragment 2"))
+        # The long instruction appears once, not eight times.
+        self.assertEqual(sum("rewrite each as a complete" in p for p in prompts), 1)
+        self.assertEqual(sum("Across the deep, dark sky" in p for p in prompts), 1)
+
+    def test_every_group_says_what_to_do_once(self):
+        """A multi-group week must not leave a group with no instruction — she
+        would reach box 4 of week 7 with nothing telling her it wants "their"."""
+        self._seed()
+        for week, groups in ((3, 2), (7, 3), (18, 3), (20, 2)):
+            prompts = [q.prompt for q in
+                       self._set(week, practice=True).questions.order_by("order")]
+            leading = [p for p in prompts if " — " in p]
+            self.assertEqual(len(leading), groups, "week %d" % week)
+
+    def test_question_orders_are_contiguous_and_unique(self):
+        """update_or_create is keyed on (set, order), and there is a unique
+        constraint on the pair — a gap or a repeat is a silently dropped
+        question or an IntegrityError."""
+        from tutor.models import QuestionSet
+        from tutor.onetrue import CURRICULUM_NAME
+
+        self._seed()
+        for qset in QuestionSet.objects.filter(
+                lesson__chapter__curriculum__name=CURRICULUM_NAME,
+                lesson__chapter__curriculum__parent=self.parent):
+            orders = list(qset.questions.order_by("order")
+                          .values_list("order", flat=True))
+            self.assertEqual(orders, list(range(1, len(orders) + 1)), qset.title)
+
+    def test_reseeding_restores_a_question_that_was_tampered_with(self):
+        """The trap the prod Lexicon deploy already hit: update_or_create has to
+        actually refresh the row, not just leave the old one in place."""
+        from tutor.models import Question
+
+        self._seed()
+        q = self._set(1).questions.order_by("order").first()
+        Question.objects.filter(pk=q.pk).update(
+            response_type=Question.TYPE_TEXT, prompt="STALE")
+        self._seed()
+        q.refresh_from_db()
+        self.assertEqual(q.response_type, Question.TYPE_HANDWRITING)
+        self.assertTrue(q.prompt.startswith("Read and copy"))
+
+    def test_the_guides_own_mistakes_are_flagged_where_she_meets_them(self):
+        """Two places where the printed guide is wrong in a way she would copy
+        or reason from. She still gets what is printed — the page just says so."""
+        self._seed()
+        html = self._page(17)
+        self.assertIn("stone drunk", html)      # as printed, and she copies it
+        self.assertIn("stone-", html)           # and what Steig actually wrote
+        html = self._page(12)
+        self.assertIn("Dorothy&#x27;s hand", html)
+        self.assertIn("mistake in the guide", html)
+
+    def test_the_page_never_tells_her_to_write_by_hand_over_a_keyboard(self):
+        """The wording follows the seed's flag rather than restating it."""
+        self._seed()
+        self.assertIn("Write each one by hand", self._page(1, practice=True))

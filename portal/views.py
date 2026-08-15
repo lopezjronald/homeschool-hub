@@ -1233,13 +1233,19 @@ def _onetrue_week(question_set):
     Unlike the Dickinson pages this needs no per-question pairing: everything is
     a header, so there is nothing to get out of step.
     """
+    from tutor.management.commands.seed_onetrue_violet import WRITTEN_BY_HAND
     from tutor.onetrue import week_by_number
 
     week = week_by_number(question_set.lesson.number)
     if week is None:
         return None
     title = question_set.title or ""
-    return {"week": week, "is_practice": title.endswith("now you try!")}
+    return {
+        "week": week,
+        "is_practice": title.endswith("now you try!"),
+        # So the page's own wording can follow the flag rather than restate it.
+        "own_by_hand": WRITTEN_BY_HAND["own_sentences"],
+    }
 
 
 def _mark_lexicon_writing_slots(questions):

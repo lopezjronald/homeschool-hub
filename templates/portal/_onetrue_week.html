@@ -24,10 +24,18 @@ again.{% endcomment %}
   {% endif %}
 </div>
 
+{% if onetrue_week.week.note %}
+  <p class="dk-note">⚠️ {{ onetrue_week.week.note }}</p>
+{% endif %}
+
 {% if onetrue_week.is_practice %}
-  <p class="ot-lede">Now you try. Write each one by hand, and make sure the tool
-    is really doing something — a sentence that reads the same without it hasn't
-    used it.</p>
+  {% comment %}"by hand" is read from the seed's own flag — hardcoding it means
+  flipping the flag leaves the page telling her to write by hand while handing
+  her a keyboard.{% endcomment %}
+  <p class="ot-lede">Now you try.
+    {% if onetrue_week.own_by_hand %}Write each one by hand, and make{% else %}Make{% endif %}
+    sure the tool is really doing something — a sentence that reads the same
+    without it hasn't used it.</p>
 {% else %}
   <div class="ot-sentence">
     <span class="ot-tag">Sentence 1</span>

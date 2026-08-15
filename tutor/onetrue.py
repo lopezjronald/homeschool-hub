@@ -472,6 +472,425 @@ WEEKS = [
              "count": 5},
         ],
     },
+    {
+        "number": 10,
+        "topic": "Conjunction",
+        "explanation_label": "Explanation",
+        "explanation": "Conjunctions are words that join sentences together.",
+        "example": {"text": "and, but, because, if, since, until, or, so",
+                    "citation": ""},
+        "copy_instruction": "Copy Sentence 1.",
+        "sentence_one": {
+            "text": "One morning Momo was more impatient than ever, because the "
+                    "sun was brighter than ever.",
+            "citation": "Tarō Yashima, Umbrella",
+        },
+        "sentence_two": {
+            "text": "Lady Helen made sure to put the kettle on before her "
+                    "esteemed guest arrived, since it would be rude to have the "
+                    "Queen over and not serve tea.",
+            "citation": "",
+        },
+        "questions_two": [
+            "Which word in this sentence is a conjunction?",
+            "What other conjunctions can you name?",
+        ],
+        "questions_one": [
+            "Which word in Sentence 1 is a conjunction?",
+            "Why are conjunctions important in a sentence?",
+            "How does Sentence 1 use the device of imagery?",
+        ],
+        "practice": [
+            {"instruction": "Craft five original sentences, each having at least "
+                            "one conjunction.",
+             "count": 5},
+        ],
+    },
+    {
+        "number": 11,
+        "topic": "Personification",
+        "explanation_label": "Explanation",
+        "explanation": "Giving an animal or object human characteristics is "
+                       "called personification.",
+        "example": {
+            "text": "The wind whispered.\nThe trees clapped their hands.\nThe "
+                    "butterflies had a meeting outside my window.",
+            "citation": "",
+        },
+        "copy_instruction": "Copy Sentence 1.",
+        "sentence_one": {
+            "text": "A seal sniffs softly as he recognizes you, and eider ducks "
+                    "and fishhawks— all are listening, all are watching as you "
+                    "row.",
+            "citation": "Robert McCloskey, Time of Wonder",
+        },
+        "sentence_two": {
+            "text": "The golden leaf somersaulted joyfully in the wind as the "
+                    "children chased it through the park.",
+            "citation": "",
+        },
+        "questions_two": [
+            "How does this sentence use personification? (Think about the words "
+            "that are usually applied to humans.)",
+            "How can a volcano be personified? Write an original sentence that "
+            "personifies a volcano.",
+        ],
+        "questions_one": ["How does Sentence 1 use personification?"],
+        "practice": [
+            {"instruction": "Craft five original sentences using personification.",
+             "count": 5},
+        ],
+    },
+    {
+        "number": 12,
+        "topic": "Then / Than",
+        "explanation_label": "Explanation",
+        "explanation": "Use then to refer to time or sequence. Use than to "
+                       "compare two or more things. Usually, a comparison word "
+                       "in the sentence will let you know that you need to use "
+                       "“than” instead of “then.”",
+        "example": {
+            "text": "We went to dinner, then we went to the movies.\n"
+                    "He is taller than she is. (“Taller” is the comparison word "
+                    "in this sentence.)",
+            "citation": "",
+        },
+        "copy_instruction": "Copy Sentence 1.",
+        "sentence_one": {
+            "text": "They were delighted with Johnny's bear— he was much bigger "
+                    "than they had ever hoped for.”",
+            "citation": "Lynd Ward, The Biggest Bear",
+        },
+        "sentence_two": {
+            "text": "Dorothy pridefully thought herself more generous than "
+                    "anyone, she then proceeded to snatch the cookie from "
+                    "Dorothy's hand and shove it in her own mouth, leaving only "
+                    "crumbs.",
+            "citation": "",
+        },
+        "questions_two": [
+            "Why is “than” used in the first part of the sentence?",
+            "What is the comparison word?",
+            "Why is “then” used in the second part?",
+        ],
+        "questions_one": ["Why is “than” used in Sentence 1?"],
+        "practice": [
+            {"instruction": "Craft three original sentences using “then” and "
+                            "three using “than”.\nAlternate practice: craft "
+                            "three original sentences that each use both “then” "
+                            "and “than”.",
+             "count": 6},
+        ],
+    },
+    {
+        "number": 13,
+        "topic": "Superlative",
+        "explanation_label": "Explanation",
+        "explanation": "Superlatives compare two or more things. Superlatives "
+                       "usually end with “est” or are preceded by “most” and "
+                       "show that something has the most of a certain quality.",
+        "example": {"text": "biggest, tallest, most interesting", "citation": ""},
+        "copy_instruction": "Copy Sentence 1.",
+        "sentence_one": {
+            "text": "The best time of all was when the old swallows taught the "
+                    "baby birds to fly.",
+            "citation": "Leo Politi, Song of the Swallows",
+        },
+        "sentence_two": {
+            "text": "The most delightful stories to read are riddled with truths "
+                    "that speak to the reader and create a relatable world.",
+            "citation": "",
+        },
+        "questions_two": [
+            "What is the superlative in this sentence?",
+            "Complete the following word lists as in the example of “big”.\n"
+            "big, biggest\nhot, ______\ngreen, ______\nfast, ______\n"
+            "sad, ______\ndeep, ______",
+        ],
+        "questions_one": ["Make a list of five more superlatives."],
+        "practice": [
+            {"instruction": "Craft five original sentences using a superlative "
+                            "in each.",
+             "count": 5},
+        ],
+    },
+    {
+        "number": 14,
+        "topic": "Consonance",
+        "explanation_label": "Explanation",
+        "explanation": "The recurrence of similar consonant sounds in close "
+                       "proximity is called consonance. With consonance, the "
+                       "similar sounds are found in the middle or at the end of "
+                       "the words, unlike alliteration, where similar sounds are "
+                       "usually at the beginning.",
+        "example": {
+            "text": "All's well that ends well.\nI think I would like a drink.",
+            "citation": "",
+        },
+        "copy_instruction": "Copy Sentence 1.",
+        "sentence_one": {
+            "text": "The mission was still lovely but there was now a feeling of "
+                    "loneliness without the swallows.",
+            "citation": "Leo Politi, Song of the Swallows",
+        },
+        "sentence_two": {
+            "text": "The lapping waves could barely reach the creature on the "
+                    "beach.",
+            "citation": "",
+        },
+        "questions_two": [
+            "Which words demonstrate consonance in Sentence 2?",
+            "What is consonance?",
+        ],
+        "questions_one": [
+            "Which words demonstrate consonance in Sentence 1?",
+            "Why would an author use consonance?",
+        ],
+        "practice": [
+            {"instruction": "Craft five original sentences using consonance.",
+             "count": 5},
+        ],
+    },
+    {
+        "number": 15,
+        "topic": "Metaphor",
+        "explanation_label": "Explanation",
+        "explanation": "A figure of speech that helps explain an abstract idea "
+                       "by making a comparison, without using the words “like” "
+                       "or “as,” is called a metaphor.",
+        "example": {
+            "text": "The bleeding yolk of sunrise filtered color across the "
+                    "crisp dawn.",
+            "citation": "",
+        },
+        "copy_instruction": "Copy Sentence 1.",
+        "sentence_one": {
+            "text": "But I was a shadow as we walked home.",
+            "citation": "Jane Yolen, Owl Moon",
+        },
+        "sentence_two": {
+            "text": "A pillow of seeds from the milkweed settled around the base "
+                    "of the pot, ready to take flight.",
+            "citation": "",
+        },
+        "questions_two": [
+            "What is a metaphor?",
+            "What is being compared in Sentence 2?",
+        ],
+        "questions_one": [
+            "What is being compared in Sentence 1?",
+            "Re-write Sentence 1 without using a metaphor.",
+            "How does the use of metaphor in Sentence 1 help the author tell the "
+            "story?",
+        ],
+        "practice": [
+            {"instruction": "Craft five original sentences using metaphor.",
+             "count": 5},
+        ],
+    },
+    {
+        "number": 16,
+        "topic": "Simile",
+        "explanation_label": "Explanation",
+        "explanation": "Simile is a figure of speech that helps explain an idea "
+                       "by making a comparison using the words “like” or “as”.",
+        "example": {
+            "text": "The bright orange roses looked like flames burning in the "
+                    "blossoming bush.",
+            "citation": "",
+        },
+        "copy_instruction": "Copy Sentence 1.",
+        "sentence_one": {
+            "text": "Somewhere behind us a train whistle blew, long and low, "
+                    "like a sad, sad song.",
+            "citation": "Jane Yolen, Owl Moon",
+        },
+        "sentence_two": {
+            "text": "The laughter in the other room sounded like a pack of "
+                    "hyenas.",
+            "citation": "",
+        },
+        "questions_two": [
+            "What is a simile?",
+            "What is being compared in Sentence 2?",
+        ],
+        "questions_one": [
+            "What is being compared in Sentence 1?",
+            "Re-write Sentence 1 without using a simile.",
+            "How does the use of simile in Sentence 1 help the author tell the "
+            "story?",
+        ],
+        "practice": [
+            {"instruction": "Craft five original sentences using simile.",
+             "count": 5},
+        ],
+    },
+    {
+        "number": 17,
+        "topic": "Slang",
+        "explanation_label": "Explanation",
+        "explanation": "Slang is a very informal word or phrase used in place of "
+                       "common language to make it more colorful, and is found "
+                       "more often in speech than in writing.",
+        "example": {
+            "text": "After receiving the sincere apology from his best friend, "
+                    "Taylor said, “Don't worry, we're cool.”",
+            "citation": "",
+        },
+        "copy_instruction": "Copy Sentence 1.",
+        "sentence_one": {
+            "text": "But he couldn't talk. He had no voice. He was stone drunk.",
+            "citation": "William Steig, Sylvester and the Magic Pebble",
+        },
+        "sentence_two": {
+            "text": "The wallflowers at the dance lined themselves up on either "
+                    "side of the room.",
+            "citation": "",
+        },
+        "questions_two": [
+            "What is slang?",
+            "What is the slang word used in Sentence 2?",
+        ],
+        "questions_one": [
+            "What is the slang word used in Sentence 1?",
+            "How is slang useful in speech or in a story?",
+            "List five slang words you know and their definitions.",
+        ],
+        "practice": [
+            {"instruction": "Craft five original sentences using slang.",
+             "count": 5},
+        ],
+    },
+    {
+        "number": 18,
+        "topic": "To / Too / Two",
+        "explanation_label": "Explanation",
+        "explanation": "To is an expression of motion or direction. Also used "
+                       "with the base form of a verb. Too is a higher degree "
+                       "than desirable; in addition; also. Two is quantity and "
+                       "expresses the numeral 2.",
+        "example": {
+            "text": "I am going to the store.\nThere are too many people in this "
+                    "room.\nI would like two scoops of ice cream.",
+            "citation": "",
+        },
+        "copy_instruction": "Copy Sentence 1.",
+        "sentence_one": {
+            "text": "Except it was no fun to count the pennies alone.",
+            "citation": "Sharon Bell Mathis, The Hundred Penny Box",
+        },
+        "sentence_two": {
+            "text": "I need two oars for my boat, one for each hand.",
+            "citation": "",
+        },
+        "questions_two": [
+            "Why is “two” used in this sentence instead of “to” or “too”?",
+            "Fill in the blanks.\n1. The soup is ______ hot to eat.\n"
+            "2. You should get to the airport ______ hours early.\n"
+            "3. She was sprinting ______ the finish line.",
+        ],
+        "questions_one": [
+            "Why is “to” used in Sentence 1?",
+            "Why is it important to use “to,” “too,” and “two,” correctly?",
+        ],
+        "practice": [
+            {"instruction": "Craft two original sentences using “to”.",
+             "count": 2},
+            {"instruction": "Craft two original sentences using “too”.",
+             "count": 2},
+            {"instruction": "Craft two original sentences using “two”.",
+             "count": 2},
+        ],
+    },
+    {
+        "number": 19,
+        "topic": "Run-on",
+        "explanation_label": "Explanation",
+        "explanation": "A sentence containing two or more independent clauses "
+                       "not separated with proper punctuation is called a "
+                       "run-on, or run-on sentence. An independent clause is a "
+                       "group of words that can stand alone as a sentence. An "
+                       "independent clause has both a subject and a verb and "
+                       "forms a complete thought.",
+        "example": {
+            "text": "There once was a butterfly who never wanted to leave the "
+                    "sky and he never wanted to land or sleep if it meant he "
+                    "wouldn't be flying..",
+            "citation": "",
+        },
+        "copy_instruction": "Copy Sentence 1.",
+        "sentence_one": {
+            "text": "When his cart was full, he waved good-bye to his wife, his "
+                    "daughter, and his son and he walked at his ox's head ten "
+                    "days over hills, through valleys, by streams, past farms "
+                    "and villages until he came to Portsmouth and Portsmouth "
+                    "Market.",
+            "citation": "Donald Hall, Ox-Cart Man",
+        },
+        "sentence_two": {
+            "text": "The candle fell over and lit the bench on fire and then the "
+                    "tablecloth caught on fire before I noticed the runaway "
+                    "flames.",
+            "citation": "",
+        },
+        "questions_two": [
+            "How can you tell Sentence 2 is a run-on?",
+            "How can Sentence 2 be corrected so that it is not a run-on?",
+        ],
+        "questions_one": [
+            "How can you tell Sentence 1 is a run-on?",
+            "Authors sometimes use run-ons intentionally to produce a certain "
+            "effect or style. Why do you think the author chose to make Sentence "
+            "1 a run-on?",
+            "If Sentence 1 were broken into several sentences, would it have the "
+            "same effect? Why or why not?",
+        ],
+        "practice": [
+            {"instruction": "Craft an original run-on sentence (#1), then "
+                            "rewrite it with the independent clauses as separate "
+                            "sentences (#2).",
+             "count": 3, "paired": ("run-on", "rewritten")},
+        ],
+    },
+    {
+        "number": 20,
+        "topic": "Comparative",
+        "explanation_label": "Explanation",
+        "explanation": "Comparatives usually end with “-er” or are preceded by "
+                       "“more” to show that something has more of a quality than "
+                       "something else.",
+        "example": {"text": "bigger\nslower\nmore interesting", "citation": ""},
+        "copy_instruction": "Copy Sentence 1.",
+        "sentence_one": {
+            "text": "One day late in summer, Julian noticed that the swallows "
+                    "were noisier and more excited than usual.",
+            "citation": "Leo Politi, Song of the Swallows",
+        },
+        "sentence_two": {
+            "text": "I feel more rested when I go to bed early instead of "
+                    "staying up late.",
+            "citation": "",
+        },
+        "questions_two": [
+            "What is the comparative in Sentence 2?",
+            "List five comparatives.",
+        ],
+        "questions_one": [
+            "What are the comparatives in Sentence 1? (Hint: there are two.)",
+            "Fill in the blanks with the comparative form for each word. Use a "
+            "dictionary to help you determine the correct form and spelling.\n"
+            "1. bright, ______\n2. small, ______\n3. clean, ______\n"
+            "4. good, ______\n5. dry, ______\n6. fun, ______\n7. careful, ______",
+        ],
+        "practice": [
+            {"instruction": "Craft two original sentences using comparatives "
+                            "ending in “-er”.",
+             "count": 2},
+            {"instruction": "Craft two original sentences using comparatives "
+                            "with the word “more”.",
+             "count": 2},
+        ],
+    },
 ]
 
 

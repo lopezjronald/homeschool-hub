@@ -23,6 +23,22 @@
   if (!boxes.length) return;
 
   boxes.forEach(function (box) {
+    // Handwriting boxes keep their answer in a hidden input the canvas writes
+    // to; watch that instead so the tick and spine still track "has she
+    // written anything".
+    var hand = box.querySelector(".lxa-hand input[name^='answer_']");
+    if (hand) {
+      var paint = function () {
+        box.classList.toggle("is-filled", (hand.value || "").trim().length > 0);
+      };
+      // The canvas writes the value directly, which fires no event of its own —
+      // so it announces the change and we follow that, which covers erasing and
+      // undoing as well as writing.
+      box.addEventListener("handwriting:change", paint);
+      paint();
+      return;
+    }
+
     var input = box.querySelector(".lxa-input");
     if (!input) return;
 

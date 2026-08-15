@@ -327,3 +327,30 @@
   }
   .lxa-question { font-size: 1.3rem; }
 }
+
+
+/* The three boxes hold a PEN, not a keyboard. The card, medallion and label are
+   unchanged — only the instrument differs — so the writing surface drops its own
+   frame rather than drawing a second box inside the first. */
+.lxa-pens {
+  display: flex; align-items: center; gap: .4rem; margin-bottom: .6rem;
+}
+.lxa-pens-sep {
+  width: 1px; height: 22px; background: rgba(15, 61, 46, .18); margin: 0 .3rem;
+}
+.lxa-surface {
+  border: 0; border-radius: 0; background: transparent;
+  /* Baselines only, at 48px — a child's handwriting needs more room than her
+     typing, and the extra height keeps letters off the line above. The generic
+     widget's dashed mid-guide is dropped here: it lands at 24px, exactly where
+     the "Write here…" prompt sits, and reads as a strikethrough through it. */
+  background-image:
+    repeating-linear-gradient(transparent, transparent 47px, rgba(20,35,28,.20) 47px, rgba(20,35,28,.20) 48px);
+  height: 192px;
+}
+.lxa-box.is-filled .lxa-surface {
+  /* Her writing should dominate once it is there. */
+  background-image:
+    repeating-linear-gradient(transparent, transparent 47px, rgba(20,35,28,.11) 47px, rgba(20,35,28,.11) 48px);
+}
+.lxa-hand .handwriting-empty { left: 2px; }

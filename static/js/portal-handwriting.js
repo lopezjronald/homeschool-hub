@@ -85,6 +85,13 @@
         });
       }
       input.dataset.answered = strokes.length ? "1" : "0";
+      // Setting .value fires no event, so anything that wants to react to "she
+      // has written something now" has to be told. The lexicon cards use this
+      // to light their tick and spine; without it they would have to guess from
+      // pointerup, and guess wrong on undo, erase, and a release off-canvas.
+      widget.dispatchEvent(new CustomEvent("handwriting:change", {
+        bubbles: true, detail: { answered: strokes.length > 0 },
+      }));
       if (window.portalMarkDirty) window.portalMarkDirty();
     }
 

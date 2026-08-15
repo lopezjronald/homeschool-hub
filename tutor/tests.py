@@ -3257,17 +3257,28 @@ class HandwritingGradingTests(HandwritingTests):
         # The answers are still there for the record, just labelled unreadable.
         self.assertIn("handwritten answer", text)
 
-    def test_a_mixed_sheet_is_graded_normally(self):
-        """Only a sheet that is ENTIRELY handwriting is unreadable; one typed
-        answer means there is something real to grade."""
-        Question.objects.create(
+    def test_a_mixed_sheet_names_which_answers_cannot_be_read(self):
+        """A mixed sheet has something real to grade AND something unreadable.
+
+        A Lexicon week is the case in point: ten typed sentences plus three
+        written with the pen. Saying nothing lets the grader score the three it
+        never saw; saying "this whole page is handwritten" would throw away the
+        ten it can. So it names them.
+        """
+        typed = Question.objects.create(
             question_set=self.qset, order=2, category="writing",
             response_type=Question.TYPE_TEXT, prompt="Type this one")
         sheet = ResponseSheet.objects.create(
             question_set=self.qset, child=self.child,
-            answers={str(self.q.pk): self.answer})
+            answers={str(self.q.pk): self.answer,
+                     str(typed.pk): "Paul Erdős amazed me."})
         self.assertFalse(sheet.is_handwritten_only)
-        self.assertNotIn("NOTE TO THE GRADER", sheet.as_worklog_text())
+        text = sheet.as_worklog_text()
+        self.assertIn(f"Q{self.q.order} were written BY HAND", text)
+        self.assertIn("Grade only the other questions", text)
+        # The typed answer is still handed over in full.
+        self.assertIn("Paul Erdős amazed me.", text)
+        self.assertNotIn("every answer here was written BY HAND", text)
 
     def test_a_typed_only_sheet_is_untouched(self):
         from tutor.models import Question, QuestionSet, ResponseSheet
@@ -3466,10 +3477,10 @@ class LexiconOnePageTests(TestCase):
             lesson__number=1, lesson__chapter__curriculum__parent=self.parent).first()
         kinds = [q.response_type for q in qset.questions.order_by("order")]
         self.assertEqual(kinds.count(Question.TYPE_CLOZE), 10)
-        self.assertEqual(kinds.count(Question.TYPE_TEXT), 3)
+        self.assertEqual(kinds.count(Question.TYPE_HANDWRITING), 3)
         # Sentences first, writing last — the order the book uses.
         self.assertEqual(kinds[:10], [Question.TYPE_CLOZE] * 10)
-        self.assertEqual(kinds[10:], [Question.TYPE_TEXT] * 3)
+        self.assertEqual(kinds[10:], [Question.TYPE_HANDWRITING] * 3)
 
         resp = self.client.get(
             reverse("portal:portal_questions", args=[self.token, qset.pk]))
@@ -3478,7 +3489,7 @@ class LexiconOnePageTests(TestCase):
         self.assertContains(resp, "The Boy Who Loved Math")  # the book to read
         self.assertContains(resp, "inquisitive")          # a word and its meaning
         self.assertContains(resp, "eager for knowledge")
-        self.assertContains(resp, "lxa-input")            # and the three writing boxes
+        self.assertContains(resp, "lxa-hand")             # and the three writing boxes
 
     def test_the_word_list_never_reaches_her_as_raw_markdown(self):
         """It shipped once showing "## Week 1" and "**focused**" with the
@@ -3552,9 +3563,9 @@ class LexiconOnePageTests(TestCase):
 class LexiconWritingBoxTests(LexiconOnePageTests):
     """The three "what amazes you" boxes.
 
-    This is the one place in the week she writes her own thought, so it is
-    deliberately not a stack of form fields — and deliberately not handwriting
-    either: the unit teaches vocabulary and thinking, not penmanship.
+    This is the one place in the week she writes her own thought, and she writes
+    it BY HAND with a stylus — so her sentences reach the parent's work browser
+    and the printed charter report exactly as she formed them.
     """
 
     def _page(self):
@@ -3567,10 +3578,22 @@ class LexiconWritingBoxTests(LexiconOnePageTests):
             reverse("portal:portal_questions", args=[self.token, qset.pk])
         ).content.decode()
 
-    def test_she_gets_three_typed_boxes_not_a_pen(self):
+    def test_she_writes_these_three_with_the_pen(self):
         html = self._page()
-        self.assertEqual(html.count("lxa-input"), 3)
-        self.assertNotIn("handwriting-canvas", html)
+        self.assertEqual(html.count("handwriting-canvas"), 3)
+        self.assertNotIn("lxa-input", html)   # no typed box left behind
+
+    def test_the_pen_sits_inside_the_designed_card(self):
+        """The generic handwriting branch matches these questions too, so
+        whichever branch the template tests first wins. When it was the generic
+        one she lost the card, the medallion and the shared heading, and got the
+        bare widget with its own "write by hand" hint three times over.
+        """
+        html = self._page()
+        self.assertEqual(html.count('class="lxa-box'), 3)
+        self.assertEqual(html.count("lxa-num"), 3)
+        self.assertEqual(html.count("lxa-hand"), 3)
+        self.assertNotIn("handwriting-hint", html)
 
     def test_the_question_is_asked_once_above_the_boxes(self):
         """Asking it three times would read as three separate assignments."""
@@ -3578,23 +3601,59 @@ class LexiconWritingBoxTests(LexiconOnePageTests):
         self.assertEqual(html.count("What are three things that amaze you"), 1)
         self.assertIn("Paul Erdős", html)
 
-    def test_each_box_has_a_visible_label_rather_than_a_placeholder(self):
-        """Placeholder text disappears exactly when a slow typist wants it, and
-        makes a poor accessible name."""
+    def test_each_box_keeps_its_number_and_visible_label(self):
+        """The medallion and label are what tell her which of the three she is
+        on — the surface itself carries no wording but "Write here…"."""
         html = self._page()
         self.assertEqual(html.count("Amazing thing 1"), 1)
-        self.assertIn('class="lxa-label"', html)
-        # No placeholder on these boxes.
+        self.assertEqual(html.count('class="lxa-label"'), 3)
+        # Nothing on these boxes leans on a placeholder attribute.
         start = html.index("lxa-box")
         self.assertNotIn("placeholder", html[start:html.index("Turn it in")])
 
-    def test_spellcheck_is_on_here(self):
-        """Spelling isn't being assessed, and suppressing the squiggle would make
-        the app worse than paper for no pedagogical gain."""
-        html = self._page()
-        box = html[html.index("lxa-input"):]
-        self.assertIn('spellcheck="true"', box[:600])
-        self.assertIn('autocapitalize="sentences"', box[:600])
+    def test_the_pens_are_put_away_once_the_week_is_turned_in(self):
+        """A submitted page must show her writing, not invite more of it."""
+        from django.utils import timezone
+        from tutor.models import QuestionSet, ResponseSheet
+
+        self._seed()
+        qset = QuestionSet.objects.filter(
+            lesson__number=1, lesson__chapter__curriculum__parent=self.parent).first()
+        ResponseSheet.objects.create(
+            question_set=qset, child=self.child, answers={},
+            status=ResponseSheet.SUBMITTED, submitted_at=timezone.now())
+        html = self.client.get(
+            reverse("portal:portal_questions", args=[self.token, qset.pk])
+        ).content.decode()
+        self.assertEqual(html.count("handwriting-canvas"), 3)
+        self.assertEqual(html.count('data-readonly="1"'), 3)
+        self.assertNotIn("lxa-pens", html)
+
+    def test_the_grader_is_told_not_to_mark_the_handwriting(self):
+        """Her strokes reach the AI as stroke JSON, which it would happily
+        "read" and grade as gibberish. It must abstain and leave these to me."""
+        from django.utils import timezone
+        from tutor.models import QuestionSet, ResponseSheet
+
+        self._seed()
+        qset = QuestionSet.objects.filter(
+            lesson__number=1, lesson__chapter__curriculum__parent=self.parent).first()
+        sheet = ResponseSheet.objects.create(
+            question_set=qset, child=self.child,
+            answers={str(q.pk): "focused" for q in qset.questions.all()[:10]},
+            status=ResponseSheet.SUBMITTED, submitted_at=timezone.now())
+        for q in qset.questions.filter(order__gt=10):
+            sheet.answers[str(q.pk)] = (
+                '{"strokes":[{"c":"#1d3557","w":3,"p":[[0.1,0.1],[0.4,0.2]]}],'
+                '"surface":{"w":600,"h":192}}')
+        sheet.save()
+        text = sheet.as_worklog_text()
+        # Mixed sheet: it must name the three, not claim the whole page is
+        # unreadable — the ten sentences are exactly what it should be grading.
+        self.assertIn("Q11, Q12, Q13 were written BY HAND", text)
+        self.assertIn("Grade only the other questions", text)
+        self.assertNotIn("every answer here was written BY HAND", text)
+        self.assertNotIn('"strokes"', text)
 
     def test_the_generic_question_chrome_stands_down(self):
         """The medallion and label already say the number and the task; the

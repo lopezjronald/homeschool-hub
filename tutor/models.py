@@ -793,6 +793,11 @@ class ResponseSheet(models.Model):
         return replay_for(str(self.answer_for(question)).strip(), question)
 
     @property
+    def _handwriting_orders(self):
+        return [q.order for q in self.question_set.questions.all()
+                if q.response_type == Question.TYPE_HANDWRITING]
+
+    @property
     def is_handwritten_only(self):
         """True when every answer on this sheet was written by hand."""
         types = {q.response_type for q in self.question_set.questions.all()}
@@ -806,17 +811,29 @@ class ResponseSheet(models.Model):
             lines.append(f"A: {self.answer_display(q)}")
             lines.append("")
         text = "\n".join(lines).strip()
+        # Say plainly that there is nothing to read. Without this the grader
+        # gets "[handwritten answer — 2 pen stroke(s)]" against a rubric asking
+        # for complete sentences and a real thought, and scores her on writing it
+        # never saw. A MIXED sheet needs this just as much: a Lexicon week is ten
+        # typed sentences plus three handwritten ones, and only the ten are
+        # readable.
+        hand = self._handwriting_orders
         if self.is_handwritten_only:
-            # Say plainly that there is nothing to read. Without this the grader
-            # gets "[handwritten answer — 2 pen stroke(s)]" against a rubric
-            # asking for complete sentences and a real thought, and scores her on
-            # writing it never saw.
             text = (
                 "NOTE TO THE GRADER: every answer here was written BY HAND on the "
                 "page and cannot be read as text. Do not judge the content, "
                 "spelling, or sentence structure — you cannot see it. Say that "
                 "this work is handwritten and needs a person's eyes, and do not "
                 "propose a mastery level.\n\n" + text
+            )
+        elif hand:
+            which = ", ".join(f"Q{o}" for o in hand)
+            text = (
+                f"NOTE TO THE GRADER: {which} were written BY HAND on the page "
+                "and cannot be read as text. Grade only the other questions. Do "
+                "not judge the content, spelling, or sentence structure of the "
+                "handwritten ones — you cannot see them — and say they need a "
+                "person's eyes.\n\n" + text
             )
         return text
 

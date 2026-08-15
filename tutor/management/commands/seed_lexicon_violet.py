@@ -8,7 +8,7 @@ between parts of a single spread, which the book never asks of her.
 So each week is one QuestionSet:
 
     Q1-10   finish the sentence about this person (cloze)
-    Q11-13  three things that amazed you, typed
+    Q11-13  three things that amazed you, handwritten with the pen
 
 The word list is not stored on the page — it is rendered from tutor.lexicon at
 request time, so fixing a definition doesn't mean re-seeding.
@@ -31,16 +31,17 @@ RUBRIC = """## Operation Lexicon — how this is checked
 - **Finish the sentences:** the word chosen actually fits the person and the
   sentence. Several words could be grammatically fine; only one matches what
   the story showed about them.
-- **What amazed you:** complete sentences about *this* person, not a general
-  comment. Spelling counts less than having a real thought and saying it
-  clearly — this is a vocabulary and thinking exercise, not a spelling test.
+- **What amazed you:** written by hand, in complete sentences, about *this*
+  person — not a general comment. Spelling counts less than having a real
+  thought and writing it legibly.
 
 Grade-3 mastery: Beginning → Developing → Proficient → Mastered.
 """
 
-# Three answers, typed. Handwriting was the first cut; typing keeps her hands
-# on the sentence rather than on letter-forming, which is not what this unit is
-# teaching — it's a vocabulary and thinking exercise, not penmanship.
+# Three answers, written BY HAND with a stylus on the screen. Handwriting is
+# the deliberate choice here: this is where a third grader practises composing
+# a sentence in her own hand, and her writing reaches the parent's work browser
+# and the printed charter report exactly as she formed it.
 WRITING_PROMPTS = ["Amazing thing 1", "Amazing thing 2", "Amazing thing 3"]
 
 
@@ -135,7 +136,7 @@ class Command(BaseCommand):
                     question_set=qset, order=order,
                     defaults={
                         "category": "writing",
-                        "response_type": Question.TYPE_TEXT,
+                        "response_type": Question.TYPE_HANDWRITING,
                         "prompt": prompt,
                         "passage": "",
                     },

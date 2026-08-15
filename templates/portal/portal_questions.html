@@ -94,7 +94,59 @@
                   </details>
                 {% endif %}
 
-                {% if q.is_characters %}
+                {% comment %}The lexicon writing branch is FIRST on purpose. These
+                questions are handwriting questions, so the generic
+                q.is_handwriting branch below would otherwise claim them and she
+                would lose the card, the medallion and the shared heading.{% endcomment %}
+                {% if lexicon_week and q.category == 'writing' %}
+                  {% if q.order == 11 %}
+                    <div class="lxa-head">
+                      <span class="lxa-rule" aria-hidden="true"></span>
+                      <div class="lxa-eyebrow">In your own words</div>
+                      <p class="lxa-question">
+                        What are three things that amaze you about
+                        <em>{{ lexicon_week.person }}</em>?
+                      </p>
+                      {% if not sheet.is_submitted %}
+                        <details class="lxa-stems">
+                          <summary>Need an idea to start?</summary>
+                          <ul>
+                            <li>I never knew that…</li>
+                            <li>It amazed me that…</li>
+                            <li>I couldn't believe…</li>
+                          </ul>
+                        </details>
+                      {% endif %}
+                    </div>
+                  {% endif %}
+                  <div class="lxa-box{% if q.my_answer %} is-filled{% endif %}">
+                    <span class="lxa-num" aria-hidden="true">{{ q.order|add:"-10" }}</span>
+                    <span class="lxa-label">
+                      Amazing thing {{ q.order|add:"-10" }}
+                      <span class="lxa-check" aria-hidden="true">✓</span>
+                    </span>
+                    {% comment %}She writes these by hand with the pen. Same card,
+                    same medallion, same label — only the instrument changes.{% endcomment %}
+                    <div class="handwriting-widget lxa-hand" data-question-widget="{{ q.pk }}"
+                         data-readonly="{% if sheet.is_submitted %}1{% else %}0{% endif %}">
+                      {% if not sheet.is_submitted %}
+                        <div class="lxa-pens" role="toolbar" aria-label="Pens">
+                          <button type="button" class="handwriting-pen is-active" data-color="#1d3557" style="--pen:#1d3557" title="Blue pencil" aria-label="Blue pencil"></button>
+                          <button type="button" class="handwriting-pen" data-color="#333333" style="--pen:#333333" title="Pencil" aria-label="Pencil"></button>
+                          <button type="button" class="handwriting-pen" data-color="#1E7A50" style="--pen:#1E7A50" title="Green pen" aria-label="Green pen"></button>
+                          <span class="lxa-pens-sep"></span>
+                          <button type="button" class="markup-btn" data-tool="undo">↶ Undo</button>
+                          <button type="button" class="markup-btn" data-tool="clear">Erase</button>
+                        </div>
+                      {% endif %}
+                      <div class="handwriting-surface lxa-surface">
+                        <div class="handwriting-empty">Write here…</div>
+                        <canvas class="handwriting-canvas"></canvas>
+                      </div>
+                      <input type="hidden" name="answer_{{ q.pk }}" data-question="{{ q.pk }}" value="{{ q.my_answer }}">
+                    </div>
+                  </div>
+                {% elif q.is_characters %}
                   <div class="character-widget">
                     {% for name in q.character_names %}
                       <div class="character-field">
@@ -259,48 +311,6 @@
                                 {% if sheet.is_submitted %}readonly{% endif %}></textarea>
                     </div>
                     <input type="hidden" name="answer_{{ q.pk }}" data-question="{{ q.pk }}" value="{{ q.my_answer }}">
-                  </div>
-                {% elif lexicon_week and q.category == 'writing' %}
-                  {% comment %}The one place in the week she writes her own thought.
-                  Cream ruled paper rather than a form field, with a visible label
-                  instead of a placeholder — placeholder text vanishes exactly when
-                  a slow typist wants it, and makes a poor accessible name.{% endcomment %}
-                  {% if q.order == 11 %}
-                    <div class="lxa-head">
-                      <span class="lxa-rule" aria-hidden="true"></span>
-                      <div class="lxa-eyebrow">In your own words</div>
-                      <p class="lxa-question">
-                        What are three things that amaze you about
-                        <em>{{ lexicon_week.person }}</em>?
-                      </p>
-                      {% if not sheet.is_submitted %}
-                        <details class="lxa-stems">
-                          <summary>Need an idea to start?</summary>
-                          <ul>
-                            <li>I never knew that…</li>
-                            <li>It amazed me that…</li>
-                            <li>I couldn't believe…</li>
-                          </ul>
-                        </details>
-                      {% endif %}
-                    </div>
-                  {% endif %}
-                  <div class="lxa-box{% if q.my_answer %} is-filled{% endif %}">
-                    <span class="lxa-num" aria-hidden="true">{{ q.order|add:"-10" }}</span>
-                    <label class="lxa-label" for="q{{ q.pk }}">
-                      Amazing thing {{ q.order|add:"-10" }}
-                      <span class="lxa-check" aria-hidden="true">✓</span>
-                    </label>
-                    <textarea
-                      id="q{{ q.pk }}"
-                      name="answer_{{ q.pk }}"
-                      data-question="{{ q.pk }}"
-                      rows="3"
-                      class="portal-answer lxa-input"
-                      autocomplete="off" autocorrect="off" autocapitalize="sentences"
-                      lang="en" spellcheck="true" data-gramm="false"
-                      {% if sheet.is_submitted %}readonly{% endif %}>
-{{ q.my_answer }}</textarea>
                   </div>
                 {% else %}
                   <textarea

@@ -64,7 +64,9 @@
       ctx.clearRect(0, 0, rect.width, rect.height);
       strokes.forEach(drawStroke);
       var empty = widget.querySelector(".handwriting-empty");
-      if (empty) empty.hidden = strokes.length > 0;
+      // "Write here…" on work already turned in invites her to write
+      // on a surface that will not accept it.
+      if (empty) empty.hidden = strokes.length > 0 || readOnly;
     }
 
     function persist() {
@@ -88,9 +90,15 @@
 
     function pointOf(e) {
       var rect = canvas.getBoundingClientRect();
+      // Four decimals is a quarter of a pixel on a 2000px canvas — finer than
+      // anyone can draw, and finer than the replay can render (it formats into
+      // a 1000-unit viewBox at one decimal, so the rest is discarded anyway).
+      // Raw float64 costs ~40 bytes per point, and a long handwritten answer
+      // then blows past DATA_UPLOAD_MAX_MEMORY_SIZE — at which point she cannot
+      // turn her work in at all and the portal just says "couldn't save".
       return [
-        Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width)),
-        Math.min(1, Math.max(0, (e.clientY - rect.top) / rect.height)),
+        Math.round(Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width)) * 1e4) / 1e4,
+        Math.round(Math.min(1, Math.max(0, (e.clientY - rect.top) / rect.height)) * 1e4) / 1e4,
       ];
     }
 
@@ -104,6 +112,10 @@
       });
       canvas.addEventListener("pointermove", function (e) {
         if (!drawing || !current) return;
+        // A ceiling so one very long session can't produce an answer too big to
+        // submit. Four ruled lines of handwriting is a few thousand points; this
+        // is far above that and still an order of magnitude inside the limit.
+        if (current.p.length >= 4000) return;
         current.p.push(pointOf(e));
         redraw();
       });

@@ -792,6 +792,12 @@ class ResponseSheet(models.Model):
         from .markup import replay_for
         return replay_for(str(self.answer_for(question)).strip(), question)
 
+    @property
+    def is_handwritten_only(self):
+        """True when every answer on this sheet was written by hand."""
+        types = {q.response_type for q in self.question_set.questions.all()}
+        return bool(types) and types == {Question.TYPE_HANDWRITING}
+
     def as_worklog_text(self):
         """Format the Q&A as readable text for the work log / grader."""
         lines = []
@@ -799,7 +805,20 @@ class ResponseSheet(models.Model):
             lines.append(f"Q{q.order} [{q.get_category_display()}]: {q.prompt}")
             lines.append(f"A: {self.answer_display(q)}")
             lines.append("")
-        return "\n".join(lines).strip()
+        text = "\n".join(lines).strip()
+        if self.is_handwritten_only:
+            # Say plainly that there is nothing to read. Without this the grader
+            # gets "[handwritten answer — 2 pen stroke(s)]" against a rubric
+            # asking for complete sentences and a real thought, and scores her on
+            # writing it never saw.
+            text = (
+                "NOTE TO THE GRADER: every answer here was written BY HAND on the "
+                "page and cannot be read as text. Do not judge the content, "
+                "spelling, or sentence structure — you cannot see it. Say that "
+                "this work is handwritten and needs a person's eyes, and do not "
+                "propose a mastery level.\n\n" + text
+            )
+        return text
 
     @classmethod
     def _format_handwriting(cls, raw, question):

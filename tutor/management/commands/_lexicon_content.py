@@ -154,7 +154,7 @@ WEEKS = [
             ("dreamer", "A dreamer is a person whose ideas are visionary."),
             ("elegant", "An elegant person is tasteful and refined."),
             ("industrious", "An industrious person works hard and steadily."),
-            ("leader", "A leader is a person who guides and directs others."),
+            ("reader", "A reader is a person who reads."),
             ("tenacious", "A tenacious person holds on and does not let go."),
             ("watchful", "A watchful person observes closely and carefully."),
             ("whimsical", "A whimsical person is playfully fanciful."),
@@ -167,7 +167,7 @@ WEEKS = [
              "dreamer"),
             ("After high school, _____ Gaudí worked hard to become an architect.",
              "industrious"),
-            ("Being a _____, he learned much from books.", "leader"),
+            ("Being a _____, he learned much from books.", "reader"),
             ("_____ Gaudí wears fine, stylish clothes and accessories and extends this "
              "appreciation for beauty to his architectural designs.", "elegant"),
             ("While some people would stop and stare, not understanding, Vicens House "
@@ -258,11 +258,11 @@ WEEKS = [
              "communicate the truth about butterflies.", "exacting"),
             ("_____ Maria was motivated to observe butterflies and communicate what she "
              "learned because she disagreed with the wrong view that insects are evil.",
-             "conscientious"),
+             "antipathetic"),
             ("Beginning at a _____ age, Maria demonstrated an aptitude for art and an "
              "interest in the natural world.", "young"),
             ("_____ Maria felt strongly that summer birds are beautiful and harmless.",
-             "antipathetic"),
+             "conscientious"),
             ("_____ Maria Merian's careful observations and experience with butterflies "
              "enabled her to communicate scientific information about the beautiful "
              "animals.", "empirical"),

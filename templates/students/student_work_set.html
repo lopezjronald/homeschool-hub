@@ -55,7 +55,7 @@
             {% if row.replay %}
               {% comment %}Her actual pen work, replacing the bare sentence plus a
               prose summary of it: on these exercises the marks ARE the answer.{% endcomment %}
-              <p class="text-muted mb-1">{{ student.first_name }}'s marked-up work:</p>
+              <p class="text-muted mb-1">{% if row.question.is_handwriting %}{{ student.first_name }}'s handwriting:{% else %}{{ student.first_name }}'s marked-up work:{% endif %}</p>
               {% include "tutor/_markup_replay.html" with replay=row.replay %}
             {% elif row.question.is_markup %}
               <p class="text-muted mb-1">Sentence to mark up:</p>

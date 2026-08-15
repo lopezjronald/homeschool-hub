@@ -3100,8 +3100,16 @@ class LexiconContentTests(SimpleTestCase):
             self.assertEqual(len(wk["sentences"]), 10, wk["number"])
 
     def test_it_is_a_hundred_words(self):
+        """The guide promises a hundred. It repeats "meticulous" across weeks 5
+        and 9, which is the publisher's own doing — so 100 entries, 99 distinct.
+        Asserting only the list length would hide a transcription slip that
+        duplicated a word by accident."""
+        from collections import Counter
         from tutor.management.commands._lexicon_content import all_words
+        counts = Counter(all_words())
         self.assertEqual(len(all_words()), 100)
+        self.assertEqual(len(counts), 99)
+        self.assertEqual([w for w, n in counts.items() if n > 1], ["meticulous"])
 
     def test_every_answer_is_one_of_that_weeks_words(self):
         for wk in self.weeks:
@@ -3211,8 +3219,13 @@ class HandwritingTests(TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertContains(resp, "handwriting-canvas")
         self.assertContains(resp, "js/portal-handwriting.")
-        # No text input for this question — typing is the thing we're avoiding.
-        self.assertNotContains(resp, f'class="form-control portal-answer" ')
+        # No typing box for THIS question — typing is the thing we're avoiding.
+        # Asserting on the raw class string would pass even if a textarea were
+        # rendered (the template emits it followed by a newline, not a space),
+        # so count the widgets instead: one handwriting canvas, no answer boxes.
+        html = resp.content.decode()
+        self.assertEqual(html.count("handwriting-canvas"), 1)
+        self.assertEqual(html.count("portal-answer"), 0)
 
     def test_a_typed_question_is_untouched(self):
         typed = Question.objects.create(
@@ -3223,3 +3236,50 @@ class HandwritingTests(TestCase):
             answers={str(typed.pk): "I typed my answer."})
         self.assertEqual(sheet.answer_display(typed), "I typed my answer.")
         self.assertIsNone(sheet.answer_replay(typed))
+
+
+class HandwritingGradingTests(HandwritingTests):
+    """The AI must not score writing it cannot see.
+
+    The rubric asks for complete sentences and a real thought. Handed
+    "[handwritten answer — 2 pen stroke(s)]", a grader will confabulate a level
+    for work it never read, and the child gets feedback on nothing.
+    """
+
+    def test_the_grader_is_told_it_cannot_read_the_answers(self):
+        sheet = ResponseSheet.objects.create(
+            question_set=self.qset, child=self.child,
+            answers={str(self.q.pk): self.answer})
+        text = sheet.as_worklog_text()
+        self.assertTrue(sheet.is_handwritten_only)
+        self.assertIn("written BY HAND", text)
+        self.assertIn("do not", text.lower())
+        # The answers are still there for the record, just labelled unreadable.
+        self.assertIn("handwritten answer", text)
+
+    def test_a_mixed_sheet_is_graded_normally(self):
+        """Only a sheet that is ENTIRELY handwriting is unreadable; one typed
+        answer means there is something real to grade."""
+        Question.objects.create(
+            question_set=self.qset, order=2, category="writing",
+            response_type=Question.TYPE_TEXT, prompt="Type this one")
+        sheet = ResponseSheet.objects.create(
+            question_set=self.qset, child=self.child,
+            answers={str(self.q.pk): self.answer})
+        self.assertFalse(sheet.is_handwritten_only)
+        self.assertNotIn("NOTE TO THE GRADER", sheet.as_worklog_text())
+
+    def test_a_typed_only_sheet_is_untouched(self):
+        from tutor.models import Question, QuestionSet, ResponseSheet
+        typed_set = QuestionSet.objects.create(
+            lesson=self.lesson, title="Typed", family=self.family,
+            status=QuestionSet.APPROVED)
+        q = Question.objects.create(
+            question_set=typed_set, order=1, category="writing",
+            response_type=Question.TYPE_TEXT, prompt="Write something")
+        sheet = ResponseSheet.objects.create(
+            question_set=typed_set, child=self.child,
+            answers={str(q.pk): "Paul Erdős amazed me."})
+        self.assertFalse(sheet.is_handwritten_only)
+        self.assertNotIn("NOTE TO THE GRADER", sheet.as_worklog_text())
+        self.assertIn("Paul Erdős amazed me.", sheet.as_worklog_text())

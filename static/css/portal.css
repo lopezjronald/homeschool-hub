@@ -1366,8 +1366,11 @@ button.portal-subject-card {
   cursor: crosshair; border-radius: 10px;
 }
 .handwriting-empty {
-  position: absolute; top: 8px; left: 16px; z-index: 1;
-  color: #b6c2bd; font-family: Georgia, serif; font-size: 1.3rem;
+  /* Sit IN the first writing row, resting on its baseline — at the old offset
+     the ruled line crossed the words and read as strikethrough. */
+  position: absolute; top: 0; left: 16px; z-index: 1;
+  height: 48px; line-height: 44px;
+  color: #c6d0cc; font-family: Georgia, serif; font-size: 1.25rem;
   pointer-events: none;
 }
 .handwriting-pen {

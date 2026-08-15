@@ -2,6 +2,7 @@
 {% load static %}
 {% load tutor_extras %}
 {% block title %}{{ question_set.title }} · Steadfast Scholars{% endblock %}
+{% block extra_css %}<link href="{% static 'css/lexicon.css' %}" rel="stylesheet">{% endblock %}
 
 {% block content %}
 <div class="container">
@@ -55,6 +56,10 @@
             <div class="portal-reading-first">
               📖 <strong>Read first:</strong> {{ question_set.reading }}
             </div>
+          {% endif %}
+
+          {% if lexicon_week %}
+            {% include "portal/_lexicon_week.html" %}
           {% endif %}
 
           {% if question_set.intro %}

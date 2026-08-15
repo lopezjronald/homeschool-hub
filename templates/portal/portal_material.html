@@ -1,8 +1,10 @@
 {% extends "portal/base_portal.html" %}
 {% load static %}
+{% load tutor_extras %}
 {% block title %}{{ material.title }} · Steadfast Scholars{% endblock %}
 {% block extra_css %}<link href="{% static 'css/manga.css' %}" rel="stylesheet">
-<link href="{% static 'css/lesson.css' %}" rel="stylesheet">{% endblock %}
+<link href="{% static 'css/lesson.css' %}" rel="stylesheet">
+<link href="{% static 'css/lexicon.css' %}" rel="stylesheet">{% endblock %}
 
 {% block content %}
 <div class="container">
@@ -24,7 +26,9 @@
             </div>
           {% endif %}
 
-          {% if material.has_blocks %}
+          {% if lexicon_week %}
+            {% include "portal/_lexicon_week.html" %}
+          {% elif material.has_blocks %}
             {% include "portal/_lesson_blocks.html" with blocks=material.blocks.all %}
           {% elif material.has_pages %}
             <div class="manga-page manga-page--{{ material.manga_text_layout }}">
@@ -63,7 +67,9 @@
               {% endfor %}
             </div>
           {% else %}
-            <div class="p-3 bg-body-tertiary rounded" style="white-space: pre-wrap;">{{ material.student_content }}</div>
+            {% comment %}Authored as Markdown — rendering it raw showed a child
+            "## Week 1" and "**focused**" with the asterisks.{% endcomment %}
+            <div class="lesson-prose">{{ material.student_content|markdownify }}</div>
           {% endif %}
         </div>
       </div>

@@ -20,7 +20,9 @@
 }
 .lx-bar-fill {
   height: 100%; border-radius: 999px; transition: width .4s ease;
-  background: linear-gradient(90deg, #0A5C63, #1E7A50, #b45309);
+  /* Two stops, not three: a three-colour gradient squeezed into the first
+     20% of the bar reads as mud rather than progress. */
+  background: linear-gradient(90deg, #0A5C63, #1E7A50);
 }
 
 .lx-row {
@@ -89,3 +91,89 @@
   .lx-word { border-color: #999; color: #999; }
   .lx-meaning { display: none; }
 }
+
+/* ---- One Lexicon week: the "meet the words" page --------------------------
+ * The ten words are the lesson, so they get the page. A bulleted list of
+ * definitions reads like a dictionary and gets skimmed; cards get read.
+ * Colours come from the .lx-week-N tints above, so a week looks the same here
+ * as it does on the poster.
+ */
+
+.lxw-hero {
+  background: var(--lx-wash, #e8f4f3);
+  border: 2px solid var(--lx-tint, #0A5C63);
+  border-radius: 18px;
+  padding: 1.1rem 1.25rem;
+  text-align: center;
+  margin-bottom: 1rem;
+}
+.lxw-week {
+  font-size: .78rem; font-weight: 800; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--lx-tint, #0A5C63);
+}
+.lxw-person {
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 2rem; font-weight: 700; margin: .15rem 0 .1rem;
+  color: var(--lx-ink, #07474d);
+}
+.lxw-role { color: #4b5563; font-size: 1rem; }
+
+.lxw-book {
+  display: flex; gap: .9rem; align-items: flex-start;
+  background: #fffdf7; border: 1.5px solid rgba(15, 61, 46, .18);
+  border-radius: 14px; padding: .9rem 1rem; margin-bottom: 1.4rem;
+}
+.lxw-book-icon { font-size: 2rem; line-height: 1; }
+.lxw-book-label {
+  font-size: .72rem; font-weight: 800; letter-spacing: .06em;
+  text-transform: uppercase; color: #8a5b12;
+}
+.lxw-book-title {
+  font-family: Georgia, serif; font-size: 1.15rem; font-weight: 700;
+  color: #24303a; margin: .1rem 0;
+}
+.lxw-book-by { font-size: .85rem; color: #6b7280; }
+.lxw-book-tip { font-size: .9rem; color: #374151; margin-top: .4rem; }
+
+.lxw-heading {
+  font-size: 1.15rem; font-weight: 800; margin: 0 0 .7rem;
+  color: var(--lx-ink, #07474d);
+}
+
+.lxw-words {
+  display: grid; gap: .6rem;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+}
+.lxw-card {
+  border: 2px solid var(--lx-tint, #0A5C63);
+  border-left-width: 7px;               /* a coloured spine, like a shelf of books */
+  border-radius: 12px;
+  background: #fff;
+  padding: .65rem .85rem;
+}
+.lxw-word {
+  font-family: Georgia, serif; font-size: 1.35rem; font-weight: 700;
+  color: var(--lx-ink, #07474d); line-height: 1.2;
+}
+.lxw-def { font-size: .92rem; color: #374151; margin-top: .15rem; }
+
+.lxw-note {
+  margin-top: 1.2rem; padding: .8rem 1rem; border-radius: 12px;
+  background: var(--lx-wash, #e8f4f3); color: var(--lx-ink, #07474d);
+  font-weight: 600;
+}
+
+.lxw-poster-link {
+  display: inline-block; margin-top: 1rem;
+  padding: .6rem 1rem; border-radius: 12px;
+  background: #fff7e6; border: 2px solid #f0c674;
+  color: #8a5b12; font-weight: 700; text-decoration: none;
+}
+.lxw-poster-link:hover, .lxw-poster-link:focus { background: #fdefd0; color: #6d470e; }
+
+/* Markdown-authored lesson materials, rendered rather than dumped raw. */
+.lesson-prose { font-size: 1.02rem; color: #24303a; }
+.lesson-prose h2 { font-size: 1.5rem; font-weight: 800; margin: .2rem 0 .6rem; }
+.lesson-prose h3 { font-size: 1.2rem; font-weight: 700; margin: 1rem 0 .4rem; }
+.lesson-prose ul { padding-left: 1.2rem; }
+.lesson-prose li { margin-bottom: .3rem; }

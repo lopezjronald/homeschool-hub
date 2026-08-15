@@ -1,0 +1,51 @@
+{% comment %}
+One Operation Lexicon week, laid out as something a nine-year-old wants to look
+at: who the person was, the book to hear, and ten word cards.
+
+The words are the point of the page, so they get the space — a bulleted list of
+definitions reads like a dictionary page and gets skimmed.
+{% endcomment %}
+<div class="lxw lx-week-{{ lexicon_week.number }}">
+
+  <div class="lxw-hero">
+    <div class="lxw-week">Week {{ lexicon_week.number }} of 10</div>
+    <h2 class="lxw-person">{{ lexicon_week.person }}</h2>
+    <div class="lxw-role">{{ lexicon_week.role }}</div>
+  </div>
+
+  <div class="lxw-book">
+    <div class="lxw-book-icon" aria-hidden="true">📖</div>
+    <div>
+      <div class="lxw-book-label">First, read or listen to</div>
+      <div class="lxw-book-title">{{ lexicon_week.book }}</div>
+      <div class="lxw-book-by">
+        by {{ lexicon_week.author }}{% if lexicon_week.illustrator != lexicon_week.author %},
+        pictures by {{ lexicon_week.illustrator }}{% endif %}
+      </div>
+      <div class="lxw-book-tip">
+        Listen <strong>twice</strong> — once to enjoy it, once to notice what kind
+        of person {{ lexicon_week.person }} was.
+      </div>
+    </div>
+  </div>
+
+  <h3 class="lxw-heading">Ten words that describe {{ lexicon_week.person }}</h3>
+
+  <div class="lxw-words">
+    {% for word, definition in lexicon_week.words %}
+      <div class="lxw-card">
+        <div class="lxw-word">{{ word }}</div>
+        <div class="lxw-def">{{ definition }}</div>
+      </div>
+    {% endfor %}
+  </div>
+
+  <div class="lxw-note">
+    Now finish the sentences below. Every one is about {{ lexicon_week.person }},
+    and every answer is one of these ten words.
+  </div>
+
+  <a class="lxw-poster-link" href="{% url 'portal:lexicon_poster' token=token %}">
+    🏆 See my Lexicon
+  </a>
+</div>

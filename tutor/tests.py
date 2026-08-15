@@ -3322,7 +3322,7 @@ class LexiconPosterTests(TestCase):
                 title=week["person"])
             qset = QuestionSet.objects.create(
                 lesson=lesson, family=cls.family, status=QuestionSet.APPROVED,
-                title=f"Week {week['number']} · {week['person']} — finish the sentences")
+                title=f"Week {week['number']} · {week['person']} — {week['role']}")
             Question.objects.create(
                 question_set=qset, order=1, category="grammar",
                 response_type=Question.TYPE_CLOZE, passage="_____ test.")
@@ -3413,3 +3413,137 @@ class LexiconPosterTests(TestCase):
             reverse("portal:portal_subject", args=[self.token, other.pk]))
         self.assertFalse(resp.context["show_lexicon_poster"])
         self.assertNotContains(resp, self._url())
+
+
+class LexiconOnePageTests(TestCase):
+    """A week is ONE page, the way the printed guide lays it out.
+
+    Splitting it into "meet the words" / "finish the sentences" / "what amazed
+    you" made her navigate between parts of a single spread, which the book
+    never asks of her.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        from django.contrib.auth import get_user_model
+        from core.models import Family, FamilyMembership
+        from students.models import Student
+        from portal.tokens import make_portal_token
+
+        User = get_user_model()
+        cls.parent = User.objects.create_user(
+            username="op", email="op@e.com", password="pw")
+        cls.family = Family.objects.create(name="OP Fam")
+        FamilyMembership.objects.create(user=cls.parent, family=cls.family, role="parent")
+        cls.child = Student.objects.create(
+            parent=cls.parent, first_name="Violet", grade_level="G03", family=cls.family)
+        cls.token = make_portal_token(cls.child)
+
+    def _seed(self):
+        from io import StringIO
+        from django.core.management import call_command
+        call_command("seed_lexicon_violet", "--for-user", "op", stdout=StringIO())
+
+    def test_each_week_is_a_single_page(self):
+        from curricula.models import Curriculum, Lesson
+        from tutor.lexicon import CURRICULUM_NAME
+        from tutor.models import QuestionSet
+
+        self._seed()
+        cur = Curriculum.objects.get(name=CURRICULUM_NAME, parent=self.parent)
+        lessons = Lesson.objects.filter(chapter__curriculum=cur)
+        self.assertEqual(lessons.count(), 10)
+        for lesson in lessons:
+            sets = QuestionSet.objects.filter(lesson=lesson)
+            self.assertEqual(sets.count(), 1, f"week {lesson.number}")
+            self.assertEqual(sets.first().questions.count(), 13)
+
+    def test_the_page_carries_words_sentences_and_writing_together(self):
+        from tutor.models import Question, QuestionSet
+
+        self._seed()
+        qset = QuestionSet.objects.filter(
+            lesson__number=1, lesson__chapter__curriculum__parent=self.parent).first()
+        kinds = [q.response_type for q in qset.questions.order_by("order")]
+        self.assertEqual(kinds.count(Question.TYPE_CLOZE), 10)
+        self.assertEqual(kinds.count(Question.TYPE_HANDWRITING), 3)
+        # Sentences first, writing last — the order the book uses.
+        self.assertEqual(kinds[:10], [Question.TYPE_CLOZE] * 10)
+        self.assertEqual(kinds[10:], [Question.TYPE_HANDWRITING] * 3)
+
+        resp = self.client.get(
+            reverse("portal:portal_questions", args=[self.token, qset.pk]))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "Paul Erdős")           # who the week is about
+        self.assertContains(resp, "The Boy Who Loved Math")  # the book to read
+        self.assertContains(resp, "inquisitive")          # a word and its meaning
+        self.assertContains(resp, "eager for knowledge")
+        self.assertContains(resp, "handwriting-canvas")   # and the writing
+
+    def test_the_word_list_never_reaches_her_as_raw_markdown(self):
+        """It shipped once showing "## Week 1" and "**focused**" with the
+        asterisks, because the content was dumped instead of rendered."""
+        from tutor.models import QuestionSet
+
+        self._seed()
+        qset = QuestionSet.objects.filter(
+            lesson__number=1, lesson__chapter__curriculum__parent=self.parent).first()
+        html = self.client.get(
+            reverse("portal:portal_questions", args=[self.token, qset.pk])
+        ).content.decode()
+        body = html[html.index("<body"):]
+        self.assertNotIn("**", body)
+        self.assertNotIn("## Week", body)
+        # Rendered as cards instead.
+        self.assertIn("lxw-card", body)
+
+    def test_reseeding_retires_the_old_three_part_shape(self):
+        from curricula.models import Lesson
+        from tutor.models import Material, QuestionSet
+
+        self._seed()
+        lesson = Lesson.objects.get(
+            number=1, chapter__curriculum__parent=self.parent)
+        # Simulate the earlier shape sitting beside the new page.
+        QuestionSet.objects.create(
+            lesson=lesson, family=self.family, status=QuestionSet.APPROVED,
+            title="Week 1 · Paul Erdős — finish the sentences")
+        Material.objects.create(
+            lesson=lesson, family=self.family, title="Week 1: meet the words",
+            student_content="old", status=Material.APPROVED)
+        self._seed()
+        self.assertEqual(QuestionSet.objects.filter(lesson=lesson).count(), 1)
+        self.assertEqual(Material.objects.filter(lesson=lesson).count(), 0)
+
+    def test_a_stale_page_she_has_worked_in_is_kept(self):
+        """Sweeping away the old shape must never take work with it."""
+        from django.utils import timezone
+        from curricula.models import Lesson
+        from tutor.models import QuestionSet, ResponseSheet
+
+        self._seed()
+        lesson = Lesson.objects.get(
+            number=1, chapter__curriculum__parent=self.parent)
+        old = QuestionSet.objects.create(
+            lesson=lesson, family=self.family, status=QuestionSet.APPROVED,
+            title="Week 1 · Paul Erdős — finish the sentences")
+        ResponseSheet.objects.create(
+            question_set=old, child=self.child, answers={"1": "focused"},
+            status=ResponseSheet.SUBMITTED, submitted_at=timezone.now())
+        self._seed()
+        self.assertTrue(QuestionSet.objects.filter(pk=old.pk).exists())
+
+    def test_turning_in_the_week_earns_its_words_on_the_poster(self):
+        """The poster keyed on a title string, which stopped earning anything
+        the moment the page was renamed."""
+        from django.utils import timezone
+        from tutor.models import QuestionSet, ResponseSheet
+
+        self._seed()
+        qset = QuestionSet.objects.filter(
+            lesson__number=1, lesson__chapter__curriculum__parent=self.parent).first()
+        ResponseSheet.objects.create(
+            question_set=qset, child=self.child, answers={"1": "focused"},
+            status=ResponseSheet.SUBMITTED, submitted_at=timezone.now())
+        resp = self.client.get(reverse("portal:lexicon_poster", args=[self.token]))
+        self.assertEqual(resp.context["collected"], 10)

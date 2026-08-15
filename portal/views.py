@@ -827,10 +827,11 @@ def lexicon_poster(request, token):
         question_set__lesson__chapter__curriculum=curriculum,
     ).select_related("question_set", "question_set__lesson")
     for sheet in sheets:
-        if sheet.is_submitted and "finish the sentences" in sheet.question_set.title:
-            number = sheet.question_set.lesson.number
-            if number:
-                earned.add(number)
+        # Keyed on the LESSON, not the set's title: a week is one page now, and
+        # matching on a title string silently stopped earning anything the
+        # moment that title changed.
+        if sheet.is_submitted and sheet.question_set.lesson.number:
+            earned.add(sheet.question_set.lesson.number)
 
     rows = poster_rows(earned)
     collected = sum(1 for row in rows for w in row["words"] if w["earned"])
@@ -1042,10 +1043,21 @@ def portal_material(request, token, pk):
             child=student, lesson_id=material.lesson_id,
             status__in=(LessonProgress.COMPLETED, LessonProgress.SKIPPED),
         ).exists()
+    # An Operation Lexicon week is a word list, and a word list rendered as
+    # markdown bullets is a wall of text. Hand the template the structured week
+    # so it can lay the words out as something worth looking at.
+    lexicon_week = None
+    if material.lesson.chapter.curriculum.name == LEXICON_CURRICULUM_NAME:
+        from tutor.lexicon import WEEKS
+
+        lexicon_week = next(
+            (w for w in WEEKS if w["number"] == material.lesson.number), None)
+
     return render(request, "portal/portal_material.html", {
         "student": student,
         "token": token,
         "material": material,
+        "lexicon_week": lexicon_week,
         "lesson_sets": lesson_sets,
         "is_resolved": is_resolved,
         "can_mark_done": not lesson_sets and not is_resolved,
@@ -1197,10 +1209,21 @@ def portal_questions(request, token, set_pk):
     lesson_material = _visible_materials(student).filter(
         lesson_id=question_set.lesson_id).first()
 
+    # An Operation Lexicon week is one page: the words, then the sentences,
+    # then the writing. The word list is rendered from tutor.lexicon rather than
+    # stored on the set, so correcting a definition needs no re-seed.
+    lexicon_week = None
+    if question_set.lesson.chapter.curriculum.name == LEXICON_CURRICULUM_NAME:
+        from tutor.lexicon import WEEKS
+
+        lexicon_week = next(
+            (w for w in WEEKS if w["number"] == question_set.lesson.number), None)
+
     return render(request, "portal/portal_questions.html", {
         "student": student,
         "token": token,
         "question_set": question_set,
+        "lexicon_week": lexicon_week,
         "questions": questions,
         "sheet": sheet,
         "spellcheck_on": not spelling,

@@ -1,0 +1,70 @@
+{% extends "portal/base_portal.html" %}
+{% load static %}
+{% block title %}My Lexicon · {{ student.first_name }}{% endblock %}
+{% block extra_css %}<link href="{% static 'css/lexicon.css' %}" rel="stylesheet">{% endblock %}
+
+{% block content %}
+<div class="container" style="max-width:900px;">
+
+  <div class="lx-head">
+    <h1 class="lx-title">My Lexicon</h1>
+    <p class="lx-sub">A hundred words for describing people.</p>
+
+    <div class="lx-count">
+      <span class="lx-count-n">{{ collected }}</span>
+      <span class="lx-count-of">of {{ total }} collected</span>
+    </div>
+    <div class="lx-bar" role="progressbar" aria-valuenow="{{ collected }}"
+         aria-valuemin="0" aria-valuemax="{{ total }}"
+         aria-label="Words collected">
+      <div class="lx-bar-fill" style="width: {{ pct }}%;"></div>
+    </div>
+    {% if collected %}
+      <div class="lx-sub">
+        {{ weeks_done }} {{ weeks_done|pluralize:"story,stories" }} read.
+        Tap any word you've collected to see what it means.
+      </div>
+    {% else %}
+      <div class="lx-sub">
+        Finish a week's sentences and those ten words are yours — they'll fill in here.
+      </div>
+    {% endif %}
+  </div>
+
+  {% for row in rows %}
+    <section class="lx-row lx-week-{{ row.number }}{% if row.earned %} is-earned{% endif %}">
+      <div class="lx-row-head">
+        <span class="lx-num">{{ row.number }}</span>
+        <div>
+          <div class="lx-person">{{ row.person }}</div>
+          <div class="lx-role">{{ row.role }}</div>
+        </div>
+        {% if row.earned %}<span class="lx-ribbon" title="Collected">★</span>{% endif %}
+      </div>
+      <div class="lx-words">
+        {% for w in row.words %}
+          {% if w.earned %}
+            {# A collected word is tappable — the definition is the reward. #}
+            <button type="button" class="lx-word is-earned"
+                    data-definition="{{ w.definition }}" data-word="{{ w.word }}">
+              {{ w.word }}
+            </button>
+          {% else %}
+            <span class="lx-word" aria-hidden="false">{{ w.word }}</span>
+          {% endif %}
+        {% endfor %}
+      </div>
+    </section>
+  {% endfor %}
+
+  <div class="lx-meaning" id="meaning" hidden aria-live="polite">
+    <div class="lx-meaning-word" id="meaning-word"></div>
+    <div class="lx-meaning-text" id="meaning-text"></div>
+  </div>
+
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'js/lexicon-poster.js' %}"></script>
+{% endblock %}

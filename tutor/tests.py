@@ -3090,7 +3090,7 @@ class LexiconContentTests(SimpleTestCase):
 
     @property
     def weeks(self):
-        from tutor.management.commands._lexicon_content import WEEKS
+        from tutor.lexicon import WEEKS
         return WEEKS
 
     def test_ten_weeks_ten_words_ten_sentences(self):
@@ -3105,7 +3105,7 @@ class LexiconContentTests(SimpleTestCase):
         Asserting only the list length would hide a transcription slip that
         duplicated a word by accident."""
         from collections import Counter
-        from tutor.management.commands._lexicon_content import all_words
+        from tutor.lexicon import all_words
         counts = Counter(all_words())
         self.assertEqual(len(all_words()), 100)
         self.assertEqual(len(counts), 99)
@@ -3283,3 +3283,133 @@ class HandwritingGradingTests(HandwritingTests):
         self.assertFalse(sheet.is_handwritten_only)
         self.assertNotIn("NOTE TO THE GRADER", sheet.as_worklog_text())
         self.assertIn("Paul Erdős amazed me.", sheet.as_worklog_text())
+
+
+class LexiconPosterTests(TestCase):
+    """The hundred-word poster.
+
+    The paper guide has her colour in each week's words on a wall poster; this
+    is that, except it fills itself from work she has actually turned in. It has
+    to be REACHABLE from the unit — a poster nobody can find is not a reward.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        from django.contrib.auth import get_user_model
+        from core.models import Family, FamilyMembership
+        from curricula.models import Chapter, Curriculum, CurriculumPlacement, Lesson
+        from students.models import Student
+        from portal.tokens import make_portal_token
+        from tutor.lexicon import CURRICULUM_NAME, WEEKS
+        from tutor.models import Question, QuestionSet
+
+        User = get_user_model()
+        cls.parent = User.objects.create_user(
+            username="lx", email="lx@e.com", password="pw")
+        cls.family = Family.objects.create(name="LX Fam")
+        FamilyMembership.objects.create(user=cls.parent, family=cls.family, role="parent")
+        cls.child = Student.objects.create(
+            parent=cls.parent, first_name="Violet", grade_level="G03", family=cls.family)
+        cls.cur = Curriculum.objects.create(
+            parent=cls.parent, family=cls.family, name=CURRICULUM_NAME,
+            subject="Language Arts")
+        chap = Chapter.objects.create(curriculum=cls.cur, number=1, title="Traits")
+        CurriculumPlacement.objects.create(child=cls.child, curriculum=cls.cur)
+        cls.sets = {}
+        for week in WEEKS[:3]:
+            lesson = Lesson.objects.create(
+                chapter=chap, order=week["number"], number=week["number"],
+                title=week["person"])
+            qset = QuestionSet.objects.create(
+                lesson=lesson, family=cls.family, status=QuestionSet.APPROVED,
+                title=f"Week {week['number']} · {week['person']} — finish the sentences")
+            Question.objects.create(
+                question_set=qset, order=1, category="grammar",
+                response_type=Question.TYPE_CLOZE, passage="_____ test.")
+            cls.sets[week["number"]] = qset
+        cls.token = make_portal_token(cls.child)
+
+    def _url(self):
+        return reverse("portal:lexicon_poster", args=[self.token])
+
+    def _submit(self, week_number):
+        from django.utils import timezone
+        from tutor.models import ResponseSheet
+        qset = self.sets[week_number]
+        q = qset.questions.first()
+        ResponseSheet.objects.create(
+            question_set=qset, child=self.child,
+            answers={str(q.pk): "focused"},
+            status=ResponseSheet.SUBMITTED, submitted_at=timezone.now())
+
+    def test_it_starts_empty_but_shows_what_is_coming(self):
+        """Seeing the words she hasn't earned yet is the point of a poster."""
+        resp = self.client.get(self._url())
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.context["collected"], 0)
+        self.assertEqual(resp.context["total"], 100)
+        self.assertContains(resp, "inquisitive")     # week 1, not yet earned
+        self.assertContains(resp, "environmentalist")  # week 10, far away
+
+    def test_turning_in_a_week_colours_in_its_ten_words(self):
+        self._submit(1)
+        resp = self.client.get(self._url())
+        self.assertEqual(resp.context["collected"], 10)
+        self.assertEqual(resp.context["weeks_done"], 1)
+        rows = {r["number"]: r for r in resp.context["rows"]}
+        self.assertTrue(rows[1]["earned"])
+        self.assertFalse(rows[2]["earned"])
+        self.assertTrue(all(w["earned"] for w in rows[1]["words"]))
+
+    def test_work_started_but_not_turned_in_earns_nothing(self):
+        """The poster records work finished, not work opened — otherwise it
+        colours itself in for a page she merely looked at."""
+        from tutor.models import ResponseSheet
+        qset = self.sets[1]
+        ResponseSheet.objects.create(
+            question_set=qset, child=self.child,
+            answers={str(qset.questions.first().pk): "focused"})
+        self.assertEqual(self.client.get(self._url()).context["collected"], 0)
+
+    def test_the_bar_is_a_percentage_not_a_count(self):
+        """It reads correctly only by accident while the total is exactly 100."""
+        self._submit(1)
+        self._submit(2)
+        resp = self.client.get(self._url())
+        self.assertEqual(resp.context["pct"], 20)
+
+    def test_a_sibling_cannot_read_her_poster(self):
+        from portal.tokens import make_portal_token
+        from students.models import Student
+        sibling = Student.objects.create(
+            parent=self.parent, first_name="Kaylin", grade_level="G07",
+            family=self.family)
+        self._submit(1)
+        resp = self.client.get(
+            reverse("portal:lexicon_poster", args=[make_portal_token(sibling)]))
+        # Not placed in the unit, so there is no poster for her at all.
+        self.assertEqual(resp.status_code, 404)
+
+    def test_a_bad_token_gets_nothing(self):
+        self.assertEqual(
+            self.client.get(
+                reverse("portal:lexicon_poster", args=["not-a-token"])).status_code, 404)
+
+    def test_the_unit_page_links_to_the_poster(self):
+        """Built-but-unreachable is not built. This has bitten twice."""
+        resp = self.client.get(
+            reverse("portal:portal_subject", args=[self.token, self.cur.pk]))
+        self.assertEqual(resp.status_code, 200)
+        self.assertTrue(resp.context["show_lexicon_poster"])
+        self.assertContains(resp, self._url())
+
+    def test_other_units_do_not_advertise_a_poster_they_lack(self):
+        from curricula.models import Curriculum, CurriculumPlacement
+        other = Curriculum.objects.create(
+            parent=self.parent, family=self.family, name="Dimensions Math 3A",
+            subject="Math")
+        CurriculumPlacement.objects.create(child=self.child, curriculum=other)
+        resp = self.client.get(
+            reverse("portal:portal_subject", args=[self.token, other.pk]))
+        self.assertFalse(resp.context["show_lexicon_poster"])
+        self.assertNotContains(resp, self._url())

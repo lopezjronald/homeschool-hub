@@ -17,6 +17,9 @@ its definition boxes under decorative artwork). Those are worth a glance against
 the printed copy; everything else is verbatim.
 """
 
+# The curriculum this content is seeded into; the poster looks it up by name.
+CURRICULUM_NAME = "Operation Lexicon: Traits of Character"
+
 # Each week: the person, what they did, the book, and the ten words.
 # Sentences are (text_with_____, answer). The blank is five underscores.
 WEEKS = [
@@ -458,3 +461,36 @@ def all_words():
         for word, _definition in week["words"]:
             out.append(word)
     return out
+
+
+def week_for_word(word):
+    """Which week introduced a word — the poster colours by week."""
+    for week in WEEKS:
+        for candidate, _definition in week["words"]:
+            if candidate == word:
+                return week["number"]
+    return None
+
+
+def poster_rows(earned_weeks):
+    """The poster: ten rows of ten words, each marked earned or still to come.
+
+    ``earned_weeks`` is the set of week numbers she has finished. A word is
+    earned when she has turned in that week's sentences — the poster is a record
+    of work done, not a checklist she can tick.
+    """
+    rows = []
+    for week in WEEKS:
+        got = week["number"] in earned_weeks
+        rows.append({
+            "number": week["number"],
+            "person": week["person"],
+            "role": week["role"],
+            "book": week["book"],
+            "earned": got,
+            "words": [
+                {"word": w, "definition": d, "earned": got}
+                for w, d in week["words"]
+            ],
+        })
+    return rows

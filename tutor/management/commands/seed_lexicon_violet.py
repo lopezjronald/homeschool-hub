@@ -23,9 +23,7 @@ from curricula.models import Chapter, Curriculum, CurriculumPlacement, Lesson
 from students.models import Student
 from tutor.models import Material, Question, QuestionSet, ResponseSheet
 
-from ._lexicon_content import WEEKS
-
-CURRICULUM_NAME = "Operation Lexicon: Traits of Character"
+from tutor.lexicon import CURRICULUM_NAME, WEEKS
 
 RUBRIC = """## Operation Lexicon — how this is checked
 

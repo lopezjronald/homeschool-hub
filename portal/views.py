@@ -38,6 +38,8 @@ from tutor import ai, grading
 from tutor.models import Material, QuestionSet, ResponseSheet
 from worklog.models import WorkLogEntry
 
+from tutor.lexicon import CURRICULUM_NAME as LEXICON_CURRICULUM_NAME
+
 from .tokens import student_from_token
 
 
@@ -799,6 +801,63 @@ def _spelling_card(student, today):
     }
 
 
+
+def lexicon_poster(request, token):
+    """The hundred-word poster, filling in as she collects them.
+
+    The paper guide has her colour in each week's words on a wall poster. This
+    is that, except it colours itself from work she has actually turned in — a
+    record rather than a checklist she can tick.
+    """
+    student = _resolve_student(token)
+    from tutor.lexicon import CURRICULUM_NAME, poster_rows
+
+    curriculum = (
+        viewable_curricula_for_student(student)
+        .filter(name=CURRICULUM_NAME)
+        .first()
+    )
+    if curriculum is None:
+        raise Http404
+
+    # A week is earned when its sentences have been turned in.
+    earned = set()
+    sheets = ResponseSheet.objects.filter(
+        child=student,
+        question_set__lesson__chapter__curriculum=curriculum,
+    ).select_related("question_set", "question_set__lesson")
+    for sheet in sheets:
+        if sheet.is_submitted and "finish the sentences" in sheet.question_set.title:
+            number = sheet.question_set.lesson.number
+            if number:
+                earned.add(number)
+
+    rows = poster_rows(earned)
+    collected = sum(1 for row in rows for w in row["words"] if w["earned"])
+    total = sum(len(row["words"]) for row in rows)
+    return render(request, "portal/lexicon_poster.html", {
+        "student": student,
+        "token": token,
+        "curriculum": curriculum,
+        "rows": rows,
+        "collected": collected,
+        "total": total,
+        # A real percentage: the bar was reading the raw count, which is only
+        # correct while the total happens to be exactly 100.
+        "pct": round(collected / total * 100) if total else 0,
+        "weeks_done": len(earned),
+    })
+
+
+def viewable_curricula_for_student(student):
+    """Curricula this child is actually placed in and allowed to see."""
+    return Curriculum.objects.filter(
+        pk__in=student.placements.filter(
+            is_active=True, curriculum__is_active=True
+        ).values_list("curriculum_id", flat=True)
+    )
+
+
 def portal_home(request, token):
     """The kid's 'Today' surface: one calm card per subject, one next step each."""
     from curricula.models import Lesson
@@ -938,6 +997,8 @@ def portal_subject(request, token, curriculum_id):
                 break
 
     return render(request, "portal/portal_subject.html", {
+        # Only this unit has a poster; the link must not appear on others.
+        "show_lexicon_poster": curriculum.name == LEXICON_CURRICULUM_NAME,
         "student": student,
         "token": token,
         "curriculum": curriculum,

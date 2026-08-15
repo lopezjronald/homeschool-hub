@@ -1,0 +1,91 @@
+/* The hundred-word Lexicon poster.
+ *
+ * The paper guide has her colour in each week's words on a wall poster. This is
+ * that: words she has not reached yet are outlines waiting to be filled, and a
+ * finished week fills in with its own colour so the page shows, at a glance,
+ * how much of the wall is hers.
+ */
+
+.lx-head { text-align: center; margin-bottom: 1.5rem; }
+.lx-title { font-size: 2.1rem; font-weight: 800; margin-bottom: .1rem; }
+.lx-sub { color: #6b7280; font-size: .95rem; }
+
+.lx-count { margin: .75rem 0 .35rem; }
+.lx-count-n { font-size: 2.6rem; font-weight: 800; color: var(--ss-teal, #0A5C63); }
+.lx-count-of { font-size: 1rem; color: #6b7280; margin-left: .25rem; }
+
+.lx-bar {
+  height: 12px; border-radius: 999px; background: #e5e7eb;
+  overflow: hidden; max-width: 520px; margin: 0 auto .5rem;
+}
+.lx-bar-fill {
+  height: 100%; border-radius: 999px; transition: width .4s ease;
+  background: linear-gradient(90deg, #0A5C63, #1E7A50, #b45309);
+}
+
+.lx-row {
+  background: #fff; border: 1px solid rgba(20, 35, 28, .1);
+  border-radius: 16px; padding: .9rem 1rem 1rem; margin-bottom: .85rem;
+}
+.lx-row-head { display: flex; align-items: center; gap: .7rem; margin-bottom: .6rem; }
+.lx-num {
+  width: 34px; height: 34px; flex: none; border-radius: 50%;
+  display: grid; place-items: center; font-weight: 800;
+  background: #eef2f1; color: #6b7280;
+}
+.lx-row.is-earned .lx-num { background: var(--lx-tint, #0A5C63); color: #fff; }
+.lx-person { font-weight: 700; }
+.lx-role { font-size: .8rem; color: #6b7280; }
+.lx-ribbon { margin-left: auto; font-size: 1.4rem; color: #d9a441; }
+
+.lx-words { display: flex; flex-wrap: wrap; gap: .4rem; }
+
+/* Not yet collected: an outline waiting to be filled. Still readable — seeing
+   what is coming is part of the point — but plainly not hers yet. */
+.lx-word {
+  display: inline-block; padding: .42rem .8rem; border-radius: 999px;
+  font-family: Georgia, "Times New Roman", serif; font-size: 1.02rem;
+  border: 2px dashed #d5dbd8; color: #b6c2bd; background: transparent;
+}
+
+/* Collected: filled in the week's colour, and tappable for its meaning. */
+.lx-word.is-earned {
+  border: 2px solid var(--lx-tint, #0A5C63);
+  background: var(--lx-wash, #e8f4f3);
+  color: var(--lx-ink, #0A5C63);
+  cursor: pointer; font-weight: 600;
+}
+.lx-word.is-earned:hover, .lx-word.is-earned:focus { filter: brightness(0.96); }
+.lx-word.is-open { outline: 3px solid rgba(10, 92, 99, .35); }
+
+/* Ten weeks, ten colours — so a full poster reads as a collection rather than
+   a wall of one hue. */
+.lx-week-1  { --lx-tint:#0A5C63; --lx-wash:#e6f3f3; --lx-ink:#07474d; }
+.lx-week-2  { --lx-tint:#1E7A50; --lx-wash:#e8f5ee; --lx-ink:#155c3c; }
+.lx-week-3  { --lx-tint:#b45309; --lx-wash:#fdf0e2; --lx-ink:#8a3f07; }
+.lx-week-4  { --lx-tint:#7c3aed; --lx-wash:#f2ecfe; --lx-ink:#5b21b6; }
+.lx-week-5  { --lx-tint:#be185d; --lx-wash:#fdeaf2; --lx-ink:#9d174d; }
+.lx-week-6  { --lx-tint:#0369a1; --lx-wash:#e6f2fa; --lx-ink:#024a73; }
+.lx-week-7  { --lx-tint:#4338ca; --lx-wash:#ecebfb; --lx-ink:#312a94; }
+.lx-week-8  { --lx-tint:#a16207; --lx-wash:#fbf3e2; --lx-ink:#7a4a05; }
+.lx-week-9  { --lx-tint:#0f766e; --lx-wash:#e6f4f2; --lx-ink:#0b5952; }
+.lx-week-10 { --lx-tint:#15803d; --lx-wash:#e9f6ed; --lx-ink:#106030; }
+
+/* The meaning panel: sticks to the bottom so a tap never scrolls the page away
+   from the word she just touched. */
+.lx-meaning {
+  position: sticky; bottom: 12px; margin-top: 1rem;
+  background: #fffdf7; border: 2px solid var(--ss-teal, #0A5C63);
+  border-radius: 14px; padding: .8rem 1rem;
+  box-shadow: 0 6px 20px rgba(20, 35, 28, .12);
+}
+.lx-meaning-word {
+  font-family: Georgia, serif; font-size: 1.3rem; font-weight: 700;
+  color: var(--ss-teal, #0A5C63);
+}
+.lx-meaning-text { color: #374151; }
+
+@media print {
+  .lx-word { border-color: #999; color: #999; }
+  .lx-meaning { display: none; }
+}

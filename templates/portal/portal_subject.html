@@ -24,6 +24,14 @@
         {% if current_lesson %}· now on <strong>{{ current_lesson.code }}</strong>{% endif %}</div>
     {% endif %}
 
+    {% if show_lexicon_poster %}
+      {% comment %}The poster is the reward for this unit — it has to be reachable
+      from the unit, not just by knowing its URL.{% endcomment %}
+      <a href="{% url 'portal:lexicon_poster' token=token %}" class="portal-poster-link">
+        🏆 My Lexicon — see the words I've collected
+      </a>
+    {% endif %}
+
     {% if curriculum.is_external %}
       <a href="{{ curriculum.website_url }}" target="_blank" rel="noopener noreferrer" class="btn btn-amber btn-lg portal-continue">
         Open {{ curriculum.name }} ↗

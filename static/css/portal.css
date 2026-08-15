@@ -1375,3 +1375,12 @@ button.portal-subject-card {
   border: 2px solid rgba(15,61,46,0.25); background: var(--pen); cursor: pointer;
 }
 .handwriting-pen.is-active { outline: 3px solid rgba(10,92,99,0.45); }
+
+/* Link from the Operation Lexicon unit page through to its word poster. */
+.portal-poster-link {
+  display: inline-block; margin: .25rem 0 .75rem;
+  padding: .6rem 1rem; border-radius: 12px;
+  background: #fff7e6; border: 2px solid #f0c674;
+  color: #8a5b12; font-weight: 700; text-decoration: none;
+}
+.portal-poster-link:hover, .portal-poster-link:focus { background: #fdefd0; color: #6d470e; }

@@ -4405,3 +4405,178 @@ class OneTrueSeamTests(OneTrueSentenceTests):
         """The wording follows the seed's flag rather than restating it."""
         self._seed()
         self.assertIn("Write each one by hand", self._page(1, practice=True))
+
+
+class RickshawGirlTests(TestCase):
+    """Violet's Blackbird Level 3 guide for Rickshaw Girl."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from django.contrib.auth import get_user_model
+        from core.models import Family, FamilyMembership
+        from portal.tokens import make_portal_token
+
+        User = get_user_model()
+        cls.parent = User.objects.create_user(
+            username="rg", email="rg@e.com", password="pw")
+        cls.family = Family.objects.create(name="RG Fam")
+        FamilyMembership.objects.create(
+            user=cls.parent, family=cls.family, role="parent")
+        cls.child = Student.objects.create(
+            parent=cls.parent, first_name="Violet", grade_level="G03",
+            family=cls.family)
+        cls.token = make_portal_token(cls.child)
+
+    def _seed(self):
+        from io import StringIO
+        from django.core.management import call_command
+        call_command("seed_rickshaw_girl", "--for-user", "rg", stdout=StringIO())
+
+    def _set(self, title):
+        from tutor.models import QuestionSet
+        from tutor.rickshaw import CURRICULUM_NAME
+        return QuestionSet.objects.get(
+            title=title, lesson__chapter__curriculum__name=CURRICULUM_NAME,
+            lesson__chapter__curriculum__parent=self.parent)
+
+    def _page(self, title):
+        return self.client.get(reverse(
+            "portal:portal_questions", args=[self.token, self._set(title).pk])
+        ).content.decode()
+
+    def test_the_guides_five_sections_are_all_there(self):
+        from curricula.models import Lesson
+        from tutor.models import Question, QuestionSet
+        from tutor.rickshaw import CURRICULUM_NAME
+
+        self._seed()
+        lessons = Lesson.objects.filter(
+            chapter__curriculum__name=CURRICULUM_NAME,
+            chapter__curriculum__parent=self.parent)
+        self.assertEqual(lessons.count(), 5)          # four sections + the project
+        sets = QuestionSet.objects.filter(lesson__in=lessons)
+        self.assertEqual(sets.count(), 21)            # 4 x 5 + the final project
+        self.assertEqual(
+            Question.objects.filter(question_set__in=sets).count(), 82)
+
+    def test_vocabulary_keeps_the_guides_own_two_exercises(self):
+        """Level 3 matches words to numbered definitions and fills blanks. Both
+        widgets already existed, so the page keeps the guide's format instead of
+        flattening it into text boxes."""
+        import json
+        from tutor.models import Question
+
+        self._seed()
+        match, fill = self._set("Section 1 · Vocabulary").questions.order_by("order")
+        self.assertEqual(match.response_type, Question.TYPE_MATCHING)
+        self.assertEqual(fill.response_type, Question.TYPE_FILL_BLANK)
+
+        data = json.loads(match.passage)
+        self.assertEqual(len(data["words"]), 6)
+        self.assertEqual(len(data["definitions"]), 6)
+        # Every definition carries the word it belongs to, and each word is used
+        # exactly once — a mis-paired key is what this catches.
+        self.assertEqual(sorted(d["word"] for d in data["definitions"]),
+                         sorted(data["words"]))
+        by_n = {d["n"]: d["word"] for d in data["definitions"]}
+        self.assertEqual(by_n[3], "rickshaw")     # "a small, two-wheeled vehicle"
+        self.assertEqual(by_n[1], "hut")          # "a small, roughly made shelter"
+
+        blanks = json.loads(fill.passage)["sentences"]
+        self.assertEqual(len(blanks), 6)
+        for s in blanks:
+            # The widget splits on six underscores; the content stores three.
+            self.assertIn("______", s["text"])
+            self.assertNotIn("___ ", s["text"].replace("______", ""))
+
+    def test_the_blanks_that_need_a_different_ending_get_one(self):
+        """Section 4 prints 'scold' and 'labor' in the word list, but its
+        sentences want 'scolded' and 'labored'. Keying the base form would mark
+        her right answer wrong."""
+        import json
+
+        self._seed()
+        _match, fill = self._set("Section 4 · Vocabulary").questions.order_by("order")
+        words = [s["word"] for s in json.loads(fill.passage)["sentences"]]
+        self.assertIn("scolded", words)
+        self.assertIn("labored", words)
+
+    def test_the_journal_names_the_sections_own_characters(self):
+        from tutor.models import Question
+
+        self._seed()
+        q = self._set("Section 1 · Journal").questions.order_by("order").first()
+        self.assertEqual(q.response_type, Question.TYPE_CHARACTERS)
+        self.assertEqual(q.character_names,
+                         ["Naima", "Rashida", "Father", "Saleem"])
+        # Section 4 swaps Rashida and Saleem for the widow.
+        q4 = self._set("Section 4 · Journal").questions.order_by("order").first()
+        self.assertIn("The Widow", q4.character_names)
+        self.assertNotIn("Rashida", q4.character_names)
+
+    def test_the_final_draft_is_recopied_by_hand(self):
+        """The guide asks for it 'using your best penmanship'. The rough draft
+        stays typed — it is meant to be revised."""
+        from tutor.models import Question
+
+        self._seed()
+        rough, final = self._set(
+            "Section 1 · Writing Exercise").questions.order_by("order")
+        self.assertEqual(rough.response_type, Question.TYPE_PARAGRAPH)
+        self.assertEqual(rough.paragraph_sections,
+                         ["Introduction / Topic Sentence",
+                          "Supporting Sentences", "Concluding Sentence"])
+        self.assertEqual(final.response_type, Question.TYPE_HANDWRITING)
+        self.assertIn("penmanship", final.prompt)
+
+    def test_discussion_is_teacher_led_not_written(self):
+        from tutor.models import QuestionSet
+
+        self._seed()
+        qset = self._set("Section 3 · Discussion")
+        self.assertEqual(qset.mode, QuestionSet.MODE_DISCUSSION)
+        self.assertEqual(qset.questions.count(), 8)
+
+    def test_the_pages_render_for_her(self):
+        self._seed()
+        html = self._page("Section 1 · Vocabulary")
+        self.assertIn("vocab-matching", html)
+        self.assertIn("vocab-fillblank", html)
+        self.assertIn("threshold", html)
+        self.assertIn("the sill of a door", html)
+        self.assertEqual(html.count("vocab-blank-select"), 6)
+        html = self._page("Section 1 · Journal")
+        self.assertEqual(html.count("character-field"), 4)
+
+    def test_a_dry_run_writes_nothing(self):
+        from io import StringIO
+        from django.core.management import call_command
+        from curricula.models import Curriculum, Lesson
+
+        out = StringIO()
+        call_command("seed_rickshaw_girl", "--for-user", "rg", "--dry-run",
+                     stdout=out)
+        self.assertIn("nothing written", out.getvalue())
+        self.assertEqual(Curriculum.objects.count(), 0)
+        self.assertEqual(Lesson.objects.count(), 0)
+
+    def test_reseeding_restores_a_question_that_was_tampered_with(self):
+        from tutor.models import Question
+
+        self._seed()
+        q = self._set("Section 1 · Vocabulary").questions.order_by("order").first()
+        Question.objects.filter(pk=q.pk).update(
+            response_type=Question.TYPE_TEXT, passage="", prompt="STALE")
+        self._seed()
+        q.refresh_from_db()
+        self.assertEqual(q.response_type, Question.TYPE_MATCHING)
+        self.assertIn("threshold", q.passage)
+
+    def test_reseeding_changes_nothing(self):
+        from tutor.models import Question, QuestionSet
+
+        self._seed()
+        before = (QuestionSet.objects.count(), Question.objects.count())
+        self._seed()
+        self.assertEqual(
+            (QuestionSet.objects.count(), Question.objects.count()), before)

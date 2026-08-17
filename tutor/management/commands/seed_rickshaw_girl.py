@@ -91,7 +91,9 @@ and a **concluding sentence**.
   word choice adequate but not creative.
 - **Basic:** topic addressed but unclear; support weak; sentences stagnant.
 
-The final draft is thoroughly edited and recopied in her best handwriting.""" + MASTERY_NOTE
+Judge the writing from the typed final draft — that is the version the
+grader can read. The handwritten recopy is penmanship: judge the letters,
+not the content, and only a person can do that.""" + MASTERY_NOTE
 
 DISCUSSION_RUBRIC = """## Blackbird — Explore: Discussion
 
@@ -197,16 +199,18 @@ class Command(BaseCommand):
 
     def _set(self, lesson, family, title, *, intro, rubric, questions,
              mode=None, reading=""):
+        # Written unconditionally. Omitting them when they are empty meant the
+        # Final Project set — the only one that passes neither — could keep a
+        # tampered mode forever, and a set stuck in discussion mode is invisible
+        # to her and cannot be restored by re-seeding.
         defaults = {
             "family": family,
             "intro": intro,
             "rubric": rubric,
             "status": QuestionSet.APPROVED,
+            "reading": reading,
+            "mode": mode or QuestionSet.MODE_STUDENT,
         }
-        if reading:
-            defaults["reading"] = reading
-        if mode:
-            defaults["mode"] = mode
         qset, _ = QuestionSet.objects.update_or_create(
             lesson=lesson, title=title, defaults=defaults)
         for order, (category, prompt, extra) in enumerate(questions, start=1):
@@ -252,14 +256,31 @@ class Command(BaseCommand):
                 for i, text in enumerate(section["definitions"])
             ],
         }
-        # The widget's blank marker is six underscores; the content stores three.
+        # The fill-in bank offers what actually fits the blanks, which is NOT
+        # always the printed word list: two of section 4's sentences want
+        # "scolded" and "labored" where the list prints "scold" and "labor".
+        # The dropdown is built from this bank, so keying a blank to a word the
+        # bank doesn't carry makes that row impossible — she would pick the only
+        # sensible option, be told she is wrong, and never be able to finish.
+        # The MATCHING exercise above keeps the printed list; only this one bends.
+        answers = [word for _sentence, word in section["blanks"]]
+        bank = sorted(set(answers), key=lambda w: (
+            # keep the printed order where the answer is just an inflection
+            next((i for i, p in enumerate(words) if w.startswith(p)), len(words)), w))
         fill = {
-            "words": words,
+            "words": bank,
+            # The widget's blank marker is six underscores; content stores three.
             "sentences": [
                 {"text": sentence.replace("___", "______"), "word": word}
                 for sentence, word in section["blanks"]
             ],
         }
+        missing = [w for w in answers if w not in bank]
+        if missing:
+            raise CommandError(
+                "Section %d: fill-blank answers %r are not in the bank %r — "
+                "those rows could never be answered."
+                % (section["number"], missing, bank))
         return self._set(
             lesson, family, "Section %d · Vocabulary" % section["number"],
             reading=section["chapters"],
@@ -305,10 +326,15 @@ class Command(BaseCommand):
                       "Introduction / Topic Sentence",
                       "Supporting Sentences",
                       "Concluding Sentence"]})}),
+                # The paragraph widget above already ends in a typed final
+                # draft, and that typed version is what gets graded — the AI is
+                # told it cannot read handwriting. So this is named for what it
+                # actually is: the guide's penmanship recopy, not a second
+                # place to compose.
                 ("application",
-                 "FINAL DRAFT — thoroughly edit your rough draft, make any "
-                 "necessary changes, then recopy your final version here using "
-                 "your best penmanship.",
+                 "BEST HANDWRITING — now recopy your finished paragraph here by "
+                 "hand, using your best penmanship. Copy it exactly as you "
+                 "polished it above; this one is for the writing itself.",
                  {"response_type": _type("final_draft")}),
             ],
         )

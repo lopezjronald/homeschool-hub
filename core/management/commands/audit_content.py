@@ -143,15 +143,24 @@ class Command(BaseCommand):
         if not data:
             self.problem(f"question #{q.pk} ({q.response_type}) has unreadable exercise data")
             return
-        if q.response_type != Question.TYPE_MATCHING:
-            return
         pool = set(data.get("words") or [])
-        answers = {d.get("word") for d in (data.get("definitions") or [])}
+        if q.response_type == Question.TYPE_MATCHING:
+            kind, answers = "matching", {
+                d.get("word") for d in (data.get("definitions") or [])}
+        elif q.response_type == Question.TYPE_FILL_BLANK:
+            # Fill-blank used to return early here, so a course whose blanks
+            # could never be selected audited clean. The dropdown is built from
+            # the same pool, so the failure is identical: a correct answer the
+            # child cannot pick, and a page she can never finish.
+            kind, answers = "fill-blank", {
+                s.get("word") for s in (data.get("sentences") or [])}
+        else:
+            return
         if not pool or not answers:
-            self.problem(f"question #{q.pk} matching has an empty pool or no rows")
+            self.problem(f"question #{q.pk} {kind} has an empty pool or no rows")
         elif answers - pool:
             # Unwinnable: a correct answer the child cannot pick.
-            self.problem(f"question #{q.pk} matching expects answers that are not in the "
+            self.problem(f"question #{q.pk} {kind} expects answers that are not in the "
                          f"pool: {sorted(answers - pool)}")
 
     def _check_manga(self):

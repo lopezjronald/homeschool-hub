@@ -4489,17 +4489,49 @@ class RickshawGirlTests(TestCase):
             self.assertIn("______", s["text"])
             self.assertNotIn("___ ", s["text"].replace("______", ""))
 
-    def test_the_blanks_that_need_a_different_ending_get_one(self):
-        """Section 4 prints 'scold' and 'labor' in the word list, but its
-        sentences want 'scolded' and 'labored'. Keying the base form would mark
-        her right answer wrong."""
+    def test_every_blank_can_actually_be_answered(self):
+        """THE one that matters. The dropdown is built from the bank, so a blank
+        keyed to a word the bank doesn't carry can never be selected: she picks
+        the only sensible option, is told she is wrong, and can never finish the
+        page. Section 4 shipped exactly that — 'scolded' and 'labored' keyed
+        against a bank printing 'scold' and 'labor'."""
         import json
 
         self._seed()
-        _match, fill = self._set("Section 4 · Vocabulary").questions.order_by("order")
-        words = [s["word"] for s in json.loads(fill.passage)["sentences"]]
-        self.assertIn("scolded", words)
-        self.assertIn("labored", words)
+        for n in (1, 2, 3, 4):
+            fill = self._set("Section %d · Vocabulary" % n).questions.order_by("order")[1]
+            data = json.loads(fill.passage)
+            bank = set(data["words"])
+            for sentence in data["sentences"]:
+                self.assertIn(sentence["word"], bank,
+                              "section %d: %r is not selectable" % (n, sentence["word"]))
+
+    def test_the_blanks_that_need_a_different_ending_offer_it(self):
+        """Section 4 prints 'scold' and 'labor' in its word list, but its
+        sentences want 'scolded' and 'labored'. The bank has to carry the form
+        the sentence needs — the matching list keeps the printed one."""
+        import json
+
+        self._seed()
+        match, fill = self._set("Section 4 · Vocabulary").questions.order_by("order")
+        self.assertIn("scolded", json.loads(fill.passage)["words"])
+        self.assertIn("labored", json.loads(fill.passage)["words"])
+        # The matching exercise still uses the guide's printed base forms.
+        self.assertIn("scold", json.loads(match.passage)["words"])
+        self.assertNotIn("scolded", json.loads(match.passage)["words"])
+
+    def test_the_dropdown_on_her_page_offers_every_answer(self):
+        """The data being right is not enough — this is what she actually sees."""
+        import re
+
+        self._seed()
+        html = self._page("Section 4 · Vocabulary")
+        block = html[html.index("vocab-fillblank"):]
+        options = set(re.findall(r'<option value="([^"]+)"', block))
+        needed = set(re.findall(r"data-word=\"([^\"]+)\"", block))
+        self.assertTrue(needed)
+        self.assertTrue(needed <= options,
+                        "unselectable: %s" % (needed - options))
 
     def test_the_journal_names_the_sections_own_characters(self):
         from tutor.models import Question
@@ -4580,3 +4612,75 @@ class RickshawGirlTests(TestCase):
         self._seed()
         self.assertEqual(
             (QuestionSet.objects.count(), Question.objects.count()), before)
+
+
+class RickshawContentTests(TestCase):
+    """Semantic spot-checks on the transcription.
+
+    The bijection check in RickshawGirlTests cannot catch a mis-pairing: swap
+    two definition numbers and it is still a bijection. These pin the meaning,
+    across every section rather than only the first.
+    """
+
+    def test_each_word_means_what_its_definition_says(self):
+        from tutor.rickshaw import SECTIONS, section_by_number
+
+        # (section, word, a phrase that must appear in ITS definition)
+        for n, word, phrase in [
+            (1, "hut", "shelter"), (1, "rickshaw", "two-wheeled"),
+            (1, "threshold", "sill"), (1, "grime", "dirt"),
+            (2, "coiled", "wound circles"), (2, "recognize", "know and remember"),
+            (2, "lotus", "flowering plant"), (2, "disguise", "change the usual appearance"),
+            (3, "idle", "doing nothing"), (3, "numb", "unable to feel"),
+            (3, "symmetry", "two sides or halves"), (3, "dim", "not bright"),
+            (4, "decent", "polite, moral"), (4, "jubilant", "great joy"),
+            (4, "fierce", "wild or threatening"), (4, "scold", "find fault"),
+        ]:
+            section = section_by_number(n)
+            number = dict(section["vocab"])[word]
+            definition = section["definitions"][number - 1]
+            self.assertIn(phrase, definition,
+                          "section %d: %r points at %r" % (n, word, definition))
+        self.assertEqual(len(SECTIONS), 4)
+
+    def test_each_blank_takes_the_word_that_fits_it(self):
+        from tutor.rickshaw import section_by_number
+
+        # (section, a phrase from the sentence, the word that belongs in it)
+        for n, phrase, word in [
+            (1, "toured part of the city", "rickshaw"),
+            (1, "kitchen sink", "grime"),
+            (1, "carried his bride across", "threshold"),
+            (2, "rattlesnake", "coiled"),
+            (2, "Hulk costume", "disguise"),
+            (2, "sour milk", "grim"),
+            (3, "sit around and be", "idle"),
+            (3, "look in the mirror", "symmetry"),
+            (3, "difficult to read", "dim"),
+            (4, "barked wildly", "fierce"),
+            (4, "at the wedding", "jubilant"),
+            (4, "water buffalo", "labored"),
+        ]:
+            blanks = section_by_number(n)["blanks"]
+            match = [(s, a) for s, a in blanks if phrase in s]
+            self.assertEqual(len(match), 1,
+                             "section %d: %r matched %d sentences" % (n, phrase, len(match)))
+            self.assertEqual(match[0][1], word,
+                             "section %d: %r wants %r" % (n, phrase, match[0][1]))
+
+    def test_each_section_journals_its_own_characters(self):
+        from tutor.rickshaw import section_by_number
+
+        self.assertEqual(section_by_number(1)["characters"],
+                         ["Naima", "Rashida", "Father", "Saleem"])
+        self.assertEqual(section_by_number(4)["characters"],
+                         ["Naima", "The Widow", "Mother", "Father"])
+        for n in (1, 2, 3, 4):
+            self.assertIn("Naima", section_by_number(n)["characters"])
+
+    def test_the_writing_prompts_are_the_guides_own(self):
+        from tutor.rickshaw import section_by_number
+
+        for n, phrase in ((1, "alpanas on holidays"), (2, "costing her family"),
+                          (3, "crazy idea"), (4, "microfinance")):
+            self.assertIn(phrase, section_by_number(n)["writing_prompt"])

@@ -25,7 +25,8 @@ Transcribed by reading the rendered pages; the vocabulary pages especially, sinc
 the PDF's text layer mangles them ("W h e n Jamie saw the rattlesnake").
 """
 
-CURRICULUM_NAME = "Rickshaw Girl"
+# Must match the blueprint entry — the seed creates the curriculum from it.
+CURRICULUM_NAME = "Rickshaw Girl — Literature Discovery"
 BOOK = "Rickshaw Girl by Mitali Perkins"
 
 # The guide's own framing, from its introduction.

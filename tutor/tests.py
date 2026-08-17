@@ -4445,7 +4445,7 @@ class RickshawGirlTests(TestCase):
         ).content.decode()
 
     def test_the_guides_five_sections_are_all_there(self):
-        from curricula.models import Lesson
+        from curricula.models import Chapter, Lesson
         from tutor.models import Question, QuestionSet
         from tutor.rickshaw import CURRICULUM_NAME
 
@@ -4453,7 +4453,13 @@ class RickshawGirlTests(TestCase):
         lessons = Lesson.objects.filter(
             chapter__curriculum__name=CURRICULUM_NAME,
             chapter__curriculum__parent=self.parent)
-        self.assertEqual(lessons.count(), 5)          # four sections + the project
+        # The shared Blackbird blueprint: four sections of Read/Journal/Acquire/
+        # Recollect/Explore, plus the final project — the same skeleton as
+        # A Mouse Called Wolf, which is the same publisher, level and child.
+        self.assertEqual(
+            Chapter.objects.filter(curriculum__name=CURRICULUM_NAME,
+                                   curriculum__parent=self.parent).count(), 5)
+        self.assertEqual(lessons.count(), 21)
         sets = QuestionSet.objects.filter(lesson__in=lessons)
         self.assertEqual(sets.count(), 21)            # 4 x 5 + the final project
         self.assertEqual(

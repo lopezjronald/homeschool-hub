@@ -354,6 +354,38 @@ BLACKBIRD_A_MOUSE_CALLED_WOLF = {
 }
 
 
+# Blackbird & Company Literature Discovery Guide: Rickshaw Girl (Mitali Perkins),
+# Level 3. Same series, same level and same child as A Mouse Called Wolf above,
+# so it reuses the identical section shape rather than inventing a second one.
+BLACKBIRD_RICKSHAW_GIRL = {
+    "slug": "blackbird_rickshaw_girl",
+    "name": "Rickshaw Girl — Literature Discovery",
+    "subject": "Literature",
+    "grade_level": "G03",
+    "source": "Blackbird & Company Educational Press — Literature Discovery Guide: "
+              "Rickshaw Girl by Mitali Perkins (Level 3). Family-owned guide; "
+              "content follows the workbook for private family use.",
+    "chapters": [
+        _bb_section(1, "1–3"),
+        _bb_section(2, "4–6"),
+        _bb_section(3, "7–10"),
+        _bb_section(4, "11–Author's Notes"),
+        {
+            "number": 5,
+            "title": "Section 5: Glean — Final Project",
+            "lessons": [
+                _ls(1, 1, "Glean: Final Project",
+                    "Complete one or more of the guide's final project options: a poster "
+                    "of a family tradition; research alpanas and rickshaw art and paint "
+                    "your own panel; a Bangla word-cloud poster; a one-hour walk written "
+                    "up; a diorama of a favourite scene; or a poster of what you are "
+                    "thankful for."),
+            ],
+        },
+    ],
+}
+
+
 # Essentials in Writing — Grade 3 (2nd ed). Scope & sequence transcribed from the
 # family's Teacher Handbook; lesson titles come from tutor._eiw_content.
 _EIW_SECTIONS = [
@@ -970,6 +1002,7 @@ BLUEPRINTS = {
     BLACKBIRD_I_AM_DAVID["slug"]: BLACKBIRD_I_AM_DAVID,
     BLACKBIRD_THE_FOLK_KEEPER["slug"]: BLACKBIRD_THE_FOLK_KEEPER,
     BLACKBIRD_A_MOUSE_CALLED_WOLF["slug"]: BLACKBIRD_A_MOUSE_CALLED_WOLF,
+    BLACKBIRD_RICKSHAW_GIRL["slug"]: BLACKBIRD_RICKSHAW_GIRL,
     ESSENTIALS_IN_WRITING_3["slug"]: ESSENTIALS_IN_WRITING_3,
     SAXON_PREALGEBRA_DIVE["slug"]: SAXON_PREALGEBRA_DIVE,
 }

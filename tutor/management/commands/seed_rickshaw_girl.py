@@ -25,7 +25,8 @@ from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
 from core.utils import get_active_family
-from curricula.models import Chapter, Curriculum, CurriculumPlacement, Lesson
+from curricula.models import Curriculum, CurriculumPlacement, Lesson
+from curricula.services import apply_blueprint, get_blueprint
 from students.models import Student
 from tutor.models import Question, QuestionSet, ResponseSheet
 from tutor.rickshaw import (
@@ -142,48 +143,42 @@ class Command(BaseCommand):
             self.stdout.write(self.style.WARNING("Dry run — nothing written."))
             return
 
+        # The blueprint is what A Mouse Called Wolf uses — same publisher, same
+        # level, same child — so the two courses get an identical Read → Journal
+        # → Acquire → Recollect → Explore skeleton instead of two shapes that
+        # only look alike. It also puts this course inside audit_content's
+        # lesson-plan drift check, which is keyed on having a blueprint at all.
+        blueprint = get_blueprint("blackbird_rickshaw_girl")
         curriculum, created = Curriculum.objects.get_or_create(
-            parent=user, name=CURRICULUM_NAME,
-            defaults={"subject": "Literature", "grade_level": "G03",
+            parent=user, name=blueprint["name"],
+            defaults={"subject": blueprint["subject"],
+                      "grade_level": blueprint["grade_level"],
                       "family": family},
         )
         self.stdout.write(
             f"{'Created' if created else 'Using'} curriculum #{curriculum.pk}")
-
-        chapter, _ = Chapter.objects.get_or_create(
-            curriculum=curriculum, number=1,
-            defaults={"title": BOOK},
-        )
+        apply_blueprint(curriculum, blueprint)
 
         sets = questions = 0
         for section in SECTIONS:
             n = section["number"]
-            lesson, _ = Lesson.objects.update_or_create(
-                chapter=chapter, order=n,
-                defaults={
-                    "number": n,
-                    "title": "Section %d · %s" % (n, section["chapters"]),
-                    "objectives": (
-                        "Read %s. Journal the characters, setting and plot; learn "
-                        "the section's six words; answer the comprehension "
-                        "questions; write a paragraph and discuss."
-                        % section["chapters"]
-                    ),
-                },
-            )
-            for build in (self._journal, self._vocabulary, self._comprehension,
-                          self._writing, self._discussion):
+            # Blueprint lesson order: 1 Read · 2 Journal · 3 Acquire ·
+            # 4 Recollect · 5 Explore — the sibling's numbering exactly.
+            for order, build in ((2, self._journal), (3, self._vocabulary),
+                                 (4, self._comprehension), (5, self._writing),
+                                 (5, self._discussion)):
+                lesson = self._lesson(curriculum, n, order)
                 s, q = build(lesson, family, section)
                 sets += s
                 questions += q
             self.stdout.write("  Section %d: %s" % (n, section["chapters"]))
 
-        s, q = self._final_project(chapter, family)
+        s, q = self._final_project(curriculum, family)
         sets += s
         questions += q
         self.stdout.write("  Section 5: Final Project")
 
-        first = Lesson.objects.filter(chapter=chapter).order_by("order").first()
+        first = self._lesson(curriculum, 1, 1)
         _, made = CurriculumPlacement.objects.get_or_create(
             child=child, curriculum=curriculum,
             defaults={"current_lesson": first},
@@ -351,13 +346,14 @@ class Command(BaseCommand):
             mode=QuestionSet.MODE_DISCUSSION,
         )
 
-    def _final_project(self, chapter, family):
-        lesson, _ = Lesson.objects.update_or_create(
-            chapter=chapter, order=5,
-            defaults={"number": 5, "title": "Section 5 · Final Project",
-                      "objectives": "Choose one or more of the guide's project "
-                                    "options and make something."},
-        )
+    @staticmethod
+    def _lesson(curriculum, chapter_number, order):
+        return Lesson.objects.get(
+            chapter__curriculum=curriculum, chapter__number=chapter_number,
+            order=order)
+
+    def _final_project(self, curriculum, family):
+        lesson = self._lesson(curriculum, 5, 1)
         return self._set(
             lesson, family, "Section 5 · Final Project",
             intro=FINAL_PROJECT_INTRO + " " + HOW_IT_RUNS,

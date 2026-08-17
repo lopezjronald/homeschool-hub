@@ -102,7 +102,9 @@ Springboard questions with no single right answer. Lead them aloud; press for
 reasons and for examples from the book. Nothing to submit."""
 
 JOURNAL_INTRO = (
-    "As you read, note interesting and important things you learn. " + JOURNAL_NOTE
+    "As you read, jot bullet-point notes about WHO each person is — what they "
+    "look like, how they act, think and feel — not just what they do (that goes "
+    "under Plot). Then where it happens, then the big events."
 )
 
 
@@ -208,8 +210,8 @@ class Command(BaseCommand):
         }
         qset, _ = QuestionSet.objects.update_or_create(
             lesson=lesson, title=title, defaults=defaults)
-        for order, (category, prompt, extra) in enumerate(questions, start=1):
-            fields = {"category": category, "prompt": prompt,
+        for order, (category, prompt, hint, extra) in enumerate(questions, start=1):
+            fields = {"category": category, "prompt": prompt, "hint": hint,
                       "response_type": Question.TYPE_TEXT, "passage": ""}
             fields.update(extra or {})
             Question.objects.update_or_create(
@@ -228,15 +230,20 @@ class Command(BaseCommand):
                  "CHARACTERS — note interesting and important things you learn "
                  "about each person below: their personality and appearance, and "
                  "details about the way they act, think, and feel.",
+                 "Bullet points are perfect! Describe who each person IS — not "
+                 "what they do. What they do goes under Plot.",
                  {"response_type": _type("journal", Question.TYPE_CHARACTERS),
                   "passage": "\n".join(section["characters"])}),
-                ("comprehension",
+                ("setting",
                  "SETTING — note where the story is happening. Explain how the "
                  "setting is significant to the story and include any descriptive "
                  "details you find.",
+                 "Country, time of year, weather, time of day — and why the place "
+                 "matters to what happens.",
                  {"response_type": _type("journal")}),
-                ("comprehension",
+                ("plot",
                  "PLOT — summarize what happens in this section of the story.",
+                 "Just the big events, in order. Don't retell the whole thing.",
                  {"response_type": _type("journal")}),
             ],
         )
@@ -279,16 +286,23 @@ class Command(BaseCommand):
         return self._set(
             lesson, family, "Section %d · Vocabulary" % section["number"],
             reading=section["chapters"],
-            intro="Use a dictionary if you need help — the paper kind is best.",
+            intro="Vocabulary builds your reading power. Match every word to its "
+                  "meaning first — then use those same words to fill in the "
+                  "blanks. Use a dictionary if you need help; the paper kind is "
+                  "best.",
             rubric=VOCAB_RUBRIC,
             questions=[
                 ("vocabulary",
-                 "Write in the number of the correct definition for each word.",
+                 "Match each word to the meaning that fits it.",
+                 "Tap a word, then tap its meaning. Start with the ones you are "
+                 "sure of — that leaves fewer to puzzle over.",
                  {"response_type": Question.TYPE_MATCHING,
                   "passage": json.dumps(matching)}),
                 ("vocabulary",
-                 "Fill in each blank with the best word from the vocabulary list "
-                 "above.",
+                 "Now use those words to fill in the blanks. Some sentences need "
+                 "the word's ending changed, so pick the form that sounds right.",
+                 "Read the whole sentence out loud with your word in it. If it "
+                 "sounds wrong, try another.",
                  {"response_type": Question.TYPE_FILL_BLANK,
                   "passage": json.dumps(fill)}),
             ],
@@ -301,7 +315,9 @@ class Command(BaseCommand):
             intro="Answer using complete sentences. You may refer to both the "
                   "book and your journal notes.",
             rubric=COMPREHENSION_RUBRIC,
-            questions=[("comprehension", prompt, None)
+            questions=[("comprehension", prompt,
+                        "Look back at the book and your journal notes — you are "
+                        "allowed to. Answer in a whole sentence.", None)
                        for prompt in section["comprehension"]],
         )
 
@@ -316,6 +332,8 @@ class Command(BaseCommand):
             questions=[
                 ("application",
                  "ROUGH DRAFT — %s" % section["writing_prompt"],
+                 "Just get your thoughts down — the polish comes next. One box "
+                 "at a time.",
                  {"response_type": _type("rough_draft", Question.TYPE_PARAGRAPH),
                   "passage": json.dumps({"sections": [
                       "Introduction / Topic Sentence",
@@ -330,6 +348,8 @@ class Command(BaseCommand):
                  "BEST HANDWRITING — now recopy your finished paragraph here by "
                  "hand, using your best penmanship. Copy it exactly as you "
                  "polished it above; this one is for the writing itself.",
+                 "Take your time and form each letter carefully. There is room "
+                 "to keep going — the paper grows as you write.",
                  {"response_type": _type("final_draft")}),
             ],
         )
@@ -341,7 +361,7 @@ class Command(BaseCommand):
             intro="Think about and discuss these together — nothing to write. "
                   "Press for reasons and for examples from the book.",
             rubric=DISCUSSION_RUBRIC,
-            questions=[("discussion", prompt, None)
+            questions=[("discussion", prompt, "", None)
                        for prompt in section["discussion"]],
             mode=QuestionSet.MODE_DISCUSSION,
         )
@@ -354,19 +374,38 @@ class Command(BaseCommand):
 
     def _final_project(self, curriculum, family):
         lesson = self._lesson(curriculum, 5, 1)
+        # Scaffolded the way the sibling course does it: she picks, she plans,
+        # she reflects — three short questions with a nudge on each. The earlier
+        # version asked "which option did you choose?" BEFORE showing her the
+        # options, in one 233-word prompt of scheduling admin.
+        options = "\n".join(
+            "**%d. %s** — %s" % (i, name, text)
+            for i, (name, text) in enumerate(FINAL_PROJECT_OPTIONS, start=1))
         return self._set(
-            lesson, family, "Section 5 · Final Project",
-            intro=FINAL_PROJECT_INTRO + " " + HOW_IT_RUNS,
+            lesson, family, "Section 5 · Glean: Final Project",
+            intro="You finished the book — now GLEAN! Pick a project below and "
+                  "make something. This one is yours: take your time and enjoy "
+                  "it.\n\n" + options,
             rubric="## Blackbird — Glean\n\nA final project: research, writing "
                    "and hands-on work drawing on different aspects of the story. "
                    "Judge the care and the thinking, not the neatness of the "
                    "craft." + MASTERY_NOTE,
             questions=[
                 ("application",
-                 "Which option did you choose, and what did you make? Describe "
-                 "it here.\n\n" + "\n".join(
-                     "%d. %s" % (i, opt)
-                     for i, opt in enumerate(FINAL_PROJECT_OPTIONS, start=1)),
+                 "Which project did you choose, and why that one?",
+                 "There is no wrong pick — choose the one you actually want to "
+                 "make.",
+                 None),
+                ("application",
+                 "What is your plan? What will you need, and what is your first "
+                 "step?",
+                 "Think about materials, and where you will do it. A plan makes "
+                 "starting easier.",
+                 None),
+                ("application",
+                 "When it is finished — what did you make, and what surprised you?",
+                 "Come back and fill this in after you finish. Tell me the part "
+                 "you are proudest of.",
                  None),
             ],
         )

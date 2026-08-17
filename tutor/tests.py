@@ -4462,8 +4462,10 @@ class RickshawGirlTests(TestCase):
         self.assertEqual(lessons.count(), 21)
         sets = QuestionSet.objects.filter(lesson__in=lessons)
         self.assertEqual(sets.count(), 21)            # 4 x 5 + the final project
+        # 82 for the four sections, plus the final project's three scaffolded
+        # questions (pick → plan → reflect) in place of the single 233-word one.
         self.assertEqual(
-            Question.objects.filter(question_set__in=sets).count(), 82)
+            Question.objects.filter(question_set__in=sets).count(), 84)
 
     def test_vocabulary_keeps_the_guides_own_two_exercises(self):
         """Level 3 matches words to numbered definitions and fills blanks. Both
@@ -4690,3 +4692,62 @@ class RickshawContentTests(TestCase):
         for n, phrase in ((1, "alpanas on holidays"), (2, "costing her family"),
                           (3, "crazy idea"), (4, "microfinance")):
             self.assertIn(phrase, section_by_number(n)["writing_prompt"])
+
+
+class RickshawChildFacingTests(RickshawGirlTests):
+    """What a nine-year-old working alone actually meets on the page.
+
+    A UI review of the first build found these missing or wrong; they are the
+    difference between a page she can finish by herself and one she stalls on.
+    """
+
+    def test_she_can_open_a_nudge_on_the_work_she_does_alone(self):
+        """The sibling course carries 31 of these. Shipping with none is the
+        single thing that made the two feel like different products — and the
+        hint is the mechanism a child alone uses to get unstuck."""
+        from tutor.models import Question, QuestionSet
+        from tutor.rickshaw import CURRICULUM_NAME
+
+        self._seed()
+        sets = QuestionSet.objects.filter(
+            lesson__chapter__curriculum__name=CURRICULUM_NAME,
+            mode=QuestionSet.MODE_STUDENT)
+        for qset in sets:
+            hinted = qset.questions.exclude(hint="").count()
+            self.assertEqual(hinted, qset.questions.count(),
+                             "%s has unhinted questions" % qset.title)
+        self.assertGreater(
+            Question.objects.filter(question_set__in=sets).exclude(hint="").count(),
+            30)
+
+    def test_the_journal_chips_name_the_three_different_boxes(self):
+        """They read 'Character · Comprehension · Comprehension' — two adjacent
+        chips repeating one word while the prompts under them said SETTING and
+        PLOT. A child reads the chip as the box's label."""
+        self._seed()
+        for n in (1, 2, 3, 4):
+            chips = [q.get_category_display() for q in
+                     self._set("Section %d · Journal" % n).questions.order_by("order")]
+            self.assertEqual(chips, ["Character", "Setting", "Plot"])
+
+    def test_the_fill_in_never_claims_the_word_is_in_the_list_above(self):
+        """Section 4's blanks want 'scolded' and 'labored' while the matching
+        list prints 'scold' and 'labor'. Telling her to use a word 'from the
+        list above' sends her hunting for one that isn't there."""
+        self._seed()
+        fill = self._set("Section 4 · Vocabulary").questions.order_by("order")[1]
+        self.assertNotIn("from the vocabulary list above", fill.prompt)
+        self.assertIn("ending", fill.prompt)
+
+    def test_the_final_project_is_scaffolded_not_a_wall_of_prose(self):
+        """It opened with five weeks of scheduling admin, then asked which
+        option she chose BEFORE listing the options, in a 233-word prompt."""
+        self._seed()
+        qset = self._set("Section 5 · Glean: Final Project")
+        self.assertEqual(qset.questions.count(), 3)
+        longest = max(len(q.prompt.split()) for q in qset.questions.all())
+        self.assertLess(longest, 30)
+        # The options are shown up front, each with a short scannable name.
+        self.assertIn("Build a diorama", qset.intro)
+        self.assertIn("Tradition poster", qset.intro)
+        self.assertNotIn("designed to be completed in five weeks", qset.intro)

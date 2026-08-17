@@ -132,6 +132,7 @@
           drawing = false;
           current = null;
           persist();
+          grow();
         });
       });
 
@@ -154,7 +155,32 @@
       });
     }
 
+    function grow() {
+      // A whole paragraph in a nine-year-old's handwriting does not fit in the
+      // four ruled lines the surface starts with, and there is no scroll: she
+      // would run out of room mid-sentence with nothing to do but Erase all.
+      // So the paper grows — always by a whole 48px line, so the ruling stays
+      // aligned — whenever she writes near the bottom.
+      if (readOnly) return;
+      var lowest = 0;
+      strokes.forEach(function (s) {
+        (s.p || []).forEach(function (pt) { if (pt[1] > lowest) lowest = pt[1]; });
+      });
+      var height = surface.getBoundingClientRect().height;
+      if (!height || lowest * height < height - 48) return;
+      surface.style.height = (Math.round(height / 48) + 2) * 48 + "px";
+      // Strokes are stored 0..1 against the surface, so a taller box would
+      // stretch them. Rescale to keep every letter exactly where she put it.
+      var scale = height / surface.getBoundingClientRect().height;
+      strokes.forEach(function (s) {
+        (s.p || []).forEach(function (pt) { pt[1] = Math.round(pt[1] * scale * 1e4) / 1e4; });
+      });
+      persist();
+      fit();
+    }
+
     fit();
+    grow();
     window.addEventListener("resize", fit);
   });
 })();

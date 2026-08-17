@@ -296,28 +296,22 @@ SECTIONS = [
     },
 ]
 
-# Section 5 — the guide's own list. Hands-on: posters, painting, a diorama, a walk.
+# Section 5 — the guide's own list, each paired with a short name so a child
+# can scan the six options instead of reading 233 words of prose.
 FINAL_PROJECT_INTRO = "Complete one or more of the following assignments."
 FINAL_PROJECT_OPTIONS = [
-    "Naima and her family are very proud of the beauty of their culture, and "
-    "they express their pride by painting alpanas. What is a tradition your "
-    "family is proud of? Create a poster to share this tradition.",
-    "Painting both alpanas and rickshaws is an important part of Bangladesh "
-    "culture. Research alpanas and rickshaw art. Paint your own rickshaw panel "
-    "inspired by these images.",
-    "The Glossary contains a list of Bangla words. Create a word cloud poster "
-    "with these words arranged colorfully. Create a border for your poster "
-    "similar to the chapter headings in the book.",
-    "Naima has to walk for an hour to reach the village of the rickshaw repair "
-    "shop. With an adult, go on a one-hour walk, and see how far you are able to "
-    "travel. Write about your experience. How many miles did you go? Where did "
-    "you end up? What did you see along the way? Do you feel like you learned "
-    "anything about Naima's life, or what it would be like to not have access to "
-    "cars?",
-    "Build a diorama of your favorite scene in the book.",
-    "Naima had to give up going to school because her family couldn't afford to "
-    "send both her and her sister. Create a poster showing some of the things "
-    "your family provides for you that you are thankful for.",
+    ('Tradition poster',
+     'Naima and her family are very proud of the beauty of their culture, and they express their pride by painting alpanas. What is a tradition your family is proud of? Create a poster to share this tradition.'),
+    ('Paint a rickshaw panel',
+     'Painting both alpanas and rickshaws is an important part of Bangladesh culture. Research alpanas and rickshaw art. Paint your own rickshaw panel inspired by these images.'),
+    ('Bangla word cloud',
+     'The Glossary contains a list of Bangla words. Create a word cloud poster with these words arranged colorfully. Create a border for your poster similar to the chapter headings in the book.'),
+    ('The one-hour walk',
+     "Naima has to walk for an hour to reach the village of the rickshaw repair shop. With an adult, go on a one-hour walk, and see how far you are able to travel. Write about your experience. How many miles did you go? Where did you end up? What did you see along the way? Do you feel like you learned anything about Naima's life, or what it would be like to not have access to cars?"),
+    ('Build a diorama',
+     'Build a diorama of your favorite scene in the book.'),
+    ('Thankful poster',
+     "Naima had to give up going to school because her family couldn't afford to send both her and her sister. Create a poster showing some of the things your family provides for you that you are thankful for."),
 ]
 
 

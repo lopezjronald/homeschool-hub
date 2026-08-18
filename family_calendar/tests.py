@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, time
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
@@ -651,3 +651,90 @@ class MissionLayerTests(TestCase):
             {"weekly_pace": "0"})
         self.placement.refresh_from_db()
         self.assertIsNone(self.placement.weekly_pace)
+
+
+class DuplicateEventTests(FeedTests):
+    """Right-click → Duplicate.
+
+    The case it exists for: several LRM meetings that differ only by date.
+    Everything is copied and the copy opens for editing, so the one field that
+    actually changes is the only one she touches.
+    """
+
+    def test_duplicating_copies_everything_and_opens_the_copy(self):
+        self.client.login(username="fa", password="pw")
+        self.jj.location = "South Sutter"
+        self.jj.notes = "bring the folder"
+        self.jj.start_time = time(14, 30)
+        self.jj.end_time = time(15, 30)
+        self.jj.save()
+
+        resp = self.client.post(
+            reverse("family_calendar:event_duplicate", args=[self.jj.pk]))
+        copy = CalendarEvent.objects.exclude(pk=self.jj.pk).get(title="Jiu-jitsu")
+        self.assertRedirects(
+            resp, reverse("family_calendar:event_update", args=[copy.pk]))
+        for field in ("title", "event_type", "location", "notes", "date",
+                      "start_time", "end_time", "child_id", "family_id"):
+            self.assertEqual(getattr(copy, field), getattr(self.jj, field), field)
+        self.jj.refresh_from_db()
+        self.assertEqual(self.jj.title, "Jiu-jitsu")   # original untouched
+
+    def test_a_copy_does_not_inherit_the_originals_skipped_days(self):
+        """Skips are exceptions to the ORIGINAL's schedule. Carried onto a copy
+        that will sit on a different date, they would silently blank days she
+        never chose to skip."""
+        self.client.login(username="fa", password="pw")
+        self.jj.repeats_weekly = True
+        self.jj.skip_dates = ["2026-09-08"]
+        self.jj.save()
+        self.client.post(
+            reverse("family_calendar:event_duplicate", args=[self.jj.pk]))
+        copy = CalendarEvent.objects.exclude(pk=self.jj.pk).get(title="Jiu-jitsu")
+        self.assertEqual(copy.skip_dates, [])
+        self.assertTrue(copy.repeats_weekly)          # the pattern IS copied
+
+    def test_it_can_land_the_copy_on_a_given_date(self):
+        self.client.login(username="fa", password="pw")
+        self.client.post(
+            reverse("family_calendar:event_duplicate", args=[self.jj.pk]),
+            {"date": "2026-10-15"})
+        copy = CalendarEvent.objects.exclude(pk=self.jj.pk).get(title="Jiu-jitsu")
+        self.assertEqual(copy.date, date(2026, 10, 15))
+
+    def test_a_junk_date_falls_back_to_the_originals(self):
+        self.client.login(username="fa", password="pw")
+        self.client.post(
+            reverse("family_calendar:event_duplicate", args=[self.jj.pk]),
+            {"date": "not-a-date"})
+        copy = CalendarEvent.objects.exclude(pk=self.jj.pk).get(title="Jiu-jitsu")
+        self.assertEqual(copy.date, self.jj.date)
+
+    def test_another_family_cannot_duplicate_your_event(self):
+        """The whole security story: a pk in a URL must not reach across
+        families, or one parent could clone another's calendar into their own."""
+        self.client.login(username="fb", password="pw")
+        resp = self.client.post(
+            reverse("family_calendar:event_duplicate", args=[self.jj.pk]))
+        self.assertEqual(resp.status_code, 404)
+        self.assertEqual(CalendarEvent.objects.filter(title="Jiu-jitsu").count(), 1)
+
+    def test_get_does_not_duplicate(self):
+        self.client.login(username="fa", password="pw")
+        resp = self.client.get(
+            reverse("family_calendar:event_duplicate", args=[self.jj.pk]))
+        self.assertEqual(resp.status_code, 405)
+        self.assertEqual(CalendarEvent.objects.filter(title="Jiu-jitsu").count(), 1)
+
+    def test_the_feed_marks_which_chips_can_be_acted_on(self):
+        """The menu keys on pk: real rows get one, generated layers must not,
+        because there is no row behind a birthday to delete."""
+        self.client.login(username="fa", password="pw")
+        events = self._feed(layers="events,birthdays").json()
+        real = [e for e in events if e["extendedProps"]["layer"] == "events"]
+        self.assertTrue(real)
+        for e in real:
+            self.assertTrue(e["extendedProps"].get("pk"))
+        for e in events:
+            if e["extendedProps"]["layer"] != "events":
+                self.assertIsNone(e["extendedProps"].get("pk"))

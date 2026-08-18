@@ -77,6 +77,10 @@ def event_json(event, occ_date, *, color, url=""):
         "color": color,
         "extendedProps": {
             "layer": "events",
+            # The row's own pk, so the page can offer edit/duplicate/delete on
+            # this chip. Generated layers (missions, birthdays, Spanish) carry
+            # no pk and so get no menu — there is nothing to edit.
+            "pk": event.pk,
             "event_type": event.event_type,
             "child_id": event.child_id,
             "location": event.location,

@@ -63,6 +63,9 @@
     dateClick: addUrl
       ? function (info) { window.location.href = addUrl + "?date=" + info.dateStr.slice(0, 10); }
       : undefined,
+    eventDidMount: function (info) {
+      if (window.calendarMenuAttach) window.calendarMenuAttach(info);
+    },
     eventClassNames: function (arg) {
       var layer = (arg.event.extendedProps || {}).layer;
       return layer ? ["cal-layer-" + layer] : [];

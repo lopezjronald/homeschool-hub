@@ -7,6 +7,7 @@ selected family, writes 404-gated on user_can_edit + editable_queryset.
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.http import Http404, JsonResponse
+from django.utils.dateparse import parse_date
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.views.decorators.http import require_GET, require_POST
@@ -246,6 +247,42 @@ def event_delete(request, pk):
         messages.success(request, "Event removed.")
         return redirect("family_calendar:calendar")
     return render(request, "family_calendar/event_confirm_delete.html", {"event": event})
+
+
+@login_required
+@require_POST
+def event_duplicate(request, pk):
+    """Copy an event and open the copy for editing.
+
+    The case this exists for: the same meeting recurs on scattered dates that
+    are not a weekly pattern — several LRM meetings, each on its own day.
+    Re-typing the title, location, times and child every time is the tedious
+    part; the date is the only thing that actually differs. So this copies
+    everything and lands on the edit form with the date focused.
+    """
+    if not user_can_edit(request.user):
+        raise Http404
+    original = get_object_or_404(
+        editable_queryset(CalendarEvent.objects.all(), request.user), pk=pk,
+    )
+    copy = CalendarEvent.objects.get(pk=original.pk)
+    copy.pk = None
+    copy.created_at = None
+    # Skips are exceptions to the ORIGINAL's schedule — carrying them onto a
+    # copy that will sit on a different date would silently blank days she
+    # never chose to skip.
+    copy.skip_dates = []
+    raw = (request.POST.get("date") or "").strip()
+    if raw:
+        parsed = parse_date(raw)
+        if parsed:
+            copy.date = parsed
+    copy.save()
+    messages.success(
+        request,
+        f'Copied "{copy.title}" — change the date and save.',
+    )
+    return redirect("family_calendar:event_update", pk=copy.pk)
 
 
 @login_required

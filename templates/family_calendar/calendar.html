@@ -81,7 +81,12 @@
 
   <div id="calendar"
        data-feed-url="{% url 'family_calendar:feed' %}"
-       {% if can_edit %}data-add-url="{% url 'family_calendar:event_create' %}"{% endif %}></div>
+       {% if can_edit %}data-add-url="{% url 'family_calendar:event_create' %}"
+       {# 0 is a placeholder the menu swaps for the chip's own pk. #}
+       data-edit-url="{% url 'family_calendar:event_update' 0 %}"
+       data-duplicate-url="{% url 'family_calendar:event_duplicate' 0 %}"
+       data-delete-url="{% url 'family_calendar:event_delete' 0 %}"
+       data-csrf="{{ csrf_token }}"{% endif %}></div>
 
   {% if can_edit and placements %}
     <details class="mt-4 d-print-none">
@@ -124,5 +129,6 @@
 <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.21/index.global.min.js"
         integrity="sha384-WDvnzcla8X1CQM97EnYyl4OoTCvmMFp5lBiVNO3IjVdvLMOUjwt+iuYb/Mru5A9v"
         crossorigin="anonymous"></script>
+{% if can_edit %}<script src="{% static 'js/calendar-menu.js' %}"></script>{% endif %}
 <script src="{% static 'js/calendar-page.js' %}"></script>
 {% endblock %}

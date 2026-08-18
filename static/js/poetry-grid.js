@@ -19,10 +19,10 @@
     if (!w) return 0;
     if (w.length <= 2) return 1;
     // Trailing silent e ("time", "shore") — but not "-le" ("little") which
-    // carries its own syllable, and not a lone vowel word.
-    w = w.replace(/e$/, function (m, off) {
-      return /[^aeiouy]le$/.test(word.toLowerCase()) ? "e" : "";
-    });
+    // carries its own syllable. Test the CLEANED word: testing the raw token
+    // meant "little," (with punctuation) failed the -le check and lost a
+    // syllable — and poems put punctuation exactly where -le words land.
+    if (!/[^aeiouy]le$/.test(w)) w = w.replace(/e$/, "");
     var groups = w.match(/[aeiouy]+/g);
     return groups ? Math.max(1, groups.length) : 1;
   }

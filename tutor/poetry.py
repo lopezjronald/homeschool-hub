@@ -134,6 +134,9 @@ SECTIONS = [
                       "— and can be repeated in as many stanzas as the poet wants. "
                       "Each line of the sestet follows the following syllabic "
                       "pattern, totaling 25.",
+        # The guide prints 3-4-3-3-7-5 = 25 (verified on its own page); the
+        # widely-quoted shadorma is 3-5-3-3-7-5 = 26. The book wins here, per
+        # the house convention of following the printed guide.
         "pattern": [3, 4, 3, 3, 7, 5],
     },
     {

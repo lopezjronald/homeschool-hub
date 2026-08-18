@@ -345,7 +345,7 @@
                        data-readonly="{% if sheet.is_submitted %}1{% else %}0{% endif %}">
                     <div class="po-grid-row po-grid-row--title">
                       <span class="po-grid-n" aria-hidden="true">✎</span>
-                      <input type="text" class="po-grid-input po-grid-title"
+                      <input type="text" class="po-grid-input po-grid-title" spellcheck="false" autocomplete="off"
                              placeholder="Title" aria-label="Title"
                              {% if sheet.is_submitted %}readonly{% endif %}>
                       <span class="po-grid-count" aria-hidden="true"></span>
@@ -354,7 +354,7 @@
                       {% if row.stanza_break %}<div class="po-grid-stanza" aria-hidden="true"></div>{% endif %}
                       <div class="po-grid-row" data-target="{{ row.target|default_if_none:'' }}">
                         <span class="po-grid-n">{{ row.n }}</span>
-                        <input type="text" class="po-grid-input"
+                        <input type="text" class="po-grid-input" spellcheck="false" autocomplete="off"
                                aria-label="Line {{ row.n }}{% if row.target %}, {{ row.target }} syllables{% endif %}"
                                {% if row.role %}placeholder="{{ row.role }}"{% endif %}
                                {% if sheet.is_submitted %}readonly{% endif %}>

@@ -51,6 +51,30 @@ def _steps(section):
     pattern = section["pattern"]
     lines = len(pattern)
 
+    if section["slug"] == "sevenling":
+        # The guide's own method for this form is NOT one-idea-per-line: craft
+        # two sentences, edit each into a list of three, then land the twist.
+        return [
+            ("application",
+             "Craft two detailed sentences about one subject — each sentence "
+             "holding three things (a list of three).",
+             "Two sentences, three things in each. The guide's example uses an "
+             "animal — anything with three-part detail works."),
+            ("application",
+             "Rewrite your sentences. Underline what's strong; tighten each "
+             "list until its three things stand out cleanly.",
+             "Each stanza will be one list of three. Cut anything that isn't "
+             "one of the three."),
+            ("application",
+             "Use the poetic slash to break each sentence into its three "
+             "lines — then write one more line: the twist.",
+             "The twist is line 7: an unexpected reveal that changes how the "
+             "six lines read."),
+            ("application",
+             "Create a title and write out the final poem with the proper "
+             "line breaks.",
+             "Three lines, three lines, then the twist on its own."),
+        ]
     if section.get("free_shape"):
         step1 = ("Craft two or three detailed sentences that describe snapshots "
                  "of one moment — images the reader can see and hear.")
@@ -69,10 +93,11 @@ def _steps(section):
         step1 = ("Craft a detailed sentence describing a snapshot of a moment"
                  "%s, and count the syllables."
                  % (" in nature" if section["slug"] in ("haiku", "lune") else ""))
+        about = "about %d" % total if section.get("approximate") else "%d" % total
         step2 = ("Rewrite your sentence. Underline strong images and active "
                  "verbs. Edit to increase or reduce the number of syllables to "
-                 "%d — strike out words that are unnecessary, substitute words, "
-                 "play with word forms, change tense." % total)
+                 "%s — strike out words that are unnecessary, substitute words, "
+                 "play with word forms, change tense." % about)
         step3 = ("Rewrite your edited sentence and use the poetic slash to add "
                  "line breaks according to %s form." % name)
     step4 = ("Create a title and write out the final poem with the proper line "
@@ -165,7 +190,7 @@ class Command(BaseCommand):
                     "rubric": RUBRIC,
                     "status": QuestionSet.APPROVED,
                     "mode": QuestionSet.MODE_STUDENT,
-                    "reading": "the guide's %s pages (attached above)"
+                    "reading": "the guide's %s pages (attached below)"
                                % section["name"],
                 },
             )

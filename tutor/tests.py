@@ -4821,9 +4821,6 @@ class PoetrySmallFormsTests(TestCase):
         A wrong grid teaches her the wrong form."""
         self._seed()
         html = self._page(8)                       # nonet
-        for chip in ("(9)", ):
-            pass
-        # one input row per line, labelled with its target
         import re
         targets = re.findall(r'data-target="(\d*)"', html)
         self.assertEqual([t for t in targets if t],
@@ -4831,6 +4828,11 @@ class PoetrySmallFormsTests(TestCase):
         html = self._page(5)                       # cinquain
         targets = [t for t in re.findall(r'data-target="(\d*)"', html) if t]
         self.assertEqual(targets, ["2", "4", "6", "8", "2"])
+
+    def test_tricube_breaks_into_three_stanzas(self):
+        self._seed()
+        html = self._page(7)
+        self.assertEqual(html.count("po-grid-stanza"), 2)   # before lines 4 and 7
 
     def test_a_form_with_no_syllable_rule_gets_lines_not_targets(self):
         import re

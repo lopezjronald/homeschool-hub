@@ -41,6 +41,7 @@ from worklog.models import WorkLogEntry
 from tutor.dickinson import CURRICULUM_NAME as DICKINSON_CURRICULUM_NAME
 from tutor.lexicon import CURRICULUM_NAME as LEXICON_CURRICULUM_NAME
 from tutor.onetrue import CURRICULUM_NAME as ONETRUE_CURRICULUM_NAME
+from tutor.poetry import CURRICULUM_NAME as POETRY_CURRICULUM_NAME
 
 from .tokens import student_from_token
 
@@ -1248,6 +1249,42 @@ def _onetrue_week(question_set):
     }
 
 
+def _poetry_section(question_set, questions):
+    """The small form this section teaches, for the page she works on.
+
+    Marks the LAST question as the grid (q.poetry_grid): step 4 is "write out
+    the final poem with the proper line breaks", and the grid is one input per
+    line labelled with its target syllables. Decided here, off the section's own
+    pattern, for the same reason as the other curricula: the view can see the
+    data, the template can only guess.
+    """
+    from tutor.poetry import page_images, section_by_number, total_syllables
+
+    section = section_by_number(question_set.lesson.number)
+    if section is None:
+        return None
+    for q in questions:
+        q.poetry_grid = None
+    if questions:
+        rows = []
+        for i, target in enumerate(section["pattern"], start=1):
+            roles = section.get("line_roles") or []
+            rows.append({
+                "n": i,
+                "target": target,
+                "role": roles[i - 1] if i <= len(roles) else "",
+                "stanza_break": bool(section.get("stanza_every"))
+                                and i > 1 and (i - 1) % section["stanza_every"] == 0,
+            })
+        questions[-1].poetry_grid = rows
+    return {
+        "section": section,
+        "total": total_syllables(section),
+        "pages": page_images(section),
+        "approximate": section.get("approximate", False),
+    }
+
+
 def _mark_lexicon_writing_slots(questions):
     """Number the three "what amazed you" answers 1, 2, 3 for the page.
 
@@ -1361,6 +1398,13 @@ def portal_questions(request, token, set_pk):
     if question_set.lesson.chapter.curriculum.name == ONETRUE_CURRICULUM_NAME:
         onetrue_week = _onetrue_week(question_set)
 
+    # Kaylin's Poetry: the form's definition, its syllable grid, and the
+    # ORIGINAL guide pages as attachments — the worked examples are in the
+    # author's own handwriting and she should see the real thing.
+    poetry_section = None
+    if question_set.lesson.chapter.curriculum.name == POETRY_CURRICULUM_NAME:
+        poetry_section = _poetry_section(question_set, questions)
+
     return render(request, "portal/portal_questions.html", {
         "student": student,
         "token": token,
@@ -1368,6 +1412,7 @@ def portal_questions(request, token, set_pk):
         "lexicon_week": lexicon_week,
         "dickinson_day": dickinson_day,
         "onetrue_week": onetrue_week,
+        "poetry_section": poetry_section,
         "questions": questions,
         "sheet": sheet,
         "spellcheck_on": not spelling,

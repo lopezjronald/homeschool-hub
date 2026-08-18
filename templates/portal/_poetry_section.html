@@ -1,0 +1,46 @@
+{% comment %}The head of a Poetry section: the form, its definition, the
+syllable pattern as chips, and — most importantly — the ORIGINAL guide pages.
+The worked examples are in the author's own handwriting (the drafts, the
+struck-out words, the slashes drawn in by hand), which is the character of this
+guide and cannot be recreated. She reads the real pages; the app's job is the
+grid and the counting.{% endcomment %}
+{% load static %}
+<div class="po-head">
+  <div class="po-eyebrow">Poetry · Small Forms</div>
+  <h2 class="po-title">Section {{ poetry_section.section.number }}:
+    <em>{{ poetry_section.section.name }}</em></h2>
+  <div class="po-subtitle">{{ poetry_section.section.subtitle }}</div>
+</div>
+
+<div class="po-def">
+  <div class="po-def-label">Definition</div>
+  <p class="po-def-body">{{ poetry_section.section.definition }}</p>
+  {% if poetry_section.total %}
+    <div class="po-pattern" aria-label="Syllable pattern">
+      <span class="po-pattern-label">Form:</span>
+      {% for n in poetry_section.section.pattern %}
+        <span class="po-chip">{{ n }}</span>
+      {% endfor %}
+      <span class="po-pattern-total">= {{ poetry_section.total }} syllables{% if poetry_section.approximate %} (approximately — this form bends){% endif %}</span>
+    </div>
+  {% else %}
+    <div class="po-pattern">
+      <span class="po-pattern-label">Form:</span>
+      <span class="po-pattern-total">{{ poetry_section.section.pattern|length }} lines — no syllable rule. Each line is one complete idea.</span>
+    </div>
+  {% endif %}
+</div>
+
+<details class="po-pages" open>
+  <summary>📖 The guide's own pages — read these first</summary>
+  <p class="po-pages-note">These are the real pages from your book: the worked
+    example in the author's handwriting, the crossings-out, the slashes. Read
+    them the way you would the paper guide, then come back and write yours.</p>
+  <div class="po-pages-strip">
+    {% for img in poetry_section.pages %}
+      <a href="{% static img %}" target="_blank" rel="noopener">
+        <img src="{% static img %}" alt="Guide page {{ forloop.counter }} for {{ poetry_section.section.name }}" loading="lazy">
+      </a>
+    {% endfor %}
+  </div>
+</details>

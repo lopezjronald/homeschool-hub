@@ -4758,3 +4758,158 @@ class RickshawChildFacingTests(RickshawGirlTests):
         self.assertIn("Build a diorama", qset.intro)
         self.assertIn("Tradition poster", qset.intro)
         self.assertNotIn("designed to be completed in five weeks", qset.intro)
+
+
+class PoetrySmallFormsTests(TestCase):
+    """Kaylin's Poetry: Small Forms — the grid, the attachments, the method."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from django.contrib.auth import get_user_model
+        from core.models import Family, FamilyMembership
+        from portal.tokens import make_portal_token
+
+        User = get_user_model()
+        cls.parent = User.objects.create_user(
+            username="po", email="po@e.com", password="pw")
+        cls.family = Family.objects.create(name="PO Fam")
+        FamilyMembership.objects.create(
+            user=cls.parent, family=cls.family, role="parent")
+        cls.child = Student.objects.create(
+            parent=cls.parent, first_name="Kaylin", grade_level="G07",
+            family=cls.family)
+        cls.token = make_portal_token(cls.child)
+
+    def _seed(self):
+        from io import StringIO
+        from django.core.management import call_command
+        call_command("seed_poetry_kaylin", "--for-user", "po", stdout=StringIO())
+
+    def _set(self, number):
+        from tutor.models import QuestionSet
+        from tutor.poetry import CURRICULUM_NAME
+        return QuestionSet.objects.get(
+            lesson__number=number,
+            lesson__chapter__curriculum__name=CURRICULUM_NAME,
+            lesson__chapter__curriculum__parent=self.parent)
+
+    def _page(self, number):
+        return self.client.get(reverse(
+            "portal:portal_questions", args=[self.token, self._set(number).pk])
+        ).content.decode()
+
+    def test_twelve_sections_of_four_steps(self):
+        from curricula.models import Lesson
+        from tutor.models import Question, QuestionSet
+        from tutor.poetry import CURRICULUM_NAME
+
+        self._seed()
+        lessons = Lesson.objects.filter(
+            chapter__curriculum__name=CURRICULUM_NAME,
+            chapter__curriculum__parent=self.parent)
+        self.assertEqual(lessons.count(), 12)
+        sets = QuestionSet.objects.filter(lesson__in=lessons)
+        self.assertEqual(sets.count(), 12)
+        self.assertEqual(
+            Question.objects.filter(question_set__in=sets).count(), 48)
+        for qset in sets:
+            self.assertEqual(
+                qset.questions.exclude(hint="").count(), 4, qset.title)
+
+    def test_the_grid_matches_each_forms_own_pattern(self):
+        """The whole point: nonet counts down 9..1, cinquain climbs 2-4-6-8-2.
+        A wrong grid teaches her the wrong form."""
+        self._seed()
+        html = self._page(8)                       # nonet
+        for chip in ("(9)", ):
+            pass
+        # one input row per line, labelled with its target
+        import re
+        targets = re.findall(r'data-target="(\d*)"', html)
+        self.assertEqual([t for t in targets if t],
+                         ["9", "8", "7", "6", "5", "4", "3", "2", "1"])
+        html = self._page(5)                       # cinquain
+        targets = [t for t in re.findall(r'data-target="(\d*)"', html) if t]
+        self.assertEqual(targets, ["2", "4", "6", "8", "2"])
+
+    def test_a_form_with_no_syllable_rule_gets_lines_not_targets(self):
+        import re
+
+        self._seed()
+        html = self._page(10)                      # gogyohka
+        self.assertEqual([t for t in re.findall(r'data-target="(\d*)"', html) if t], [])
+        self.assertIn("no syllable rule", html)
+        # five rows for five lines
+        self.assertEqual(html.count('aria-label="Line '), 5)
+
+    def test_the_original_pages_are_attached_and_exist_on_disk(self):
+        """Her guide's worked examples are handwritten; she reads the real
+        pages. Every section links its own pages, and every file exists."""
+        import os
+        from django.conf import settings
+        from tutor.poetry import SECTIONS, page_images
+
+        self._seed()
+        for s in SECTIONS:
+            for img in page_images(s):
+                self.assertTrue(
+                    os.path.exists(os.path.join(
+                        settings.BASE_DIR, "static", img)),
+                    "%s missing" % img)
+        html = self._page(9)                       # shadorma
+        self.assertIn("poetry/shadorma/p1", html)
+        self.assertNotIn("poetry/haiku/p1", html)  # its own pages only
+
+    def test_the_sevenling_grid_carries_the_guides_line_roles(self):
+        self._seed()
+        html = self._page(11)
+        self.assertIn('placeholder="the twist"', html)
+        self.assertEqual(html.count('placeholder="first of three"'), 2)
+
+    def test_the_stored_answer_is_readable_plain_text(self):
+        """The grid writes title-then-lines into the normal answer field, so
+        the grader and the printed report need nothing new."""
+        from tutor.models import ResponseSheet
+
+        self._seed()
+        qset = self._set(1)
+        final = qset.questions.order_by("order").last()
+        sheet = ResponseSheet.objects.create(
+            question_set=qset, child=self.child,
+            answers={str(final.pk):
+                     "Backyard Morning\ncold dew on the grass\n"
+                     "a sparrow lands and listens\nthe kettle whistles"})
+        self.assertIn("sparrow", sheet.as_worklog_text())
+        self.assertNotIn("strokes", sheet.as_worklog_text())
+
+    def test_a_dry_run_writes_nothing(self):
+        from io import StringIO
+        from django.core.management import call_command
+        from curricula.models import Curriculum, Lesson
+
+        out = StringIO()
+        call_command("seed_poetry_kaylin", "--for-user", "po", "--dry-run",
+                     stdout=out)
+        self.assertIn("nothing written", out.getvalue())
+        self.assertEqual(Curriculum.objects.count(), 0)
+        self.assertEqual(Lesson.objects.count(), 0)
+
+    def test_reseeding_restores_a_tampered_question(self):
+        from tutor.models import Question
+
+        self._seed()
+        q = self._set(1).questions.order_by("order").first()
+        Question.objects.filter(pk=q.pk).update(prompt="STALE", hint="")
+        self._seed()
+        q.refresh_from_db()
+        self.assertTrue(q.prompt.startswith("Craft a detailed sentence"))
+        self.assertNotEqual(q.hint, "")
+
+    def test_reseeding_changes_nothing(self):
+        from tutor.models import Question, QuestionSet
+
+        self._seed()
+        before = (QuestionSet.objects.count(), Question.objects.count())
+        self._seed()
+        self.assertEqual(
+            (QuestionSet.objects.count(), Question.objects.count()), before)

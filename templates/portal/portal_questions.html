@@ -4,7 +4,8 @@
 {% block title %}{{ question_set.title }} · Steadfast Scholars{% endblock %}
 {% block extra_css %}<link href="{% static 'css/lexicon.css' %}" rel="stylesheet">
 <link href="{% static 'css/dickinson.css' %}" rel="stylesheet">
-<link href="{% static 'css/onetrue.css' %}" rel="stylesheet">{% endblock %}
+<link href="{% static 'css/onetrue.css' %}" rel="stylesheet">
+<link href="{% static 'css/poetry.css' %}" rel="stylesheet">{% endblock %}
 
 {% block content %}
 <div class="container{% if lexicon_week %} lx-week-{{ lexicon_week.number }}{% endif %}">
@@ -70,6 +71,10 @@
 
           {% if onetrue_week %}
             {% include "portal/_onetrue_week.html" %}
+          {% endif %}
+
+          {% if poetry_section %}
+            {% include "portal/_poetry_section.html" %}
           {% endif %}
 
           {% if question_set.intro %}
@@ -335,6 +340,30 @@
                     </div>
                     <input type="hidden" name="answer_{{ q.pk }}" data-question="{{ q.pk }}" value="{{ q.my_answer }}">
                   </div>
+                {% elif q.poetry_grid %}
+                  <div class="po-grid" data-question-widget="{{ q.pk }}"
+                       data-readonly="{% if sheet.is_submitted %}1{% else %}0{% endif %}">
+                    <div class="po-grid-row po-grid-row--title">
+                      <span class="po-grid-n" aria-hidden="true">✎</span>
+                      <input type="text" class="po-grid-input po-grid-title"
+                             placeholder="Title" aria-label="Title"
+                             {% if sheet.is_submitted %}readonly{% endif %}>
+                      <span class="po-grid-count" aria-hidden="true"></span>
+                    </div>
+                    {% for row in q.poetry_grid %}
+                      {% if row.stanza_break %}<div class="po-grid-stanza" aria-hidden="true"></div>{% endif %}
+                      <div class="po-grid-row" data-target="{{ row.target|default_if_none:'' }}">
+                        <span class="po-grid-n">{{ row.n }}</span>
+                        <input type="text" class="po-grid-input"
+                               aria-label="Line {{ row.n }}{% if row.target %}, {{ row.target }} syllables{% endif %}"
+                               {% if row.role %}placeholder="{{ row.role }}"{% endif %}
+                               {% if sheet.is_submitted %}readonly{% endif %}>
+                        <span class="po-grid-count">{% if row.target %}<b class="po-got">0</b>/{{ row.target }}{% endif %}</span>
+                      </div>
+                    {% endfor %}
+                    <textarea name="answer_{{ q.pk }}" data-question="{{ q.pk }}"
+                              class="po-grid-store" hidden>{{ q.my_answer }}</textarea>
+                  </div>
                 {% else %}
                   <textarea
                     id="q{{ q.pk }}"
@@ -398,6 +427,7 @@
 <script src="{% static 'js/portal-characters.js' %}"></script>
 <script src="{% static 'js/portal-paragraph.js' %}"></script>
 <script src="{% static 'js/portal-vocab.js' %}"></script>
+<script src="{% static 'js/poetry-grid.js' %}"></script>
 <script src="{% static 'js/portal-coach.js' %}"></script>
 <script src="{% static 'js/portal-wordhelp.js' %}"></script>
 <script src="{% static 'js/portal-spellcheck.js' %}"></script>

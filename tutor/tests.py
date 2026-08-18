@@ -5341,3 +5341,320 @@ class OneTrue3Tests(TestCase):
         # itself still appears there — the practice prompts are numbered
         # "Sentence 1 of 5".)
         self.assertNotIn("chuckleberry blossoms", phtml)
+
+
+class EssayVolume2Tests(TestCase):
+    """Intro to Composition: The Essay, Volume 2 — Kaylin's ten weeks.
+
+    The two halves of each lesson are different shapes, and most of what can go
+    wrong here is one half quietly acquiring the other's furniture, so these
+    pin the halves against each other rather than testing either alone.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        from portal.tokens import make_portal_token
+
+        cls.parent = User.objects.create_user(
+            username="es", email="es@e.com", password="pw")
+        cls.family = Family.objects.create(name="Essay Fam")
+        FamilyMembership.objects.create(
+            user=cls.parent, family=cls.family, role="parent")
+        cls.child = Student.objects.create(
+            parent=cls.parent, first_name="Kaylin", grade_level="G07",
+            family=cls.family)
+        cls.token = make_portal_token(cls.child)
+
+    def _seed(self):
+        call_command("seed_essay_kaylin", "--for-user", "es", stdout=StringIO())
+
+    def _set(self, week):
+        from tutor.essay import CURRICULUM_NAME
+        from tutor.models import QuestionSet
+        return QuestionSet.objects.get(
+            lesson__number=week,
+            lesson__chapter__curriculum__name=CURRICULUM_NAME,
+            lesson__chapter__curriculum__parent=self.parent)
+
+    def _page(self, week):
+        return self.client.get(reverse(
+            "portal:portal_questions",
+            args=[self.token, self._set(week).pk])).content.decode()
+
+    # -- the book's own arithmetic -----------------------------------------
+
+    def test_the_blueprint_adds_up_to_the_thirty_sentences_it_claims(self):
+        """Every paragraph must list exactly as many lines as it says it has.
+
+        The blueprint is the spine: it drives the rough-draft boxes, the
+        thirty-item checklist AND the size of each box, so a paragraph whose
+        line list and sentence count disagree corrupts three things at once.
+        """
+        from tutor import essay
+
+        self.assertEqual(essay.blueprint_total(), 30)
+        for para in essay.BLUEPRINT:
+            self.assertEqual(len(para["lines"]), para["sentences"], para["tag"])
+        self.assertEqual([p["sentences"] for p in essay.BLUEPRINT],
+                         [3, 8, 8, 8, 3])
+
+    def test_the_teacher_form_sections_sum_to_the_printed_fifty(self):
+        from tutor import essay
+
+        self.assertEqual(essay.TOTAL_POINTS, 50)
+        self.assertEqual(sum(t for _, t, _ in essay.TEACHER_FORM), 50)
+        for name, total, items in essay.TEACHER_FORM:
+            self.assertEqual(sum(v for _, v in items), total, name)
+
+    def test_the_rubric_keeps_all_five_bands_and_all_their_criteria(self):
+        """The grader is handed these verbatim; a dropped bullet is a real loss."""
+        from tutor import essay
+
+        self.assertEqual([n for n, _ in essay.EVALUATION_RUBRIC],
+                         ["ACCOMPLISHED", "PROFICIENT", "BASIC", "LIMITED", "POOR"])
+        for name, criteria in essay.EVALUATION_RUBRIC:
+            self.assertEqual(len(criteria), 6, name)
+
+    # -- shape -------------------------------------------------------------
+
+    def test_ten_weeks_five_essays_two_weeks_each(self):
+        from tutor.essay import CURRICULUM_NAME
+
+        self._seed()
+        lessons = Lesson.objects.filter(
+            chapter__curriculum__name=CURRICULUM_NAME,
+            chapter__curriculum__parent=self.parent).order_by("number")
+        self.assertEqual([x.number for x in lessons], list(range(1, 11)))
+        self.assertEqual(Curriculum.objects.get(
+            name=CURRICULUM_NAME, parent=self.parent).grade_level, "G07")
+
+    def test_the_two_halves_of_a_lesson_are_different_shapes(self):
+        """Odd week: the guide's pre-writing, typed. Even week: one essay.
+
+        Pinned against each other because the failure mode is one half
+        acquiring the other's furniture — a drafting week full of short-answer
+        boxes, or a pre-writing week that hands her a paragraph widget.
+        """
+        self._seed()
+        for start in (1, 3, 5, 7, 9):
+            odd = list(self._set(start).questions.all())
+            even = list(self._set(start + 1).questions.order_by("order"))
+
+            self.assertGreater(len(odd), 15, "week %d" % start)
+            self.assertNotIn(Question.TYPE_PARAGRAPH,
+                             {q.response_type for q in odd},
+                             "week %d must not draft" % start)
+
+            self.assertEqual([q.response_type for q in even],
+                             [Question.TYPE_PARAGRAPH, Question.TYPE_SELF_EVAL,
+                              Question.TYPE_SELF_EVAL],
+                             "week %d" % (start + 1))
+
+    def test_the_rough_draft_boxes_are_the_blueprint_sized_to_its_paragraphs(self):
+        """The three BODY paragraphs are eight sentences and need the room.
+
+        The widget used to hardcode "the second box is the tall one" — right
+        for a three-part paragraph, and it left two of the three body
+        paragraphs of a five-paragraph essay with a two-row box.
+        """
+        from tutor import essay
+
+        self._seed()
+        draft = self._set(2).questions.order_by("order").first()
+        self.assertEqual(draft.paragraph_sections, essay.PARAGRAPH_SECTIONS)
+        self.assertEqual(draft.paragraph_section_rows, [3, 8, 8, 8, 3])
+        self.assertEqual([b["rows"] for b in draft.paragraph_boxes], [3, 8, 8, 8, 3])
+        self.assertEqual([b["label"] for b in draft.paragraph_boxes],
+                         essay.PARAGRAPH_SECTIONS)
+
+    def test_the_blueprint_checklist_has_one_box_per_sentence_and_names_it(self):
+        """Thirty boxes, each saying which paragraph it belongs to.
+
+        Flattened, "Opener" and "Clincher" each appear three times; without the
+        paragraph tag she cannot tell which of the three she is ticking.
+        """
+        self._seed()
+        checklist = self._set(2).questions.order_by("order")[1]
+        items = checklist.self_eval_items
+        self.assertEqual(len(items), 30)
+        self.assertEqual(len(set(items)), 30, "every row distinct")
+        self.assertTrue(items[0].startswith("P1"))
+        self.assertTrue(items[-1].startswith("P5"))
+        self.assertIn("Hook", items[0])
+        self.assertIn("Twist", items[-1])
+        self.assertEqual(sum(1 for i in items if "Opener" in i), 3)
+        # A bare checkbox in the book: no "how would you improve this" line.
+        self.assertFalse(checklist.self_eval_wants_notes)
+
+    def test_the_self_evaluation_is_the_guides_twelve_components(self):
+        self._seed()
+        form = self._set(2).questions.order_by("order")[2]
+        self.assertEqual(len(form.self_eval_items), 12)
+        self.assertEqual(form.self_eval_items[0], "Follows Essay Format")
+        self.assertEqual(form.self_eval_items[-1], "Vocal Creativity")
+        self.assertEqual(form.self_eval_scale,
+                         ["Excellent", "Satisfactory", "Needs to Improve"])
+        self.assertTrue(form.self_eval_wants_notes)
+
+    def test_the_self_check_groups_only_ever_ask_questions(self):
+        """"Now write the final pair of sentences and the clincher." is an
+        instruction, and was briefly being offered to her as something to rate
+        Yes / Not yet. Every self-check the book prints is a question."""
+        from tutor.essay_lessons import LESSONS
+
+        for lesson in LESSONS:
+            for step in lesson["steps"]:
+                for check in step.get("checks", []):
+                    self.assertTrue(check.endswith("?"),
+                                    "L%d: %r" % (lesson["number"], check))
+        self._seed()
+        for week in (1, 3, 5, 7, 9):
+            for q in self._set(week).questions.filter(
+                    response_type=Question.TYPE_SELF_EVAL):
+                for item in q.self_eval_items:
+                    self.assertTrue(item.endswith("?"),
+                                    "week %d: %r" % (week, item))
+
+    def test_the_three_sub_topics_get_three_boxes(self):
+        """The page prints three numbered rules, not one three-line box —
+        three of the five readers collapsed them, the second reader caught it."""
+        from tutor.essay_lessons import LESSONS
+
+        for lesson in LESSONS:
+            slots = [p["text"] for step in lesson["steps"]
+                     for p in step["prompts"] if "Sub-topic" in p["text"]]
+            self.assertEqual(len(slots), 3, "L%d" % lesson["number"])
+            self.assertIn("Choose three sub-topics", slots[0])
+            self.assertTrue(slots[1].endswith("2 of 3"))
+
+    # -- the printed guide's own mistakes ----------------------------------
+
+    def test_the_guides_typos_are_preserved_and_explained(self):
+        """Transcribed verbatim, warned about separately — never silently fixed.
+
+        "complimentary" is the one that matters: the prompt orders her to go
+        and research the word, and the word the guide prints is the wrong one.
+        """
+        from tutor.essay_lessons import LESSONS
+
+        l1 = LESSONS[0]
+        vangogh = [p["text"] for step in l1["steps"] for p in step["prompts"]
+                   if "Van Gogh" in p["text"]]
+        self.assertEqual(len(vangogh), 1)
+        self.assertIn("complimentary colors", vangogh[0])
+        self.assertNotIn("complementary colors", vangogh[0])
+        self.assertIn("COMPLEMENTARY", " ".join(n["text"] for n in l1["notes"]))
+
+        # PS» for P5» — in lessons 1, 3 and 5 only, which is how we know it is
+        # the book's own slip and not somebody misreading a scan.
+        for lesson in LESSONS:
+            texts = " ".join(n["text"] for n in lesson.get("notes", []))
+            self.assertEqual("PS»" in texts, lesson["number"] in (1, 3, 5),
+                             "L%d" % lesson["number"])
+
+    def test_a_note_appears_only_on_the_week_it_is_about(self):
+        """The blueprint-checklist typo belongs to the drafting week; the
+        research-the-wrong-word warning belongs to the week that asks."""
+        self._seed()
+        first, draft = self._page(1), self._page(2)
+        self.assertIn("COMPLEMENTARY", first)
+        self.assertNotIn("COMPLEMENTARY", draft)
+        self.assertIn("PS»", draft)
+        self.assertNotIn("PS»", first)
+
+    def test_the_guides_own_pages_are_reachable_while_she_writes(self):
+        from tutor import essay
+
+        self._seed()
+        html = self._page(2)
+        for path, _title in essay.reference_images():
+            self.assertIn(path.rsplit(".", 1)[0], html, path)
+        self.assertIn("The Model - Descriptive Essay", html)
+
+    # -- what the grader is told -------------------------------------------
+
+    def test_a_self_evaluation_reaches_the_grader_as_her_judgement(self):
+        """Not as answers to be marked. A grader handed a column of "Needs to
+        Improve" would otherwise mark her down for the very honesty the
+        exercise is asking for."""
+        self._seed()
+        qset = self._set(2)
+        form = qset.questions.order_by("order")[2]
+        sheet = ResponseSheet.objects.create(
+            question_set=qset, child=self.child,
+            answers={str(form.pk): json.dumps({
+                "ratings": {"0": "Excellent", "2": "Needs to Improve"},
+                "notes": {"2": "my hook is boring"}})})
+        shown = sheet.answer_display(form)
+        self.assertIn("her judgement", shown)
+        self.assertIn("1. Follows Essay Format — Excellent", shown)
+        self.assertIn("3. Hook Grabs Reader's Attention — Needs to Improve",
+                      shown)
+        self.assertIn("my hook is boring", shown)
+        # Untouched rows stay out rather than reading as unrated failures.
+        self.assertNotIn("2. Clearly Communicates", shown)
+
+    def test_an_untouched_self_evaluation_is_not_an_answer(self):
+        self._seed()
+        qset = self._set(2)
+        form = qset.questions.order_by("order")[2]
+        sheet = ResponseSheet.objects.create(
+            question_set=qset, child=self.child,
+            answers={str(form.pk): json.dumps({"ratings": {}, "notes": {}})})
+        self.assertEqual(sheet.answer_display(form), "(no answer)")
+
+    def test_the_rubric_hands_over_the_guides_own_form(self):
+        from tutor import essay
+
+        self._seed()
+        rubric = self._set(2).rubric
+        for _name, _total, items in essay.TEACHER_FORM:
+            for label, _pts in items:
+                self.assertIn(label, rubric)
+        self.assertIn("ACCOMPLISHED", rubric)
+        self.assertIn("Grade the FINAL DRAFT", rubric)
+
+    # -- the usual guards --------------------------------------------------
+
+    def test_every_week_renders(self):
+        self._seed()
+        for week in range(1, 11):
+            r = self.client.get(reverse(
+                "portal:portal_questions", args=[self.token, self._set(week).pk]))
+            self.assertEqual(r.status_code, 200, "week %d" % week)
+
+    def test_every_question_carries_a_nudge(self):
+        self._seed()
+        for week in range(1, 11):
+            qset = self._set(week)
+            self.assertEqual(qset.questions.exclude(hint="").count(),
+                             qset.questions.count(), qset.title)
+
+    def test_a_dry_run_writes_nothing(self):
+        out = StringIO()
+        call_command("seed_essay_kaylin", "--for-user", "es", "--dry-run",
+                     stdout=out)
+        self.assertIn("nothing written", out.getvalue())
+        self.assertEqual(Curriculum.objects.count(), 0)
+        self.assertEqual(Lesson.objects.count(), 0)
+
+    def test_reseeding_changes_nothing(self):
+        from tutor.models import QuestionSet
+
+        self._seed()
+        before = (QuestionSet.objects.count(), Question.objects.count())
+        self._seed()
+        self.assertEqual(
+            (QuestionSet.objects.count(), Question.objects.count()), before)
+
+    def test_the_auditor_catches_a_self_evaluation_with_nothing_to_judge(self):
+        self._seed()
+        form = self._set(2).questions.order_by("order")[2]
+        form.passage = json.dumps({"items": [], "scale": ["Yes", "No"]})
+        form.save(update_fields=["passage"])
+        out = StringIO()
+        # The command exits non-zero when it finds anything — that exit IS the
+        # signal, so a clean run here would mean the auditor missed it.
+        with self.assertRaises(SystemExit):
+            call_command("audit_content", stdout=out)
+        self.assertIn("self-evaluation lists no components", out.getvalue())

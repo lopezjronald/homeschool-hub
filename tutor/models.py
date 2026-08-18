@@ -474,6 +474,7 @@ class Question(models.Model):
     TYPE_PARAGRAPH = "paragraph"
     TYPE_WRITE_MARKUP = "write_markup"
     TYPE_HANDWRITING = "handwriting"
+    TYPE_SELF_EVAL = "self_eval"
     RESPONSE_TYPES = [
         (TYPE_TEXT, "Typed answer"),
         (TYPE_MARKUP, "Mark up the sentence (draw)"),
@@ -484,7 +485,13 @@ class Question(models.Model):
         (TYPE_PARAGRAPH, "Paragraph: rough draft (sections) → final draft"),
         (TYPE_WRITE_MARKUP, "Write a sentence, then mark it up (draw)"),
         (TYPE_HANDWRITING, "Handwriting: write it by hand on ruled lines"),
+        (TYPE_SELF_EVAL, "Self-evaluation: rate each component, and note why"),
     ]
+
+    # The three-point scale a self-evaluation offers, and the components it rates,
+    # when the question does not carry its own. Override per-question with passage
+    # JSON {"items": [...], "scale": [...]}.
+    DEFAULT_SELF_EVAL_SCALE = ["Excellent", "Satisfactory", "Needs to Improve"]
 
     # The rough-draft sections a paragraph question shows by default (the standard
     # workbook shape); override per-question with passage JSON {"sections": [...]}.
@@ -575,6 +582,48 @@ class Question(models.Model):
         return self.response_type == self.TYPE_WRITE_MARKUP
 
     @property
+    def is_self_eval(self):
+        """She judges her own draft against a list of components.
+
+        The writing guides all reach this step — read it aloud a second time,
+        rate each part, note how you would strengthen it — and it is the step
+        that turns a rough draft into a final one. It is HER judgement, not a
+        graded answer: see ``self_eval_is_reflection``.
+        """
+        return self.response_type == self.TYPE_SELF_EVAL
+
+    @property
+    def self_eval_items(self):
+        """The components she rates, in printed order.
+
+        From passage JSON {"items": [...]}; empty if the question carries none,
+        which the template must degrade on rather than render an empty form.
+        """
+        items = self.vocab_data.get("items")
+        if isinstance(items, list):
+            return [str(i) for i in items if str(i).strip()]
+        return []
+
+    @property
+    def self_eval_scale(self):
+        """The rating options, from passage JSON {"scale": [...]}."""
+        scale = self.vocab_data.get("scale")
+        if isinstance(scale, list) and scale:
+            return [str(s) for s in scale]
+        return list(self.DEFAULT_SELF_EVAL_SCALE)
+
+    @property
+    def self_eval_wants_notes(self):
+        """Whether each component gets a "how would you strengthen this?" line.
+
+        The rating form does; the blueprint checklist does not — the book prints
+        thirty bare checkboxes there, and thirty note fields would turn a
+        two-minute check into a chore and bury the ratings that matter.
+        Suppress with passage JSON {"notes": false}.
+        """
+        return self.vocab_data.get("notes", True) is not False
+
+    @property
     def paragraph_sections(self):
         """Labeled rough-draft sections for a paragraph question.
 
@@ -589,6 +638,36 @@ class Question(models.Model):
         except (ValueError, TypeError, AttributeError):
             pass
         return list(self.DEFAULT_PARAGRAPH_SECTIONS)
+
+    @property
+    def paragraph_section_rows(self):
+        """How tall each rough-draft box should be, in rows.
+
+        From passage JSON {"section_rows": [...]}. The fallback is the shape the
+        template used to hardcode — a short opener, a tall middle, a short close
+        — which is right for a three-part paragraph and wrong for anything else:
+        the essay's three BODY paragraphs are eight sentences each, and two of
+        them were being handed a two-row box.
+        """
+        rows = self.vocab_data.get("section_rows")
+        sections = self.paragraph_sections
+        if isinstance(rows, list) and len(rows) == len(sections):
+            try:
+                return [max(2, int(r)) for r in rows]
+            except (TypeError, ValueError):
+                pass
+        return [4 if i == 1 else 2 for i in range(len(sections))]
+
+    @property
+    def paragraph_boxes(self):
+        """(label, rows) per rough-draft section, paired for the template.
+
+        Django templates cannot index one list by another's loop counter, and
+        the near-miss (`|slice:forloop.counter0`) silently yields nothing — so
+        the pairing is done here where it can be tested.
+        """
+        return [{"label": label, "rows": rows} for label, rows
+                in zip(self.paragraph_sections, self.paragraph_section_rows)]
 
     @property
     def supports_draft_coach(self):
@@ -768,6 +847,8 @@ class ResponseSheet(models.Model):
             return self._format_paragraph(raw, question)
         if question.is_handwriting:
             return self._format_handwriting(raw, question)
+        if question.is_self_eval:
+            return self._format_self_eval(raw, question)
         if question.is_write_markup:
             data = self._parse_json_answer(raw)
             if data:
@@ -927,6 +1008,37 @@ class ResponseSheet(models.Model):
         if notes:
             lines.append("[planning notes (not graded) — " + "; ".join(notes) + "]")
         return "\n".join(lines)
+
+    @classmethod
+    def _format_self_eval(cls, raw, question):
+        """Render a self-evaluation answer ({"ratings": {...}, "notes": {...}}).
+
+        Keys are the item's index as a string, matching the widget. The output
+        says plainly that this is HER judgement of her own draft, because a
+        grader handed a bare list of "Needs to Improve" will otherwise mark her
+        down for the very honesty the exercise is asking for — the guide's point
+        here is noticing what to strengthen, not having nothing to strengthen.
+        """
+        data = cls._parse_json_answer(raw)
+        ratings = data.get("ratings") if isinstance(data, dict) else None
+        notes = data.get("notes") if isinstance(data, dict) else None
+        ratings = ratings if isinstance(ratings, dict) else {}
+        notes = notes if isinstance(notes, dict) else {}
+        items = question.self_eval_items
+        lines = []
+        for i, label in enumerate(items):
+            rating = str(ratings.get(str(i), "")).strip()
+            note = str(notes.get(str(i), "")).strip()
+            if not rating and not note:
+                continue
+            row = "%d. %s — %s" % (i + 1, label, rating or "(not rated)")
+            if note:
+                row += " · note: %s" % note
+            lines.append(row)
+        if not lines:
+            return "(no answer)"
+        return ("[self-evaluation of her own draft — her judgement, not "
+                "answers to be marked right or wrong]\n" + "\n".join(lines))
 
     @staticmethod
     def _parse_markup(raw):

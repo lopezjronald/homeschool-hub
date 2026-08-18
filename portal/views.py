@@ -39,6 +39,7 @@ from tutor.models import Material, Question, QuestionSet, ResponseSheet
 from worklog.models import WorkLogEntry
 
 from tutor.dickinson import CURRICULUM_NAME as DICKINSON_CURRICULUM_NAME
+from tutor.essay import CURRICULUM_NAME as ESSAY_CURRICULUM_NAME
 from tutor.lexicon import CURRICULUM_NAME as LEXICON_CURRICULUM_NAME
 from tutor.onetrue import CURRICULUM_NAME as ONETRUE_CURRICULUM_NAME
 from tutor.onetrue3 import CURRICULUM_NAME as ONETRUE3_CURRICULUM_NAME
@@ -1262,6 +1263,38 @@ def _onetrue_week(question_set, module=None):
     }
 
 
+def _essay_week(question_set):
+    """The week's essay, and the reference pages she writes it against.
+
+    Which half of the lesson she is on is decided HERE rather than in the
+    template: the template can see the title but not the week number, and
+    "is this the drafting week?" is the difference between showing her a
+    blueprint she is about to follow and one she is being marked against.
+    """
+    from tutor import essay
+    from tutor.essay_lessons import LESSONS
+
+    week = question_set.lesson.number
+    lesson = next((L for L in LESSONS if week in L["weeks"]), None)
+    if lesson is None:
+        return None
+    half = "even" if week % 2 == 0 else "odd"
+    return {
+        "lesson": lesson,
+        "week": week,
+        "is_draft_week": week % 2 == 0,
+        "blueprint": essay.BLUEPRINT,
+        "blueprint_intro": essay.BLUEPRINT_INTRO,
+        "blueprint_total": essay.blueprint_total(),
+        "pages": essay.reference_images(),
+        # A warning about a week-one prompt has no business shouting at her on
+        # the drafting page, and the blueprint-checklist typo only exists on the
+        # page that prints the checklist.
+        "notes": [n["text"] for n in (lesson.get("notes") or [])
+                  if n["where"] in (half, "both")],
+    }
+
+
 def _poetry_section(question_set, questions):
     """The small form this section teaches, for the page she works on.
 
@@ -1406,9 +1439,10 @@ def portal_questions(request, token, set_pk):
     if question_set.lesson.chapter.curriculum.name == DICKINSON_CURRICULUM_NAME:
         dickinson_day = _dickinson_day(question_set, questions)
 
-    # Violet's Tools of Style. Volumes C1 and C3 share a header, but C3 has no
-    # Sentence 2 — one Example box IS the model — so the template branches on
-    # whether the week actually carries one rather than on which volume it is.
+    # Tools of Style — C1 is Violet's, C3 is Kaylin's (the publisher levels it
+    # at Grades 6-8). The two volumes share a header, but C3 has no Sentence 2
+    # — one Example box IS the model — so the template branches on whether the
+    # week actually carries one rather than on which volume it is.
     onetrue_week = None
     curriculum_name = question_set.lesson.chapter.curriculum.name
     if curriculum_name == ONETRUE_CURRICULUM_NAME:
@@ -1425,6 +1459,13 @@ def portal_questions(request, token, set_pk):
     if question_set.lesson.chapter.curriculum.name == POETRY_CURRICULUM_NAME:
         poetry_section = _poetry_section(question_set, questions)
 
+    # The Essay: while she drafts, the guide's blueprint and its worked model
+    # have to be one tap away. The book expects the open paperback beside her;
+    # on screen the pages are attached to the week instead.
+    essay_week = None
+    if question_set.lesson.chapter.curriculum.name == ESSAY_CURRICULUM_NAME:
+        essay_week = _essay_week(question_set)
+
     return render(request, "portal/portal_questions.html", {
         "student": student,
         "token": token,
@@ -1433,6 +1474,7 @@ def portal_questions(request, token, set_pk):
         "dickinson_day": dickinson_day,
         "onetrue_week": onetrue_week,
         "poetry_section": poetry_section,
+        "essay_week": essay_week,
         "questions": questions,
         "sheet": sheet,
         "spellcheck_on": not spelling,

@@ -5,7 +5,8 @@
 {% block extra_css %}<link href="{% static 'css/lexicon.css' %}" rel="stylesheet">
 <link href="{% static 'css/dickinson.css' %}" rel="stylesheet">
 <link href="{% static 'css/onetrue.css' %}" rel="stylesheet">
-<link href="{% static 'css/poetry.css' %}" rel="stylesheet">{% endblock %}
+<link href="{% static 'css/poetry.css' %}" rel="stylesheet">
+<link href="{% static 'css/essay.css' %}" rel="stylesheet">{% endblock %}
 
 {% block content %}
 <div class="container{% if lexicon_week %} lx-week-{{ lexicon_week.number }}{% endif %}">
@@ -73,6 +74,9 @@
             {% include "portal/_onetrue_week.html" %}
           {% endif %}
 
+          {% if essay_week %}
+            {% include "portal/_essay_week.html" %}
+          {% endif %}
           {% if poetry_section %}
             {% include "portal/_poetry_section.html" %}
           {% endif %}
@@ -302,12 +306,12 @@
                   <div class="paragraph-widget" data-question-widget="{{ q.pk }}">
                     <div class="para-rough">
                       <div class="para-heading">✏️ Rough Draft</div>
-                      {% for label in q.paragraph_sections %}
+                      {% for box in q.paragraph_boxes %}
                         <div class="para-section">
-                          <label class="para-label">{{ label }}</label>
+                          <label class="para-label">{{ box.label }}</label>
                           <textarea class="form-control portal-answer para-box" data-section="{{ forloop.counter0 }}"
-                                    rows="{% if forloop.counter == 2 %}4{% else %}2{% endif %}"
-                                    placeholder="{{ label }}…"
+                                    rows="{{ box.rows }}"
+                                    placeholder="{{ box.label }}…"
                                     autocomplete="off" autocorrect="off" autocapitalize="sentences"
                                     lang="en" spellcheck="{% if spellcheck_on %}true{% else %}false{% endif %}" data-gramm="false"
                                     {% if sheet.is_submitted %}readonly{% endif %}></textarea>
@@ -338,6 +342,42 @@
                                 lang="en" spellcheck="{% if spellcheck_on %}true{% else %}false{% endif %}" data-gramm="false"
                                 {% if sheet.is_submitted %}readonly{% endif %}></textarea>
                     </div>
+                    <input type="hidden" name="answer_{{ q.pk }}" data-question="{{ q.pk }}" value="{{ q.my_answer }}">
+                  </div>
+                {% elif q.is_self_eval %}
+                  {% comment %}She reads her own draft aloud a second time and
+                  judges it component by component. A fieldset per component
+                  rather than one wide rating table: the guide's grid has four
+                  columns, which on a tablet becomes unreadable, and a radio
+                  group needs a legend to be announced properly.{% endcomment %}
+                  <div class="selfeval-widget" data-question-widget="{{ q.pk }}">
+                    {% for item in q.self_eval_items %}
+                      <fieldset class="se-item" data-index="{{ forloop.counter0 }}">
+                        <legend class="se-legend">{{ forloop.counter }}. {{ item }}</legend>
+                        <div class="se-options">
+                          {% for opt in q.self_eval_scale %}
+                            <label class="se-choice">
+                              <input type="radio" class="se-rating"
+                                     name="se_{{ q.pk }}_{{ forloop.parentloop.counter0 }}"
+                                     value="{{ opt }}"
+                                     {% if sheet.is_submitted %}disabled{% endif %}>
+                              <span class="se-choice-label">{{ opt }}</span>
+                            </label>
+                          {% endfor %}
+                        </div>
+                        {% if q.self_eval_wants_notes %}
+                          <label class="se-note-label">
+                            <span class="se-note-lead">Notes:</span>
+                            <input type="text" class="se-note"
+                                   placeholder="How could you make this stronger?"
+                                   autocomplete="off" autocapitalize="sentences" lang="en"
+                                   spellcheck="{% if spellcheck_on %}true{% else %}false{% endif %}"
+                                   data-gramm="false"
+                                   {% if sheet.is_submitted %}readonly{% endif %}>
+                          </label>
+                        {% endif %}
+                      </fieldset>
+                    {% endfor %}
                     <input type="hidden" name="answer_{{ q.pk }}" data-question="{{ q.pk }}" value="{{ q.my_answer }}">
                   </div>
                 {% elif q.poetry_grid %}
@@ -426,6 +466,7 @@
 <script src="{% static 'js/lexicon-writing.js' %}"></script>
 <script src="{% static 'js/portal-characters.js' %}"></script>
 <script src="{% static 'js/portal-paragraph.js' %}"></script>
+<script src="{% static 'js/portal-selfeval.js' %}"></script>
 <script src="{% static 'js/portal-vocab.js' %}"></script>
 <script src="{% static 'js/poetry-grid.js' %}"></script>
 <script src="{% static 'js/portal-coach.js' %}"></script>

@@ -133,7 +133,8 @@ class Command(BaseCommand):
                 lettered += 1
                 self.problem(f"question #{q.pk} in '{q.question_set.title[:40]}' is an "
                              f"answer CHOICE posing as a question: {prompt[:40]!r}")
-            if q.response_type in (Question.TYPE_MATCHING, Question.TYPE_FILL_BLANK):
+            if q.response_type in (Question.TYPE_MATCHING, Question.TYPE_FILL_BLANK,
+                                   Question.TYPE_SELF_EVAL):
                 self._check_exercise_json(q)
         self.say(f"   {Question.objects.count()} questions, "
                  f"{blank} blank, {lettered} answer-choices-as-questions")
@@ -142,6 +143,15 @@ class Command(BaseCommand):
         data = q.vocab_data
         if not data:
             self.problem(f"question #{q.pk} ({q.response_type}) has unreadable exercise data")
+            return
+        if q.response_type == Question.TYPE_SELF_EVAL:
+            # A self-evaluation with no components renders as an empty form: she
+            # is told to judge her draft and given nothing to judge it against.
+            if not q.self_eval_items:
+                self.problem(f"question #{q.pk} self-evaluation lists no components")
+            elif len(q.self_eval_scale) < 2:
+                self.problem(f"question #{q.pk} self-evaluation offers "
+                             f"{len(q.self_eval_scale)} rating(s) — nothing to choose between")
             return
         pool = set(data.get("words") or [])
         if q.response_type == Question.TYPE_MATCHING:

@@ -1,0 +1,116 @@
+/* The Essay, Volume 2 — the week's head, the blueprint, and the guide's pages.
+   Kept beside poetry.css rather than folded into portal.css: this is one
+   curriculum's furniture, and portal.css is already carrying five. */
+
+.es-head { margin-bottom: 0.8rem; }
+.es-eyebrow {
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 0.74rem;
+  font-weight: 800;
+  color: var(--ss-teal, #0A5C63);
+  opacity: 0.85;
+}
+.es-title {
+  font-size: 1.5rem;
+  font-weight: 800;
+  color: var(--ss-navy, #16324F);
+  margin: 0.1rem 0 0.15rem;
+  line-height: 1.2;
+}
+.es-title em { font-style: italic; }
+.es-cont { font-size: 1rem; font-weight: 600; color: #6b7a72; }
+.es-subtitle { color: #5a6b62; font-size: 0.94rem; }
+
+.es-note {
+  background: #FFF6E0;
+  border-left: 4px solid var(--ss-gold, #E8B04B);
+  border-radius: 0 8px 8px 0;
+  padding: 0.5rem 0.75rem;
+  margin: 0.5rem 0;
+  font-size: 0.93rem;
+}
+
+/* ---- the blueprint, laid out as the plan she writes from ---- */
+.es-blueprint,
+.es-pages {
+  border: 1px solid var(--ss-border, #e7e1d3);
+  border-radius: 10px;
+  padding: 0.5rem 0.75rem;
+  margin: 0.6rem 0;
+  background: #fbfaf5;
+}
+.es-blueprint > summary,
+.es-pages > summary {
+  cursor: pointer;
+  font-weight: 700;
+  color: var(--ss-teal, #0A5C63);
+  list-style: revert;  /* keep the disclosure triangle: it says "there is more" */
+}
+.es-blueprint-intro,
+.es-pages-note {
+  font-size: 0.9rem;
+  color: #5a6b62;
+  margin: 0.5rem 0 0.7rem;
+}
+
+.es-para { margin-bottom: 0.7rem; }
+.es-para-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.35rem;
+}
+.es-para-tag {
+  font-weight: 800;
+  color: var(--ss-teal, #0A5C63);
+  background: rgba(10, 92, 99, 0.1);
+  border-radius: 6px;
+  padding: 0.02rem 0.35rem;
+  font-size: 0.86rem;
+}
+.es-para-name { font-weight: 700; color: var(--ss-navy, #16324F); }
+.es-para-count { color: #6b7a72; font-size: 0.86rem; }
+.es-para-note {
+  font-size: 0.87rem;
+  color: #5a6b62;
+  font-style: italic;
+  margin: 0.1rem 0 0.15rem;
+}
+.es-lines {
+  margin: 0.25rem 0 0;
+  padding-left: 1.3rem;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+.es-line-label { font-weight: 700; color: var(--ss-navy, #16324F); }
+
+/* ---- the original pages ---- */
+.es-pages-strip {
+  display: flex;
+  gap: 0.6rem;
+  overflow-x: auto;
+  padding-bottom: 0.4rem;
+}
+.es-pages-strip a {
+  flex: 0 0 auto;
+  width: 150px;
+  text-decoration: none;
+  color: #5a6b62;
+}
+.es-pages-strip img {
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--ss-border, #e7e1d3);
+  border-radius: 6px;
+  background: #fff;
+  display: block;
+}
+.es-pages-strip a:hover img { border-color: var(--ss-teal, #0A5C63); }
+.es-page-caption {
+  display: block;
+  font-size: 0.76rem;
+  text-align: center;
+  margin-top: 0.2rem;
+  line-height: 1.25;
+}

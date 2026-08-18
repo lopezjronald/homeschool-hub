@@ -510,6 +510,82 @@
 .para-final .para-heading { border-bottom-color: rgba(30, 122, 80, 0.25); }
 .para-pull { margin-bottom: 0.5rem; }
 
+/* ---- self-evaluation: judging her own draft, component by component ---- */
+.selfeval-widget { margin-top: 0.4rem; }
+.se-item {
+  border: 1px solid rgba(30, 122, 80, 0.18);
+  border-radius: 10px;
+  padding: 0.55rem 0.7rem 0.6rem;
+  margin: 0 0 0.6rem;
+  background: rgba(30, 122, 80, 0.035);
+}
+.se-legend {
+  float: none;  /* Bootstrap makes legends full-width block; this is a card head */
+  width: auto;
+  font-weight: 700;
+  font-size: 0.97rem;
+  color: var(--ss-forest, #0F3D2E);
+  margin: 0 0 0.45rem;
+  padding: 0;
+}
+.se-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-bottom: 0.45rem;
+}
+.se-choice {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  border: 1px solid rgba(30, 122, 80, 0.28);
+  border-radius: 999px;
+  padding: 0.22rem 0.7rem;
+  background: #fff;
+  cursor: pointer;
+  font-size: 0.92rem;
+  line-height: 1.3;
+}
+.se-choice:hover { border-color: rgba(30, 122, 80, 0.55); }
+/* The whole pill reads as selected, not just the dot — at a glance she can see
+   which rating she gave without hunting for a filled radio. */
+.se-choice:has(.se-rating:checked) {
+  background: rgba(30, 122, 80, 0.14);
+  border-color: var(--ss-success, #1E7A50);
+  font-weight: 700;
+}
+.se-choice:focus-within {
+  outline: 3px solid var(--ss-gold, #E8B04B);
+  outline-offset: 2px;
+}
+.se-rating { margin: 0; }
+.se-note-label {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin: 0;
+  font-size: 0.9rem;
+}
+.se-note-lead { color: #5a6b62; font-weight: 600; }
+.se-note {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 0;
+  border-bottom: 1px solid rgba(30, 122, 80, 0.35);
+  background: transparent;
+  padding: 0.15rem 0.2rem;
+  font-size: 0.92rem;
+}
+.se-note:focus {
+  outline: none;
+  border-bottom-color: var(--ss-success, #1E7A50);
+  background: rgba(255, 255, 255, 0.7);
+}
+@media (max-width: 480px) {
+  .se-choice { flex: 1 1 auto; justify-content: center; }
+  .se-note-label { flex-wrap: wrap; }
+}
+
 /* ---- markup: draw on the sentence ---- */
 .markup-widget { margin-top: 0.5rem; }
 .markup-toolbar {

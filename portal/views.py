@@ -1239,7 +1239,7 @@ def _onetrue_week(question_set, module=None):
         from tutor import onetrue as module
         from tutor.management.commands.seed_onetrue_violet import WRITTEN_BY_HAND
     else:
-        from tutor.management.commands.seed_onetrue3_violet import WRITTEN_BY_HAND
+        from tutor.management.commands.seed_onetrue3_kaylin import WRITTEN_BY_HAND
 
     week = module.week_by_number(question_set.lesson.number)
     if week is None:

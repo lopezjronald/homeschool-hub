@@ -1,6 +1,7 @@
-"""Seed Violet's One True Sentence, Volume C3: Tools of Style #3 (idempotent).
+"""Seed Kaylin's One True Sentence, Volume C3: Tools of Style #3 (idempotent).
 
-The third volume in the series whose Volume C1 is already live. Twenty weeks,
+The publisher places this volume at Grades 6-8 ("Level 3"), so it is
+Kaylin's, not Violet's — C1, which is already live, is Grades 4-5. Twenty weeks,
 one rhetorical device each — Antanagoge through Asterismos — and each week is a
 lesson page and a practice page, the way the book is laid out.
 
@@ -16,8 +17,8 @@ rename of seed_onetrue_violet:
     silently", which is index 2 in every one of the twenty weeks).
   - Practice is always a single group of five.
 
-    python manage.py seed_onetrue3_violet --for-user ronald
-    python manage.py seed_onetrue3_violet --for-user ronald --dry-run
+    python manage.py seed_onetrue3_kaylin --for-user ronald
+    python manage.py seed_onetrue3_kaylin --for-user ronald --dry-run
 """
 
 from django.core.management.base import BaseCommand, CommandError
@@ -31,14 +32,18 @@ from tutor.onetrue3 import CURRICULUM_NAME, WEEKS
 
 # WHICH PORTIONS SHE WRITES BY HAND.
 #
-# Both copy tasks, and her own sentences — the same reasoning as Volume C1.
-# Copying is why the book puts the text in front of her; typed, it is
-# transcription at a keyboard. Her five sentences are handwritten too: she is a
-# slow typist and five sentences hunted out on a keyboard is an endurance test
-# with nothing to do with style.
+# Both copy tasks: copying is why the book puts the text in front of her, and
+# typed it is transcription at a keyboard rather than noticing how a sentence is
+# built.
 #
-# The noticing/rewriting tasks in between are typed, so the grader can read
-# them and tell you whether she actually understood the device.
+# Her five sentences are handwritten too, matching her Dickinson volume — the
+# composing is the practice. That is the one debatable call here: typed, the AI
+# grader could tell her whether a sentence REALLY uses polysyndeton rather than
+# merely containing conjunctions. Flip "own_sentences" to False if that feedback
+# is worth more than the handwriting.
+#
+# The noticing and rewriting tasks in between are typed, so the grader can read
+# them and say whether she actually understood the device.
 WRITTEN_BY_HAND = {
     "copy_explanation": True,
     "copy_example": True,
@@ -66,7 +71,7 @@ RUBRIC = """## One True Sentence #3 — how this is checked
 - **Her own sentences** each have to really use the device. A sentence that
   reads the same with the device removed has not used it.
 
-Grade-3 mastery: Beginning → Developing → Proficient → Mastered.
+Grade-7 mastery: Beginning → Developing → Proficient → Mastered.
 """
 
 LESSON_SET = "Week %d · %s"
@@ -78,7 +83,7 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser):
         parser.add_argument("--for-user", required=True)
-        parser.add_argument("--child-name", default="Violet")
+        parser.add_argument("--child-name", default="Kaylin")
         parser.add_argument("--dry-run", action="store_true")
 
     @transaction.atomic
@@ -112,7 +117,7 @@ class Command(BaseCommand):
 
         curriculum, created = Curriculum.objects.get_or_create(
             parent=user, name=CURRICULUM_NAME,
-            defaults={"subject": "Language Arts", "grade_level": "G03",
+            defaults={"subject": "Language Arts", "grade_level": "G07",
                       "family": family},
         )
         self.stdout.write(

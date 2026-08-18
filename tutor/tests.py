@@ -5160,7 +5160,13 @@ class OneTrue3Tests(TestCase):
         cls.family = Family.objects.create(name="O3 Fam")
         FamilyMembership.objects.create(
             user=cls.parent, family=cls.family, role="parent")
+        # The publisher puts this volume at Grades 6-8, so it is Kaylin's.
         cls.child = Student.objects.create(
+            parent=cls.parent, first_name="Kaylin", grade_level="G07",
+            family=cls.family)
+        # C1 is Violet's (Grades 4-5) and one test below seeds it, so she has
+        # to exist here too.
+        cls.violet = Student.objects.create(
             parent=cls.parent, first_name="Violet", grade_level="G03",
             family=cls.family)
         cls.token = make_portal_token(cls.child)
@@ -5168,7 +5174,7 @@ class OneTrue3Tests(TestCase):
     def _seed(self):
         from io import StringIO
         from django.core.management import call_command
-        call_command("seed_onetrue3_violet", "--for-user", "o3", stdout=StringIO())
+        call_command("seed_onetrue3_kaylin", "--for-user", "o3", stdout=StringIO())
 
     def _set(self, week, practice=False):
         from tutor.models import QuestionSet
@@ -5270,7 +5276,7 @@ class OneTrue3Tests(TestCase):
         from curricula.models import Curriculum, Lesson
 
         out = StringIO()
-        call_command("seed_onetrue3_violet", "--for-user", "o3", "--dry-run",
+        call_command("seed_onetrue3_kaylin", "--for-user", "o3", "--dry-run",
                      stdout=out)
         self.assertIn("nothing written", out.getvalue())
         self.assertEqual(Curriculum.objects.count(), 0)
@@ -5293,12 +5299,15 @@ class OneTrue3Tests(TestCase):
         from tutor.models import QuestionSet
         from tutor.onetrue import CURRICULUM_NAME as C1
 
+        from portal.tokens import make_portal_token
+
         call_command("seed_onetrue_violet", "--for-user", "o3", stdout=StringIO())
         qset = QuestionSet.objects.filter(
             lesson__number=1, lesson__chapter__curriculum__name=C1,
             lesson__chapter__curriculum__parent=self.parent).exclude(
             title__endswith="now you try!").get()
         html = self.client.get(reverse(
-            "portal:portal_questions", args=[self.token, qset.pk])).content.decode()
+            "portal:portal_questions",
+            args=[make_portal_token(self.violet), qset.pk])).content.decode()
         self.assertIn("Sentence 2", html)
         self.assertIn("Margaret Wise Brown", html)

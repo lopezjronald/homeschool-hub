@@ -1,5 +1,6 @@
 import json
 import os
+import tempfile
 from datetime import timedelta
 from io import StringIO
 from types import SimpleNamespace
@@ -5835,3 +5836,57 @@ class EssayVolume2Tests(TestCase):
                         for n in lesson.get("notes", []))
             self.assertEqual(noted, mentions, "L%d" % lesson["number"])
             self.assertTrue(mentions, "L%d should mention it" % lesson["number"])
+
+    def test_the_lesson_module_is_what_the_generator_makes_of_the_pages(self):
+        """The committed module must be exactly what the generator emits.
+
+        `tutor/essay_lessons.py` is generated, and every rule about the guide's
+        content — the numbering folded into the prompts, the transcription
+        scaffolding stripped, which lessons get which warning — lives in
+        `scripts/gen_essay_lessons.py`. Nothing else can see a change there:
+        edit the generator, forget to regenerate, and the module keeps whatever
+        it had while the rules say otherwise. Mutating the generator survived
+        every other test in this class until this one existed.
+
+        It also pins the provenance. The page transcriptions are the source of
+        this curriculum; kept only in a scratch directory they would be swept
+        up, and the generator would be unrunnable.
+        """
+        import subprocess
+        import sys
+        from pathlib import Path
+
+        root = Path(__file__).resolve().parent.parent
+        gen = root / "scripts" / "gen_essay_lessons.py"
+        pages = root / "tutor" / "data" / "essay_vol2_pages.json"
+        committed = root / "tutor" / "essay_lessons.py"
+        self.assertTrue(gen.exists(), gen)
+        self.assertTrue(pages.exists(), pages)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp) / "regenerated.py"
+            proc = subprocess.run(
+                [sys.executable, str(gen), str(pages), str(out)],
+                capture_output=True, text=True)
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            self.assertEqual(
+                out.read_text(encoding="utf-8"),
+                committed.read_text(encoding="utf-8"),
+                "tutor/essay_lessons.py is stale — re-run "
+                "scripts/gen_essay_lessons.py tutor/data/essay_vol2_pages.json "
+                "tutor/essay_lessons.py")
+
+    def test_the_page_transcriptions_still_describe_this_guide(self):
+        """A cheap sanity pin on the source data, so a truncated or swapped
+        file is caught here rather than as a mystifying diff in the module."""
+        import json as _json
+        from pathlib import Path
+
+        root = Path(__file__).resolve().parent.parent
+        pages = _json.loads(
+            (root / "tutor" / "data" / "essay_vol2_pages.json").read_text(
+                encoding="utf-8"))
+        self.assertEqual([p["lesson_number"] for p in pages], [1, 2, 3, 4, 5])
+        # Pages 18-72 of the scan, which is where the five lessons live.
+        seen = sorted(pg["pdf_page"] for p in pages for pg in p["pages"])
+        self.assertEqual(seen, list(range(18, 73)))

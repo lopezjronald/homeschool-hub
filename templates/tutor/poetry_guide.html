@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}Poetry: Small Forms — parent guide{% endblock %}
+{% block extra_css %}<link href="{% static 'css/lexicon.css' %}" rel="stylesheet">
+<link href="{% static 'css/poetry.css' %}" rel="stylesheet">{% endblock %}
+
+{% block content %}
+<div class="container py-4" style="max-width:860px;">
+
+  <div class="lxg-head">
+    <div class="lxg-kicker">Parent guide</div>
+    <h1 class="mb-1">Poetry: Small Forms</h1>
+    <div class="text-muted">Blackbird &amp; Company · Grade 7 · 12 small forms</div>
+    <blockquote class="lxg-epigraph">
+      “{{ epigraph.0 }}”<cite>— {{ epigraph.1 }}</cite>
+    </blockquote>
+  </div>
+
+  {% if children %}
+    <div class="row g-3 mb-4">
+      {% for row in children %}
+        <div class="col-sm-6">
+          <div class="lxg-progress">
+            <div class="lxg-progress-name">{{ row.child.first_name }}</div>
+            <div class="lxg-progress-n">{{ row.sections_done }}<span>/12 forms</span></div>
+            <div class="lxg-progress-next">
+              {% if row.next_section %}
+                Next up: <strong>Section {{ row.next_section.number }}</strong> ·
+                {{ row.next_section.name }} <em>({{ row.next_section.subtitle }})</em>
+              {% else %}
+                All twelve forms finished 🎉
+              {% endif %}
+            </div>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  {% endif %}
+
+  <div class="card mb-4">
+    <div class="card-body">
+      <h2 class="h5">How it runs</h2>
+      <p>{{ how_it_runs }}</p>
+      <p class="mb-0"><strong>The poetic slash.</strong> {{ poetic_slash }}</p>
+    </div>
+  </div>
+
+  <div class="card mb-4 border-primary">
+    <div class="card-body">
+      <h2 class="h5">The original pages are on her pages</h2>
+      <p>Each section shows the guide's own pages right above the work — the
+        worked example in the author's handwriting, the crossings-out, the
+        slashes drawn in by hand. That is the part of this guide an app cannot
+        recreate, so she reads the real thing and the app does what paper
+        can't:</p>
+      <ul class="mb-0">
+        <li><strong>The syllable grid.</strong> One line per line of the form,
+          its target beside it, and a live count that turns green on target.
+          The counter is an estimate — English syllable counting by rule is
+          approximate — so her own clapped-out count wins, and nothing blocks.</li>
+        <li><strong>The four steps, kept.</strong> Sentence → edit to count →
+          poetic slash → final poem, each its own answer, so you can see the
+          path and not just the poem.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="card mb-4">
+    <div class="card-body">
+      <h2 class="h5">The twelve forms</h2>
+      <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0">
+          <thead><tr><th style="width:4.5rem;">Section</th><th>Form</th><th>Pattern</th><th class="text-end">Total</th></tr></thead>
+          <tbody>
+            {% for s in sections %}
+              <tr>
+                <td class="text-muted">{{ s.number }}</td>
+                <td><strong>{{ s.name }}</strong> <span class="text-muted small">· {{ s.subtitle }}</span></td>
+                <td class="small">
+                  {% if s.total %}{% for n in s.pattern %}{{ n }}{% if not forloop.last %}-{% endif %}{% endfor %}{% if s.approximate %} (approx.){% endif %}
+                  {% else %}{{ s.pattern|length }} lines, no syllable rule{% endif %}
+                </td>
+                <td class="text-end small">{% if s.total %}{{ s.total }}{% else %}—{% endif %}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <a href="{% url 'curricula:curriculum_detail' curriculum.pk %}" class="btn btn-secondary">
+    ← Back to {{ curriculum.name }}
+  </a>
+</div>
+{% endblock %}

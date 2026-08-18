@@ -450,3 +450,49 @@ def onetrue_guide(request, curriculum_pk):
         "by_hand": WRITTEN_BY_HAND,
         "children": children,
     })
+
+
+@login_required
+def poetry_guide(request, curriculum_pk):
+    """Parent guide for Poetry: Small Forms.
+
+    The one page that shows all twelve forms at a glance — pattern, totals,
+    progress — and says how the method runs and where the original pages live.
+    """
+    from students.models import Student
+    from tutor import poetry
+
+    curriculum = get_object_or_404(
+        viewable_queryset(Curriculum.objects.all(), request.user), pk=curriculum_pk,
+    )
+    if curriculum.name != poetry.CURRICULUM_NAME:
+        raise Http404
+
+    children = []
+    for placement in CurriculumPlacement.objects.filter(
+        curriculum=curriculum,
+        child__in=viewable_queryset(Student.objects.all(), request.user),
+    ).select_related("child"):
+        done = set(
+            ResponseSheet.objects.filter(
+                child=placement.child,
+                question_set__lesson__chapter__curriculum=curriculum,
+                status=ResponseSheet.SUBMITTED,
+            ).values_list("question_set__lesson__number", flat=True)
+        )
+        children.append({
+            "child": placement.child,
+            "sections_done": len(done),
+            "next_section": next(
+                (s for s in poetry.SECTIONS if s["number"] not in done), None),
+        })
+
+    sections = [dict(s, total=poetry.total_syllables(s)) for s in poetry.SECTIONS]
+    return render(request, "tutor/poetry_guide.html", {
+        "curriculum": curriculum,
+        "epigraph": poetry.EPIGRAPH,
+        "how_it_runs": poetry.HOW_IT_RUNS,
+        "poetic_slash": poetry.POETIC_SLASH,
+        "sections": sections,
+        "children": children,
+    })

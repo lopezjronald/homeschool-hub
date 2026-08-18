@@ -190,6 +190,7 @@ def curriculum_detail(request, pk):
     from tutor.dickinson import CURRICULUM_NAME as DICKINSON_NAME
     from tutor.lexicon import CURRICULUM_NAME as LEXICON_NAME
     from tutor.onetrue import CURRICULUM_NAME as ONETRUE_NAME
+    from tutor.poetry import CURRICULUM_NAME as POETRY_NAME
 
     return render(request, "curricula/curriculum_detail.html", {
         # Only these units have a parent guide; the link must not appear on any
@@ -197,6 +198,7 @@ def curriculum_detail(request, pk):
         "is_lexicon": curriculum.name == LEXICON_NAME,
         "is_dickinson": curriculum.name == DICKINSON_NAME,
         "is_onetrue": curriculum.name == ONETRUE_NAME,
+        "is_poetry": curriculum.name == POETRY_NAME,
         "curriculum": curriculum,
         "can_edit": can_edit,
         "chapters": chapters,

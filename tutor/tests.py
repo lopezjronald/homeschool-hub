@@ -4913,3 +4913,65 @@ class PoetrySmallFormsTests(TestCase):
         self._seed()
         self.assertEqual(
             (QuestionSet.objects.count(), Question.objects.count()), before)
+
+
+class PoetryGuideTests(PoetrySmallFormsTests):
+    """The parent guide."""
+
+    def _guide(self):
+        from curricula.models import Curriculum
+        from tutor.poetry import CURRICULUM_NAME
+
+        self._seed()
+        cur = Curriculum.objects.get(name=CURRICULUM_NAME, parent=self.parent)
+        self.client.force_login(self.parent)
+        return cur, self.client.get(reverse("tutor:poetry_guide", args=[cur.pk]))
+
+    def test_it_shows_all_twelve_forms_with_their_patterns(self):
+        _cur, resp = self._guide()
+        self.assertEqual(resp.status_code, 200)
+        html = resp.content.decode()
+        for name in ("haiku", "tanka", "shadorma", "sevenling"):
+            self.assertIn(name, html)
+        self.assertIn("9-8-7-6-5-4-3-2-1", html)      # the nonet countdown
+        self.assertIn("3-4-3-3-7-5", html)            # shadorma
+        self.assertIn("no syllable rule", html)       # gogyohka and friends
+
+    def test_progress_counts_submitted_sections(self):
+        from django.utils import timezone
+        from tutor.models import ResponseSheet
+
+        self._seed()
+        ResponseSheet.objects.create(
+            question_set=self._set(1), child=self.child, answers={},
+            status=ResponseSheet.SUBMITTED, submitted_at=timezone.now())
+        _cur, resp = self._guide()
+        row = resp.context["children"][0]
+        self.assertEqual(row["sections_done"], 1)
+        self.assertEqual(row["next_section"]["number"], 2)
+
+    def test_the_guide_is_not_reachable_for_other_curricula(self):
+        from curricula.models import Curriculum
+
+        self._seed()
+        other = Curriculum.objects.create(
+            parent=self.parent, name="Something Else", subject="Math",
+            family=self.family)
+        self.client.force_login(self.parent)
+        self.assertEqual(
+            self.client.get(
+                reverse("tutor:poetry_guide", args=[other.pk])).status_code, 404)
+
+    def test_the_link_shows_only_on_this_curriculum(self):
+        from curricula.models import Curriculum
+
+        cur, _resp = self._guide()
+        detail = self.client.get(
+            reverse("curricula:curriculum_detail", args=[cur.pk])).content.decode()
+        self.assertIn("poetry-guide", detail)
+        other = Curriculum.objects.create(
+            parent=self.parent, name="Something Else", subject="Math",
+            family=self.family)
+        detail = self.client.get(
+            reverse("curricula:curriculum_detail", args=[other.pk])).content.decode()
+        self.assertNotIn("poetry-guide", detail)

@@ -386,6 +386,38 @@ BLACKBIRD_RICKSHAW_GIRL = {
 }
 
 
+# Blackbird & Company Literature Discovery Guide: The Year of Miss Agnes
+# (Kirkpatrick Hill), Level 3. Same series, level and child as A Mouse Called
+# Wolf and Rickshaw Girl, so it reuses the identical section shape.
+BLACKBIRD_MISS_AGNES = {
+    "slug": "blackbird_year_of_miss_agnes",
+    "name": "The Year of Miss Agnes — Literature Discovery",
+    "subject": "Literature",
+    "grade_level": "G03",
+    "source": "Blackbird & Company Educational Press — Literature Discovery Guide: "
+              "The Year of Miss Agnes by Kirkpatrick Hill (Level 3). Family-owned "
+              "guide; content follows the workbook for private family use.",
+    "chapters": [
+        _bb_section(1, "1–4"),
+        _bb_section(2, "5–9"),
+        _bb_section(3, "10–13"),
+        _bb_section(4, "14–17"),
+        {
+            "number": 5,
+            "title": "Section 5: Glean — Final Project",
+            "lessons": [
+                _ls(1, 1, "Glean: Final Project",
+                    "Complete one or more of the guide's final project options: a "
+                    "state report about Alaska; a country report about England; a "
+                    "world map of places that matter to you; a paper time line of "
+                    "your life; a small paper book about yourself; or a paragraph "
+                    "written as Miss Agnes."),
+            ],
+        },
+    ],
+}
+
+
 # Essentials in Writing — Grade 3 (2nd ed). Scope & sequence transcribed from the
 # family's Teacher Handbook; lesson titles come from tutor._eiw_content.
 _EIW_SECTIONS = [
@@ -1003,6 +1035,7 @@ BLUEPRINTS = {
     BLACKBIRD_THE_FOLK_KEEPER["slug"]: BLACKBIRD_THE_FOLK_KEEPER,
     BLACKBIRD_A_MOUSE_CALLED_WOLF["slug"]: BLACKBIRD_A_MOUSE_CALLED_WOLF,
     BLACKBIRD_RICKSHAW_GIRL["slug"]: BLACKBIRD_RICKSHAW_GIRL,
+    BLACKBIRD_MISS_AGNES["slug"]: BLACKBIRD_MISS_AGNES,
     ESSENTIALS_IN_WRITING_3["slug"]: ESSENTIALS_IN_WRITING_3,
     SAXON_PREALGEBRA_DIVE["slug"]: SAXON_PREALGEBRA_DIVE,
 }

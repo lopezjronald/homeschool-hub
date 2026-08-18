@@ -4975,3 +4975,165 @@ class PoetryGuideTests(PoetrySmallFormsTests):
         detail = self.client.get(
             reverse("curricula:curriculum_detail", args=[other.pk])).content.decode()
         self.assertNotIn("poetry-guide", detail)
+
+
+class MissAgnesTests(TestCase):
+    """Violet's Blackbird Level 3 guide for The Year of Miss Agnes.
+
+    The seed is Rickshaw Girl's builders pointed at this book's module, so the
+    tests pin what actually differs: the chapter splits, the two-character
+    journals, the discussion counts, and that no blank needs an inflected form.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        from django.contrib.auth import get_user_model
+        from core.models import Family, FamilyMembership
+        from portal.tokens import make_portal_token
+
+        User = get_user_model()
+        cls.parent = User.objects.create_user(
+            username="ag", email="ag@e.com", password="pw")
+        cls.family = Family.objects.create(name="AG Fam")
+        FamilyMembership.objects.create(
+            user=cls.parent, family=cls.family, role="parent")
+        cls.child = Student.objects.create(
+            parent=cls.parent, first_name="Violet", grade_level="G03",
+            family=cls.family)
+        cls.token = make_portal_token(cls.child)
+
+    def _seed(self):
+        from io import StringIO
+        from django.core.management import call_command
+        call_command("seed_year_of_miss_agnes", "--for-user", "ag",
+                     stdout=StringIO())
+
+    def _set(self, title):
+        from tutor.agnes import CURRICULUM_NAME
+        from tutor.models import QuestionSet
+        return QuestionSet.objects.get(
+            title=title, lesson__chapter__curriculum__name=CURRICULUM_NAME,
+            lesson__chapter__curriculum__parent=self.parent)
+
+    def test_the_books_own_shape(self):
+        from curricula.models import Chapter, Lesson
+        from tutor.agnes import CURRICULUM_NAME
+        from tutor.models import Question, QuestionSet
+
+        self._seed()
+        self.assertEqual(Chapter.objects.filter(
+            curriculum__name=CURRICULUM_NAME,
+            curriculum__parent=self.parent).count(), 5)
+        lessons = Lesson.objects.filter(
+            chapter__curriculum__name=CURRICULUM_NAME,
+            chapter__curriculum__parent=self.parent)
+        self.assertEqual(lessons.count(), 21)
+        sets = QuestionSet.objects.filter(lesson__in=lessons)
+        self.assertEqual(sets.count(), 21)
+        self.assertEqual(
+            Question.objects.filter(question_set__in=sets).count(), 83)
+
+    def test_journals_name_this_books_pairs_not_rickshaws_four(self):
+        from tutor.models import Question
+
+        self._seed()
+        q = self._set("Section 1 · Journal").questions.order_by("order").first()
+        self.assertEqual(q.response_type, Question.TYPE_CHARACTERS)
+        self.assertEqual(len(q.character_names), 2)
+        self.assertIn("Fred", q.character_names)
+        q4 = self._set("Section 4 · Journal").questions.order_by("order").first()
+        self.assertIn("Miss Agnes", q4.character_names)
+
+    def test_every_blank_is_answerable_with_no_inflection_needed(self):
+        """This guide, unlike Rickshaw §4, needs no inflected forms — so the
+        bank must equal the printed word list and the "ending changed" sentence
+        must NOT appear in any fill-in prompt."""
+        import json
+
+        self._seed()
+        for n in (1, 2, 3, 4):
+            fill = self._set("Section %d · Vocabulary" % n).questions.order_by("order")[1]
+            data = json.loads(fill.passage)
+            bank = set(data["words"])
+            for s in data["sentences"]:
+                self.assertIn(s["word"], bank, "section %d" % n)
+            self.assertNotIn("ending changed", fill.prompt)
+
+    def test_discussion_counts_follow_the_book(self):
+        from tutor.models import QuestionSet
+
+        self._seed()
+        for n, count in ((1, 5), (2, 8), (3, 6), (4, 5)):
+            qset = self._set("Section %d · Discussion" % n)
+            self.assertEqual(qset.mode, QuestionSet.MODE_DISCUSSION)
+            self.assertEqual(qset.questions.count(), count, "section %d" % n)
+
+    def test_the_glean_page_offers_the_six_options(self):
+        self._seed()
+        qset = self._set("Section 5 · Glean: Final Project")
+        self.assertEqual(qset.questions.count(), 3)   # pick / plan / reflect
+        self.assertIn("Alaska", qset.intro)
+        self.assertIn("Miss Agnes", qset.intro)
+
+    def test_the_page_renders_for_her(self):
+        self._seed()
+        html = self.client.get(reverse(
+            "portal:portal_questions",
+            args=[self.token, self._set("Section 1 · Journal").pk])
+        ).content.decode()
+        self.assertEqual(html.count("character-field"), 2)
+        self.assertIn("Need a nudge", html)
+
+    def test_a_dry_run_writes_nothing(self):
+        from io import StringIO
+        from django.core.management import call_command
+        from curricula.models import Curriculum, Lesson
+
+        out = StringIO()
+        call_command("seed_year_of_miss_agnes", "--for-user", "ag", "--dry-run",
+                     stdout=out)
+        self.assertIn("nothing written", out.getvalue())
+        self.assertEqual(Curriculum.objects.count(), 0)
+        self.assertEqual(Lesson.objects.count(), 0)
+
+    def test_reseeding_changes_nothing(self):
+        from tutor.models import Question, QuestionSet
+
+        self._seed()
+        before = (QuestionSet.objects.count(), Question.objects.count())
+        self._seed()
+        self.assertEqual(
+            (QuestionSet.objects.count(), Question.objects.count()), before)
+
+
+class MissAgnesContentTests(TestCase):
+    """Semantic spot-checks — a bijection survives swapping two numbers, so
+    these pin the meaning, at least two words per section."""
+
+    def test_each_word_means_what_its_definition_says(self):
+        from tutor.agnes import section_by_number
+
+        for n, word, phrase in [
+            (1, "harness", "working animal"), (1, "quill", "feather"),
+            (1, "moccasins", "soft leather"),
+            (2, "holler", "shout"), (2, "geography", "earth"),
+            (2, "hunker", "squat"),
+            (3, "microscope", "small particles"), (3, "echo", "reflected"),
+            (3, "brittle", "easily broken"),
+            (4, "invent", "create"), (4, "gloomy", "dark"),
+            (4, "brag", "highly of oneself"),
+        ]:
+            section = section_by_number(n)
+            number = dict(section["vocab"])[word]
+            definition = section["definitions"][number - 1]
+            self.assertIn(phrase, definition,
+                          "S%d: %r points at %r" % (n, word, definition))
+
+    def test_each_section_journals_its_own_pair(self):
+        from tutor.agnes import SECTIONS
+
+        pairs = [set(s["characters"]) for s in SECTIONS]
+        self.assertEqual(len(pairs), 4)
+        for p in pairs:
+            self.assertEqual(len(p), 2)
+        self.assertIn("Miss Agnes", pairs[2] | pairs[3])

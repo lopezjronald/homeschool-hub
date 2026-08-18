@@ -271,9 +271,18 @@ for L in LESSONS:
     notes = list(NOTES.get(n, []))
     # Derived from the pages, not from a hand-kept list of which lessons need
     # it: every lesson that actually mentions the missing section gets warned.
+    # Two plain scans rather than one nested comprehension. The compact version
+    # of this looped `for st in steps for p in st["prompts"] for c in st["checks"]`,
+    # which cannot see a step that carries checks but no prompts — the inner
+    # loop never runs. It happened to give the right answer on these five
+    # lessons and would have silently stopped doing so the moment the guide, or
+    # a re-transcription, put a self-check on a page with no answer boxes.
     mentions_threes = any(
-        "Thinking In Threes" in p["text"] or "thought in threes" in c.lower()
-        for st in steps for p in st["prompts"] for c in st["checks"] or [""])
+        "Thinking In Threes" in p["text"]
+        for st in steps for p in st["prompts"])
+    mentions_threes = mentions_threes or any(
+        "thought in threes" in c.lower()
+        for st in steps for c in st["checks"])
     if mentions_threes:
         notes.insert(0, ("odd", THREES_NOTE))
     if n in PS_TYPO_LESSONS:

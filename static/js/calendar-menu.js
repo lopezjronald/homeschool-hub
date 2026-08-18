@@ -70,9 +70,7 @@
         var repeating = (info.event.extendedProps || {}).repeats;
         var msg = repeating
           ? "Delete “" + info.event.title + "” and its whole repeating series?" +
-            "
-
-To remove just this one day, open the event and use " +
+            "\n\nTo remove just this one day, open the event and use " +
             "“Skip this date” instead."
           : "Delete “" + info.event.title + "”?";
         if (window.confirm(msg)) post(delUrl.replace("/0/", "/" + pk + "/"));

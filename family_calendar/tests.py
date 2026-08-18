@@ -1,4 +1,10 @@
+import re
+import shutil
+import subprocess
 from datetime import date, time
+from pathlib import Path
+
+from django.test import SimpleTestCase
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
@@ -758,3 +764,39 @@ class DuplicateEventTests(FeedTests):
             reverse("family_calendar:event_duplicate", args=[self.jj.pk]))
         self.assertIn(resp.status_code, (403, 404))
         self.assertEqual(CalendarEvent.objects.filter(title="Jiu-jitsu").count(), 1)
+
+
+class StaticJavaScriptParsesTests(SimpleTestCase):
+    """Every shipped .js file must actually parse.
+
+    This exists because a "\\n\\n" escape got flattened into a real newline
+    inside a double-quoted string in calendar-menu.js. In JavaScript that is an
+    unterminated string literal, so the whole file failed to parse, the IIFE
+    never ran, and `window.calendarMenuAttach` was never defined. The calendar's
+    `eventDidMount` guards with `if (window.calendarMenuAttach)`, so it skipped
+    silently — and right-clicking an event fell through to the browser's own
+    context menu. Edit, Duplicate and Delete were all dead in production, with
+    nothing in the server logs and every Python test passing.
+
+    Nothing here checked that a script we ship is even syntactically valid.
+    """
+
+    JS_DIR = Path(__file__).resolve().parent.parent / "static" / "js"
+
+    def _files(self):
+        files = sorted(self.JS_DIR.glob("*.js"))
+        self.assertGreater(len(files), 10, "expected the portal's scripts here")
+        return files
+
+    def test_every_static_script_parses(self):
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("node is not on PATH")
+        broken = []
+        for path in self._files():
+            proc = subprocess.run([node, "--check", str(path)],
+                                  capture_output=True, text=True)
+            if proc.returncode != 0:
+                first = (proc.stderr or "").strip().splitlines()
+                broken.append("%s: %s" % (path.name, first[-1] if first else "?"))
+        self.assertEqual(broken, [], "these scripts do not parse:\n" + "\n".join(broken))

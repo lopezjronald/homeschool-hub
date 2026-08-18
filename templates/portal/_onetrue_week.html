@@ -38,16 +38,22 @@ again.{% endcomment %}
     without it hasn't used it.</p>
 {% else %}
   <div class="ot-sentence">
-    <span class="ot-tag">Sentence 1</span>
+    <span class="ot-tag">{% if onetrue_week.week.sentence_two %}Sentence 1{% else %}Example{% endif %}</span>
     <blockquote class="ot-quote">{{ onetrue_week.week.sentence_one.text }}</blockquote>
-    <cite class="ot-cite">({{ onetrue_week.week.sentence_one.citation }})</cite>
+    {% if onetrue_week.week.sentence_one.citation %}
+      <cite class="ot-cite">({{ onetrue_week.week.sentence_one.citation }})</cite>
+    {% endif %}
   </div>
 
-  <div class="ot-sentence">
-    <span class="ot-tag ot-tag--two">Sentence 2</span>
-    <blockquote class="ot-quote">{{ onetrue_week.week.sentence_two.text }}</blockquote>
-  </div>
+  {% comment %}Volume C3 has no Sentence 2 — its single Example box IS the
+  model she copies — so the chip only appears when the week carries one.{% endcomment %}
+  {% if onetrue_week.week.sentence_two %}
+    <div class="ot-sentence">
+      <span class="ot-tag ot-tag--two">Sentence 2</span>
+      <blockquote class="ot-quote">{{ onetrue_week.week.sentence_two.text }}</blockquote>
+    </div>
+  {% endif %}
 
-  <p class="ot-aloud">📖 Read Sentence 1 silently, then read it again, slowly, in
-    a whispered tone.</p>
+  <p class="ot-aloud">📖 Read the {% if onetrue_week.week.sentence_two %}Sentence 1{% else %}example sentence{% endif %}
+    silently, then read it again, slowly, in a whispered tone.</p>
 {% endif %}

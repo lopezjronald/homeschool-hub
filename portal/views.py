@@ -41,6 +41,7 @@ from worklog.models import WorkLogEntry
 from tutor.dickinson import CURRICULUM_NAME as DICKINSON_CURRICULUM_NAME
 from tutor.lexicon import CURRICULUM_NAME as LEXICON_CURRICULUM_NAME
 from tutor.onetrue import CURRICULUM_NAME as ONETRUE_CURRICULUM_NAME
+from tutor.onetrue3 import CURRICULUM_NAME as ONETRUE3_CURRICULUM_NAME
 from tutor.poetry import CURRICULUM_NAME as POETRY_CURRICULUM_NAME
 
 from .tokens import student_from_token
@@ -1224,7 +1225,7 @@ def _dickinson_day(question_set, questions):
     return info
 
 
-def _onetrue_week(question_set):
+def _onetrue_week(question_set, module=None):
     """The week's tool of style, for the page she is on.
 
     Only the lesson page carries the explanation and the sentence she copies —
@@ -1234,10 +1235,13 @@ def _onetrue_week(question_set):
     Unlike the Dickinson pages this needs no per-question pairing: everything is
     a header, so there is nothing to get out of step.
     """
-    from tutor.management.commands.seed_onetrue_violet import WRITTEN_BY_HAND
-    from tutor.onetrue import week_by_number
+    if module is None:
+        from tutor import onetrue as module
+        from tutor.management.commands.seed_onetrue_violet import WRITTEN_BY_HAND
+    else:
+        from tutor.management.commands.seed_onetrue3_violet import WRITTEN_BY_HAND
 
-    week = week_by_number(question_set.lesson.number)
+    week = module.week_by_number(question_set.lesson.number)
     if week is None:
         return None
     title = question_set.title or ""
@@ -1393,10 +1397,17 @@ def portal_questions(request, token, set_pk):
     if question_set.lesson.chapter.curriculum.name == DICKINSON_CURRICULUM_NAME:
         dickinson_day = _dickinson_day(question_set, questions)
 
-    # Violet's Tools of Style: the explanation and the model sentence.
+    # Violet's Tools of Style. Volumes C1 and C3 share a header, but C3 has no
+    # Sentence 2 — one Example box IS the model — so the template branches on
+    # whether the week actually carries one rather than on which volume it is.
     onetrue_week = None
-    if question_set.lesson.chapter.curriculum.name == ONETRUE_CURRICULUM_NAME:
+    curriculum_name = question_set.lesson.chapter.curriculum.name
+    if curriculum_name == ONETRUE_CURRICULUM_NAME:
         onetrue_week = _onetrue_week(question_set)
+    elif curriculum_name == ONETRUE3_CURRICULUM_NAME:
+        from tutor import onetrue3
+
+        onetrue_week = _onetrue_week(question_set, module=onetrue3)
 
     # Kaylin's Poetry: the form's definition, its syllable grid, and the
     # ORIGINAL guide pages as attachments — the worked examples are in the

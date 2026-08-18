@@ -5139,3 +5139,166 @@ class MissAgnesContentTests(TestCase):
         for p in pairs:
             self.assertEqual(len(p), 2)
         self.assertIn("Miss Agnes", pairs[2] | pairs[3])
+
+
+class OneTrue3Tests(TestCase):
+    """Volume C3: twenty rhetorical devices.
+
+    Its shape is NOT C1's — no Sentence 2, two copy tasks per lesson — so these
+    pin the differences rather than re-testing the shared machinery.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        from django.contrib.auth import get_user_model
+        from core.models import Family, FamilyMembership
+        from portal.tokens import make_portal_token
+
+        User = get_user_model()
+        cls.parent = User.objects.create_user(
+            username="o3", email="o3@e.com", password="pw")
+        cls.family = Family.objects.create(name="O3 Fam")
+        FamilyMembership.objects.create(
+            user=cls.parent, family=cls.family, role="parent")
+        cls.child = Student.objects.create(
+            parent=cls.parent, first_name="Violet", grade_level="G03",
+            family=cls.family)
+        cls.token = make_portal_token(cls.child)
+
+    def _seed(self):
+        from io import StringIO
+        from django.core.management import call_command
+        call_command("seed_onetrue3_violet", "--for-user", "o3", stdout=StringIO())
+
+    def _set(self, week, practice=False):
+        from tutor.models import QuestionSet
+        from tutor.onetrue3 import CURRICULUM_NAME
+        qs = QuestionSet.objects.filter(
+            lesson__number=week,
+            lesson__chapter__curriculum__name=CURRICULUM_NAME,
+            lesson__chapter__curriculum__parent=self.parent)
+        return (qs.filter(title__endswith="now you try!").get() if practice
+                else qs.exclude(title__endswith="now you try!").get())
+
+    def _page(self, week=1, practice=False):
+        return self.client.get(reverse(
+            "portal:portal_questions",
+            args=[self.token, self._set(week, practice).pk])).content.decode()
+
+    def test_twenty_weeks_each_a_lesson_and_a_practice(self):
+        from curricula.models import Lesson
+        from tutor.models import QuestionSet
+        from tutor.onetrue3 import CURRICULUM_NAME
+
+        self._seed()
+        lessons = Lesson.objects.filter(
+            chapter__curriculum__name=CURRICULUM_NAME,
+            chapter__curriculum__parent=self.parent)
+        self.assertEqual(lessons.count(), 20)
+        for lesson in lessons:
+            self.assertEqual(
+                QuestionSet.objects.filter(lesson=lesson).count(), 2,
+                "week %s" % lesson.number)
+
+    def test_both_copy_tasks_take_the_pen_and_sit_where_the_book_prints_them(self):
+        """Task 1 copies the EXPLANATION; the copy-the-example task is printed
+        fourth, right after 'read it silently'. The transcription lifted the
+        latter into its own field, so getting it back into position is the one
+        thing this seed has to do carefully."""
+        from tutor.models import Question
+
+        self._seed()
+        qs = list(self._set(1).questions.order_by("order"))
+        self.assertTrue(qs[0].prompt.startswith("Read and copy the explanation"))
+        self.assertEqual(qs[0].response_type, Question.TYPE_HANDWRITING)
+        self.assertIn("silently", qs[2].prompt)
+        self.assertEqual(qs[3].prompt, "Copy the example sentence.")
+        self.assertEqual(qs[3].response_type, Question.TYPE_HANDWRITING)
+        # Everything else is typed, so the grader can read it.
+        for q in qs[1:3] + qs[4:]:
+            self.assertEqual(q.response_type, Question.TYPE_TEXT, q.prompt[:40])
+        # …and that holds in every week, not just the first.
+        for n in range(1, 21):
+            pens = [q for q in self._set(n).questions.all()
+                    if q.response_type == Question.TYPE_HANDWRITING]
+            self.assertEqual(len(pens), 2, "week %d" % n)
+
+    def test_the_page_does_not_invent_a_sentence_two(self):
+        """This volume has none — one Example box IS the model. C1's header
+        would otherwise print an empty 'Sentence 2' chip."""
+        self._seed()
+        html = self._page(1)
+        self.assertNotIn("Sentence 2", html)
+        self.assertIn(">Example<", html)
+        self.assertIn("Though the torrential downpour", html)
+
+    def test_her_own_sentences_are_handwritten(self):
+        from tutor.models import Question
+
+        self._seed()
+        practice = list(self._set(1, practice=True).questions.order_by("order"))
+        self.assertEqual(len(practice), 5)
+        self.assertEqual([q.response_type for q in practice],
+                         [Question.TYPE_HANDWRITING] * 5)
+        self.assertTrue(practice[0].prompt.startswith("Sentence 1 of 5 —"))
+        self.assertTrue(practice[1].prompt.startswith("Sentence 2 of 5"))
+        # The long instruction appears once, not five times.
+        self.assertEqual(
+            sum("antanagoge" in q.prompt.lower() for q in practice), 1)
+
+    def test_the_printed_quirks_are_preserved(self):
+        """Four weeks carry the guide's own oddities verbatim, with notes."""
+        from tutor.onetrue3 import WEEKS
+
+        noted = [w for w in WEEKS if w.get("note")]
+        self.assertGreaterEqual(len(noted), 4)
+        text = " ".join(q for w in WEEKS for q in w["questions_one"])
+        self.assertIn("paranthesis", text)
+        self.assertIn("elliminates", text)
+
+    def test_every_question_carries_a_nudge(self):
+        self._seed()
+        for n in (1, 10, 20):
+            for practice in (False, True):
+                qset = self._set(n, practice)
+                self.assertEqual(qset.questions.exclude(hint="").count(),
+                                 qset.questions.count(), qset.title)
+
+    def test_a_dry_run_writes_nothing(self):
+        from io import StringIO
+        from django.core.management import call_command
+        from curricula.models import Curriculum, Lesson
+
+        out = StringIO()
+        call_command("seed_onetrue3_violet", "--for-user", "o3", "--dry-run",
+                     stdout=out)
+        self.assertIn("nothing written", out.getvalue())
+        self.assertEqual(Curriculum.objects.count(), 0)
+        self.assertEqual(Lesson.objects.count(), 0)
+
+    def test_reseeding_changes_nothing(self):
+        from tutor.models import Question, QuestionSet
+
+        self._seed()
+        before = (QuestionSet.objects.count(), Question.objects.count())
+        self._seed()
+        self.assertEqual(
+            (QuestionSet.objects.count(), Question.objects.count()), before)
+
+    def test_volume_c1_still_renders_its_own_shape(self):
+        """The two volumes share a header; C3's changes must not strip C1's
+        Sentence 2, which is live in production."""
+        from io import StringIO
+        from django.core.management import call_command
+        from tutor.models import QuestionSet
+        from tutor.onetrue import CURRICULUM_NAME as C1
+
+        call_command("seed_onetrue_violet", "--for-user", "o3", stdout=StringIO())
+        qset = QuestionSet.objects.filter(
+            lesson__number=1, lesson__chapter__curriculum__name=C1,
+            lesson__chapter__curriculum__parent=self.parent).exclude(
+            title__endswith="now you try!").get()
+        html = self.client.get(reverse(
+            "portal:portal_questions", args=[self.token, qset.pk])).content.decode()
+        self.assertIn("Sentence 2", html)
+        self.assertIn("Margaret Wise Brown", html)

@@ -32,29 +32,32 @@ NOTES = {
         "that complete each other, like blue and orange. “Complimentary” "
         "means flattering, or free of charge. Research the one the guide means, "
         "not the one it spells.")],
-    2: [("odd", "Two tasks this lesson send you to an exercise called “Thinking In "
-        "Threes”. There is no such section in this volume — it is in "
-        "another book in the series. What it means is the thing the thesis "
-        "statement work has been doing all along: three sub-topics, phrased in "
-        "the same grammatical shape.")],
-    3: [("odd", "A task this lesson refers back to “Thinking In Threes”, which is "
-        "not a section in this volume. It means your three sub-topics, phrased "
-        "in matching form."),
-        ("odd",
+    3: [("odd",
         "The Monet quotation opens with the wrong curly quote — the mark that "
         "should close a quotation is used to open it. Copy the words, not the "
         "typo.")],
 }
+
+# "Thinking In Threes" is referred to in EVERY lesson — once in a task and once
+# in the self-check — and exists in none of them; it is a section of another
+# book in the series. The note was first written for two lessons only, which
+# left her sent to a missing section unexplained in the other three.
+THREES_NOTE = ("This lesson points you at an exercise called “Thinking In "
+               "Threes”. There is no section by that name in this book — it is "
+               "in another book in the series. It means what the thesis "
+               "statement work has been doing all along: THREE sub-topics, all "
+               "phrased in the same grammatical shape.")
 
 # The blueprint checklist labels its last paragraph "PS»" instead of "P5»" in
 # three of the five lessons — verified page by page, not assumed. It is a
 # typesetting slip in the same list that runs P1», P2», P3», P4».
 PS_TYPO_LESSONS = {1, 3, 5}
 PS_WEEK = "even"  # the blueprint checklist is on the drafting week, not the first
-PS_NOTE = ("On the blueprint checklist the last paragraph is labelled "
-           "“PS» CONCLUSION”. That is a typo for “P5»” "
-           "— it is paragraph 5, the conclusion. Lessons 2 and 4 print it "
-           "correctly, which is how we know.")
+PS_NOTE = ("In your PAPER book, the last row of this lesson's blueprint "
+           "checklist is labelled “PS» CONCLUSION”. That is a "
+           "typo for “P5»” — it is paragraph 5, the conclusion. "
+           "Lessons 2 and 4 print it correctly, which is how we know. The "
+           "checklist on this page says P5.")
 
 
 def merge(sections):
@@ -83,6 +86,20 @@ def straighten(text):
     if not any(k in text for k in STRAIGHTEN):
         return text
     return text.replace("“", '"').replace("”", '"')
+
+
+def descaffold(text):
+    """Strip the readers' own layout markers.
+
+    They were asked to describe the page, and "[arrow callout]" is them saying
+    "the next sentence sits in one of the guide's arrow boxes". That is a note
+    about the paper, not something the book says — and these instructions
+    become the hint she opens when she is stuck, so it was being shown to her
+    fifteen times over.
+    """
+    for marker in ("[arrow callout]", "[Each scored line has a rule]"):
+        text = text.replace(marker, " ")
+    return " ".join(text.split())
 
 
 SUBTOPIC_LEAD = "Choose three sub-topics to focus on in your essay."
@@ -153,7 +170,16 @@ def split_checks(prompts):
                              "dropped; teach the generator about it"
                              % (p.get("number"),))
         if p["answer_lines"] > 0:
-            asks.append({"text": text, "number": (p.get("number") or "").strip(),
+            number = (p.get("number") or "").strip()
+            # The book's own numbering goes INTO the prompt. The body-paragraph
+            # warm-up prints "1a. FACTUAL (TELL): / 1b. SENSORY (SHOW): / 2a. …"
+            # — six rules, three distinct labels — and one reader baked the
+            # numerals into the text while three left them in `number`. Left
+            # there, half the lessons showed her "FACTUAL (TELL):" twice and
+            # "SENSORY (SHOW):" three times with no way to tell the pairs apart.
+            if number and not text.startswith(number):
+                text = "%s %s" % (number, text)
+            asks.append({"text": text, "number": number,
                          "lines": p["answer_lines"]})
         elif text.endswith("?"):
             checks.append(text)
@@ -207,9 +233,9 @@ for L in LESSONS:
             # double line spacing" live — the guide's directions about HOW to
             # produce the essay, which she should read even though the app
             # gives her boxes.
-            "instruction": " ".join(
+            "instruction": descaffold(" ".join(
                 x for x in [" ".join((s.get("instruction") or "").split())] + told
-                if x),
+                if x)),
             "kind": s["kind"],
             "prompts": asks,
             "check_lead": lead,
@@ -243,6 +269,13 @@ for L in LESSONS:
         lines.append("            },")
     lines.append("        ],")
     notes = list(NOTES.get(n, []))
+    # Derived from the pages, not from a hand-kept list of which lessons need
+    # it: every lesson that actually mentions the missing section gets warned.
+    mentions_threes = any(
+        "Thinking In Threes" in p["text"] or "thought in threes" in c.lower()
+        for st in steps for p in st["prompts"] for c in st["checks"] or [""])
+    if mentions_threes:
+        notes.insert(0, ("odd", THREES_NOTE))
     if n in PS_TYPO_LESSONS:
         notes.append((PS_WEEK, PS_NOTE))
     if notes:

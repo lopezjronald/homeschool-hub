@@ -1287,6 +1287,13 @@ def _essay_week(question_set):
         "blueprint_intro": essay.BLUEPRINT_INTRO,
         "blueprint_total": essay.blueprint_total(),
         "pages": essay.reference_images(),
+        # The guide's own closing direction for the pre-writing week — how it
+        # wants the essay produced ("Hand write your rough draft on the
+        # following pages… Type your final draft with double line spacing").
+        # The seed drops this step because it carries no answer boxes, and
+        # dropping it loses the one place the book says how to write the thing.
+        "handover": next((s["instruction"] for s in lesson["steps"]
+                          if s["heading"].startswith("The Essay")), ""),
         # A warning about a week-one prompt has no business shouting at her on
         # the drafting page, and the blueprint-checklist typo only exists on the
         # page that prints the checklist.

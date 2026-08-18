@@ -5673,3 +5673,165 @@ class EssayVolume2Tests(TestCase):
         with self.assertRaises(SystemExit):
             call_command("audit_content", stdout=out)
         self.assertIn("nothing to choose between", out.getvalue())
+
+    # -- guards the review found missing -----------------------------------
+
+    def test_a_paragraph_question_without_row_sizes_renders_as_it_always_did(self):
+        """The ONE line in this change that touches already-live pages.
+
+        Every paragraph question in Rickshaw Girl, Miss Agnes and Essentials in
+        Writing predates `section_rows` and must keep the exact shape the
+        template used to hardcode: `{% if forloop.counter == 2 %}4{% else %}2`,
+        i.e. the SECOND box tall and the rest short, whatever the section count.
+        """
+        from tutor.models import QuestionSet
+
+        self._seed()
+        qset = QuestionSet.objects.create(
+            family=self.family, title="legacy", status=QuestionSet.APPROVED,
+            lesson=Lesson.objects.filter(
+                chapter__curriculum__parent=self.parent).first())
+        for sections, expected in (
+                (["Topic", "Support", "Conclusion"], [2, 4, 2]),
+                (["A", "B"], [2, 4]),
+                (["only"], [2]),
+                (["a", "b", "c", "d", "e"], [2, 4, 2, 2, 2]),
+        ):
+            q = Question.objects.create(
+                question_set=qset, order=1, prompt="p",
+                response_type=Question.TYPE_PARAGRAPH,
+                passage=json.dumps({"sections": sections}))
+            self.assertEqual(q.paragraph_section_rows, expected, sections)
+            self.assertEqual([b["rows"] for b in q.paragraph_boxes], expected)
+            self.assertEqual([b["label"] for b in q.paragraph_boxes], sections)
+            q.delete()
+
+        # And a question with no passage at all still gets the default sections.
+        bare = Question.objects.create(
+            question_set=qset, order=2, prompt="p",
+            response_type=Question.TYPE_PARAGRAPH)
+        self.assertEqual(bare.paragraph_section_rows, [2, 4, 2])
+
+    def test_the_self_evaluation_actually_renders_as_a_rating_widget(self):
+        """Without this, deleting the template branch falls through to the
+        generic textarea — which prints the stored JSON into a text box — and
+        every test still passes, because they only check for a 200."""
+        self._seed()
+        html = self._page(2)
+        self.assertIn("selfeval-widget", html)
+        self.assertIn('class="se-rating"', html)
+        self.assertIn("Needs to Improve", html)
+        self.assertIn("Follows Essay Format", html)
+        # The blueprint checklist's thirty rows are there and are radio inputs,
+        # not a textarea holding raw JSON.
+        self.assertIn("P1 · Introduction — Hook", html)
+        self.assertNotIn('&quot;ratings&quot;', html)
+
+    def test_the_widget_and_the_grader_agree_on_how_a_rating_is_keyed(self):
+        """The widget writes ratings keyed by the component's INDEX and the
+        formatter reads them back the same way. Shift one and every rating
+        slides onto the wrong component with the last one silently lost —
+        which no hand-built-JSON test can see."""
+        import re
+
+        self._seed()
+        html = self._page(2)
+        form = self._set(2).questions.order_by("order")[2]
+        indexes = re.findall(r'class="se-item" data-index="(\d+)"', html)
+        # Both self-evaluations on the page, each keyed 0..n-1 in printed order.
+        self.assertEqual(indexes,
+                         [str(i) for i in range(30)] + [str(i) for i in range(12)])
+
+        # The last component must be reachable: key it the way the widget does
+        # and the formatter must find it.
+        last = len(form.self_eval_items) - 1
+        sheet, _ = ResponseSheet.objects.update_or_create(
+            question_set=self._set(2), child=self.child,
+            defaults={"answers": {str(form.pk): json.dumps(
+                {"ratings": {str(last): "Excellent"}, "notes": {}})}})
+        self.assertIn("12. Vocal Creativity — Excellent",
+                      sheet.answer_display(form))
+
+    def test_every_reference_page_exists_on_disk(self):
+        """Under ManifestStaticFilesStorage a missing static file does not
+        degrade — it raises, and takes the drafting week down with it. The
+        render test cannot catch a typo'd page number because it iterates the
+        same list the template does."""
+        from django.contrib.staticfiles import finders
+        from tutor import essay
+
+        for path, title in essay.reference_images():
+            self.assertIsNotNone(finders.find(path), path)
+            self.assertTrue(title.strip(), path)
+
+    def test_the_labelled_model_essay_is_one_of_the_pages_offered(self):
+        """The page tells her the model has "every part labelled in the
+        margin". Folio 14 is the plain prose; folio 15 is the labelled one, and
+        it was committed but left out of the list — so the promise pointed at
+        an essay with nothing marked on it."""
+        from tutor import essay
+
+        folios = [p["folio"] for p in essay.REFERENCE_PAGES]
+        self.assertIn(15, folios)
+        self.assertEqual(folios, sorted(folios), "printed order")
+        labelled = [p for p in essay.REFERENCE_PAGES if p["folio"] == 15][0]
+        self.assertIn("labelled", labelled["title"])
+
+    def test_the_drafting_week_is_the_even_one(self):
+        """`is_draft_week` decides whether the blueprint opens expanded and
+        whether the title says "(cont.)". It is computed separately from the
+        note scoping, so the note test cannot catch it being inverted."""
+        self._seed()
+        for week in range(1, 11):
+            html = self._page(week)
+            self.assertEqual("(cont.)" in html, week % 2 == 0, "week %d" % week)
+
+    def test_no_step_asks_the_same_thing_twice(self):
+        """The body-paragraph warm-up prints six rules under three labels —
+        "1a. FACTUAL (TELL): / 1b. SENSORY (SHOW): / 2a. …". With the book's
+        numbering dropped, three lessons showed her "FACTUAL (TELL):" twice and
+        "SENSORY (SHOW):" three times, with no way to tell the pairs apart."""
+        from tutor.essay_lessons import LESSONS
+
+        for lesson in LESSONS:
+            for step in lesson["steps"]:
+                texts = [p["text"] for p in step["prompts"]]
+                self.assertEqual(len(set(texts)), len(texts),
+                                 "L%d %s" % (lesson["number"], step["heading"]))
+        self._seed()
+        for week in (1, 3, 5, 7, 9):
+            prompts = [q.prompt for q in self._set(week).questions.all()]
+            self.assertEqual(len(set(prompts)), len(prompts), "week %d" % week)
+
+    def test_no_transcription_scaffolding_reaches_her(self):
+        """"[arrow callout]" is a reader describing the paper, not the guide
+        speaking. It was landing in the hint she opens when she is stuck."""
+        from tutor.essay_lessons import LESSONS
+
+        for lesson in LESSONS:
+            blob = json.dumps(lesson)
+            for marker in ("[arrow callout]", "LINE CUT OFF", "[PAGE TRUNCATED",
+                           "cannot be read reliably", "pdf_page"):
+                self.assertNotIn(marker, blob,
+                                 "L%d leaks %r" % (lesson["number"], marker))
+        self._seed()
+        for week in range(1, 11):
+            for q in self._set(week).questions.all():
+                self.assertNotIn("[arrow", q.prompt + q.hint)
+
+    def test_every_lesson_that_sends_her_to_the_missing_section_says_so(self):
+        """"Thinking In Threes" is referred to in all five lessons and exists
+        in none of them. The warning was written for two."""
+        from tutor.essay_lessons import LESSONS
+
+        for lesson in LESSONS:
+            mentions = any(
+                "Thinking In Threes" in p["text"]
+                for step in lesson["steps"] for p in step["prompts"])
+            mentions = mentions or any(
+                "thought in threes" in c.lower()
+                for step in lesson["steps"] for c in step.get("checks", []))
+            noted = any("Thinking In Threes" in n["text"]
+                        for n in lesson.get("notes", []))
+            self.assertEqual(noted, mentions, "L%d" % lesson["number"])
+            self.assertTrue(mentions, "L%d should mention it" % lesson["number"])

@@ -27,18 +27,18 @@ LESSONS = [
                 'instruction': 'Before you begin writing your first descriptive essay work through'
                     ' this senses exercise to help warm up your observation skills.',
                 'prompts': [
-                    {'text': 'What do you see from where you sit? Look up close and far away.',
+                    {'text': '1. What do you see from where you sit? Look up close and far away.',
                      'number': '1.', 'lines': 3},
-                    {'text': 'What do you hear? Listen for loud and soft noises and also for '
+                    {'text': '2. What do you hear? Listen for loud and soft noises and also for '
                       "noises you don't usually think of as noise.",
                      'number': '2.', 'lines': 3},
-                    {'text': 'What can you touch from where you sit? Describe textures, shapes, '
-                      'size, etc.',
+                    {'text': '3. What can you touch from where you sit? Describe textures, '
+                      'shapes, size, etc.',
                      'number': '3.', 'lines': 3},
-                    {'text': 'Describe the smells around you. Smell plants, clothing, food, and '
-                      'objects as well as the air.',
+                    {'text': '4. Describe the smells around you. Smell plants, clothing, food, '
+                      'and objects as well as the air.',
                      'number': '4.', 'lines': 3},
-                    {'text': 'What can you taste? What do you imagine the things you smell, '
+                    {'text': '5. What can you taste? What do you imagine the things you smell, '
                       'hear, see, etc. taste like?',
                      'number': '5.', 'lines': 3},
                 ],
@@ -87,25 +87,26 @@ LESSONS = [
                 'heading': 'The Thesis Statement »',
                 'kind': 'idea_development',
                 'instruction': 'Begin the process of writing your descriptive essay by first '
-                    'developing a strong thesis statement. [arrow callout] The thesis '
-                    'statement is the sentence that states the big idea of your essay. '
-                    'There are three objectives of a thesis statement: 1. Your thesis '
-                    'statement communicates the broad topic and the three sub-topics of'
-                    ' your essay. 2. Your thesis statement tells the reader how you '
-                    'will organize your thoughts in the essay. 3. Your thesis statement'
-                    ' assures your reader your thoughtful idea is worth reading because'
-                    ' you have a communication plan.',
+                    'developing a strong thesis statement. The thesis statement is the '
+                    'sentence that states the big idea of your essay. There are three '
+                    'objectives of a thesis statement: 1. Your thesis statement '
+                    'communicates the broad topic and the three sub-topics of your '
+                    'essay. 2. Your thesis statement tells the reader how you will '
+                    'organize your thoughts in the essay. 3. Your thesis statement '
+                    'assures your reader your thoughtful idea is worth reading because '
+                    'you have a communication plan.',
                 'prompts': [
                     {'text': 'What do you feel is most important to communicate to your audience'
                       ' about this topic?',
                      'number': '', 'lines': 3},
                     {'text': 'Brainstorm some potential sub-topics that will support your idea.',
                      'number': '', 'lines': 4},
-                    {'text': 'Choose three sub-topics to focus on in your essay.\n\nSub-topic 1 of 3',
+                    {'text': '1. Choose three sub-topics to focus on in your essay.  Sub-topic 1'
+                      ' of 3',
                      'number': '1.', 'lines': 1},
-                    {'text': 'Sub-topic 2 of 3',
+                    {'text': '2. Sub-topic 2 of 3',
                      'number': '2.', 'lines': 1},
-                    {'text': 'Sub-topic 3 of 3',
+                    {'text': '3. Sub-topic 3 of 3',
                      'number': '3.', 'lines': 1},
                     {'text': 'Now craft a thesis statement that introduces the reader to your '
                       'big idea by communicating these three sub-topics as the focus of '
@@ -125,13 +126,13 @@ LESSONS = [
                 'heading': 'The Hook »',
                 'kind': 'idea_development',
                 'instruction': 'Now that you have your thesis statement written, develop a dynamic'
-                    ' hook to start your essay. [arrow callout] The first sentence of '
-                    'your essay should scream, "Fire!" Not really, but your hook should'
-                    " grab your reader's attention, spark some curiosity, and draw them"
-                    ' into your big idea. Your hook can: » be an exaggeration or make '
-                    'an outrageous statement » be a metaphor or mystery » state a '
-                    'strong fact or staggering statistic » be a famous quotation » ask '
-                    'a poignant question » be a quirky one-sentence anecdote',
+                    ' hook to start your essay. The first sentence of your essay should'
+                    ' scream, "Fire!" Not really, but your hook should grab your '
+                    "reader's attention, spark some curiosity, and draw them into your "
+                    'big idea. Your hook can: » be an exaggeration or make an '
+                    'outrageous statement » be a metaphor or mystery » state a strong '
+                    'fact or staggering statistic » be a famous quotation » ask a '
+                    'poignant question » be a quirky one-sentence anecdote',
                 'prompts': [
                     {'text': 'Write three different hooks that experiment with some of the '
                       'previous tips.',
@@ -150,18 +151,17 @@ LESSONS = [
                 'instruction': 'Now that you have a hook, a thesis statement, and three sub-'
                     'topics, work through this body paragraph warm-up exercise. This '
                     'will help as you begin to craft each of the three body paragraphs '
-                    'in your descriptive essay. [arrow callout] Remember, begin with '
-                    'factual details that "tell" the reader about your topic. Then '
-                    'write a sentence providing specific sensory details to "show" and '
-                    'expand on the information. Example: PARAGRAPH OPENER: Light plays '
-                    'an important role in developing the atmosphere of a scene. FACTUAL'
-                    ' (TELL): Imagine, for example, shining a light on the front of a '
-                    'pear and its shadow enlarging. SENSORY (SHOW): This makes the '
-                    'scene moody, almost frightening. FACTUAL (TELL): If you shine that'
-                    ' same light source on the back of the pear, its shadow will '
-                    'shrink. SENSORY (SHOW): This makes the scene less intimidating, '
-                    'more inviting. Now write the final pair of sentences and the '
-                    'clincher.',
+                    'in your descriptive essay. Remember, begin with factual details '
+                    'that "tell" the reader about your topic. Then write a sentence '
+                    'providing specific sensory details to "show" and expand on the '
+                    'information. Example: PARAGRAPH OPENER: Light plays an important '
+                    'role in developing the atmosphere of a scene. FACTUAL (TELL): '
+                    'Imagine, for example, shining a light on the front of a pear and '
+                    'its shadow enlarging. SENSORY (SHOW): This makes the scene moody, '
+                    'almost frightening. FACTUAL (TELL): If you shine that same light '
+                    'source on the back of the pear, its shadow will shrink. SENSORY '
+                    '(SHOW): This makes the scene less intimidating, more inviting. Now'
+                    ' write the final pair of sentences and the clincher.',
                 'prompts': [
                     {'text': 'FACTUAL (TELL):',
                      'number': '', 'lines': 2},
@@ -181,16 +181,22 @@ LESSONS = [
                     'pages incorporating all the pre-writing you have done in this '
                     'lesson. 2. Type your final draft with double line spacing and '
                     '1-inch margins. Be sure to insert your final draft into this '
-                    'binder following your rough draft. [arrow callout] As you work '
-                    'through the process of writing your descriptive essay, ask '
-                    'yourself the following questions frequently: » Do I believe what I'
-                    ' am writing about? » Am I following the blueprint? » Have I read '
-                    'through each draft of my essay?',
+                    'binder following your rough draft. As you work through the process'
+                    ' of writing your descriptive essay, ask yourself the following '
+                    'questions frequently: » Do I believe what I am writing about? » Am'
+                    ' I following the blueprint? » Have I read through each draft of my'
+                    ' essay?',
                 'prompts': [
                 ],
             },
         ],
         'notes': [
+            {'where': 'odd',
+             'text': 'This lesson points you at an exercise called “Thinking In Threes”.'
+                      ' There is no section by that name in this book — it is in another '
+                      'book in the series. It means what the thesis statement work has '
+                      'been doing all along: THREE sub-topics, all phrased in the same '
+                      'grammatical shape.'},
             {'where': 'odd',
              'text': 'The guide asks about “complimentary colors” and tells you to go '
                       'and research it. The colour-theory word is COMPLEMENTARY — colours'
@@ -198,10 +204,11 @@ LESSONS = [
                       'means flattering, or free of charge. Research the one the guide '
                       'means, not the one it spells.'},
             {'where': 'even',
-             'text': 'On the blueprint checklist the last paragraph is labelled “PS» '
-                      'CONCLUSION”. That is a typo for “P5»” — it is paragraph 5, the '
-                      'conclusion. Lessons 2 and 4 print it correctly, which is how we '
-                      'know.'},
+             'text': "In your PAPER book, the last row of this lesson's blueprint "
+                      'checklist is labelled “PS» CONCLUSION”. That is a typo for “P5»” —'
+                      ' it is paragraph 5, the conclusion. Lessons 2 and 4 print it '
+                      'correctly, which is how we know. The checklist on this page says '
+                      'P5.'},
         ],
     },
     {
@@ -252,25 +259,26 @@ LESSONS = [
                 'heading': 'The Thesis Statement »',
                 'kind': 'idea_development',
                 'instruction': 'Begin the process of writing your descriptive essay by first '
-                    'developing a strong thesis statement. [arrow callout] The thesis '
-                    'statement is the sentence that states the big idea of your essay. '
-                    'There are three objectives of a thesis statement: 1. Your thesis '
-                    'statement communicates the broad topic and the three sub-topics of'
-                    ' your essay. 2. Your thesis statement tells the reader how you '
-                    'will organize your thoughts in the essay. 3. Your thesis statement'
-                    ' assures your reader your thoughtful idea is worth reading because'
-                    ' you have a communication plan.',
+                    'developing a strong thesis statement. The thesis statement is the '
+                    'sentence that states the big idea of your essay. There are three '
+                    'objectives of a thesis statement: 1. Your thesis statement '
+                    'communicates the broad topic and the three sub-topics of your '
+                    'essay. 2. Your thesis statement tells the reader how you will '
+                    'organize your thoughts in the essay. 3. Your thesis statement '
+                    'assures your reader your thoughtful idea is worth reading because '
+                    'you have a communication plan.',
                 'prompts': [
                     {'text': 'What do you feel is most important to communicate to your audience'
                       ' about this topic?',
                      'number': '', 'lines': 3},
                     {'text': 'Brainstorm some potential sub-topics that will support your idea.',
                      'number': '', 'lines': 5},
-                    {'text': 'Choose three sub-topics to focus on in your essay.\n\nSub-topic 1 of 3',
+                    {'text': '1. Choose three sub-topics to focus on in your essay.  Sub-topic 1'
+                      ' of 3',
                      'number': '1.', 'lines': 1},
-                    {'text': 'Sub-topic 2 of 3',
+                    {'text': '2. Sub-topic 2 of 3',
                      'number': '2.', 'lines': 1},
-                    {'text': 'Sub-topic 3 of 3',
+                    {'text': '3. Sub-topic 3 of 3',
                      'number': '3.', 'lines': 1},
                     {'text': 'Now craft a thesis statement that introduces the reader to your '
                       'big idea by communicating these three sub-topics as the focus of '
@@ -290,13 +298,13 @@ LESSONS = [
                 'heading': 'The Hook »',
                 'kind': 'idea_development',
                 'instruction': 'Now that you have your thesis statement written, develop a dynamic'
-                    ' hook to start your essay. [arrow callout] The first sentence of '
-                    'your essay should scream, "Fire!" Not really, but your hook should'
-                    " grab your reader's attention, spark some curiosity, and draw them"
-                    ' into your big idea. Your hook can: » be an exaggeration or make '
-                    'an outrageous statement » be a metaphor or mystery » state a '
-                    'strong fact or staggering statistic » be a famous quotation » ask '
-                    'a poignant question » be a quirky one-sentence anecdote',
+                    ' hook to start your essay. The first sentence of your essay should'
+                    ' scream, "Fire!" Not really, but your hook should grab your '
+                    "reader's attention, spark some curiosity, and draw them into your "
+                    'big idea. Your hook can: » be an exaggeration or make an '
+                    'outrageous statement » be a metaphor or mystery » state a strong '
+                    'fact or staggering statistic » be a famous quotation » ask a '
+                    'poignant question » be a quirky one-sentence anecdote',
                 'prompts': [
                     {'text': 'Write three different hooks that experiment with some of the '
                       'previous tips.',
@@ -315,12 +323,11 @@ LESSONS = [
                 'instruction': 'Now that you have a hook, a thesis statement, and three sub-'
                     'topics, work through this body paragraph exercise. This will help '
                     'as you begin to craft each of the three body paragraphs in your '
-                    'descriptive essay. [arrow callout] Remember, begin with factual '
-                    'details that "tell" the reader about your topic. Then write a '
-                    'sentence providing specific sensory details to "show" and expand '
-                    'on the information. Choose one of your three sub-topics from page '
-                    '32 and outline three pairs of factual and sensory details to '
-                    'support it:',
+                    'descriptive essay. Remember, begin with factual details that '
+                    '"tell" the reader about your topic. Then write a sentence '
+                    'providing specific sensory details to "show" and expand on the '
+                    'information. Choose one of your three sub-topics from page 32 and '
+                    'outline three pairs of factual and sensory details to support it:',
                 'prompts': [
                     {'text': '1a. FACTUAL (TELL):',
                      'number': '', 'lines': 2},
@@ -342,26 +349,26 @@ LESSONS = [
                 'instruction': 'Now that you have a hook, a thesis statement, three sub-topics, '
                     'and one body paragraph outlined, begin crafting a descriptive '
                     'essay describing a person. Review page 10 and make sure you work '
-                    'through all stages of the writing process. [arrow callout] As you '
-                    'work through the process of writing your descriptive essay, ask '
-                    'yourself the following questions frequently: » Do I believe what I'
-                    ' am writing about? » Am I following the blueprint? » Have I read '
-                    'through each draft of my essay? Hand write your rough draft on the'
-                    ' following pages incorporating all the pre-writing you have done '
-                    'in this lesson. Type your final draft with double line spacing and'
-                    ' 1-inch margins. Be sure to insert your final draft into this '
-                    'binder following your rough draft.',
+                    'through all stages of the writing process. As you work through the'
+                    ' process of writing your descriptive essay, ask yourself the '
+                    'following questions frequently: » Do I believe what I am writing '
+                    'about? » Am I following the blueprint? » Have I read through each '
+                    'draft of my essay? Hand write your rough draft on the following '
+                    'pages incorporating all the pre-writing you have done in this '
+                    'lesson. Type your final draft with double line spacing and 1-inch '
+                    'margins. Be sure to insert your final draft into this binder '
+                    'following your rough draft.',
                 'prompts': [
                 ],
             },
         ],
         'notes': [
             {'where': 'odd',
-             'text': 'Two tasks this lesson send you to an exercise called “Thinking In '
-                      'Threes”. There is no such section in this volume — it is in '
-                      'another book in the series. What it means is the thing the thesis '
-                      'statement work has been doing all along: three sub-topics, phrased'
-                      ' in the same grammatical shape.'},
+             'text': 'This lesson points you at an exercise called “Thinking In Threes”.'
+                      ' There is no section by that name in this book — it is in another '
+                      'book in the series. It means what the thesis statement work has '
+                      'been doing all along: THREE sub-topics, all phrased in the same '
+                      'grammatical shape.'},
         ],
     },
     {
@@ -416,25 +423,26 @@ LESSONS = [
                 'heading': 'The Thesis Statement »',
                 'kind': 'idea_development',
                 'instruction': 'Begin the process of writing your descriptive essay by first '
-                    'developing a strong thesis statement. [arrow callout] The thesis '
-                    'statement is the sentence that states the big idea of your essay. '
-                    'There are three objectives of a thesis statement: 1. Your thesis '
-                    'statement communicates the broad topic and the three sub-topics of'
-                    ' your essay. 2. Your thesis statement tells the reader how you '
-                    'will organize your thoughts in the essay. 3. Your thesis statement'
-                    ' assures your reader your thoughtful idea is worth reading because'
-                    ' you have a communication plan.',
+                    'developing a strong thesis statement. The thesis statement is the '
+                    'sentence that states the big idea of your essay. There are three '
+                    'objectives of a thesis statement: 1. Your thesis statement '
+                    'communicates the broad topic and the three sub-topics of your '
+                    'essay. 2. Your thesis statement tells the reader how you will '
+                    'organize your thoughts in the essay. 3. Your thesis statement '
+                    'assures your reader your thoughtful idea is worth reading because '
+                    'you have a communication plan.',
                 'prompts': [
                     {'text': 'What do you feel is most important to communicate to your audience'
                       ' about this topic?',
                      'number': '', 'lines': 3},
                     {'text': 'Brainstorm some potential sub-topics that will support your idea.',
                      'number': '', 'lines': 5},
-                    {'text': 'Choose three sub-topics to focus on in your essay.\n\nSub-topic 1 of 3',
+                    {'text': '1. Choose three sub-topics to focus on in your essay.  Sub-topic 1'
+                      ' of 3',
                      'number': '1.', 'lines': 1},
-                    {'text': 'Sub-topic 2 of 3',
+                    {'text': '2. Sub-topic 2 of 3',
                      'number': '2.', 'lines': 1},
-                    {'text': 'Sub-topic 3 of 3',
+                    {'text': '3. Sub-topic 3 of 3',
                      'number': '3.', 'lines': 1},
                     {'text': 'Now craft a thesis statement that introduces the reader to your '
                       'big idea by communicating these three sub-topics as the focus of '
@@ -454,13 +462,13 @@ LESSONS = [
                 'heading': 'The Hook »',
                 'kind': 'idea_development',
                 'instruction': 'Now that you have your thesis statement written, develop a dynamic'
-                    ' hook to start your essay. [arrow callout] The first sentence of '
-                    'your essay should scream, “Fire!” Not really, but your hook should'
-                    " grab your reader's attention, spark some curiosity, and draw them"
-                    ' into your big idea. Your hook can: » be an exaggeration or make '
-                    'an outrageous statement » be a metaphor or mystery » state a '
-                    'strong fact or staggering statistic » be a famous quotation » ask '
-                    'a poignant question » be a quirky one-sentence anecdote',
+                    ' hook to start your essay. The first sentence of your essay should'
+                    ' scream, “Fire!” Not really, but your hook should grab your '
+                    "reader's attention, spark some curiosity, and draw them into your "
+                    'big idea. Your hook can: » be an exaggeration or make an '
+                    'outrageous statement » be a metaphor or mystery » state a strong '
+                    'fact or staggering statistic » be a famous quotation » ask a '
+                    'poignant question » be a quirky one-sentence anecdote',
                 'prompts': [
                     {'text': 'Write three different hooks that experiment with some of the '
                       'previous tips.',
@@ -479,24 +487,23 @@ LESSONS = [
                 'instruction': 'Now that you have a hook, a thesis statement, and three sub-'
                     'topics, work through this body paragraph warm-up exercise. This '
                     'will help as you begin to craft each of the three body paragraphs '
-                    'in your descriptive essay. [arrow callout] Remember, begin with '
-                    'factual details that “tell” the reader about your topic. Then '
-                    'write a sentence providing specific sensory details to “show” and '
-                    'expand on the information. Choose one of your three sub-topics '
-                    'from page 42 and outline three pairs of factual and sensory '
-                    'details to support it:',
+                    'in your descriptive essay. Remember, begin with factual details '
+                    'that “tell” the reader about your topic. Then write a sentence '
+                    'providing specific sensory details to “show” and expand on the '
+                    'information. Choose one of your three sub-topics from page 42 and '
+                    'outline three pairs of factual and sensory details to support it:',
                 'prompts': [
-                    {'text': 'FACTUAL (TELL):',
+                    {'text': '1a. FACTUAL (TELL):',
                      'number': '1a.', 'lines': 2},
-                    {'text': 'SENSORY (SHOW):',
+                    {'text': '1b. SENSORY (SHOW):',
                      'number': '1b.', 'lines': 2},
-                    {'text': 'FACTUAL (TELL):',
+                    {'text': '2a. FACTUAL (TELL):',
                      'number': '2a.', 'lines': 2},
-                    {'text': 'SENSORY (SHOW):',
+                    {'text': '2b. SENSORY (SHOW):',
                      'number': '2b.', 'lines': 2},
-                    {'text': 'FACTUAL (TELL):',
+                    {'text': '3a. FACTUAL (TELL):',
                      'number': '3a.', 'lines': 2},
-                    {'text': 'SENSORY (SHOW):',
+                    {'text': '3b. SENSORY (SHOW):',
                      'number': '3b.', 'lines': 2},
                 ],
             },
@@ -506,33 +513,36 @@ LESSONS = [
                 'instruction': 'Now that you have a hook, a thesis statement, three sub-topics, '
                     'and one body paragraph outlined, begin crafting a descriptive '
                     'essay describing an object. Review page 10 and make sure you work '
-                    'through all stages of the writing process. [arrow callout] As you '
-                    'work through the process of writing your descriptive essay, ask '
-                    'yourself the following questions frequently: » Do I believe what I'
-                    ' am writing about? » Am I following the blueprint? » Have I read '
-                    'through each draft of my essay? Hand write your rough draft on the'
-                    ' following pages incorporating all the pre-writing you have done '
-                    'in this lesson. Type your final draft with double line spacing and'
-                    ' 1-inch margins. Be sure to insert your final draft into this '
-                    'binder following your rough draft.',
+                    'through all stages of the writing process. As you work through the'
+                    ' process of writing your descriptive essay, ask yourself the '
+                    'following questions frequently: » Do I believe what I am writing '
+                    'about? » Am I following the blueprint? » Have I read through each '
+                    'draft of my essay? Hand write your rough draft on the following '
+                    'pages incorporating all the pre-writing you have done in this '
+                    'lesson. Type your final draft with double line spacing and 1-inch '
+                    'margins. Be sure to insert your final draft into this binder '
+                    'following your rough draft.',
                 'prompts': [
                 ],
             },
         ],
         'notes': [
             {'where': 'odd',
-             'text': 'A task this lesson refers back to “Thinking In Threes”, which is '
-                      'not a section in this volume. It means your three sub-topics, '
-                      'phrased in matching form.'},
+             'text': 'This lesson points you at an exercise called “Thinking In Threes”.'
+                      ' There is no section by that name in this book — it is in another '
+                      'book in the series. It means what the thesis statement work has '
+                      'been doing all along: THREE sub-topics, all phrased in the same '
+                      'grammatical shape.'},
             {'where': 'odd',
              'text': 'The Monet quotation opens with the wrong curly quote — the mark '
                       'that should close a quotation is used to open it. Copy the words, '
                       'not the typo.'},
             {'where': 'even',
-             'text': 'On the blueprint checklist the last paragraph is labelled “PS» '
-                      'CONCLUSION”. That is a typo for “P5»” — it is paragraph 5, the '
-                      'conclusion. Lessons 2 and 4 print it correctly, which is how we '
-                      'know.'},
+             'text': "In your PAPER book, the last row of this lesson's blueprint "
+                      'checklist is labelled “PS» CONCLUSION”. That is a typo for “P5»” —'
+                      ' it is paragraph 5, the conclusion. Lessons 2 and 4 print it '
+                      'correctly, which is how we know. The checklist on this page says '
+                      'P5.'},
         ],
     },
     {
@@ -583,13 +593,13 @@ LESSONS = [
                 'heading': 'The Thesis Statement »',
                 'kind': 'idea_development',
                 'instruction': 'Begin the process of writing your descriptive essay by first '
-                    'developing a strong thesis statement. [arrow callout] The thesis '
-                    'statement is the sentence that states the big idea of your essay. '
-                    'There are three objectives of a thesis statement: 1. Your thesis '
-                    'statement communicates the broad topic and the three sub-topics of'
-                    ' your essay. 2. Your thesis statement tells the reader how you '
-                    'will organize your thoughts in the essay. 3. Your thesis statement'
-                    ' assures your reader that your thoughtful idea is worth reading '
+                    'developing a strong thesis statement. The thesis statement is the '
+                    'sentence that states the big idea of your essay. There are three '
+                    'objectives of a thesis statement: 1. Your thesis statement '
+                    'communicates the broad topic and the three sub-topics of your '
+                    'essay. 2. Your thesis statement tells the reader how you will '
+                    'organize your thoughts in the essay. 3. Your thesis statement '
+                    'assures your reader that your thoughtful idea is worth reading '
                     'because you have a communication plan.',
                 'prompts': [
                     {'text': 'What do you feel is most important to communicate to your audience'
@@ -597,11 +607,12 @@ LESSONS = [
                      'number': '', 'lines': 3},
                     {'text': 'Brainstorm some potential sub-topics that will support your idea.',
                      'number': '', 'lines': 5},
-                    {'text': 'Choose three sub-topics to focus on in your essay.\n\nSub-topic 1 of 3',
+                    {'text': '1. Choose three sub-topics to focus on in your essay.  Sub-topic 1'
+                      ' of 3',
                      'number': '1.', 'lines': 1},
-                    {'text': 'Sub-topic 2 of 3',
+                    {'text': '2. Sub-topic 2 of 3',
                      'number': '2.', 'lines': 1},
-                    {'text': 'Sub-topic 3 of 3',
+                    {'text': '3. Sub-topic 3 of 3',
                      'number': '3.', 'lines': 1},
                     {'text': 'Now craft a thesis statement that introduces the reader to your '
                       'big idea by communicating these three sub-topics as the focus of '
@@ -621,13 +632,13 @@ LESSONS = [
                 'heading': 'The Hook »',
                 'kind': 'idea_development',
                 'instruction': 'Now that you have your thesis statement written, develop a dynamic'
-                    ' hook to start your essay. [arrow callout] The first sentence of '
-                    'your essay should scream, “Fire!” Not really, but your hook should'
-                    ' grab your reader’s attention, spark some curiosity, and draw them'
-                    ' into your big idea. Your hook can: » be an exaggeration or make '
-                    'an outrageous statement » be a metaphor or mystery » state a '
-                    'strong fact or staggering statistic » be a famous quotation » ask '
-                    'a poignant question » be a quirky one-sentence anecdote',
+                    ' hook to start your essay. The first sentence of your essay should'
+                    ' scream, “Fire!” Not really, but your hook should grab your '
+                    'reader’s attention, spark some curiosity, and draw them into your '
+                    'big idea. Your hook can: » be an exaggeration or make an '
+                    'outrageous statement » be a metaphor or mystery » state a strong '
+                    'fact or staggering statistic » be a famous quotation » ask a '
+                    'poignant question » be a quirky one-sentence anecdote',
                 'prompts': [
                     {'text': 'Write three different hooks that experiment with some of the '
                       'previous tips.',
@@ -646,24 +657,23 @@ LESSONS = [
                 'instruction': 'Now that you have a hook, a thesis statement, and three sub-'
                     'topics, work through this body paragraph warm-up exercise. This '
                     'will help as you begin to craft each of the three body paragraphs '
-                    'in your descriptive essay. [arrow callout] Remember, begin with '
-                    'factual details that “tell” the reader about your topic. Then '
-                    'write a sentence providing specific sensory details to “show” and '
-                    'expand on the information. Choose one of your three sub-topics '
-                    'from page 53 and outline three pairs of factual and sensory '
-                    'details to support it:',
+                    'in your descriptive essay. Remember, begin with factual details '
+                    'that “tell” the reader about your topic. Then write a sentence '
+                    'providing specific sensory details to “show” and expand on the '
+                    'information. Choose one of your three sub-topics from page 53 and '
+                    'outline three pairs of factual and sensory details to support it:',
                 'prompts': [
-                    {'text': 'FACTUAL (TELL):',
+                    {'text': '1a. FACTUAL (TELL):',
                      'number': '1a.', 'lines': 2},
-                    {'text': 'SENSORY (SHOW):',
+                    {'text': '1b. SENSORY (SHOW):',
                      'number': '1b.', 'lines': 2},
-                    {'text': 'FACTUAL (TELL):',
+                    {'text': '2a. FACTUAL (TELL):',
                      'number': '2a.', 'lines': 2},
-                    {'text': 'SENSORY (SHOW):',
+                    {'text': '2b. SENSORY (SHOW):',
                      'number': '2b.', 'lines': 2},
-                    {'text': 'FACTUAL (TELL):',
+                    {'text': '3a. FACTUAL (TELL):',
                      'number': '3a.', 'lines': 2},
-                    {'text': 'SENSORY (SHOW):',
+                    {'text': '3b. SENSORY (SHOW):',
                      'number': '3b.', 'lines': 2},
                 ],
             },
@@ -677,15 +687,22 @@ LESSONS = [
                     ' rough draft on the following pages incorporating all the pre-'
                     'writing you have done in this lesson. 2. Type your final draft '
                     'with double line spacing and 1-inch margins. Be sure to insert '
-                    'your final draft into this binder following your rough draft. '
-                    '[arrow callout] As you work through the process of writing your '
-                    'descriptive essay, ask yourself the following questions '
-                    'frequently: » Do I believe what I am writing about? » Am I '
-                    'following the blueprint? » Have I read through each draft of my '
-                    'essay?',
+                    'your final draft into this binder following your rough draft. As '
+                    'you work through the process of writing your descriptive essay, '
+                    'ask yourself the following questions frequently: » Do I believe '
+                    'what I am writing about? » Am I following the blueprint? » Have I '
+                    'read through each draft of my essay?',
                 'prompts': [
                 ],
             },
+        ],
+        'notes': [
+            {'where': 'odd',
+             'text': 'This lesson points you at an exercise called “Thinking In Threes”.'
+                      ' There is no section by that name in this book — it is in another '
+                      'book in the series. It means what the thesis statement work has '
+                      'been doing all along: THREE sub-topics, all phrased in the same '
+                      'grammatical shape.'},
         ],
     },
     {
@@ -737,25 +754,26 @@ LESSONS = [
                 'heading': 'The Thesis Statement »',
                 'kind': 'idea_development',
                 'instruction': 'Begin the process of writing your descriptive essay by first '
-                    'developing a strong thesis statement. [arrow callout] The thesis '
-                    'statement is the sentence that states the big idea of your essay. '
-                    'There are three objectives of a thesis statement: 1. Your thesis '
-                    'statement communicates the broad topic and the three sub-topics of'
-                    ' your essay. 2. Your thesis statement tells the reader how you '
-                    'will organize your thoughts in the essay. 3. Your thesis statement'
-                    ' assures your reader your thoughtful idea is worth reading because'
-                    ' you have a communication plan.',
+                    'developing a strong thesis statement. The thesis statement is the '
+                    'sentence that states the big idea of your essay. There are three '
+                    'objectives of a thesis statement: 1. Your thesis statement '
+                    'communicates the broad topic and the three sub-topics of your '
+                    'essay. 2. Your thesis statement tells the reader how you will '
+                    'organize your thoughts in the essay. 3. Your thesis statement '
+                    'assures your reader your thoughtful idea is worth reading because '
+                    'you have a communication plan.',
                 'prompts': [
                     {'text': 'What do you feel is most important to communicate to your audience'
                       ' about this topic?',
                      'number': '', 'lines': 3},
                     {'text': 'Brainstorm some potential sub-topics that will support your idea.',
                      'number': '', 'lines': 5},
-                    {'text': 'Choose three sub-topics to focus on in your essay.\n\nSub-topic 1 of 3',
+                    {'text': '1. Choose three sub-topics to focus on in your essay.  Sub-topic 1'
+                      ' of 3',
                      'number': '1.', 'lines': 1},
-                    {'text': 'Sub-topic 2 of 3',
+                    {'text': '2. Sub-topic 2 of 3',
                      'number': '2.', 'lines': 1},
-                    {'text': 'Sub-topic 3 of 3',
+                    {'text': '3. Sub-topic 3 of 3',
                      'number': '3.', 'lines': 1},
                     {'text': 'Now craft a thesis statement that introduces the reader to your '
                       'big idea by communicating these three sub-topics as the focus of '
@@ -775,13 +793,13 @@ LESSONS = [
                 'heading': 'The Hook »',
                 'kind': 'idea_development',
                 'instruction': 'Now that you have your thesis statement written, develop a dynamic'
-                    ' hook to start your essay. [arrow callout] The first sentence of '
-                    'your essay should scream, “Fire!” Not really, but your hook should'
-                    ' grab your reader’s attention, spark some curiosity, and draw them'
-                    ' into your big idea. Your hook can: » be an exaggeration or make '
-                    'an outrageous statement » be a metaphor or mystery » state a '
-                    'strong fact or staggering statistic » be a famous quotation » ask '
-                    'a poignant question » be a quirky one-sentence anecdote',
+                    ' hook to start your essay. The first sentence of your essay should'
+                    ' scream, “Fire!” Not really, but your hook should grab your '
+                    'reader’s attention, spark some curiosity, and draw them into your '
+                    'big idea. Your hook can: » be an exaggeration or make an '
+                    'outrageous statement » be a metaphor or mystery » state a strong '
+                    'fact or staggering statistic » be a famous quotation » ask a '
+                    'poignant question » be a quirky one-sentence anecdote',
                 'prompts': [
                     {'text': 'Write three different hooks that experiment with some of the '
                       'previous tips.',
@@ -800,24 +818,23 @@ LESSONS = [
                 'instruction': 'Now that you have a hook, a thesis statement, and three sub-'
                     'topics, work through this body paragraph warm-up exercise. This '
                     'will help as you begin to craft each of the three body paragraphs '
-                    'in your descriptive essay. [arrow callout] Remember, begin with '
-                    'factual details that “tell” the reader about your topic. Then '
-                    'write a sentence providing specific sensory details to “show” and '
-                    'expand on the information. Choose one of your three sub-topics '
-                    'from page 65 and outline three pairs of factual and sensory '
-                    'details to support it:',
+                    'in your descriptive essay. Remember, begin with factual details '
+                    'that “tell” the reader about your topic. Then write a sentence '
+                    'providing specific sensory details to “show” and expand on the '
+                    'information. Choose one of your three sub-topics from page 65 and '
+                    'outline three pairs of factual and sensory details to support it:',
                 'prompts': [
-                    {'text': 'FACTUAL (TELL):',
+                    {'text': '1a. FACTUAL (TELL):',
                      'number': '1a.', 'lines': 2},
-                    {'text': 'SENSORY (SHOW):',
+                    {'text': '1b. SENSORY (SHOW):',
                      'number': '1b.', 'lines': 2},
-                    {'text': 'FACTUAL (TELL):',
+                    {'text': '2a. FACTUAL (TELL):',
                      'number': '2a.', 'lines': 2},
-                    {'text': 'SENSORY (SHOW):',
+                    {'text': '2b. SENSORY (SHOW):',
                      'number': '2b.', 'lines': 2},
-                    {'text': 'FACTUAL (TELL):',
+                    {'text': '3a. FACTUAL (TELL):',
                      'number': '3a.', 'lines': 2},
-                    {'text': 'SENSORY (SHOW):',
+                    {'text': '3b. SENSORY (SHOW):',
                      'number': '3b.', 'lines': 2},
                 ],
             },
@@ -827,25 +844,32 @@ LESSONS = [
                 'instruction': 'Now that you have a hook, a thesis statement, three sub-topics, '
                     'and one body paragraph outlined, begin crafting a descriptive '
                     'essay describing a room. Review page 10 and make sure you work '
-                    'through all stages of the writing process. [arrow callout] As you '
-                    'work through the process of writing your descriptive essay, ask '
-                    'yourself the following questions frequently: » Do I believe what I'
-                    ' am writing about? » Am I following the blueprint? » Have I read '
-                    'through each draft of my essay? Hand write your rough draft on the'
-                    ' following pages incorporating all the pre-writing you have done '
-                    'in this lesson. Type your final draft with double line spacing and'
-                    ' 1-inch margins. Be sure to insert your final draft into this '
-                    'binder following your rough draft.',
+                    'through all stages of the writing process. As you work through the'
+                    ' process of writing your descriptive essay, ask yourself the '
+                    'following questions frequently: » Do I believe what I am writing '
+                    'about? » Am I following the blueprint? » Have I read through each '
+                    'draft of my essay? Hand write your rough draft on the following '
+                    'pages incorporating all the pre-writing you have done in this '
+                    'lesson. Type your final draft with double line spacing and 1-inch '
+                    'margins. Be sure to insert your final draft into this binder '
+                    'following your rough draft.',
                 'prompts': [
                 ],
             },
         ],
         'notes': [
+            {'where': 'odd',
+             'text': 'This lesson points you at an exercise called “Thinking In Threes”.'
+                      ' There is no section by that name in this book — it is in another '
+                      'book in the series. It means what the thesis statement work has '
+                      'been doing all along: THREE sub-topics, all phrased in the same '
+                      'grammatical shape.'},
             {'where': 'even',
-             'text': 'On the blueprint checklist the last paragraph is labelled “PS» '
-                      'CONCLUSION”. That is a typo for “P5»” — it is paragraph 5, the '
-                      'conclusion. Lessons 2 and 4 print it correctly, which is how we '
-                      'know.'},
+             'text': "In your PAPER book, the last row of this lesson's blueprint "
+                      'checklist is labelled “PS» CONCLUSION”. That is a typo for “P5»” —'
+                      ' it is paragraph 5, the conclusion. Lessons 2 and 4 print it '
+                      'correctly, which is how we know. The checklist on this page says '
+                      'P5.'},
         ],
     },
 ]

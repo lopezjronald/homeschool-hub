@@ -289,6 +289,12 @@ REFERENCE_PAGES = [
     {"folio": 12, "pdf_page": 13, "title": "The Structure of an Essay"},
     {"folio": 13, "pdf_page": 14, "title": "The Blueprint - Descriptive Essay"},
     {"folio": 14, "pdf_page": 15, "title": "The Model - Descriptive Essay"},
+    # Folio 15 is the SAME essay with every sentence tagged in the margin —
+    # HOOK », FACTUAL DETAIL #1 », CLINCHER » — and P1»INTRO … P5»CON bracketed
+    # down the side. It is the page to open when she cannot hear what a clincher
+    # is supposed to sound like, and folio 14 ends by telling her to turn to it.
+    {"folio": 15, "pdf_page": 16,
+     "title": "The Model - Descriptive Essay, labelled"},
 ]
 
 

@@ -312,10 +312,17 @@ class Command(BaseCommand):
                             step["kind"], STEP_HINTS["other"]))
             if step.get("checks"):
                 order += 1
+                # The book prints "Now ask yourself:" under each step, so a
+                # page with two of them showed her the same question twice with
+                # different contents. Name which step is being checked.
+                lead = step.get("check_lead") or "Now ask yourself:"
+                if head:
+                    lead = "%s — %s" % (head.replace("»", "").strip(),
+                                        lead[0].lower() + lead[1:])
                 self._q(
                     qset, order, category="writing",
                     response_type=Question.TYPE_SELF_EVAL,
-                    prompt=step.get("check_lead") or "Now ask yourself:",
+                    prompt=lead,
                     hint="The guide's own check. Be honest — a 'Not yet' here "
                          "is what tells you what to fix.",
                     passage=json.dumps({"items": step["checks"],

@@ -39,6 +39,10 @@
       var note = item.querySelector(".se-note");
       if (note && typeof notes[key] === "string") note.value = notes[key];
     });
+    // Seed the counter from what was restored, so a half-finished form reopens
+    // reading half-finished rather than done.
+    hidden.dataset.answered =
+      Object.keys(ratings).length === items.length ? "1" : "0";
 
     function sync() {
       var outRatings = {};
@@ -56,6 +60,12 @@
       hidden.value = any
         ? JSON.stringify({ ratings: outRatings, notes: outNotes })
         : "";
+      // …and neither must a partly-filled one. The same convention the vocab
+      // widgets use: "answered" means EVERY component is rated, not that one of
+      // thirty checklist rows got a lucky tap. Notes stay optional — the book
+      // prints them as somewhere to think, not as a required field.
+      var rated = Object.keys(outRatings).length;
+      hidden.dataset.answered = rated === items.length ? "1" : "0";
       if (window.portalTouch) window.portalTouch("Saving…");
     }
 

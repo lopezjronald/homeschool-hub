@@ -5485,6 +5485,9 @@ class EssayVolume2Tests(TestCase):
         self.assertEqual(sum(1 for i in items if "Opener" in i), 3)
         # A bare checkbox in the book: no "how would you improve this" line.
         self.assertFalse(checklist.self_eval_wants_notes)
+        # Two options, because a checkbox has two states. Collapse this to one
+        # and every row renders pre-decided, with nothing for her to say.
+        self.assertEqual(checklist.self_eval_scale, ["In my draft", "Not yet"])
 
     def test_the_self_evaluation_is_the_guides_twelve_components(self):
         self._seed()
@@ -5658,3 +5661,15 @@ class EssayVolume2Tests(TestCase):
         with self.assertRaises(SystemExit):
             call_command("audit_content", stdout=out)
         self.assertIn("self-evaluation lists no components", out.getvalue())
+
+    def test_the_auditor_catches_a_scale_with_nothing_to_choose_between(self):
+        """One option is not a rating — every row renders already decided."""
+        self._seed()
+        form = self._set(2).questions.order_by("order")[2]
+        form.passage = json.dumps({"items": ["Follows Essay Format"],
+                                   "scale": ["Excellent"]})
+        form.save(update_fields=["passage"])
+        out = StringIO()
+        with self.assertRaises(SystemExit):
+            call_command("audit_content", stdout=out)
+        self.assertIn("nothing to choose between", out.getvalue())

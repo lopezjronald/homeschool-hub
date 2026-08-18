@@ -210,6 +210,7 @@ WEEKS = [
     {
         "number": 3,
         "topic": "Parataxis",
+        "note": "The guide's explanation says parataxis lists clauses “to indicate relationship — coordination or subordination.” It is the other way round: parataxis lists them WITHOUT words indicating the relationship, and subordination is its opposite (hypotaxis). Copy the explanation as printed, but the example shows what parataxis really is — no joining words at all.",
         "explanation_label": "Explanation",
         # The gray box carries a "Reminder:" block after the definition; kept
         # inline with line breaks.
@@ -441,6 +442,7 @@ WEEKS = [
     {
         "number": 9,
         "topic": "Diction",
+        "note": 'Tasks 6 and 7 ask for synonyms for “gladly”, but the word “gladly” is not printed anywhere in this week. It is the idea the three examples share — every one of them is a glad way of saying yes. Find synonyms for that, and rewrite one of the example phrases with them.',
         "explanation_label": "Explanation",
         "explanation": "Writers choose specific words to create style and to "
                        "embellish characters.",
@@ -753,6 +755,7 @@ WEEKS = [
     {
         "number": 18,
         "topic": "Metabasis",
+        "note": "The guide's explanation is only half of it. A metabasis is a short transition that sums up what has just been said AND points at what comes next; the printed definition leaves out the pointing-forward part, and the example only looks backward.",
         "explanation_label": "Explanation",
         "explanation": "Metabasis sums up information that isn’t explicitly "
                        "in the sentence.",

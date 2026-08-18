@@ -1235,11 +1235,20 @@ def _onetrue_week(question_set, module=None):
     Unlike the Dickinson pages this needs no per-question pairing: everything is
     a header, so there is nothing to get out of step.
     """
+    # Each volume's flags come from ITS OWN seed. Dispatching on "was a module
+    # passed" instead would hand a future Volume C2 whichever volume happened to
+    # be in the else-branch, silently flipping which portions take the pen.
+    from tutor import onetrue
+    from tutor import onetrue3
+    from tutor.management.commands.seed_onetrue_violet import (
+        WRITTEN_BY_HAND as C1_BY_HAND)
+    from tutor.management.commands.seed_onetrue3_kaylin import (
+        WRITTEN_BY_HAND as C3_BY_HAND)
+
+    flags = {onetrue: C1_BY_HAND, onetrue3: C3_BY_HAND}
     if module is None:
-        from tutor import onetrue as module
-        from tutor.management.commands.seed_onetrue_violet import WRITTEN_BY_HAND
-    else:
-        from tutor.management.commands.seed_onetrue3_kaylin import WRITTEN_BY_HAND
+        module = onetrue
+    WRITTEN_BY_HAND = flags[module]
 
     week = module.week_by_number(question_set.lesson.number)
     if week is None:

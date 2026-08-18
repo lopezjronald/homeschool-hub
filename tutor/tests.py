@@ -5223,11 +5223,18 @@ class OneTrue3Tests(TestCase):
         # Everything else is typed, so the grader can read it.
         for q in qs[1:3] + qs[4:]:
             self.assertEqual(q.response_type, Question.TYPE_TEXT, q.prompt[:40])
-        # …and that holds in every week, not just the first.
+        # …and the POSITIONS hold in every week, not just the first. Counting
+        # two pens per week would still pass if the copy task were inserted in
+        # the wrong place, which is the mistake worth catching.
         for n in range(1, 21):
-            pens = [q for q in self._set(n).questions.all()
+            week = list(self._set(n).questions.order_by("order"))
+            pens = [i for i, q in enumerate(week)
                     if q.response_type == Question.TYPE_HANDWRITING]
-            self.assertEqual(len(pens), 2, "week %d" % n)
+            self.assertEqual(pens, [0, 3], "week %d" % n)
+            self.assertTrue(week[0].prompt.startswith("Read and copy the explanation"),
+                            "week %d" % n)
+            self.assertEqual(week[3].prompt, "Copy the example sentence.",
+                             "week %d" % n)
 
     def test_the_page_does_not_invent_a_sentence_two(self):
         """This volume has none — one Example box IS the model. C1's header
@@ -5261,6 +5268,8 @@ class OneTrue3Tests(TestCase):
         text = " ".join(q for w in WEEKS for q in w["questions_one"])
         self.assertIn("paranthesis", text)
         self.assertIn("elliminates", text)
+        self.assertIn("Why?.", text)
+        self.assertIn("write rewrite", text)
 
     def test_every_question_carries_a_nudge(self):
         self._seed()
@@ -5311,3 +5320,24 @@ class OneTrue3Tests(TestCase):
             args=[make_portal_token(self.violet), qset.pk])).content.decode()
         self.assertIn("Sentence 2", html)
         self.assertIn("Margaret Wise Brown", html)
+        self.assertIn(">Sentence 1<", html)
+        # The read-aloud line: branching the template for C3 once hoisted "the"
+        # outside the {% if %}, so all twenty of Violet's LIVE pages read
+        # "Read the Sentence 1 silently". Checking only the chip missed it.
+        import re
+        flat = re.sub(r"\s+", " ", html)
+        self.assertIn("Read Sentence 1 silently", flat)
+        self.assertNotIn("Read the Sentence 1", flat)
+        # …and her practice page is untouched too.
+        practice = QuestionSet.objects.filter(
+            lesson__number=1, lesson__chapter__curriculum__name=C1,
+            lesson__chapter__curriculum__parent=self.parent,
+            title__endswith="now you try!").get()
+        phtml = self.client.get(reverse(
+            "portal:portal_questions",
+            args=[make_portal_token(self.violet), practice.pk])).content.decode()
+        self.assertIn("Now you try", phtml)
+        # The MODEL sentence is withheld on the practice page. ("Sentence 1"
+        # itself still appears there — the practice prompts are numbered
+        # "Sentence 1 of 5".)
+        self.assertNotIn("chuckleberry blossoms", phtml)

@@ -730,11 +730,31 @@ class DuplicateEventTests(FeedTests):
         """The menu keys on pk: real rows get one, generated layers must not,
         because there is no row behind a birthday to delete."""
         self.client.login(username="fa", password="pw")
+        # Without a birthday the generated layer emits nothing, and the
+        # negative loop below iterates over an empty list — passing while
+        # proving nothing. Give her one so there is a generated chip to check.
+        self.violet.date_of_birth = date(2016, 9, 15)
+        self.violet.save(update_fields=["date_of_birth"])
         events = self._feed(layers="events,birthdays").json()
         real = [e for e in events if e["extendedProps"]["layer"] == "events"]
+        generated = [e for e in events if e["extendedProps"]["layer"] != "events"]
         self.assertTrue(real)
+        self.assertTrue(generated, "no generated chips — the check below is vacuous")
         for e in real:
             self.assertTrue(e["extendedProps"].get("pk"))
-        for e in events:
-            if e["extendedProps"]["layer"] != "events":
-                self.assertIsNone(e["extendedProps"].get("pk"))
+        for e in generated:
+            self.assertIsNone(e["extendedProps"].get("pk"))
+
+    def test_a_viewer_cannot_duplicate(self):
+        """The gate on this view is its own; nothing else covered it."""
+        from core.models import FamilyMembership
+
+        viewer = User.objects.create_user(
+            username="viewer", email="v@e.com", password="pw")
+        FamilyMembership.objects.create(
+            user=viewer, family=self.family_a, role="viewer")
+        self.client.login(username="viewer", password="pw")
+        resp = self.client.post(
+            reverse("family_calendar:event_duplicate", args=[self.jj.pk]))
+        self.assertIn(resp.status_code, (403, 404))
+        self.assertEqual(CalendarEvent.objects.filter(title="Jiu-jitsu").count(), 1)

@@ -81,6 +81,9 @@ def event_json(event, occ_date, *, color, url=""):
             # this chip. Generated layers (missions, birthdays, Spanish) carry
             # no pk and so get no menu — there is nothing to edit.
             "pk": event.pk,
+            # So the delete menu can warn that a repeating event goes as a
+            # whole series rather than just this day.
+            "repeats": bool(event.repeats_weekly),
             "event_type": event.event_type,
             "child_id": event.child_id,
             "location": event.location,

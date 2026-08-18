@@ -63,9 +63,19 @@
       ["✏️ Edit", function () { window.location.href = editUrl.replace("/0/", "/" + pk + "/"); }],
       ["📋 Duplicate", function () { post(dupUrl.replace("/0/", "/" + pk + "/")); }],
       ["🗑️ Delete", function () {
-        if (window.confirm("Delete “" + info.event.title + "”?")) {
-          post(delUrl.replace("/0/", "/" + pk + "/"));
-        }
+        // The confirm PAGE warns that deleting a repeating event takes the
+        // whole series and points at "Skip this date" for one occurrence.
+        // Skipping straight to a bare confirm() would drop that warning, so
+        // the repeating case carries it here.
+        var repeating = (info.event.extendedProps || {}).repeats;
+        var msg = repeating
+          ? "Delete “" + info.event.title + "” and its whole repeating series?" +
+            "
+
+To remove just this one day, open the event and use " +
+            "“Skip this date” instead."
+          : "Delete “" + info.event.title + "”?";
+        if (window.confirm(msg)) post(delUrl.replace("/0/", "/" + pk + "/"));
       }],
     ].forEach(function (pair) {
       var b = document.createElement("button");

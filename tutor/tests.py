@@ -4714,11 +4714,18 @@ class RickshawChildFacingTests(RickshawGirlTests):
             mode=QuestionSet.MODE_STUDENT)
         for qset in sets:
             hinted = qset.questions.exclude(hint="").count()
-            self.assertEqual(hinted, qset.questions.count(),
-                             "%s has unhinted questions" % qset.title)
+            if "Comprehension" in qset.title:
+                # Deliberately none. The only thing a nudge could say here is
+                # already the intro directly above, and seven identical ones per
+                # set teach her the 💡 is not worth tapping — which costs her on
+                # the pages where the nudges genuinely help.
+                self.assertEqual(hinted, 0, qset.title)
+            else:
+                self.assertEqual(hinted, qset.questions.count(),
+                                 "%s has unhinted questions" % qset.title)
         self.assertGreater(
             Question.objects.filter(question_set__in=sets).exclude(hint="").count(),
-            30)
+            25)
 
     def test_the_journal_chips_name_the_three_different_boxes(self):
         """They read 'Character · Comprehension · Comprehension' — two adjacent

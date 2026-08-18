@@ -299,8 +299,9 @@ class Command(BaseCommand):
                  {"response_type": Question.TYPE_MATCHING,
                   "passage": json.dumps(matching)}),
                 ("vocabulary",
-                 "Now use those words to fill in the blanks. Some sentences need "
-                 "the word's ending changed, so pick the form that sounds right.",
+                 "Now use those words to fill in the blanks."
+                 + (" Two of these need the word's ending changed — those forms "
+                    "are in the list for you." if bank != words else ""),
                  "Read the whole sentence out loud with your word in it. If it "
                  "sounds wrong, try another.",
                  {"response_type": Question.TYPE_FILL_BLANK,
@@ -315,9 +316,12 @@ class Command(BaseCommand):
             intro="Answer using complete sentences. You may refer to both the "
                   "book and your journal notes.",
             rubric=COMPREHENSION_RUBRIC,
-            questions=[("comprehension", prompt,
-                        "Look back at the book and your journal notes — you are "
-                        "allowed to. Answer in a whole sentence.", None)
+            # No per-question nudge here: the reference course has none, and the
+            # only thing one could say ("look back at the book, answer in a whole
+            # sentence") is already the intro directly above. Seven identical
+            # nudges teach her the 💡 is not worth tapping — which costs her on
+            # the journal and vocabulary pages, where they genuinely help.
+            questions=[("comprehension", prompt, "", None)
                        for prompt in section["comprehension"]],
         )
 
@@ -379,7 +383,7 @@ class Command(BaseCommand):
         # version asked "which option did you choose?" BEFORE showing her the
         # options, in one 233-word prompt of scheduling admin.
         options = "\n".join(
-            "**%d. %s** — %s" % (i, name, text)
+            "%d. **%s** — %s" % (i, name, text)
             for i, (name, text) in enumerate(FINAL_PROJECT_OPTIONS, start=1))
         return self._set(
             lesson, family, "Section 5 · Glean: Final Project",

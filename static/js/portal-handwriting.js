@@ -27,6 +27,16 @@
     if (saved && Array.isArray(saved.strokes)) strokes = saved.strokes;
     else if (Array.isArray(saved)) strokes = saved;
 
+    // Restore the height she actually wrote on, BEFORE anything measures the
+    // box. Strokes are stored 0..1 against their surface, so a page that grew
+    // to ten lines and then reloaded at the CSS default of four would squash
+    // every letter into the top of the page — and persist() would write the
+    // squashed version back, compounding on every visit and reaching the
+    // parent's work browser and the printed report.
+    if (saved && saved.surface && saved.surface.h > 0) {
+      surface.style.height = saved.surface.h + "px";
+    }
+
     var tool = { color: "#1d3557", width: 3 };
     var drawing = false, current = null;
 
@@ -151,6 +161,11 @@
       });
       var clear = widget.querySelector('[data-tool="clear"]');
       if (clear) clear.addEventListener("click", function () {
+        // Undo pops one stroke; this drops them all and cannot be undone. It
+        // sits next to Undo and is a small target for a stylus — survivable
+        // when the box held four lines, not now it holds a whole paragraph.
+        if (strokes.length > 2 &&
+            !window.confirm("Erase everything you have written here?")) return;
         strokes = []; redraw(); persist();
       });
     }

@@ -380,7 +380,13 @@ def _report_item(entry, mastery):
     # Work done on PAPER: the uploaded scan is the work, and the report has to
     # show it. Without this the entry renders as an empty portal sheet — a row
     # saying a section was completed, with nothing to show a reviewing teacher.
-    on_paper = bool(sheet and sheet.is_on_paper and sheet.attachment)
+    # `approved_at` is part of the test, not just `is_on_paper`. Without it a
+    # child who uploaded a photo AND then typed her answers and turned them in
+    # got a report that said "Completed on paper" and showed the photo INSTEAD
+    # of her answers — her writing gone from the record that goes to the
+    # charter school, over a file no parent had approved.
+    on_paper = bool(sheet and sheet.is_on_paper and sheet.attachment
+                    and sheet.approved_at)
     kind = ("paper" if on_paper else
             "portal" if sheet else
             ("image" if show_image else ("file" if entry.attachment else "note")))

@@ -867,17 +867,6 @@ class ResponseSheet(models.Model):
         return bool(self.attachment)
 
     @property
-    def can_be_approved(self):
-        """A paper section may only be completed when there is work to look at.
-
-        The whole rule in one place: a file AND a parent's approval. An upload
-        on its own is a section still waiting; an approval on its own would be
-        a completed section with nothing behind it, which is the thing the work
-        log exists to prevent.
-        """
-        return self.has_project_file and not self.is_submitted
-
-    @property
     def awaiting_approval(self):
         """She has handed something in and it needs a parent's eye."""
         return self.has_project_file and not self.is_submitted

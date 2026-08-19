@@ -268,11 +268,25 @@ def student_work_set_approve(request, pk, set_pk):
     from tutor.models import QuestionSet, ResponseSheet
     from worklog.models import WorkLogEntry
 
+    from curricula.models import Curriculum
+
     student = get_object_or_404(
         editable_queryset(Student.objects.all(), request.user), pk=pk)
     if not can_edit_family_or_global(request.user, student.family):
         raise Http404
-    question_set = get_object_or_404(QuestionSet, pk=set_pk)
+    # Scope the SET too, exactly as the read view above does. Scoping only the
+    # child leaves the set id a free parameter: posting another family's set_pk
+    # created a sheet against their set and a work-log row carrying their
+    # section title, curriculum and subject — readable back on /worklog/. The
+    # per-child pin matters for the same reason it does on the read side: a set
+    # pinned to a sibling is not this child's work.
+    viewable_curricula = viewable_queryset(Curriculum.objects.all(), request.user)
+    question_set = get_object_or_404(
+        QuestionSet.objects.filter(
+            lesson__chapter__curriculum__in=viewable_curricula,
+        ).filter(Q(child=student) | Q(child__isnull=True)),
+        pk=set_pk,
+    )
     back = redirect("students:student_work_set", pk=pk, set_pk=set_pk)
 
     upload = request.FILES.get("project")

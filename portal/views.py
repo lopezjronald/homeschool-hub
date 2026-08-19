@@ -1510,6 +1510,11 @@ def _submit_sheet(student, question_set, post_data):
         _merge_answers(sheet, post_data)
         sheet.status = ResponseSheet.SUBMITTED
         sheet.submitted_at = timezone.now()
+        # She answered on screen, so this is on-screen work even if she also
+        # uploaded a photo earlier. Both controls sit on the same page, and
+        # leaving the paper flag set made the reports show the file INSTEAD of
+        # the answers she just turned in. The upload stays attached.
+        sheet.completion_mode = ResponseSheet.ON_SCREEN
         curriculum = question_set.lesson.chapter.curriculum
         sheet.work_entry = WorkLogEntry.objects.create(
             parent=student.parent,
@@ -1723,14 +1728,13 @@ def portal_draft_feedback(request, token, set_pk):
                          "suggestions": result["suggestions"]})
 
 
-@csrf_exempt
-@require_POST
 @require_POST
 def portal_project_upload(request, token, set_pk):
     """She hands in a photo, scan or document of work done on paper.
 
     This does NOT complete the section. It puts the work in front of a parent,
-    who is the one who says it counts — see ResponseSheet.can_be_approved. A
+    who is the one who says it counts — see students.views.student_work_set_approve,
+    which is where the file-AND-approval rule is actually enforced. A
     child marking her own work complete would make the work log a record of
     what she said she did rather than of what was done.
 
@@ -1785,6 +1789,8 @@ def portal_project_upload(request, token, set_pk):
     return back
 
 
+@csrf_exempt
+@require_POST
 def portal_autosave(request, token, set_pk):
     """Autosave endpoint — merges the draft answers, returns a saved timestamp.
 

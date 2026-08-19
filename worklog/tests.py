@@ -794,6 +794,7 @@ class PaperCopyCompletionTests(TestCase):
         cls.kid = Student.objects.create(
             parent=cls.parent, first_name="Violet", grade_level="G03", family=cls.fam)
         cls.token = make_portal_token(cls.kid)
+        cls.today = timezone.localdate()
 
         cur = Curriculum.objects.create(
             parent=cls.parent, name="Rickshaw Girl — Literature Discovery",
@@ -962,3 +963,154 @@ class PaperCopyCompletionTests(TestCase):
                       args=["not-a-real-token", self.qset.pk])
         resp = self.client.post(bad, {"project": self._png()})
         self.assertIn(resp.status_code, (403, 404))
+
+    # -- gaps a second reader found in the tests above ---------------------
+
+    def test_the_scan_is_shown_inline_not_merely_linked(self):
+        """The first version of this asserted `"ss-work-img" in html`, which is
+        in the page's own <style> block on every render — it passed with the
+        <img> branch deleted entirely. Match the TAG, and prove the link form
+        is not what was rendered."""
+        import re
+
+        self.client.post(self._upload_url(), {"project": self._png("scan.png")})
+        self.client.login(username="pp", password="pw")
+        self.client.post(self._approve_url())
+
+        html = self.client.get(reverse("worklog:worklog_report")).content.decode()
+        self.assertRegex(html, r'<img[^>]*class="ss-work-img"')
+        self.assertNotIn("📎", html)
+
+    def test_the_scan_reaches_the_charter_report_too(self):
+        """That is the one that leaves the house. Nothing fetched it."""
+        import re
+
+        self.client.post(self._upload_url(), {"project": self._png("scan.png")})
+        self.client.login(username="pp", password="pw")
+        self.client.post(self._approve_url())
+
+        html = self.client.get(reverse("worklog:charter_report")).content.decode()
+        self.assertIn("Completed on paper", html)
+        self.assertRegex(html, r'<img[^>]*class="ss-work-img"')
+
+    def test_typing_the_answers_and_turning_them_in_keeps_them_in_the_report(self):
+        """Both controls are on the same page. Uploading a photo and THEN
+        answering on screen used to file the section as paper work — the report
+        showed the photo instead of her writing, over a file no parent had
+        approved."""
+        self.client.post(self._upload_url(), {"project": self._png()})
+        self.client.post(
+            reverse("portal:portal_questions", args=[self.token, self.qset.pk]),
+            {"answer_%d" % self.q.pk: "The rickshaw was bright yellow.",
+             "action": "submit"})
+
+        sheet = self._sheet()
+        self.assertTrue(sheet.is_submitted)
+        self.assertFalse(sheet.is_on_paper, "answering on screen is on-screen work")
+        self.assertIsNone(sheet.approved_at)
+
+        self.client.login(username="pp", password="pw")
+        html = self.client.get(reverse("worklog:worklog_report")).content.decode()
+        self.assertIn("The rickshaw was bright yellow.", html)
+        self.assertNotIn("Completed on paper", html)
+
+    def test_an_unapproved_upload_is_never_labelled_complete_on_paper(self):
+        """Belt and braces on the same hole: the report's paper label requires
+        a parent's approval, not merely a file."""
+        self.client.post(self._upload_url(), {"project": self._png()})
+        entry = WorkLogEntry.objects.create(
+            parent=self.parent, child=self.kid, subject="Literature",
+            family=self.fam, date=self.today, description="manual row")
+        sheet = self._sheet()
+        sheet.work_entry = entry
+        sheet.save(update_fields=["work_entry"])
+
+        self.client.login(username="pp", password="pw")
+        html = self.client.get(reverse("worklog:worklog_report")).content.decode()
+        self.assertNotIn("Completed on paper", html)
+
+    def test_a_parent_cannot_approve_against_another_familys_section(self):
+        """The child was scoped; the SET id was a free parameter. Posting
+        another family's set_pk created a sheet against their section and a
+        work-log row carrying their curriculum and section title."""
+        from tutor.models import QuestionSet as QS
+
+        other_parent = User.objects.create_user(
+            username="op", email="op@e.com", password="pw")
+        other_fam = Family.objects.create(name="Other Fam")
+        FamilyMembership.objects.create(
+            user=other_parent, family=other_fam, role="parent")
+        other_cur = Curriculum.objects.create(
+            parent=other_parent, name="Their Secret Curriculum",
+            subject="Literature", family=other_fam)
+        other_ch = Chapter.objects.create(curriculum=other_cur, number=1, title="C")
+        other_lesson = Lesson.objects.create(
+            chapter=other_ch, order=1, number=1, title="L")
+        other_set = QS.objects.create(
+            lesson=other_lesson, title="Their Private Section", family=other_fam,
+            status=QS.APPROVED, rubric="r")
+
+        self.client.login(username="pp", password="pw")
+        resp = self.client.post(
+            reverse("students:student_work_set_approve",
+                    args=[self.kid.pk, other_set.pk]),
+            {"project": self._png()})
+        self.assertEqual(resp.status_code, 404)
+        self.assertFalse(
+            ResponseSheet.objects.filter(question_set=other_set).exists())
+        self.assertFalse(
+            WorkLogEntry.objects.filter(curriculum=other_cur).exists())
+
+    def test_the_parent_endpoint_validates_the_file_too(self):
+        """A second, independent copy of the validation lives there and had no
+        test on it at all."""
+        self.client.login(username="pp", password="pw")
+        bad = SimpleUploadedFile("run.exe", b"MZ\x90\x00",
+                                 content_type="application/exe")
+        resp = self.client.post(self._approve_url(), {"project": bad}, follow=True)
+        self.assertContains(resp, "Use a photo, a PDF or a Word document")
+        self.assertFalse(self._sheet().has_project_file)
+        self.assertFalse(self._sheet().is_submitted)
+
+        big = SimpleUploadedFile(
+            "huge.png", b"\x89PNG\r\n\x1a\n" + b"0" * (26 * 1024 * 1024),
+            content_type="image/png")
+        resp = self.client.post(self._approve_url(), {"project": big}, follow=True)
+        self.assertContains(resp, "over the")
+        self.assertFalse(self._sheet().has_project_file)
+
+    def test_the_portal_upload_is_scoped_to_sets_the_child_can_open(self):
+        """A valid token is not a licence to write to any set in the database.
+        The earlier test used a bad TOKEN, which fails one step earlier."""
+        from tutor.models import QuestionSet as QS
+
+        stranger_parent = User.objects.create_user(
+            username="sp", email="sp@e.com", password="pw")
+        stranger_fam = Family.objects.create(name="Stranger Fam")
+        cur = Curriculum.objects.create(
+            parent=stranger_parent, name="Not Hers", subject="Literature",
+            family=stranger_fam)
+        ch = Chapter.objects.create(curriculum=cur, number=1, title="C")
+        lesson = Lesson.objects.create(chapter=ch, order=1, number=1, title="L")
+        theirs = QS.objects.create(
+            lesson=lesson, title="Not Hers", family=stranger_fam,
+            status=QS.APPROVED, rubric="r")
+
+        resp = self.client.post(
+            reverse("portal:portal_project_upload", args=[self.token, theirs.pk]),
+            {"project": self._png()})
+        self.assertEqual(resp.status_code, 404)
+        self.assertFalse(ResponseSheet.objects.filter(question_set=theirs).exists())
+
+    def test_the_autosave_endpoint_keeps_its_csrf_exemption(self):
+        """It is exempt so navigator.sendBeacon can deliver the last-chance
+        save when a tablet backgrounds the app — a beacon cannot set a CSRF
+        header. Inserting a view above it once stole its decorators, and the
+        only symptom was children's typed work silently not saving."""
+        from portal import views as portal_views
+
+        self.assertTrue(getattr(portal_views.portal_autosave, "csrf_exempt", False))
+        # …and it is still POST-only.
+        resp = self.client.get(
+            reverse("portal:portal_autosave", args=[self.token, self.qset.pk]))
+        self.assertEqual(resp.status_code, 405)

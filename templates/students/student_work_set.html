@@ -24,6 +24,58 @@
         {% endif %}
       </div>
 
+      {% comment %}The paper-copy path. Completion needs BOTH a file and this
+      click: the button is only offered once something is attached, and the view
+      refuses it regardless, so the rule does not live in the template alone.
+      {% endcomment %}
+      {% if can_edit and not sheet.is_submitted %}
+        <div class="pj-approve">
+          <div class="pj-approve-head">📄 Completed on paper?</div>
+          {% if sheet.attachment %}
+            <p class="pj-approve-have">
+              {{ student.first_name }} handed in
+              <a href="{{ sheet.attachment.url }}" target="_blank" rel="noopener"><strong>{{ sheet.project_filename }}</strong></a>{% if sheet.attachment_uploaded_at %},
+              {{ sheet.attachment_uploaded_at|date:"M j" }}{% endif %}.
+              Look it over, then mark it complete.
+            </p>
+            {% if sheet.project_is_image %}
+              <a href="{{ sheet.attachment.url }}" target="_blank" rel="noopener">
+                <img src="{{ sheet.attachment.url }}" alt="{{ student.first_name }}'s work" class="pj-approve-thumb">
+              </a>
+            {% endif %}
+          {% else %}
+            <p class="pj-approve-note">
+              Nothing attached yet. Upload a photo or scan of the finished page —
+              a section can't be marked complete without one.
+            </p>
+          {% endif %}
+          <form method="post" enctype="multipart/form-data"
+                action="{% url 'students:student_work_set_approve' pk=student.pk set_pk=question_set.pk %}"
+                class="pj-approve-form">
+            {% csrf_token %}
+            <input type="file" name="project" class="form-control form-control-sm"
+                   accept=".png,.jpg,.jpeg,.heic,.webp,.pdf,.doc,.docx">
+            <button type="submit" class="btn btn-sm {% if sheet.attachment %}btn-success{% else %}btn-outline-secondary{% endif %}">
+              {% if sheet.attachment %}✓ Mark complete{% else %}Upload{% endif %}
+            </button>
+          </form>
+        </div>
+      {% elif sheet.is_on_paper and sheet.attachment %}
+        <div class="pj-approve pj-approve--done">
+          <div class="pj-approve-head">📄 Completed on paper</div>
+          <p class="pj-approve-have mb-2">
+            <a href="{{ sheet.attachment.url }}" target="_blank" rel="noopener"><strong>{{ sheet.project_filename }}</strong></a>
+            {% if sheet.approved_at %}· marked complete {{ sheet.approved_at|date:"M j, Y" }}{% endif %}
+            {% if sheet.approved_by %}by {{ sheet.approved_by.get_username }}{% endif %}
+          </p>
+          {% if sheet.project_is_image %}
+            <a href="{{ sheet.attachment.url }}" target="_blank" rel="noopener">
+              <img src="{{ sheet.attachment.url }}" alt="{{ student.first_name }}'s work" class="pj-approve-thumb">
+            </a>
+          {% endif %}
+        </div>
+      {% endif %}
+
       {% if assessment %}
         <div class="alert alert-info d-flex justify-content-between align-items-center flex-wrap gap-2">
           <span>

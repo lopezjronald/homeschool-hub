@@ -17,6 +17,7 @@ from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.db import transaction
 from django.urls import NoReverseMatch, reverse
+from django.contrib import messages
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_POST
@@ -1724,6 +1725,66 @@ def portal_draft_feedback(request, token, set_pk):
 
 @csrf_exempt
 @require_POST
+@require_POST
+def portal_project_upload(request, token, set_pk):
+    """She hands in a photo, scan or document of work done on paper.
+
+    This does NOT complete the section. It puts the work in front of a parent,
+    who is the one who says it counts — see ResponseSheet.can_be_approved. A
+    child marking her own work complete would make the work log a record of
+    what she said she did rather than of what was done.
+
+    Re-uploading before approval replaces the file, so a bad photo is fixed by
+    taking another one. After approval the section is closed and the upload is
+    refused, the same way a submitted sheet stops accepting answers.
+    """
+    import os
+
+    student = _resolve_student(token)
+    question_set = get_object_or_404(_visible_question_sets(student), pk=set_pk)
+    back = redirect("portal:portal_questions", token=token, set_pk=set_pk)
+
+    upload = request.FILES.get("project")
+    if upload is None:
+        messages.error(request, "Choose a file first.")
+        return back
+
+    ext = os.path.splitext(upload.name)[1].lower()
+    if ext not in ResponseSheet.PROJECT_EXTENSIONS:
+        messages.error(
+            request,
+            "That file type isn't one we can take. Use a photo (JPG, PNG, "
+            "HEIC), a PDF, or a Word document.")
+        return back
+    if upload.size > ResponseSheet.PROJECT_MAX_BYTES:
+        messages.error(
+            request,
+            "That file is too big (%.0f MB). The limit is %d MB — a photo "
+            "taken at a lower quality setting will fit."
+            % (upload.size / 1024 / 1024,
+               ResponseSheet.PROJECT_MAX_BYTES // (1024 * 1024)))
+        return back
+
+    with transaction.atomic():
+        sheet, _ = ResponseSheet.objects.select_for_update().get_or_create(
+            question_set=question_set, child=student,
+        )
+        if sheet.is_submitted:
+            messages.info(request, "This one is already turned in.")
+            return back
+        sheet.attachment = upload
+        sheet.attachment_uploaded_at = timezone.now()
+        sheet.completion_mode = ResponseSheet.ON_PAPER
+        sheet.save(update_fields=["attachment", "attachment_uploaded_at",
+                                  "completion_mode"])
+
+    messages.success(
+        request,
+        "Got it — %s is saved. It counts as done once a grown-up has looked "
+        "at it." % sheet.project_filename)
+    return back
+
+
 def portal_autosave(request, token, set_pk):
     """Autosave endpoint — merges the draft answers, returns a saved timestamp.
 

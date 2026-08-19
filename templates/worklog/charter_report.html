@@ -107,7 +107,20 @@
 
           {# ---- The sample work ---- #}
           <div class="ss-work-label">Work submitted{% if it.sheet.submitted_at %} · turned in {{ it.sheet.submitted_at|date:"M j, Y" }}{% endif %}</div>
-          {% if it.kind == 'portal' %}
+          {% if it.kind == 'paper' %}
+            {% comment %}A section done on paper. This is a work SAMPLE report,
+            so the scan is the sample — showing a filename would defeat it.
+            {% endcomment %}
+            <div class="ss-paper-label">Completed on paper · {{ it.sheet.project_filename }}</div>
+            {% if it.paper_is_image %}
+              <a href="{{ it.paper_file.url }}" target="_blank" rel="noopener">
+                <img src="{{ it.paper_file.url }}" alt="{{ it.entry.subject }} work" class="ss-work-img">
+              </a>
+            {% else %}
+              <a href="{{ it.paper_file.url }}" target="_blank" rel="noopener"
+                 class="btn btn-sm btn-outline-secondary">📎 {{ it.sheet.project_filename }}</a>
+            {% endif %}
+          {% elif it.kind == 'portal' %}
             <div class="ss-worksheet">
               {% for row in it.qa_rows %}
                 <div class="ss-qa">

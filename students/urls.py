@@ -11,6 +11,8 @@ urlpatterns = [
     path("<int:pk>/", views.student_detail, name="student_detail"),
     path("<int:pk>/work/<int:curriculum_id>/", views.student_work, name="student_work"),
     path("<int:pk>/work/set/<int:set_pk>/", views.student_work_set, name="student_work_set"),
+    path("<int:pk>/work/set/<int:set_pk>/approve/", views.student_work_set_approve,
+         name="student_work_set_approve"),
     # Per-child lesson complete/skip tracking (HH-141)
     path("<int:pk>/lessons/<int:curriculum_id>/", views.student_lessons, name="student_lessons"),
     path("<int:pk>/lessons/<int:curriculum_id>/mark/", views.lesson_mark, name="lesson_mark"),

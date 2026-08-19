@@ -770,3 +770,195 @@ class CompletionReportShowsTheWorkTests(TestCase):
         self.assertEqual(few, many,
                          "queries grew from %d to %d when the entries tripled"
                          % (few, many))
+
+
+@override_settings(MEDIA_ROOT=MEDIA)
+class PaperCopyCompletionTests(TestCase):
+    """Work done on paper: uploaded, then approved — and complete only if both.
+
+    Joyce does some of the Blackbird sections on paper, because the guide is a
+    paper book. The rule she asked for is deliberately two-key: a file with no
+    approval is a section still waiting, and an approval with no file would be
+    a completed section with nothing behind it — which is the one thing a work
+    log must never contain.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        from portal.tokens import make_portal_token
+
+        cls.parent = User.objects.create_user(
+            username="pp", email="pp@e.com", password="pw")
+        cls.fam = Family.objects.create(name="Paper Fam")
+        FamilyMembership.objects.create(user=cls.parent, family=cls.fam, role="parent")
+        cls.kid = Student.objects.create(
+            parent=cls.parent, first_name="Violet", grade_level="G03", family=cls.fam)
+        cls.token = make_portal_token(cls.kid)
+
+        cur = Curriculum.objects.create(
+            parent=cls.parent, name="Rickshaw Girl — Literature Discovery",
+            subject="Literature", family=cls.fam)
+        ch = Chapter.objects.create(curriculum=cur, number=1, title="Sections")
+        lesson = Lesson.objects.create(chapter=ch, order=1, number=1, title="S1")
+        cls.qset = QuestionSet.objects.create(
+            lesson=lesson, title="Section 1 · Explore", family=cls.fam,
+            status=QuestionSet.APPROVED, rubric="r")
+        cls.q = Question.objects.create(
+            question_set=cls.qset, order=1, category="writing",
+            response_type=Question.TYPE_TEXT, prompt="What did you notice?")
+        # The portal only exposes sets for curricula the child is PLACED on —
+        # that gate is the portal's authorization, so a fixture without it
+        # tests a page she could never reach.
+        from curricula.models import CurriculumPlacement
+        CurriculumPlacement.objects.create(child=cls.kid, curriculum=cur,
+                                           current_lesson=lesson)
+
+    def _png(self, name="page.png"):
+        return SimpleUploadedFile(name, b"\x89PNG\r\n\x1a\n" + b"0" * 64,
+                                  content_type="image/png")
+
+    def _upload_url(self):
+        return reverse("portal:portal_project_upload",
+                       args=[self.token, self.qset.pk])
+
+    def _approve_url(self):
+        return reverse("students:student_work_set_approve",
+                       args=[self.kid.pk, self.qset.pk])
+
+    def _sheet(self):
+        return ResponseSheet.objects.get(question_set=self.qset, child=self.kid)
+
+    # -- the two-key rule --------------------------------------------------
+
+    def test_an_upload_alone_does_not_complete_the_section(self):
+        """The child hands work in; it waits for a parent."""
+        self.client.post(self._upload_url(), {"project": self._png()})
+        sheet = self._sheet()
+        self.assertTrue(sheet.has_project_file)
+        self.assertFalse(sheet.is_submitted)
+        self.assertTrue(sheet.awaiting_approval)
+        self.assertIsNone(sheet.work_entry)
+        self.assertIsNone(sheet.approved_at)
+
+    def test_approval_alone_is_refused_when_nothing_is_attached(self):
+        """A section cannot be marked done with nothing to show for it."""
+        self.client.login(username="pp", password="pw")
+        resp = self.client.post(self._approve_url(), follow=True)
+        self.assertEqual(resp.status_code, 200)
+        sheet = self._sheet()
+        self.assertFalse(sheet.is_submitted)
+        self.assertIsNone(sheet.work_entry)
+        self.assertContains(resp, "can&#x27;t be marked complete")
+
+    def test_upload_then_approve_completes_it_and_logs_the_work(self):
+        self.client.post(self._upload_url(), {"project": self._png()})
+        self.client.login(username="pp", password="pw")
+        self.client.post(self._approve_url())
+
+        sheet = self._sheet()
+        self.assertTrue(sheet.is_submitted)
+        self.assertTrue(sheet.is_on_paper)
+        self.assertIsNotNone(sheet.approved_at)
+        self.assertEqual(sheet.approved_by, self.parent)
+        self.assertIsNotNone(sheet.work_entry)
+        self.assertEqual(sheet.work_entry.child, self.kid)
+        self.assertIn("on paper", sheet.work_entry.description)
+
+    def test_the_parent_can_attach_and_complete_in_one_go(self):
+        """Joyce scans the paper herself rather than handing over the tablet."""
+        self.client.login(username="pp", password="pw")
+        self.client.post(self._approve_url(), {"project": self._png("scan.png")})
+        sheet = self._sheet()
+        self.assertTrue(sheet.is_submitted)
+        self.assertTrue(sheet.has_project_file)
+        self.assertIn("scan", sheet.project_filename)
+
+    # -- the file reaches the record --------------------------------------
+
+    def test_the_paper_copy_appears_in_the_completion_report(self):
+        """The whole point: a reviewing teacher sees the work, not a filename
+        in a row that says something happened."""
+        self.client.post(self._upload_url(), {"project": self._png("mywork.png")})
+        self.client.login(username="pp", password="pw")
+        self.client.post(self._approve_url())
+
+        html = self.client.get(reverse("worklog:worklog_report")).content.decode()
+        self.assertIn("Completed on paper", html)
+        self.assertIn("mywork", html)
+        # An image is shown, not merely linked.
+        self.assertIn("ss-work-img", html)
+
+    def test_a_pdf_is_linked_rather_than_shown_as_a_broken_image(self):
+        pdf = SimpleUploadedFile("project.pdf", b"%PDF-1.4 ...",
+                                 content_type="application/pdf")
+        self.client.post(self._upload_url(), {"project": pdf})
+        self.client.login(username="pp", password="pw")
+        self.client.post(self._approve_url())
+
+        sheet = self._sheet()
+        self.assertFalse(sheet.project_is_image)
+        html = self.client.get(reverse("worklog:worklog_report")).content.decode()
+        self.assertIn("project", html)
+        self.assertIn("📎", html)
+
+    def test_heic_is_never_rendered_as_an_image(self):
+        """Browsers cannot draw HEIC — an <img> would be a broken icon in the
+        middle of a printed report, and phones produce HEIC by default."""
+        self.client.post(self._upload_url(),
+                         {"project": self._png("photo.heic")})
+        self.assertFalse(self._sheet().project_is_image)
+
+    # -- what must be refused ---------------------------------------------
+
+    def test_an_executable_is_refused(self):
+        bad = SimpleUploadedFile("run.exe", b"MZ\x90\x00", content_type="application/exe")
+        resp = self.client.post(self._upload_url(), {"project": bad}, follow=True)
+        self.assertContains(resp, "isn&#x27;t one we can take")
+        self.assertFalse(
+            ResponseSheet.objects.filter(question_set=self.qset).exists()
+            and self._sheet().has_project_file)
+
+    def test_an_oversized_file_is_refused(self):
+        big = SimpleUploadedFile(
+            "huge.png", b"\x89PNG\r\n\x1a\n" + b"0" * (26 * 1024 * 1024),
+            content_type="image/png")
+        resp = self.client.post(self._upload_url(), {"project": big}, follow=True)
+        self.assertContains(resp, "too big")
+        self.assertFalse(self._sheet().has_project_file)
+
+    def test_a_submitted_section_stops_accepting_uploads(self):
+        self.client.post(self._upload_url(), {"project": self._png()})
+        self.client.login(username="pp", password="pw")
+        self.client.post(self._approve_url())
+        self.client.logout()
+
+        before = self._sheet().project_filename
+        self.client.post(self._upload_url(), {"project": self._png("later.png")})
+        self.assertEqual(self._sheet().project_filename, before)
+
+    def test_approving_twice_does_not_log_the_work_twice(self):
+        self.client.post(self._upload_url(), {"project": self._png()})
+        self.client.login(username="pp", password="pw")
+        self.client.post(self._approve_url())
+        first = self._sheet().work_entry_id
+        self.client.post(self._approve_url())
+        self.assertEqual(self._sheet().work_entry_id, first)
+        self.assertEqual(WorkLogEntry.objects.filter(child=self.kid).count(), 1)
+
+    def test_a_stranger_cannot_approve_another_familys_work(self):
+        other = User.objects.create_user(
+            username="nosy", email="n@e.com", password="pw")
+        Family.objects.create(name="Other Fam")
+        self.client.post(self._upload_url(), {"project": self._png()})
+        self.client.login(username="nosy", password="pw")
+        resp = self.client.post(self._approve_url())
+        self.assertEqual(resp.status_code, 404)
+        self.assertFalse(self._sheet().is_submitted)
+        self.assertTrue(other.pk)
+
+    def test_the_upload_is_not_reachable_without_the_token(self):
+        """Portal auth is the signed token; a guessed set id is not enough."""
+        bad = reverse("portal:portal_project_upload",
+                      args=["not-a-real-token", self.qset.pk])
+        resp = self.client.post(bad, {"project": self._png()})
+        self.assertIn(resp.status_code, (403, 404))

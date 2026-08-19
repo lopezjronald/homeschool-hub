@@ -27,6 +27,19 @@
   </nav>
 
   <main class="py-4">
+    {% comment %}The portal had nowhere to say anything back. A view calling
+    messages.success() was writing into a void — the child uploaded a file and
+    the page came back looking exactly as it had, with no way to tell whether
+    it had worked.{% endcomment %}
+    {% if messages %}
+      <div class="container">
+        {% for message in messages %}
+          <div class="portal-flash portal-flash--{{ message.tags|default:'info' }}" role="status">
+            {{ message }}
+          </div>
+        {% endfor %}
+      </div>
+    {% endif %}
     {% block content %}{% endblock %}
   </main>
 

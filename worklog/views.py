@@ -377,7 +377,13 @@ def _report_item(entry, mastery):
 
     ext = os.path.splitext(entry.attachment.name)[1].lower() if entry.attachment else ""
     show_image = bool(entry.attachment) and entry.is_image and ext != ".heic"
-    kind = "portal" if sheet else ("image" if show_image else ("file" if entry.attachment else "note"))
+    # Work done on PAPER: the uploaded scan is the work, and the report has to
+    # show it. Without this the entry renders as an empty portal sheet — a row
+    # saying a section was completed, with nothing to show a reviewing teacher.
+    on_paper = bool(sheet and sheet.is_on_paper and sheet.attachment)
+    kind = ("paper" if on_paper else
+            "portal" if sheet else
+            ("image" if show_image else ("file" if entry.attachment else "note")))
     stamped = bool(a and a.final_level and a.status == MasteryAssessment.FINALIZED)
 
     return {
@@ -386,6 +392,11 @@ def _report_item(entry, mastery):
             entry.curriculum.name if entry.curriculum else entry.subject),
         "kind": kind,
         "show_image": show_image,
+        # The paper copy, if that is how this section was done. Owned by the
+        # sheet, not copied onto the entry, so there is exactly one file and
+        # one place it can be deleted from.
+        "paper_file": sheet.attachment if on_paper else None,
+        "paper_is_image": bool(on_paper and sheet.project_is_image),
         "sheet": sheet,
         "qa_rows": qa_rows,
         "assessment": a,

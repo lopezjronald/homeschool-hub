@@ -1,6 +1,7 @@
 import json
 
 from django.conf import settings
+from django.core.validators import FileExtensionValidator
 from django.db import models
 
 from . import mastery
@@ -791,6 +792,45 @@ class ResponseSheet(models.Model):
         help_text="Writing-coach feedback per question id: {qid: {praise, suggestions, at}}.",
     )
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=DRAFT)
+
+    # HOW the section was completed. Some of this work is done on paper — the
+    # guide is a paper book — and a photo or scan of it IS the work. A paper
+    # section still becomes SUBMITTED and still lands in the work log; this
+    # field is what tells the report to show the file instead of the answers.
+    ON_SCREEN = "on_screen"
+    ON_PAPER = "on_paper"
+    COMPLETION_CHOICES = [
+        (ON_SCREEN, "Answered on screen"),
+        (ON_PAPER, "Done on paper, uploaded"),
+    ]
+    completion_mode = models.CharField(
+        max_length=20, choices=COMPLETION_CHOICES, default=ON_SCREEN)
+
+    # The project itself: a photo of her page, a scan, a PDF, a document.
+    # ONE owner for the file — the sheet. The work-log entry does NOT get a
+    # copy, so deleting one cannot leave the other pointing at a dead key.
+    PROJECT_EXTENSIONS = (".png", ".jpg", ".jpeg", ".heic", ".webp",
+                          ".pdf", ".doc", ".docx")
+    PROJECT_MAX_BYTES = 25 * 1024 * 1024
+    attachment = models.FileField(
+        upload_to="projects/%Y/%m/",
+        blank=True,
+        validators=[FileExtensionValidator(
+            allowed_extensions=[e.lstrip(".") for e in PROJECT_EXTENSIONS])],
+        help_text="A photo, scan, PDF or document of the finished work.",
+    )
+    attachment_uploaded_at = models.DateTimeField(null=True, blank=True)
+    # Set when a parent says the uploaded work counts. Completion needs BOTH
+    # a file and this — an upload on its own is not a finished section, and a
+    # tick on its own has nothing behind it.
+    approved_at = models.DateTimeField(null=True, blank=True)
+    approved_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name="approved_response_sheets",
+    )
+
     work_entry = models.ForeignKey(
         "worklog.WorkLogEntry",
         on_delete=models.SET_NULL,
@@ -817,6 +857,50 @@ class ResponseSheet(models.Model):
     @property
     def is_submitted(self):
         return self.status == self.SUBMITTED
+
+    @property
+    def is_on_paper(self):
+        return self.completion_mode == self.ON_PAPER
+
+    @property
+    def has_project_file(self):
+        return bool(self.attachment)
+
+    @property
+    def can_be_approved(self):
+        """A paper section may only be completed when there is work to look at.
+
+        The whole rule in one place: a file AND a parent's approval. An upload
+        on its own is a section still waiting; an approval on its own would be
+        a completed section with nothing behind it, which is the thing the work
+        log exists to prevent.
+        """
+        return self.has_project_file and not self.is_submitted
+
+    @property
+    def awaiting_approval(self):
+        """She has handed something in and it needs a parent's eye."""
+        return self.has_project_file and not self.is_submitted
+
+    @property
+    def project_filename(self):
+        import os
+
+        return os.path.basename(self.attachment.name) if self.attachment else ""
+
+    @property
+    def project_is_image(self):
+        """True if the upload can be shown inline rather than linked.
+
+        HEIC is excluded deliberately: browsers do not render it, so an <img>
+        would be a broken icon in the middle of the printed report.
+        """
+        import os
+
+        if not self.attachment:
+            return False
+        ext = os.path.splitext(self.attachment.name)[1].lower()
+        return ext in (".png", ".jpg", ".jpeg", ".webp")
 
     def answer_for(self, question):
         return (self.answers or {}).get(str(question.pk), "")

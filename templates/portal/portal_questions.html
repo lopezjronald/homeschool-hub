@@ -453,6 +453,42 @@
               </div>
             {% endif %}
 
+            {% comment %}Some of this work is done on paper — the guide is a
+            paper book, and a page she has written on IS the work. She hands in
+            a photo of it; a grown-up is the one who says it counts, so this
+            deliberately does NOT complete the section.{% endcomment %}
+            {% if not sheet.is_submitted %}
+              <div class="pj-upload">
+                <div class="pj-upload-head">📄 Did this one on paper?</div>
+                {% if sheet.attachment %}
+                  <p class="pj-upload-have">
+                    Handed in: <strong>{{ sheet.project_filename }}</strong> —
+                    waiting for a grown-up to look at it.
+                    You can send a better photo if you want to.
+                  </p>
+                {% else %}
+                  <p class="pj-upload-note">
+                    Take a photo of your finished page and send it here. A PDF or
+                    a document works too.
+                  </p>
+                {% endif %}
+                <div class="pj-upload-row">
+                  <input type="file" name="project" form="project-form"
+                         accept=".png,.jpg,.jpeg,.heic,.webp,.pdf,.doc,.docx"
+                         class="form-control form-control-sm pj-upload-input">
+                  <button type="submit" form="project-form"
+                          class="btn btn-sm btn-outline-secondary">Send it</button>
+                </div>
+              </div>
+            {% elif sheet.is_on_paper %}
+              <div class="pj-upload pj-upload--done">
+                <div class="pj-upload-head">📄 Done on paper</div>
+                <p class="pj-upload-have mb-0">
+                  <strong>{{ sheet.project_filename }}</strong> is on the record.
+                </p>
+              </div>
+            {% endif %}
+
             {% if not sheet.is_submitted %}
               <div class="d-flex justify-content-between align-items-center mt-4">
                 <span class="text-muted small" id="answered-progress" data-total="{{ questions|length }}">
@@ -465,6 +501,17 @@
               </div>
             {% endif %}
           </form>
+
+          {% comment %}A SEPARATE form, sitting outside the answers form because
+          forms cannot nest. The file input above points at it by id, which is
+          what the HTML `form=` attribute is for — the control renders where it
+          belongs on the page while posting somewhere else entirely.{% endcomment %}
+          {% if not sheet.is_submitted %}
+            <form id="project-form" method="post" enctype="multipart/form-data"
+                  action="{% url 'portal:portal_project_upload' token=token set_pk=question_set.pk %}">
+              {% csrf_token %}
+            </form>
+          {% endif %}
 
         </div>
       </div>

@@ -132,7 +132,19 @@
               </div>
               {% if it.title and it.kind == 'portal' %}<div class="ss-entry-title">{{ it.title }}</div>{% endif %}
 
-              {% if it.kind == 'portal' %}
+              {% if it.kind == 'paper' %}
+                {% comment %}Done on paper and photographed. The scan IS the
+                work, so it prints at full width like any other piece.{% endcomment %}
+                <div class="ss-paper-label">Completed on paper · {{ it.sheet.project_filename }}</div>
+                {% if it.paper_is_image %}
+                  <img src="{{ it.paper_file.url }}" alt="{{ it.entry.subject }} work" class="ss-work-img">
+                {% else %}
+                  <div class="ss-answer-block">
+                    📎 <a href="{{ it.paper_file.url }}">{{ it.sheet.project_filename }}</a>
+                    — attached to this entry.
+                  </div>
+                {% endif %}
+              {% elif it.kind == 'portal' %}
                 {% for row in it.qa_rows %}
                   <div class="ss-qa">
                     {% if row.question.prompt %}

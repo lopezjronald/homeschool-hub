@@ -17,14 +17,10 @@ should not have to open an image to read it.{% endcomment %}
   <p class="es-note">⚠️ {{ note }}</p>
 {% endfor %}
 
-{% if essay_week.handover and not essay_week.is_draft_week %}
-  {% comment %}The guide's own words about how it wants the essay produced.
-  This step carries no answer boxes, so the seed skips it — and it is the one
-  place the book says to hand-write the rough draft and type the final one.
-  She writes the draft here so the coach can read it; the paper instruction
-  still stands if she would rather do both.{% endcomment %}
-  <p class="es-handover">✍️ {{ essay_week.handover }}</p>
-{% endif %}
+{% comment %}The guide's closing direction for this week is NOT rendered here —
+it is printed after the questions, in portal_questions.html, because that is
+where the book prints it. Shown at the top it told her to begin crafting an
+essay from a hook and three sub-topics she had not written yet.{% endcomment %}
 
 <details class="es-blueprint"{% if essay_week.is_draft_week %} open{% endif %}>
   <summary>📐 The Blueprint — your essay in {{ essay_week.blueprint_total }} sentences</summary>

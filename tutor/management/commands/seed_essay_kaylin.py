@@ -337,7 +337,11 @@ class Command(BaseCommand):
         self._q(
             qset, order, category="writing",
             response_type=Question.TYPE_PARAGRAPH,
-            prompt="Write **%s** — your descriptive essay." % L["title"].lower(),
+            # The lesson titles are already imperative — "Write an Orange" —
+            # so prefixing another "Write" produced "Write write an orange" on
+            # the one question of every drafting week, and in the text handed
+            # to the grader.
+            prompt="**%s** — your descriptive essay." % L["title"],
             hint="Five paragraphs, thirty sentences, straight off the blueprint. "
                  "Get your ideas down first; you will fix them afterwards.",
             # A box per paragraph, sized to the paragraph: the three body

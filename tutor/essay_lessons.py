@@ -101,8 +101,7 @@ LESSONS = [
                      'number': '', 'lines': 3},
                     {'text': 'Brainstorm some potential sub-topics that will support your idea.',
                      'number': '', 'lines': 4},
-                    {'text': '1. Choose three sub-topics to focus on in your essay.  Sub-topic 1'
-                      ' of 3',
+                    {'text': '1. Choose three sub-topics to focus on in your essay.\n\nSub-topic 1 of 3',
                      'number': '1.', 'lines': 1},
                     {'text': '2. Sub-topic 2 of 3',
                      'number': '2.', 'lines': 1},
@@ -273,8 +272,7 @@ LESSONS = [
                      'number': '', 'lines': 3},
                     {'text': 'Brainstorm some potential sub-topics that will support your idea.',
                      'number': '', 'lines': 5},
-                    {'text': '1. Choose three sub-topics to focus on in your essay.  Sub-topic 1'
-                      ' of 3',
+                    {'text': '1. Choose three sub-topics to focus on in your essay.\n\nSub-topic 1 of 3',
                      'number': '1.', 'lines': 1},
                     {'text': '2. Sub-topic 2 of 3',
                      'number': '2.', 'lines': 1},
@@ -369,6 +367,11 @@ LESSONS = [
                       'book in the series. It means what the thesis statement work has '
                       'been doing all along: THREE sub-topics, all phrased in the same '
                       'grammatical shape.'},
+            {'where': 'odd',
+             'text': 'The Body Paragraphs task says to take a sub-topic “from page 32”. '
+                      'That is a page of the paper book, and yours are up above on this '
+                      'page — scroll back to the three sub-topics you wrote and pick one '
+                      'of those.'},
         ],
     },
     {
@@ -437,8 +440,7 @@ LESSONS = [
                      'number': '', 'lines': 3},
                     {'text': 'Brainstorm some potential sub-topics that will support your idea.',
                      'number': '', 'lines': 5},
-                    {'text': '1. Choose three sub-topics to focus on in your essay.  Sub-topic 1'
-                      ' of 3',
+                    {'text': '1. Choose three sub-topics to focus on in your essay.\n\nSub-topic 1 of 3',
                      'number': '1.', 'lines': 1},
                     {'text': '2. Sub-topic 2 of 3',
                      'number': '2.', 'lines': 1},
@@ -537,6 +539,11 @@ LESSONS = [
              'text': 'The Monet quotation opens with the wrong curly quote — the mark '
                       'that should close a quotation is used to open it. Copy the words, '
                       'not the typo.'},
+            {'where': 'odd',
+             'text': 'The Body Paragraphs task says to take a sub-topic “from page 42”. '
+                      'That is a page of the paper book, and yours are up above on this '
+                      'page — scroll back to the three sub-topics you wrote and pick one '
+                      'of those.'},
             {'where': 'even',
              'text': "In your PAPER book, the last row of this lesson's blueprint "
                       'checklist is labelled “PS» CONCLUSION”. That is a typo for “P5»” —'
@@ -607,8 +614,7 @@ LESSONS = [
                      'number': '', 'lines': 3},
                     {'text': 'Brainstorm some potential sub-topics that will support your idea.',
                      'number': '', 'lines': 5},
-                    {'text': '1. Choose three sub-topics to focus on in your essay.  Sub-topic 1'
-                      ' of 3',
+                    {'text': '1. Choose three sub-topics to focus on in your essay.\n\nSub-topic 1 of 3',
                      'number': '1.', 'lines': 1},
                     {'text': '2. Sub-topic 2 of 3',
                      'number': '2.', 'lines': 1},
@@ -703,6 +709,11 @@ LESSONS = [
                       'book in the series. It means what the thesis statement work has '
                       'been doing all along: THREE sub-topics, all phrased in the same '
                       'grammatical shape.'},
+            {'where': 'odd',
+             'text': 'The Body Paragraphs task says to take a sub-topic “from page 53”. '
+                      'That is a page of the paper book, and yours are up above on this '
+                      'page — scroll back to the three sub-topics you wrote and pick one '
+                      'of those.'},
         ],
     },
     {
@@ -768,8 +779,7 @@ LESSONS = [
                      'number': '', 'lines': 3},
                     {'text': 'Brainstorm some potential sub-topics that will support your idea.',
                      'number': '', 'lines': 5},
-                    {'text': '1. Choose three sub-topics to focus on in your essay.  Sub-topic 1'
-                      ' of 3',
+                    {'text': '1. Choose three sub-topics to focus on in your essay.\n\nSub-topic 1 of 3',
                      'number': '1.', 'lines': 1},
                     {'text': '2. Sub-topic 2 of 3',
                      'number': '2.', 'lines': 1},
@@ -864,6 +874,11 @@ LESSONS = [
                       'book in the series. It means what the thesis statement work has '
                       'been doing all along: THREE sub-topics, all phrased in the same '
                       'grammatical shape.'},
+            {'where': 'odd',
+             'text': 'The Body Paragraphs task says to take a sub-topic “from page 65”. '
+                      'That is a page of the paper book, and yours are up above on this '
+                      'page — scroll back to the three sub-topics you wrote and pick one '
+                      'of those.'},
             {'where': 'even',
              'text': "In your PAPER book, the last row of this lesson's blueprint "
                       'checklist is labelled “PS» CONCLUSION”. That is a typo for “P5»” —'

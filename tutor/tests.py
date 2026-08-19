@@ -5890,3 +5890,168 @@ class EssayVolume2Tests(TestCase):
         # Pages 18-72 of the scan, which is where the five lessons live.
         seen = sorted(pg["pdf_page"] for p in pages for pg in p["pages"])
         self.assertEqual(seen, list(range(18, 73)))
+
+    # -- guards for what a second review found unpinned --------------------
+
+    def test_the_dictionary_words_are_asked(self):
+        """Four lessons open with "Use a dictionary to define:".
+
+        Deleting that loop from the seed dropped twelve questions and every
+        test still passed — the shape test only asserted "more than fifteen
+        questions", and the weeks stay above fifteen without them.
+        """
+        from tutor.essay_lessons import LESSONS
+
+        self._seed()
+        expected = {L["weeks"][0]: L["vocabulary"] for L in LESSONS}
+        self.assertEqual([len(v) for _w, v in sorted(expected.items())],
+                         [0, 2, 3, 3, 4], "lesson 1 has no word list; the rest do")
+        for week, words in expected.items():
+            prompts = [q.prompt for q in self._set(week).questions.all()]
+            for word in words:
+                self.assertTrue(
+                    any(word in p and "dictionary" in p for p in prompts),
+                    "week %d never asks for %r" % (week, word))
+            self.assertEqual(
+                sum(1 for p in prompts if "Use a dictionary" in p), len(words),
+                "week %d" % week)
+
+    def test_every_week_asks_exactly_what_the_guide_prints(self):
+        """A per-week count, so questions cannot quietly go missing.
+
+        Derived from the lesson data rather than hardcoded, so it tracks a
+        re-transcription — but it still fails the moment the seed stops
+        emitting something the pages contain.
+        """
+        from tutor.essay_lessons import LESSONS
+
+        self._seed()
+        for lesson in LESSONS:
+            odd, even = lesson["weeks"]
+            expected = len(lesson["vocabulary"])
+            for step in lesson["steps"]:
+                expected += len(step["prompts"])
+                if step.get("checks"):
+                    expected += 1
+            self.assertEqual(self._set(odd).questions.count(), expected,
+                             "week %d" % odd)
+            self.assertEqual(self._set(even).questions.count(), 3,
+                             "week %d: draft + checklist + self-evaluation" % even)
+
+    def test_the_drafting_prompt_names_the_essay_without_stuttering(self):
+        """The titles are already imperative, so prefixing "Write" gave
+        "Write write an orange" — on the one question of every drafting week,
+        and in the text handed to the grader."""
+        self._seed()
+        for week in (2, 4, 6, 8, 10):
+            prompt = self._set(week).questions.order_by("order").first().prompt
+            self.assertNotIn("write write", prompt.lower())
+            self.assertNotIn("Write **write", prompt)
+        self.assertIn("Write an Orange",
+                      self._set(2).questions.order_by("order").first().prompt)
+
+    def test_the_guides_closing_direction_comes_after_the_week_s_work(self):
+        """It tells her to begin crafting the essay from a hook and three
+        sub-topics — which she writes ON that page. Printed above the
+        questions it read as an instruction to start with none of them, and to
+        hand-write on pages that do not exist in the app."""
+        self._seed()
+        html = self._page(1)
+        self.assertIn("es-handover", html)
+        # After the last question, not before the first.
+        self.assertGreater(html.index("es-handover"), html.rindex("portal-answer"))
+        # And it is honest about the app being typed.
+        self.assertIn("you will type", html)
+        # Not on the drafting week — that week's intro carries the order.
+        self.assertNotIn("es-handover", self._page(2))
+
+    def test_the_grader_is_told_not_to_punish_an_honest_self_evaluation(self):
+        """This lives in the seeded rubric, a different file and a different
+        sentence from the formatter's label — deleting it left every test
+        green while the grader lost the only thing stopping it from marking
+        her down for saying "Needs to Improve"."""
+        self._seed()
+        rubric = self._set(2).rubric
+        self.assertIn("her own judgement of her own work", rubric)
+        self.assertIn("never mark her down", rubric)
+        self.assertIn("rough-draft sections are planning and are not marked",
+                      rubric)
+
+    def test_the_rubric_criteria_are_the_printed_words(self):
+        """Counting six bullets per band catches a DROPPED one and nothing
+        else — a corrupted or duplicated bullet passed. The grader is handed
+        these verbatim."""
+        from tutor import essay
+
+        for name, criteria in essay.EVALUATION_RUBRIC:
+            self.assertEqual(len(set(criteria)), len(criteria),
+                             "%s repeats a criterion" % name)
+        bands = dict(essay.EVALUATION_RUBRIC)
+        self.assertEqual(bands["ACCOMPLISHED"][0], "Creatively focuses on the topic")
+        self.assertEqual(bands["ACCOMPLISHED"][2], "Varies sentence structure")
+        self.assertEqual(bands["POOR"][-1],
+                         "Frequent errors in basic writing conventions")
+        # The band-to-band wording the second reader flagged as the book's own
+        # inconsistency: LIMITED says "Organization pattern", POOR says
+        # "Organizational pattern". Both are printed; keep both.
+        self.assertIn("Organization pattern is weak", bands["LIMITED"])
+        self.assertIn("Organizational pattern is lacking", bands["POOR"])
+
+    def test_the_teacher_form_line_items_are_the_printed_weights(self):
+        """Section totals alone survive a compensating swap inside a section
+        (Hook 1 → 2, Context 1 → 0)."""
+        from tutor import essay
+
+        items = {label: pts for _n, _t, rows in essay.TEACHER_FORM
+                 for label, pts in rows}
+        self.assertEqual(items["Hook"], 1)
+        self.assertEqual(items["Context"], 1)
+        self.assertEqual(items["Thesis Statement"], 1)
+        self.assertEqual(items["Body Paragraphs on Topic"], 6)
+        self.assertEqual(items["Supporting Facts & Details"], 6)
+        self.assertEqual(items["Clear Sequence of Ideas"], 6)
+        self.assertEqual(items["Weave"], 1)
+        self.assertEqual(items["Echo"], 1)
+        self.assertEqual(items["Twist"], 1)
+        self.assertEqual(len(items), 22)
+
+    def test_no_bracketed_reader_annotation_survives_anywhere(self):
+        """Stronger than listing the markers we happened to see: a NEW reader
+        annotation in a re-transcription would have shipped."""
+        from tutor.essay_lessons import LESSONS
+
+        for lesson in LESSONS:
+            for step in lesson["steps"]:
+                blob = " ".join(
+                    [step["heading"], step.get("instruction", "")]
+                    + [p["text"] for p in step["prompts"]]
+                    + list(step.get("checks", [])))
+                self.assertNotIn("[", blob, "L%d %s" % (lesson["number"],
+                                                        step["heading"]))
+
+    def test_she_is_told_the_page_numbers_are_the_paper_book_s(self):
+        """"Choose one of your three sub-topics from page 32" — she typed those
+        into this app a few questions earlier, and that printed page is blank."""
+        from tutor.essay_lessons import LESSONS
+        import re
+
+        for lesson in LESSONS:
+            refs = [m for step in lesson["steps"]
+                    for m in re.findall(r"from page (\d+)",
+                                        step.get("instruction", ""))]
+            noted = any("page" in n["text"] and "paper book" in n["text"]
+                        for n in lesson.get("notes", []))
+            self.assertEqual(bool(refs), noted,
+                             "L%d refs=%s noted=%s" % (lesson["number"], refs, noted))
+
+    def test_the_sub_topic_lead_keeps_its_line_break(self):
+        """textwrap turns a newline into a space unless told not to, which
+        silently rewrote this prompt in the generated file."""
+        from tutor.essay_lessons import LESSONS
+
+        for lesson in LESSONS:
+            leads = [p["text"] for step in lesson["steps"] for p in step["prompts"]
+                     if "Choose three sub-topics" in p["text"]]
+            self.assertEqual(len(leads), 1, "L%d" % lesson["number"])
+            self.assertIn("\n\nSub-topic 1 of 3", leads[0],
+                          "L%d lost the break" % lesson["number"])

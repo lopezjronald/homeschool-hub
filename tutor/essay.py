@@ -295,6 +295,11 @@ REFERENCE_PAGES = [
     # is supposed to sound like, and folio 14 ends by telling her to turn to it.
     {"folio": 15, "pdf_page": 16,
      "title": "The Model - Descriptive Essay, labelled"},
+    # The course map — what a descriptive essay is for, and all five lessons
+    # with the weeks they occupy. The folio jumps from 15 to 17 here; that is
+    # the book's own numbering, not a missing page.
+    {"folio": 17, "pdf_page": 17,
+     "title": "Write it! The Descriptive Essay"},
 ]
 
 

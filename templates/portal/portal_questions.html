@@ -437,6 +437,22 @@
               </div>
             {% endfor %}
 
+            {% if essay_week.handover and not essay_week.is_draft_week %}
+              {% comment %}The guide's own closing direction for the pre-writing
+              week, printed where the BOOK prints it — after the work, not
+              before it. At the top it read as an instruction to start drafting
+              immediately, using a hook and sub-topics she had not written yet.
+              {% endcomment %}
+              <div class="es-handover">
+                <div class="es-handover-head">When you have finished this page</div>
+                <p class="es-handover-body">✍️ {{ essay_week.handover }}</p>
+                <p class="es-handover-note">The guide is written for the paper
+                  book. Here you will type next week's draft into the boxes, so
+                  your writing coach can read it — you do not need to hand-write
+                  it first unless you want to.</p>
+              </div>
+            {% endif %}
+
             {% if not sheet.is_submitted %}
               <div class="d-flex justify-content-between align-items-center mt-4">
                 <span class="text-muted small" id="answered-progress" data-total="{{ questions|length }}">

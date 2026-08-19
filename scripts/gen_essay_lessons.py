@@ -48,6 +48,12 @@ THREES_NOTE = ("This lesson points you at an exercise called “Thinking In "
                "statement work has been doing all along: THREE sub-topics, all "
                "phrased in the same grammatical shape.")
 
+# The guide sends her back to a printed page for work she did on screen.
+PAPER_PAGE_NOTE = ("The Body Paragraphs task says to take a sub-topic “from "
+                   "page %s”. That is a page of the paper book, and yours are "
+                   "up above on this page — scroll back to the three sub-topics "
+                   "you wrote and pick one of those.")
+
 # The blueprint checklist labels its last paragraph "PS»" instead of "P5»" in
 # three of the five lessons — verified page by page, not assumed. It is a
 # typesetting slip in the same list that runs P1», P2», P3», P4».
@@ -191,13 +197,20 @@ def split_checks(prompts):
 
 
 def py(value, indent):
-    """A readable literal — long strings wrapped, not run off the screen."""
+    """A readable literal — long strings wrapped, not run off the screen.
+
+    `replace_whitespace=False` matters: textwrap turns a newline into a space by
+    default, which silently rewrote the sub-topic lead — "…in your essay.\\n\\n
+    Sub-topic 1 of 3" was emitted as one line with a double space, in the file
+    the whole design treats as the source of truth. Only strings over the wrap
+    width were affected, which is why it went unnoticed.
+    """
     pad = " " * indent
     if isinstance(value, str):
-        if len(value) <= 68:
+        if len(value) <= 68 or "\n" in value:
             return repr(value)
         parts = textwrap.wrap(value, 66, break_long_words=False,
-                              drop_whitespace=False)
+                              drop_whitespace=False, replace_whitespace=False)
         return ("\n" + pad).join(repr(p) for p in parts)
     return repr(value)
 
@@ -285,6 +298,14 @@ for L in LESSONS:
         for st in steps for c in st["checks"])
     if mentions_threes:
         notes.insert(0, ("odd", THREES_NOTE))
+    # "Choose one of your three sub-topics from page 32…" — she typed those
+    # sub-topics into this app a few questions ago, so the paper page the guide
+    # names is blank. Derived from the text so no lesson can be missed.
+    import re as _re
+    paper_ref = sorted({m for st in steps
+                        for m in _re.findall(r"from page (\d+)", st["instruction"])})
+    if paper_ref:
+        notes.append(("odd", PAPER_PAGE_NOTE % ", ".join(paper_ref)))
     if n in PS_TYPO_LESSONS:
         notes.append((PS_WEEK, PS_NOTE))
     if notes:

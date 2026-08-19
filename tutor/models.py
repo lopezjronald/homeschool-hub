@@ -588,7 +588,8 @@ class Question(models.Model):
         The writing guides all reach this step — read it aloud a second time,
         rate each part, note how you would strengthen it — and it is the step
         that turns a rough draft into a final one. It is HER judgement, not a
-        graded answer: see ``self_eval_is_reflection``.
+        graded answer — ``ResponseSheet._format_self_eval`` labels it as her own
+        judgement so the grader does not mark her down for naming a weakness.
         """
         return self.response_type == self.TYPE_SELF_EVAL
 

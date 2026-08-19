@@ -6055,3 +6055,100 @@ class EssayVolume2Tests(TestCase):
             self.assertEqual(len(leads), 1, "L%d" % lesson["number"])
             self.assertIn("\n\nSub-topic 1 of 3", leads[0],
                           "L%d lost the break" % lesson["number"])
+
+    def test_every_reference_page_we_ship_is_actually_offered(self):
+        """A page committed under static/essay/reference/ and left out of the
+        list is invisible to her.
+
+        That is exactly what happened twice: folio 15 (the LABELLED model essay,
+        the page the template promises) and folio 17 (the course map) were both
+        rendered, committed and never listed. Checking that the listed pages
+        resolve cannot catch it — the list is the thing that was wrong.
+        """
+        from pathlib import Path
+
+        from tutor import essay
+
+        root = Path(__file__).resolve().parent.parent / "static" / "essay" / "reference"
+        on_disk = {p.name for p in root.glob("*.jpg")}
+        offered = {"p%02d.jpg" % p["pdf_page"] for p in essay.REFERENCE_PAGES}
+        self.assertEqual(on_disk - offered, set(),
+                         "committed but never shown to her")
+        self.assertEqual(offered - on_disk, set(), "listed but not on disk")
+
+    def test_the_rubric_bands_are_pinned_word_for_word(self):
+        """All thirty bullets, not three.
+
+        The grader is handed these verbatim, and a corrupted bullet reads as
+        plausible guidance — "Transitions are creative and adequate" under
+        PROFICIENT would quietly invert what the band means.
+        """
+        from tutor import essay
+
+        expected = {
+            "ACCOMPLISHED": [
+                "Creatively focuses on the topic",
+                "Uses logical progression of ideas to develop and supports topic with details",
+                "Varies sentence structure",
+                "Uses interesting transitions",
+                "Makes strong word choice",
+                "Mature understanding of writing conventions",
+            ],
+            "PROFICIENT": [
+                "Focuses on topic and includes adequate support",
+                "Uses logical progression of ideas to develop and loosely supports topic",
+                "Some varied sentence structure",
+                "Transitions are adequate but not creative",
+                "Word choice is adequate but not creative",
+                "General understanding of writing conventions",
+            ],
+            "BASIC": [
+                "Topic is addressed, but unclear",
+                "Lacks logical progression of ideas and support is weak",
+                "Sentences are stagnant and uninteresting",
+                "Lack of transitions",
+                "Average word choice",
+                "Partial understanding of writing conventions",
+            ],
+            "LIMITED": [
+                "Topic may be mentioned, but not clearly addressed and loosely supported",
+                "Organization pattern is weak",
+                "Writing contains sentence fragments and run-ons",
+                "Poor transitions",
+                "Poor word choice",
+                "Definite misunderstanding of writing conventions",
+            ],
+            "POOR": [
+                "Topic is not addressed or clearly supported",
+                "Organizational pattern is lacking",
+                "Sentence structure is insufficient",
+                "Non-existent transitions",
+                "Weak word choice",
+                "Frequent errors in basic writing conventions",
+            ],
+        }
+        self.assertEqual(dict(essay.EVALUATION_RUBRIC), expected)
+
+    def test_no_bracketed_annotation_anywhere_in_the_lesson_data(self):
+        """Wider than the per-step blob: banners, word lists and checklist
+        lead-ins are child-facing too.
+
+        Walks the string VALUES — serialising the whole lesson and searching
+        the JSON would flag its own array brackets and pass for the wrong
+        reason forever after.
+        """
+        from tutor.essay_lessons import LESSONS
+
+        def strings(value, path="L"):
+            if isinstance(value, str):
+                yield path, value
+            elif isinstance(value, dict):
+                for k, v in value.items():
+                    yield from strings(v, "%s.%s" % (path, k))
+            elif isinstance(value, (list, tuple)):
+                for i, v in enumerate(value):
+                    yield from strings(v, "%s[%d]" % (path, i))
+
+        for lesson in LESSONS:
+            for path, text in strings(lesson, "L%d" % lesson["number"]):
+                self.assertNotIn("[", text, path)

@@ -1,3 +1,4 @@
+import json
 import tempfile
 from datetime import timedelta
 
@@ -604,3 +605,168 @@ class CharterReportRedesignTest(TestCase):
         body = resp.content.decode()
         self.assertIn("Date,Child,Subject,Lesson,AI level,Final level,Status", body)
         self.assertIn("Wolfgang Questions", body)
+
+
+class CompletionReportShowsTheWorkTests(TestCase):
+    """The Completion Report has to show what she DID, not a sentence about it.
+
+    It used to print `WorkLogEntry.description` — a prose summary baked in at
+    submit time — inside a five-column table. Two things were wrong with that,
+    and a parent printing a month of work hit both:
+
+      - a mark-the-sentence exercise came out as
+        "[marked up the sentence "Ron built a table." — annotated: yes]",
+        which records that she drew something without showing what she drew;
+      - a long answer got only the width of one table column, so an essay
+        printed as a thirty-character ribbon running over dozens of pages.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.parent = User.objects.create_user(
+            username="rparent", email="rp@e.com", password="pw")
+        cls.fam = Family.objects.create(name="Report Fam")
+        FamilyMembership.objects.create(user=cls.parent, family=cls.fam, role="parent")
+        cls.violet = Student.objects.create(
+            parent=cls.parent, first_name="Violet", grade_level="G03", family=cls.fam)
+        cls.today = timezone.localdate()
+
+        cur = Curriculum.objects.create(
+            parent=cls.parent, name="Essentials in Writing 3", subject="Writing",
+            family=cls.fam)
+        ch = Chapter.objects.create(curriculum=cur, number=1, title="Unit 1")
+        lesson = Lesson.objects.create(chapter=ch, order=6, number=6, title="L6")
+        cls.qset = QuestionSet.objects.create(
+            lesson=lesson, title="Complete and Incomplete Sentences", family=cls.fam,
+            status=QuestionSet.APPROVED, rubric="Mark the sentences.")
+        cls.drawn = Question.objects.create(
+            question_set=cls.qset, order=1, category="editing",
+            response_type=Question.TYPE_MARKUP,
+            prompt="Mark the complete sentences.",
+            passage="Ron built a table.")
+        cls.typed = Question.objects.create(
+            question_set=cls.qset, order=2, category="writing",
+            response_type=Question.TYPE_TEXT,
+            prompt="Write about something you love.")
+
+        cls.entry = WorkLogEntry.objects.create(
+            parent=cls.parent, child=cls.violet, subject="Writing", family=cls.fam,
+            date=cls.today,
+            # The old prose summary, still stored on the entry.
+            description=('Lesson 6 · Mark the sentences — submitted from '
+                         "Violet's portal.\n\nQ1 [Editing]:\nA: [marked up the "
+                         'sentence "Ron built a table." — annotated: yes]'))
+        cls.sheet = ResponseSheet.objects.create(
+            question_set=cls.qset, child=cls.violet,
+            answers={
+                str(cls.drawn.pk): json.dumps({
+                    "strokes": [{"c": "#d64545", "w": 3,
+                                 "p": [[0.1, 0.5], [0.4, 0.5], [0.7, 0.52]]}],
+                    "surface": {"w": 600, "h": 90},
+                    "marks": [{"i": 0, "word": "Ron", "kind": "underlined"}],
+                    "unread": 0,
+                }),
+                str(cls.typed.pk): "I love the forest because it is quiet.",
+            },
+            status=ResponseSheet.SUBMITTED, work_entry=cls.entry,
+            submitted_at=timezone.now())
+
+    def _report(self, **params):
+        self.client.login(username="rparent", password="pw")
+        return self.client.get(reverse("worklog:worklog_report"), params)
+
+    def test_drawn_work_is_replayed_not_described(self):
+        resp = self._report()
+        self.assertEqual(resp.status_code, 200)
+        html = resp.content.decode()
+        # Her actual strokes reach the page…
+        self.assertIn("markup-replay", html)
+        self.assertIn("<svg", html)
+        # …and the prose stand-in for them does not.
+        self.assertNotIn("annotated: yes", html)
+        self.assertNotIn("[marked up the sentence", html)
+
+    def test_typed_answers_and_their_questions_both_appear(self):
+        """A report that shows answers without their questions is a list of
+        sentences nobody can mark."""
+        html = self._report().content.decode()
+        self.assertIn("Write about something you love.", html)
+        self.assertIn("I love the forest because it is quiet.", html)
+        self.assertIn("Mark the complete sentences.", html)
+
+    def test_the_work_is_not_squeezed_into_a_table_column(self):
+        """The five-column table is what made an essay print as a ribbon."""
+        html = self._report().content.decode()
+        self.assertNotIn("What was done", html)      # the old column header
+        self.assertIn("ss-entry", html)              # the full-width block
+
+    def test_an_entry_with_no_sheet_still_shows_its_note(self):
+        """Photos and hand-written notes have no answer sheet, and must not
+        vanish now that the report renders sheets."""
+        WorkLogEntry.objects.create(
+            parent=self.parent, child=self.violet, subject="Nature",
+            family=self.fam, date=self.today,
+            description="We went on a nature walk and found acorns.")
+        html = self._report().content.decode()
+        self.assertIn("We went on a nature walk and found acorns.", html)
+
+    def test_the_range_and_child_filters_still_apply(self):
+        """The report is a date-range record; showing work outside the range
+        would misstate what was done in the period."""
+        old = WorkLogEntry.objects.create(
+            parent=self.parent, child=self.violet, subject="History",
+            family=self.fam, date=self.today - timedelta(days=400),
+            description="Ancient Egypt lapbook.")
+        html = self._report(start=(self.today - timedelta(days=7)).isoformat(),
+                            end=self.today.isoformat()).content.decode()
+        self.assertNotIn("Ancient Egypt lapbook.", html)
+        self.assertIn("I love the forest because it is quiet.", html)
+        old.delete()
+
+    def _extra_entries(self, n, offset=0):
+        lesson = self.qset.lesson
+        for i in range(offset, offset + n):
+            # A sheet is unique per (question_set, child), so each extra entry
+            # needs its own set — which is also the realistic shape: six days of
+            # work is six different worksheets.
+            qs = QuestionSet.objects.create(
+                lesson=lesson, title="Extra %d" % i, family=self.fam,
+                status=QuestionSet.APPROVED, rubric="r")
+            q = Question.objects.create(
+                question_set=qs, order=1, category="writing",
+                response_type=Question.TYPE_TEXT, prompt="Prompt %d" % i)
+            e = WorkLogEntry.objects.create(
+                parent=self.parent, child=self.violet, subject="Writing",
+                family=self.fam, date=self.today, description="extra %d" % i)
+            ResponseSheet.objects.create(
+                question_set=qs, child=self.violet,
+                answers={str(q.pk): "answer %d" % i},
+                status=ResponseSheet.SUBMITTED, work_entry=e,
+                submitted_at=timezone.now())
+    def test_the_query_count_does_not_grow_with_the_number_of_entries(self):
+        """A month of work is ~80 entries and this page renders every one.
+
+        Asserting an absolute number would just encode today's overhead; what
+        matters is the SHAPE. Doubling the entries must not change the query
+        count — if it does, the sheets, their questions or the assessments are
+        being fetched per row, and printing a term's work walks off a cliff.
+        """
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+
+        self.client.login(username="rparent", password="pw")
+
+        def count():
+            with CaptureQueriesContext(connection) as ctx:
+                resp = self.client.get(reverse("worklog:worklog_report"))
+            self.assertEqual(resp.status_code, 200)
+            return len(ctx.captured_queries)
+
+        self._extra_entries(6)
+        count()          # warm up: the first request also creates the session
+        few = count()
+        self._extra_entries(12, offset=6)
+        many = count()
+        self.assertEqual(few, many,
+                         "queries grew from %d to %d when the entries tripled"
+                         % (few, many))

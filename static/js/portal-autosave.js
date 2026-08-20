@@ -162,4 +162,20 @@
   });
 
   refreshCounts();
+
+  // ...and again once every other script on the page has run.
+  //
+  // This file loads FIRST, and the widgets that declare their own answered
+  // state — matching, fill-blank, cloze, self-eval, ordering — all do it as
+  // they initialise, eight script tags later. So the first count above is
+  // taken before any of them has spoken, and falls back to "the field is not
+  // empty": a half-finished question a child came back to counted as done, on
+  // the line directly above a "Turn it in" button she cannot undo.
+  //
+  // Both, deliberately. DOMContentLoaded is the natural hook, but it has
+  // already fired if this file is ever loaded deferred or injected, in which
+  // case the listener never runs. A zero timeout is a macrotask, so it lands
+  // after every synchronous script on the page either way.
+  document.addEventListener("DOMContentLoaded", refreshCounts);
+  setTimeout(refreshCounts, 0);
 })();

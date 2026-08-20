@@ -6621,6 +6621,39 @@ class StudiesWeeklyLevel3Tests(TestCase):
             self.assertNotIn("None", shown,
                              "a blank slot must not print as the word None")
 
+    def test_a_part_numbered_sort_is_not_counted_as_answered(self):
+        """The count renders as "N of M answered" on the line directly above a
+        "Turn it in" button she cannot undo, so it must not call a sort with one
+        number in it finished. An ordering answer says so itself: one slot per
+        step, "" where she has not placed one.
+
+        Everything else keeps the plain not-empty rule — changing that would
+        move the number under children who are part-way through a page.
+        """
+        self._seed()
+        q = [x for x in self._set().questions.all() if x.is_order][0]
+        sheet = ResponseSheet(question_set=self._set())
+
+        sheet.answers = {str(q.pk): json.dumps(
+            {"order": ["", "", "", "", "Present your conclusions"]})}
+        self.assertEqual(sheet.answered_count, 0, "one number is not an answer")
+
+        sheet.answers = {str(q.pk): json.dumps({"order": q.order_correct})}
+        self.assertEqual(sheet.answered_count, 1)
+
+        # A wrong-but-complete order is still an answer she gave.
+        backwards = list(reversed(q.order_correct))
+        sheet.answers = {str(q.pk): json.dumps({"order": backwards})}
+        self.assertEqual(sheet.answered_count, 1)
+
+        # And nothing else changed: a typed answer counts by being non-empty.
+        written = [x for x in self._set().questions.all()
+                   if x.response_type == Question.TYPE_TEXT][0]
+        sheet.answers = {str(written.pk): "I wonder how rivers start."}
+        self.assertEqual(sheet.answered_count, 1)
+        sheet.answers = {str(written.pk): "   "}
+        self.assertEqual(sheet.answered_count, 0)
+
     def test_the_written_task_offers_the_answer_mode_picker(self):
         """It is the only thing she writes this week, and she may want to write
         it with the stylus."""
@@ -6718,3 +6751,60 @@ class StudiesWeeklyBuilderTests(SimpleTestCase):
         from tutor.weekly import matching
 
         self.assertIsNone(matching("Match them.", [("a", "1")])["word_order"])
+
+    def test_two_steps_that_read_the_same_are_refused(self):
+        """The widget keys a step on its TEXT: two identical steps hydrate to
+        the same number, so there is no ordering she could enter that would be
+        marked correct. Set equality alone would let this through — both lists
+        hold the same strings."""
+        from tutor.weekly import order
+
+        with self.assertRaises(ValueError) as caught:
+            order("Put these in order.",
+                  steps=["read it", "read it", "write it"],
+                  correct=["write it", "read it", "read it"])
+        self.assertIn("read the same", str(caught.exception))
+
+    def test_two_questions_sharing_an_answer_are_refused(self):
+        """Same reason on the other widget: one button cannot be matched to two
+        questions, so the second is uncompletable."""
+        from tutor.weekly import matching
+
+        with self.assertRaises(ValueError) as caught:
+            matching("Match them.",
+                     [("Who?", "a person"), ("Whom?", "a person")])
+        self.assertIn("share an answer", str(caught.exception))
+
+
+class LessonBlockKindRegistryTests(SimpleTestCase):
+    """Every block kind must render, and every kind must be checkable.
+
+    A kind the template does not know renders as blank space on a child's page,
+    and a kind missing from REQUIRED_KEYS is one `audit_content` waves through
+    without looking — `REQUIRED_KEYS.get(kind, ())` checks nothing at all. Both
+    failures are silent, which is why they are pinned rather than remembered.
+    """
+
+    def test_every_kind_has_a_branch_in_the_template(self):
+        import os
+
+        from django.conf import settings
+
+        from tutor.models import LessonBlock
+
+        path = os.path.join(settings.BASE_DIR, "templates", "portal",
+                            "_lesson_blocks.html")
+        with open(path, encoding="utf-8") as fh:
+            markup = fh.read()
+        for kind, _label in LessonBlock.KIND_CHOICES:
+            self.assertIn('b.kind == "%s"' % kind, markup,
+                          "%s would render as nothing at all" % kind)
+
+    def test_every_kind_is_checked_by_the_auditor(self):
+        from tutor.management.commands._saxon_seed import REQUIRED_KEYS
+        from tutor.models import LessonBlock
+
+        for kind, _label in LessonBlock.KIND_CHOICES:
+            self.assertIn(kind, REQUIRED_KEYS,
+                          "%s slips past audit_content unchecked" % kind)
+            self.assertTrue(REQUIRED_KEYS[kind], kind)

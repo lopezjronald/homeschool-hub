@@ -38,6 +38,7 @@ REQUIRED_KEYS = {
     LessonBlock.KIND_REVEAL: ("prompt", "answer"),
     LessonBlock.KIND_TOOL: ("widget", "config"),
     LessonBlock.KIND_RECAP: ("items",),
+    LessonBlock.KIND_PAGES: ("images",),
 }
 
 KNOWN_WIDGETS = {"grid", "ratiobar", "scislide", "chart", "binary", "triangle"}

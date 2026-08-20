@@ -37,8 +37,12 @@
     };
   }
 
-  if (typeof module !== "undefined" && module.exports) {
-    module.exports = { placeSteps: placeSteps };
+  // Under node there is nothing to attach to, so export the core and stop.
+  // Gated on `document`, not on `module`, the way portal-triangle.js and
+  // portal-grid.js do it: a stray global `module` from some future script
+  // would otherwise switch every widget on this page off in the browser.
+  if (typeof document === "undefined") {
+    if (typeof module !== "undefined") module.exports = { placeSteps: placeSteps };
     return;
   }
 

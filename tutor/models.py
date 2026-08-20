@@ -1005,7 +1005,34 @@ class ResponseSheet(models.Model):
 
     @property
     def answered_count(self):
-        return sum(1 for v in (self.answers or {}).values() if str(v).strip())
+        return sum(1 for v in (self.answers or {}).values()
+                   if self._counts_as_answered(v))
+
+    @staticmethod
+    def _counts_as_answered(raw):
+        """Is this stored answer finished, not merely started?
+
+        "Not empty" is the rule for almost everything, and it stays the rule —
+        changing it for every widget would move the number under children who
+        are part-way through a page right now.
+
+        An ORDERING answer is the exception because it says so itself: it stores
+        one slot per step with "" where she has not placed one, so a sort with
+        one number in it is visibly unfinished. It has to be read that way,
+        because this count renders as "N of M answered" directly above a
+        "Turn it in" button she cannot undo.
+        """
+        text = str(raw).strip()
+        if not text:
+            return False
+        try:
+            data = json.loads(text)
+        except (ValueError, TypeError):
+            return True
+        if isinstance(data, dict) and isinstance(data.get("order"), list):
+            return bool(data["order"]) and all(
+                str(slot).strip() for slot in data["order"])
+        return True
 
     def answer_display(self, question):
         """A readable rendering of the child's answer to one question.

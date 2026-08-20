@@ -398,7 +398,16 @@ def replay_for(raw, question):
     except (TypeError, ValueError, OverflowError):   # 1e400 -> inf -> int() raises
         unread = 0
     typed = bool(getattr(question, "is_write_markup", False))
-    text = str(data.get("text", "")) if typed else (question.passage or "")
+    if typed:
+        text = str(data.get("text", ""))
+    elif getattr(question, "is_drawing", False):
+        # A drawing has no sentence behind it — she drew on blank paper. And
+        # `passage` on these holds the widget's CONFIG, so printing it as the
+        # passage stamps {"height": 560} across her picture, in Georgia, on the
+        # report that goes to the charter school. Blank paper stays blank.
+        text = ""
+    else:
+        text = question.passage or ""
 
     replay = MarkupReplay(text, strokes, marks, unread, data.get("surface"), typed=typed)
     # Strokes that yield no drawable ink (every point unusable) are nothing to

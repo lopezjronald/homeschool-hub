@@ -602,7 +602,7 @@ class Question(models.Model):
         """How tall her paper is. A poster needs more room than a doodle."""
         try:
             return max(200, min(900, int(self.vocab_data.get("height", 420))))
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, OverflowError):   # 1e400 -> inf -> int() raises
             return 420
 
     # A box of pencils, not the three greys handwriting gets. First is selected.
@@ -1204,7 +1204,22 @@ class ResponseSheet(models.Model):
         """
         strokes, _marks, _unread = cls._parse_markup(raw)
         if strokes:
-            return "[a drawing — %d pen stroke(s); the picture is below]" % len(strokes)
+            # "Below" is true on the parent's page and the report, where the
+            # replay sits under this line. The grader gets text only, so it is
+            # told plainly that there is nothing here to read.
+            return ("[a drawing — %d pen stroke(s). The picture itself is on "
+                    "her page and in the report; there are no words to read "
+                    "here, so do not mark it for any.]" % len(strokes))
+        # A question can change instrument under an answer she already gave, the
+        # same way Operation Lexicon's writing boxes did. Her typed words are
+        # still in the sheet; "(nothing drawn yet)" would hide work she did.
+        typed = str(raw or "").strip()
+        if not typed:
+            return "(nothing drawn yet)"
+        try:
+            json.loads(typed)
+        except (ValueError, TypeError):
+            return typed
         return "(nothing drawn yet)"
 
     @classmethod

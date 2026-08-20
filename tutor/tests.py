@@ -6878,11 +6878,33 @@ class HandsOnGleanTests(TestCase):
         """This is what makes it a legitimate alternative rather than a lighter
         one: between them the steps cover four of the printed five."""
         self._seed()
-        prompts = " ".join(q.prompt for q in self._set().questions.all()).lower()
-        for composer in ("mozart", "beethoven", "schubert"):   # option 1
-            self.assertIn(composer, prompts)
-        self.assertIn("grand piano", prompts)                  # option 3
-        self.assertIn("name", prompts)                         # option 4
+        questions = list(self._set().questions.all())
+        prompts = " ".join(q.prompt for q in questions).lower()
+
+        # Option 1, composer compare: one listening step EACH, or there is
+        # nothing to compare.
+        for composer in ("mozart", "beethoven", "schubert"):
+            self.assertEqual(
+                len([q for q in questions
+                     if composer in q.prompt.lower() and q.is_drawing]), 1,
+                "one listening drawing for %s" % composer)
+
+        # Option 3, grand piano: the tapping game AND the drawing.
+        self.assertTrue(any("grand piano" in q.prompt.lower() and q.is_drawing
+                            for q in questions))
+        self.assertTrue(any("piano" in q.prompt.lower() and q.is_matching
+                            for q in questions))
+
+        # Option 4, her name. Matching "name" anywhere in the prompts passed
+        # even with this step deleted — the piano step says she may write the
+        # parts' NAMES on her drawing. The step itself is what is being pinned.
+        shield = [q for q in questions if "shield" in q.prompt.lower()]
+        self.assertEqual(len(shield), 1)
+        self.assertTrue(shield[0].is_drawing)
+        self.assertIn("ask your mum and dad", shield[0].prompt.lower(),
+                      "the interview is the point of this one, and it happens "
+                      "out loud")
+
         terms = [w for q in self._set().questions.all() if q.is_matching
                  for w in q.vocab_data["words"]]
         for term in ("ballad", "bass", "carol", "composer", "discordant", "key",
@@ -6957,6 +6979,51 @@ class HandsOnGleanTests(TestCase):
         self.assertEqual(sheet.answer_display(q), "(nothing drawn yet)")
         self.assertIsNone(sheet.answer_replay(q))
 
+    def test_her_picture_does_not_print_with_its_own_config_across_it(self):
+        """The replay draws her ink over the question's `passage` as the
+        sentence she marked up. A drawing has no sentence — and its `passage`
+        holds the widget's config — so this printed {"height": 560} in Georgia
+        across her concert poster, on the report that goes to the charter
+        school.
+        """
+        self._seed()
+        q = [x for x in self._set().questions.all() if x.is_drawing][-1]
+        self.assertIn("height", q.passage, "the config really does live there")
+
+        sheet = ResponseSheet(question_set=self._set())
+        sheet.answers = {str(q.pk): json.dumps({
+            "strokes": [{"c": "#D64545", "w": 3, "p": [[0.1, 0.2], [0.6, 0.7]]}],
+            "surface": {"w": 662, "h": 560}})}
+        replay = sheet.answer_replay(sheet.question_set.questions.get(pk=q.pk))
+        self.assertIsNotNone(replay)
+        self.assertEqual(replay.text, "", "blank paper stays blank")
+        self.assertNotIn("height", str(replay.text))
+
+    def test_a_typed_answer_left_behind_by_a_type_change_is_not_swallowed(self):
+        """If a question is ever switched to drawing over an answer she already
+        typed, her words are still in the sheet. Reporting "nothing drawn"
+        would hide work she did from the grader and from her report."""
+        self._seed()
+        q = [x for x in self._set().questions.all() if x.is_drawing][0]
+        sheet = ResponseSheet(question_set=self._set())
+        sheet.answers = {str(q.pk): "I drew the music going up and down."}
+        self.assertEqual(sheet.answer_display(q),
+                         "I drew the music going up and down.")
+
+    def test_a_broken_height_does_not_take_the_page_down(self):
+        """`int(inf)` raises OverflowError, which is not ValueError — the same
+        trap `_parse_markup` already guards. A 500 here is her whole page."""
+        self._seed()
+        q = [x for x in self._set().questions.all() if x.is_drawing][0]
+        for broken in ('{"height": 1e400}', '{"height": "tall"}', "{}",
+                       "not json at all", '{"height": null}', "[]"):
+            q.passage = broken
+            self.assertEqual(q.drawing_height, 420, broken)
+        q.passage = '{"height": 99999}'
+        self.assertEqual(q.drawing_height, 900)     # bounded, not unbounded
+        q.passage = '{"height": 1}'
+        self.assertEqual(q.drawing_height, 200)
+
     def test_the_teacher_note_tells_the_grader_not_to_ask_for_prose(self):
         """An AI grader handed a rubric about paragraphs would mark a project
         with no paragraphs down for not having any."""
@@ -7004,3 +7071,31 @@ class HandsOnGleanTests(TestCase):
             source = fh.read()
         self.assertIn(".handwriting-pen.is-active", source,
                       "the engine must read its starting colour off the page")
+
+    def test_the_writing_surfaces_still_start_on_the_ink_they_always_did(self):
+        """The stroke engine is SHARED. Making it read its colour off the page
+        was right for a nine-colour palette, but it also means a careless edit
+        to any other toolbar silently changes the ink Kaylin's handwriting and
+        the Lexicon boxes have always used.
+        """
+        import os
+        import re
+
+        from django.conf import settings
+
+        path = os.path.join(settings.BASE_DIR, "templates", "portal",
+                            "portal_questions.html")
+        with open(path, encoding="utf-8") as fh:
+            markup = fh.read()
+        selected = re.findall(
+            r'class="handwriting-pen is-active"[^>]*data-color="([^"]+)"', markup)
+        # Every writing surface (Lexicon box, handwriting question, the
+        # answer-mode pane) opens on the navy pencil; only the drawing palette
+        # differs, and it opens on black.
+        self.assertEqual(sorted(set(selected)), ["#1d3557"])
+        self.assertGreaterEqual(len(selected), 3)
+        # The drawing palette is the model's, not the template's, and it opens
+        # on black — which is the whole reason the engine had to stop assuming.
+        self._seed()
+        drawing = [q for q in self._set().questions.all() if q.is_drawing][0]
+        self.assertEqual(drawing.drawing_colours[0]["hex"], "#222222")

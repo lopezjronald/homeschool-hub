@@ -1531,3 +1531,78 @@ button.portal-subject-card {
   border-left-color: #C0392B;
   background: rgba(192, 57, 43, 0.09);
 }
+
+/* ---- multiple choice: pick one, or pick several ---- */
+.choice-widget { margin-top: 0.4rem; }
+.choice-hint { font-size: 0.88rem; color: #5a6b62; margin: 0 0 0.4rem; }
+.choice-options { display: flex; flex-direction: column; gap: 0.4rem; }
+.choice-option {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  border: 1.5px solid rgba(15, 61, 46, 0.2);
+  border-radius: 12px;
+  padding: 0.5rem 0.7rem;
+  cursor: pointer;
+  background: #fff;
+  font-size: 1.02rem;
+  line-height: 1.4;
+}
+.choice-option:hover { border-color: rgba(30, 122, 80, 0.5); }
+.choice-option.is-picked {
+  border-color: var(--ss-green, #1E7A50);
+  background: rgba(30, 122, 80, 0.09);
+  font-weight: 600;
+}
+.choice-option:focus-within { outline: 3px solid var(--ss-amber, #EBA83A); outline-offset: 2px; }
+.choice-input { margin: 0; flex: none; }
+.choice-key {
+  font-weight: 800;
+  color: var(--ss-forest, #0F3D2E);
+  min-width: 1.2rem;
+  flex: none;
+}
+.choice-text { flex: 1 1 auto; }
+/* Picture options: a grid of tappable cards, not a list of tiny thumbnails. */
+.choice-options--pictures {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 0.6rem;
+}
+.choice-options--pictures .choice-option { flex-direction: column; align-items: stretch; }
+.choice-img {
+  width: 100%;
+  height: auto;
+  border-radius: 8px;
+  display: block;
+  margin-top: 0.25rem;
+}
+
+/* ---- a map or source the question is about ---- */
+.q-figure { margin: 0.5rem 0 0.7rem; }
+.q-figure img {
+  max-width: 100%;
+  height: auto;
+  border: 1px solid var(--ss-border, #e7e1d3);
+  border-radius: 10px;
+  display: block;
+}
+.q-figure figcaption { font-size: 0.85rem; color: #5a6b62; margin-top: 0.25rem; }
+.q-figure-tap { font-style: italic; }
+
+/* ---- type it, or write it ---- */
+.answer-mode { display: flex; gap: 0.4rem; margin-bottom: 0.5rem; }
+.answer-mode-btn {
+  border: 1.5px solid rgba(15, 61, 46, 0.25);
+  background: #fff;
+  border-radius: 999px;
+  padding: 0.25rem 0.85rem;
+  font-size: 0.92rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.answer-mode-btn.is-active {
+  background: var(--ss-forest, #0F3D2E);
+  border-color: var(--ss-forest, #0F3D2E);
+  color: #fff;
+}

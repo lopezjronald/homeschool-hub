@@ -476,6 +476,7 @@ class Question(models.Model):
     TYPE_WRITE_MARKUP = "write_markup"
     TYPE_HANDWRITING = "handwriting"
     TYPE_SELF_EVAL = "self_eval"
+    TYPE_CHOICE = "choice"
     RESPONSE_TYPES = [
         (TYPE_TEXT, "Typed answer"),
         (TYPE_MARKUP, "Mark up the sentence (draw)"),
@@ -487,6 +488,7 @@ class Question(models.Model):
         (TYPE_WRITE_MARKUP, "Write a sentence, then mark it up (draw)"),
         (TYPE_HANDWRITING, "Handwriting: write it by hand on ruled lines"),
         (TYPE_SELF_EVAL, "Self-evaluation: rate each component, and note why"),
+        (TYPE_CHOICE, "Multiple choice: pick one, or pick several"),
     ]
 
     # The three-point scale a self-evaluation offers, and the components it rates,
@@ -581,6 +583,82 @@ class Question(models.Model):
     @property
     def is_write_markup(self):
         return self.response_type == self.TYPE_WRITE_MARKUP
+
+    @property
+    def offers_answer_mode(self):
+        """Whether to offer "type it or write it" on this question.
+
+        Only for plain typed answers, and only where there is real writing to
+        do — a one-word vocabulary answer does not need a pen, and a pen is
+        slower for it. Set per question with passage JSON {"answer_mode": true}.
+        """
+        return (self.response_type == self.TYPE_TEXT
+                and self.vocab_data.get("answer_mode") is True)
+
+    @property
+    def is_choice(self):
+        """Pick one answer, or pick several.
+
+        Studies Weekly is mostly multiple choice, several questions carrying a
+        map or a photograph, and one asking her to pick every picture that
+        shows human geography. Options live in passage JSON:
+
+            {"options": [{"key": "a", "text": "...", "image": "weekly/..."}],
+             "multi": false}
+
+        Gradeable without the AI — see ``choice_correct`` — so a ten-question
+        check does not cost a model call.
+        """
+        return self.response_type == self.TYPE_CHOICE
+
+    @property
+    def choice_options(self):
+        """The options as printed, in order. Empty if the JSON is malformed —
+        the template must degrade rather than render a question with no answers."""
+        opts = self.vocab_data.get("options")
+        if not isinstance(opts, list):
+            return []
+        out = []
+        for i, o in enumerate(opts):
+            if not isinstance(o, dict):
+                continue
+            out.append({
+                "key": str(o.get("key") or chr(97 + i)),
+                "text": str(o.get("text") or ""),
+                "image": str(o.get("image") or ""),
+            })
+        return out
+
+    @property
+    def choice_has_images(self):
+        """True when the options ARE pictures — lay them out as a grid, not a list."""
+        return any(o["image"] for o in self.choice_options)
+
+    @property
+    def choice_is_multi(self):
+        """True when more than one option is expected — 'which ARE examples'."""
+        return bool(self.vocab_data.get("multi"))
+
+    @property
+    def choice_correct(self):
+        """The option keys that count as right, as a set."""
+        raw = self.vocab_data.get("correct")
+        if isinstance(raw, str):
+            raw = [raw]
+        return {str(k) for k in raw} if isinstance(raw, list) else set()
+
+    @property
+    def figure(self):
+        """A picture the question is ABOUT — a map to read, a source to study.
+
+        Distinct from an option's image: this one sits above the question and
+        is not an answer. Static path, from passage JSON {"figure": "..."}.
+        """
+        return str(self.vocab_data.get("figure") or "")
+
+    @property
+    def figure_caption(self):
+        return str(self.vocab_data.get("figure_caption") or "")
 
     @property
     def is_self_eval(self):
@@ -923,6 +1001,14 @@ class ResponseSheet(models.Model):
             return self._format_handwriting(raw, question)
         if question.is_self_eval:
             return self._format_self_eval(raw, question)
+        if question.is_choice:
+            return self._format_choice(raw, question)
+        # A text question whose answer holds strokes: she chose "write it"
+        # on the answer-mode picker. The response_type was fixed when the
+        # question was authored, so the shape of what she actually wrote is
+        # the only thing that can tell us.
+        if question.response_type == question.TYPE_TEXT and self._looks_drawn(raw):
+            return self._format_handwriting(raw, question)
         if question.is_write_markup:
             data = self._parse_json_answer(raw)
             if data:
@@ -943,7 +1029,12 @@ class ResponseSheet(models.Model):
         """
         if not (question.is_markup or question.is_write_markup
                 or question.is_handwriting):
-            return None
+            # …unless she used the answer-mode picker and wrote it by hand on a
+            # question that was authored for typing. The marks are the answer
+            # either way, and the reports have to show them.
+            if not (question.response_type == question.TYPE_TEXT
+                    and self._looks_drawn(str(self.answer_for(question)).strip())):
+                return None
         from .markup import replay_for
         return replay_for(str(self.answer_for(question)).strip(), question)
 
@@ -1082,6 +1173,49 @@ class ResponseSheet(models.Model):
         if notes:
             lines.append("[planning notes (not graded) — " + "; ".join(notes) + "]")
         return "\n".join(lines)
+
+    @staticmethod
+    def _looks_drawn(raw):
+        """True if a stored answer is a stroke payload rather than words."""
+        text = (raw or "").strip()
+        if not text.startswith("{"):
+            return False
+        try:
+            data = json.loads(text)
+        except (ValueError, TypeError):
+            return False
+        return isinstance(data, dict) and isinstance(data.get("strokes"), list)
+
+    @classmethod
+    def _format_choice(cls, raw, question):
+        """Render a chosen answer ({"picked": ["a", "c"]}) as words, not letters.
+
+        A grader handed "a, c" has to go and find what a and c were; handed the
+        option text it can say something useful. The right/wrong mark comes from
+        the question itself, so a ten-question check needs no model call.
+        """
+        data = cls._parse_json_answer(raw)
+        picked = data.get("picked") if isinstance(data, dict) else None
+        if not isinstance(picked, list):
+            picked = [raw] if raw else []
+        picked = [str(k) for k in picked if str(k).strip()]
+        if not picked:
+            return "(no answer)"
+        by_key = {o["key"]: o for o in question.choice_options}
+        shown = []
+        for k in picked:
+            o = by_key.get(k)
+            label = o["text"] if o and o["text"] else (
+                "the picture labelled %s" % k if o else k)
+            shown.append("%s) %s" % (k, label))
+        out = "; ".join(shown)
+        correct = question.choice_correct
+        if correct:
+            got = set(picked) == correct
+            want = ", ".join(sorted(correct))
+            out += "   [%s — the answer is %s]" % (
+                "correct" if got else "not correct", want)
+        return out
 
     @classmethod
     def _format_self_eval(cls, raw, question):

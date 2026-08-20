@@ -136,6 +136,19 @@
                     <label class="portal-prompt" {% if q.response_type == "text" %}for="q{{ q.pk }}"{% endif %}>{{ q.prompt|markdownify_inline }}</label>
                   {% endif %}
                 {% endif %}
+                {% if q.figure %}
+                  {% comment %}A map or source the question is ABOUT — "study the
+                  map". Tappable, because the answer is often in small print on
+                  it and she is reading this on a tablet.{% endcomment %}
+                  <figure class="q-figure">
+                    <a href="{% static q.figure %}" target="_blank" rel="noopener">
+                      <img src="{% static q.figure %}" alt="{{ q.figure_caption|default:'Figure for this question' }}" loading="lazy">
+                    </a>
+                    {% if q.figure_caption %}
+                      <figcaption>{{ q.figure_caption }} <span class="q-figure-tap">— tap to enlarge</span></figcaption>
+                    {% endif %}
+                  </figure>
+                {% endif %}
                 {% if q.hint %}
                   <details class="portal-hint">
                     <summary>Need a nudge? 💡</summary>
@@ -344,6 +357,34 @@
                     </div>
                     <input type="hidden" name="answer_{{ q.pk }}" data-question="{{ q.pk }}" value="{{ q.my_answer }}">
                   </div>
+                {% elif q.is_choice %}
+                  {% comment %}Pick one, or pick several. Radios vs checkboxes
+                  follow the question — "which IS" against "which ARE" — because
+                  a child who can tick three boxes on a single-answer question
+                  has been told something untrue about the question.{% endcomment %}
+                  <div class="choice-widget" data-question-widget="{{ q.pk }}"
+                       data-multi="{% if q.choice_is_multi %}1{% else %}0{% endif %}">
+                    {% if q.choice_is_multi %}
+                      <p class="choice-hint">Pick every one that fits.</p>
+                    {% endif %}
+                    <div class="choice-options{% if q.choice_has_images %} choice-options--pictures{% endif %}">
+                      {% for opt in q.choice_options %}
+                        <label class="choice-option">
+                          <input type="{% if q.choice_is_multi %}checkbox{% else %}radio{% endif %}"
+                                 class="choice-input" name="choice_{{ q.pk }}"
+                                 value="{{ opt.key }}"
+                                 {% if sheet.is_submitted %}disabled{% endif %}>
+                          <span class="choice-key">{{ opt.key }}</span>
+                          {% if opt.image %}
+                            <img class="choice-img" src="{% static opt.image %}"
+                                 alt="Option {{ opt.key }}" loading="lazy">
+                          {% endif %}
+                          {% if opt.text %}<span class="choice-text">{{ opt.text }}</span>{% endif %}
+                        </label>
+                      {% endfor %}
+                    </div>
+                    <input type="hidden" name="answer_{{ q.pk }}" data-question="{{ q.pk }}" value="{{ q.my_answer }}">
+                  </div>
                 {% elif q.is_self_eval %}
                   {% comment %}She reads her own draft aloud a second time and
                   judges it component by component. A fieldset per component
@@ -405,6 +446,34 @@
                               class="po-grid-store" hidden>{{ q.my_answer }}</textarea>
                   </div>
                 {% else %}
+                  {% comment %}"Type it or write it" — she picks. Both surfaces
+                  are rendered and share ONE answer field, so switching never
+                  loses what is already there. Offered only while the sheet is
+                  open and only when the question asks for writing.{% endcomment %}
+                  {% if q.offers_answer_mode and not sheet.is_submitted %}
+                    <div class="answer-modes">
+                      <div class="answer-mode" role="group" aria-label="How do you want to answer?">
+                        <button type="button" class="answer-mode-btn" data-mode="type" aria-pressed="true">⌨️ Type it</button>
+                        <button type="button" class="answer-mode-btn" data-mode="write" aria-pressed="false">✍️ Write it</button>
+                      </div>
+                      <div data-mode-pane="write" hidden>
+                        <div class="handwriting-widget" data-question-widget="{{ q.pk }}" data-readonly="0">
+                          <div class="markup-toolbar" role="toolbar" aria-label="Pens">
+                            <span class="markup-tool-label">Pens:</span>
+                            <button type="button" class="handwriting-pen is-active" data-color="#1d3557" style="--pen:#1d3557" title="Blue pencil" aria-label="Blue pencil"></button>
+                            <button type="button" class="handwriting-pen" data-color="#333333" style="--pen:#333333" title="Pencil" aria-label="Pencil"></button>
+                            <span class="markup-tool-sep"></span>
+                            <button type="button" class="markup-btn" data-tool="undo">↶ Undo</button>
+                            <button type="button" class="markup-btn" data-tool="clear">Erase all</button>
+                          </div>
+                          <div class="handwriting-surface">
+                            <div class="handwriting-empty">Write here…</div>
+                            <canvas class="handwriting-canvas"></canvas>
+                          </div>
+                        </div>
+                      </div>
+                      <div data-mode-pane="type">
+                  {% endif %}
                   <textarea
                     id="q{{ q.pk }}"
                     name="answer_{{ q.pk }}"
@@ -417,6 +486,10 @@
                     {% if sheet.is_submitted %}readonly{% endif %}>
 {{ q.my_answer }}</textarea>
                   <div class="portal-wordcount text-muted" data-count-for="{{ q.pk }}"></div>
+                  {% if q.offers_answer_mode and not sheet.is_submitted %}
+                      </div>{# /type pane #}
+                    </div>{# /answer-modes #}
+                  {% endif %}
                   {% if wordhelp_on and not sheet.is_submitted %}
                     <div class="wordhelp-hint">✨ Tip: pick a word (double-tap it) to find better words.</div>
                   {% endif %}
@@ -530,6 +603,7 @@
 <script src="{% static 'js/portal-characters.js' %}"></script>
 <script src="{% static 'js/portal-paragraph.js' %}"></script>
 <script src="{% static 'js/portal-selfeval.js' %}"></script>
+<script src="{% static 'js/portal-choice.js' %}"></script>
 <script src="{% static 'js/portal-vocab.js' %}"></script>
 <script src="{% static 'js/poetry-grid.js' %}"></script>
 <script src="{% static 'js/portal-coach.js' %}"></script>

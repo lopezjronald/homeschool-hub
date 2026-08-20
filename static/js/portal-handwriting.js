@@ -16,6 +16,13 @@
     var surface = widget.querySelector(".handwriting-surface");
     var canvas = widget.querySelector(".handwriting-canvas");
     var input = widget.querySelector('input[name^="answer_"]');
+    if (!input) {
+      // Answer-mode picker: the writing surface and the typing box are two
+      // ways into ONE answer, so the strokes go into the question's own
+      // textarea rather than a second field that would collide with it.
+      var modes = widget.closest('.answer-modes');
+      if (modes) input = modes.querySelector('textarea[name^="answer_"]');
+    }
     if (!surface || !canvas || !input) return;
 
     var ctx = canvas.getContext("2d");
@@ -50,6 +57,12 @@
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       redraw();
     }
+
+    // A surface that was HIDDEN when this ran measured zero, and every stroke
+    // drawn on it afterwards lands in the wrong place. The answer-mode picker
+    // shows the writing surface only when she asks for it, so it needs to say
+    // "you are visible now, measure again".
+    widget.addEventListener("handwriting:show", fit);
 
     function drawStroke(s) {
       var rect = canvas.getBoundingClientRect();

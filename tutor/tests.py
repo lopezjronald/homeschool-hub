@@ -1,3 +1,4 @@
+from django.core.management.base import CommandError
 import json
 import os
 import tempfile
@@ -19,7 +20,8 @@ from students.models import Student
 from worklog.models import WorkLogEntry
 
 from . import ai, grading, imagegen, mastery, spend
-from .models import AiSpend, Material, MasteryAssessment, Question, ResponseSheet
+from .models import (AiSpend, Material, MasteryAssessment, Question,
+                     QuestionSet, ResponseSheet)
 
 User = get_user_model()
 
@@ -6152,3 +6154,228 @@ class EssayVolume2Tests(TestCase):
         for lesson in LESSONS:
             for path, text in strings(lesson, "L%d" % lesson["number"]):
                 self.assertNotIn("[", text, path)
+
+
+class StudiesWeeklyTests(TestCase):
+    """California Studies Weekly — one issue a week, per grade, for years.
+
+    The point of the framework is that week 2 is a content file, not a build.
+    These pin the parts that would silently rot: the answer key matching the
+    teacher edition, the figures existing, and the level/grade pairing.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        from portal.tokens import make_portal_token
+
+        cls.parent = User.objects.create_user(
+            username="sw", email="sw@e.com", password="pw")
+        cls.fam = Family.objects.create(name="SW Fam")
+        FamilyMembership.objects.create(user=cls.parent, family=cls.fam, role="parent")
+        cls.kaylin = Student.objects.create(
+            parent=cls.parent, first_name="Kaylin", grade_level="G07", family=cls.fam)
+        cls.violet = Student.objects.create(
+            parent=cls.parent, first_name="Violet", grade_level="G03", family=cls.fam)
+        cls.token = make_portal_token(cls.kaylin)
+
+    def _seed(self, level=7, week=1):
+        call_command("seed_weekly", "--level", str(level), "--week", str(week),
+                     "--for-user", "sw", stdout=StringIO())
+
+    def _set(self, week=1):
+        return QuestionSet.objects.get(lesson__number=week,
+                                       lesson__chapter__curriculum__parent=self.parent)
+
+    def _page(self, week=1):
+        return self.client.get(reverse(
+            "portal:portal_questions",
+            args=[self.token, self._set(week).pk])).content.decode()
+
+    # -- the issue's own answers -------------------------------------------
+
+    def test_the_answer_key_is_the_teacher_editions(self):
+        """Marked answers from pp. 1.13-1.14 of the issue. If a re-transcription
+        ever drifts, a child gets told her right answer is wrong."""
+        from tutor import weekly_l7w1 as w
+
+        correct = [q.get("correct") for q in w.QUESTIONS if q["kind"] == "choice"]
+        self.assertEqual(correct, [["c"], ["a", "b", "e"], ["d"], ["c"], ["b"],
+                                   ["c"], ["a"]])
+        pairs = [q for q in w.QUESTIONS if q["kind"] == "fill_two"]
+        self.assertEqual(
+            [(p["correct_a"], p["correct_b"]) for p in pairs],
+            [("Physical geography", "human geography"), ("north", "west")])
+
+    def test_only_one_question_takes_several_answers(self):
+        """"Which ARE examples" is multi; every "which IS" is single. A child
+        who can tick three boxes on a one-answer question has been told
+        something untrue about the question."""
+        from tutor import weekly_l7w1 as w
+
+        multi = [q["prompt"] for q in w.QUESTIONS
+                 if q["kind"] == "choice" and q["multi"]]
+        self.assertEqual(len(multi), 1)
+        self.assertIn("Which are examples", multi[0])
+
+    def test_every_correct_answer_is_actually_on_offer(self):
+        """An answer key naming an option that does not exist is a question she
+        cannot get right — the same class of defect as an unwinnable blank."""
+        from tutor import weekly_l7w1 as w
+
+        for q in w.QUESTIONS:
+            if q["kind"] == "choice":
+                keys = {o["key"] for o in q["options"]}
+                self.assertTrue(set(q["correct"]) <= keys, q["prompt"][:40])
+            elif q["kind"] == "fill_two":
+                self.assertIn(q["correct_a"], q["bank_a"])
+                self.assertIn(q["correct_b"], q["bank_b"])
+
+    def test_every_figure_and_page_exists_on_disk(self):
+        """"Study the map" is unanswerable without the map, and under
+        ManifestStaticFilesStorage a missing file raises rather than degrades."""
+        from django.contrib.staticfiles import finders
+
+        from tutor import weekly_l7w1 as w
+
+        for q in w.QUESTIONS:
+            for path in ([q.get("figure")] if q.get("figure") else []) + \
+                        [o["image"] for o in q.get("options", []) if o.get("image")]:
+                self.assertIsNotNone(finders.find(path), path)
+        for path in w.PAGES:
+            self.assertIsNotNone(finders.find(path), path)
+
+    # -- what gets built ---------------------------------------------------
+
+    def test_a_two_blank_sentence_becomes_two_questions(self):
+        """The printed page gives each blank its own bank, so half-right is a
+        real outcome — one combined answer could not record it."""
+        self._seed()
+        prompts = [q.prompt for q in self._set().questions.order_by("order")]
+        self.assertIn("two branches of geography", prompts[0])
+        self.assertIn("Blank A", prompts[0])
+        self.assertEqual(prompts[1], "**Blank B**")
+
+    def test_the_figure_rides_with_the_first_blank_only(self):
+        """Printing the same map twice pushes the second blank off the screen."""
+        self._seed()
+        qs = list(self._set().questions.order_by("order"))
+        pair = [q for q in qs if "Physical Map" in q.figure_caption]
+        self.assertEqual(len(pair), 1)
+        self.assertIn("Blank A", pair[0].prompt)
+
+    def test_the_written_question_offers_the_answer_mode_picker(self):
+        self._seed()
+        written = [q for q in self._set().questions.all()
+                   if q.response_type == Question.TYPE_TEXT]
+        self.assertEqual(len(written), 1)
+        self.assertTrue(written[0].offers_answer_mode)
+        html = self._page()
+        self.assertIn('data-mode="write"', html)
+        self.assertIn('data-mode-pane="write"', html)
+        self.assertIn("handwriting-canvas", html)
+
+    def test_the_page_renders_every_question(self):
+        self._seed()
+        html = self._page()
+        self.assertIn("choice-widget", html)
+        self.assertIn("choice-options--pictures", html)   # the five photographs
+        self.assertIn("q-figure", html)                    # the maps
+        self.assertIn("Biomes of North America", html)
+
+    # -- self-marking ------------------------------------------------------
+
+    def test_a_choice_answer_is_marked_without_the_ai(self):
+        """Ten recall questions should not cost a model call."""
+        self._seed()
+        q = [x for x in self._set().questions.all()
+             if x.response_type == Question.TYPE_CHOICE and not x.choice_is_multi][0]
+        right = sorted(q.choice_correct)[0]
+        wrong = next(o["key"] for o in q.choice_options if o["key"] != right)
+        sheet = ResponseSheet(question_set=self._set())
+
+        sheet.answers = {str(q.pk): json.dumps({"picked": [right]})}
+        self.assertIn("correct", sheet.answer_display(q))
+        sheet.answers = {str(q.pk): json.dumps({"picked": [wrong]})}
+        self.assertIn("not correct", sheet.answer_display(q))
+
+    def test_a_multi_answer_needs_every_one_of_them(self):
+        self._seed()
+        q = [x for x in self._set().questions.all()
+             if x.response_type == Question.TYPE_CHOICE and x.choice_is_multi][0]
+        sheet = ResponseSheet(question_set=self._set())
+        sheet.answers = {str(q.pk): json.dumps({"picked": ["a", "b"]})}
+        self.assertIn("not correct", sheet.answer_display(q),
+                      "two of the three is not the answer")
+        sheet.answers = {str(q.pk): json.dumps({"picked": ["a", "b", "e"]})}
+        self.assertIn("correct", sheet.answer_display(q))
+
+    def test_the_grader_is_shown_the_words_not_the_letters(self):
+        """"a, c" makes the grader go and look them up."""
+        self._seed()
+        q = [x for x in self._set().questions.all()
+             if x.response_type == Question.TYPE_CHOICE
+             and "human-environment" in x.prompt][0]
+        sheet = ResponseSheet(question_set=self._set())
+        sheet.answers = {str(q.pk): json.dumps({"picked": ["c"]})}
+        self.assertIn("Hoover Dam", sheet.answer_display(q))
+
+    def test_writing_by_hand_on_a_typed_question_still_reads_as_handwriting(self):
+        """The answer-mode picker lets her write on a question authored for
+        typing. The stored shape is the only thing that can tell us, and the
+        reports must show the marks rather than the JSON."""
+        self._seed()
+        q = [x for x in self._set().questions.all()
+             if x.response_type == Question.TYPE_TEXT][0]
+        sheet = ResponseSheet(question_set=self._set())
+        sheet.answers = {str(q.pk): json.dumps({
+            "strokes": [{"c": "#1d3557", "w": 3, "p": [[0.1, 0.5], [0.6, 0.5]]}],
+            "surface": {"w": 662, "h": 192}})}
+        shown = sheet.answer_display(q)
+        self.assertIn("handwritten", shown)
+        self.assertNotIn("strokes", shown)
+        self.assertIsNotNone(sheet.answer_replay(q))
+
+        sheet.answers = {str(q.pk): "Maps show where things are."}
+        self.assertEqual(sheet.answer_display(q), "Maps show where things are.")
+        self.assertIsNone(sheet.answer_replay(q))
+
+    # -- the framework -----------------------------------------------------
+
+    def test_a_level_is_a_grade_and_the_seed_refuses_a_mismatch(self):
+        """Level 7 is Grades 6-8 material. Seeding it for a third-grader is a
+        typo worth stopping, not a curriculum decision."""
+        with self.assertRaises(CommandError) as caught:
+            call_command("seed_weekly", "--level", "7", "--week", "1",
+                         "--for-user", "sw", "--child-name", "Violet",
+                         stdout=StringIO())
+        self.assertIn("G03", str(caught.exception))
+
+    def test_a_missing_week_says_what_to_write(self):
+        with self.assertRaises(ModuleNotFoundError) as caught:
+            call_command("seed_weekly", "--level", "7", "--week", "99",
+                         "--for-user", "sw", stdout=StringIO())
+        self.assertIn("weekly_l7w99", str(caught.exception))
+
+    def test_a_dry_run_writes_nothing(self):
+        out = StringIO()
+        call_command("seed_weekly", "--level", "7", "--week", "1",
+                     "--for-user", "sw", "--dry-run", stdout=out)
+        self.assertIn("nothing written", out.getvalue())
+        self.assertEqual(Curriculum.objects.count(), 0)
+
+    def test_reseeding_changes_nothing(self):
+        self._seed()
+        before = (QuestionSet.objects.count(), Question.objects.count())
+        self._seed()
+        self.assertEqual(
+            (QuestionSet.objects.count(), Question.objects.count()), before)
+
+    def test_the_issue_is_attached_as_the_week_s_reading(self):
+        """She reads the real newspaper page — the layout IS the lesson."""
+        from tutor.models import Material
+
+        self._seed()
+        m = Material.objects.get(lesson__number=1)
+        self.assertEqual(m.status, Material.DRAFT)      # a parent approves it
+        self.assertIn("Geography and Map Skills", m.title)
+        self.assertIn("Framework", m.parent_content)    # the standards table

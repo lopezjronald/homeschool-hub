@@ -21,6 +21,7 @@ from curricula.models import Curriculum, CurriculumPlacement, CurriculumResource
 from curricula.services import apply_blueprint, get_blueprint
 from core.utils import get_active_family
 from students.models import Student
+from tutor import glean_wolf
 from tutor.models import Question, QuestionSet, ResponseSheet
 
 
@@ -613,6 +614,24 @@ class Command(BaseCommand):
                  "When your project is done, reflect: what did it help you understand "
                  "about the story? What are you proudest of?",
                  "Tell the truth about what was fun and what was hard."),
+            ],
+        )
+        set_count += s; q_count += q
+
+        # ...and the hands-on sixth option, alongside the guide's five rather
+        # than instead of them. Every printed option ends in "write a
+        # paragraph", which is a fine project and was not the one she wanted.
+        s, q = self._seed_set(
+            glean, family,
+            title="Section 5 · Glean: Wolf's Big Concert (hands-on)",
+            reading="",
+            intro=glean_wolf.INTRO,
+            rubric=glean_wolf.RUBRIC,
+            questions=[
+                (category, prompt, hint,
+                 {"response_type": extra["response_type"],
+                  "passage": json.dumps(extra["passage"])})
+                for category, prompt, hint, extra in glean_wolf.questions()
             ],
         )
         set_count += s; q_count += q

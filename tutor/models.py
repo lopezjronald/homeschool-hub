@@ -480,6 +480,7 @@ class Question(models.Model):
     TYPE_SELF_EVAL = "self_eval"
     TYPE_CHOICE = "choice"
     TYPE_ORDER = "order"
+    TYPE_DRAWING = "drawing"
     RESPONSE_TYPES = [
         (TYPE_TEXT, "Typed answer"),
         (TYPE_MARKUP, "Mark up the sentence (draw)"),
@@ -493,6 +494,7 @@ class Question(models.Model):
         (TYPE_SELF_EVAL, "Self-evaluation: rate each component, and note why"),
         (TYPE_CHOICE, "Multiple choice: pick one, or pick several"),
         (TYPE_ORDER, "Put the steps in order"),
+        (TYPE_DRAWING, "Draw it: the picture IS the answer"),
     ]
 
     # The three-point scale a self-evaluation offers, and the components it rates,
@@ -583,6 +585,43 @@ class Question(models.Model):
         printed report replay them.
         """
         return self.response_type == self.TYPE_HANDWRITING
+
+    @property
+    def is_drawing(self):
+        """The answer IS a picture — she draws it, there is nothing to read.
+
+        Same stroke engine and same stored shape as handwriting, so the parent's
+        work browser and the printed report replay it with no new code. What
+        differs is the paper: a tall unruled surface and a full box of colours,
+        because ruled lines and three pencils are for writing on.
+        """
+        return self.response_type == self.TYPE_DRAWING
+
+    @property
+    def drawing_height(self):
+        """How tall her paper is. A poster needs more room than a doodle."""
+        try:
+            return max(200, min(900, int(self.vocab_data.get("height", 420))))
+        except (TypeError, ValueError):
+            return 420
+
+    # A box of pencils, not the three greys handwriting gets. First is selected.
+    DRAWING_COLOURS = [
+        ("Black", "#222222"), ("Red", "#D64545"), ("Orange", "#E07B39"),
+        ("Yellow", "#E8B93B"), ("Green", "#1E7A50"), ("Blue", "#2B6CB0"),
+        ("Purple", "#7A4FA3"), ("Pink", "#D96BA0"), ("Brown", "#8B5E34"),
+    ]
+
+    @property
+    def drawing_colours(self):
+        """The palette for a drawing question, overridable per question."""
+        chosen = self.vocab_data.get("colours")
+        if isinstance(chosen, list) and chosen:
+            pairs = [c for c in chosen
+                     if isinstance(c, (list, tuple)) and len(c) == 2]
+            if pairs:
+                return [{"name": str(n), "hex": str(h)} for n, h in pairs]
+        return [{"name": n, "hex": h} for n, h in self.DRAWING_COLOURS]
 
     @property
     def is_write_markup(self):
@@ -1057,6 +1096,8 @@ class ResponseSheet(models.Model):
             return self._format_paragraph(raw, question)
         if question.is_handwriting:
             return self._format_handwriting(raw, question)
+        if question.is_drawing:
+            return self._format_drawing(raw)
         if question.is_self_eval:
             return self._format_self_eval(raw, question)
         if question.is_choice:
@@ -1088,7 +1129,7 @@ class ResponseSheet(models.Model):
         exercise that shows only prose about the marks isn't showing the work.
         """
         if not (question.is_markup or question.is_write_markup
-                or question.is_handwriting):
+                or question.is_handwriting or question.is_drawing):
             # …unless she used the answer-mode picker and wrote it by hand on a
             # question that was authored for typing. The marks are the answer
             # either way, and the reports have to show them.
@@ -1151,6 +1192,20 @@ class ResponseSheet(models.Model):
                 "need a person's eyes." + privately + "\n\n" + text
             )
         return text
+
+    @classmethod
+    def _format_drawing(cls, raw):
+        """The picture IS the answer, so say a picture is there — and nothing more.
+
+        Without this the stored stroke array reached the grader, the parent's
+        work browser and the printed report as raw JSON, which reads as if she
+        had answered in gibberish. There is no text to recover: a drawing
+        question never asked for any.
+        """
+        strokes, _marks, _unread = cls._parse_markup(raw)
+        if strokes:
+            return "[a drawing — %d pen stroke(s); the picture is below]" % len(strokes)
+        return "(nothing drawn yet)"
 
     @classmethod
     def _format_handwriting(cls, raw, question):

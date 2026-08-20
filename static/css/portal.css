@@ -1630,3 +1630,18 @@ button.portal-subject-card {
   padding: 0.2rem 0.3rem;
 }
 .order-text { flex: 1 1 auto; }
+
+/* ---- Drawing: the picture IS the answer ----
+   Shares the handwriting stroke engine, so only the paper differs: no rules to
+   write between, a warm blank sheet, and a height the question chooses. */
+.drawing-surface {
+  background: #fffdf7;                 /* blank paper — the rules are gone */
+  border: 1.5px solid rgba(15, 61, 46, 0.25);
+}
+.drawing-widget .markup-toolbar { flex-wrap: wrap; row-gap: 0.35rem; }
+.drawing-widget .handwriting-pen { width: 26px; height: 26px; }
+.drawing-widget .handwriting-empty {
+  /* No ruled line to ride, so it sits plainly near the top-left. */
+  top: 14px;
+  left: 16px;
+}

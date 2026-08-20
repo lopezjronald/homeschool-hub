@@ -1632,8 +1632,13 @@ class AMouseCalledWolfSeedTests(TestCase):
     def test_course_shape_and_teacher_answer_keys(self):
         self.assertEqual(self.curriculum.grade_level, "G03")
         sets = QuestionSet.objects.filter(lesson__chapter__curriculum=self.curriculum)
-        # 6 sets/section x 4 sections + Glean + Story-Grammar + Toolbox = 27
-        self.assertEqual(sets.count(), 27)
+        # 6 sets/section x 4 sections + Glean + Story-Grammar + Toolbox = 27,
+        # plus the hands-on Glean option = 28. The guide's own Glean set is
+        # still one of them: the hands-on one was added ALONGSIDE the printed
+        # five options, never in place of them.
+        self.assertEqual(sets.count(), 28)
+        self.assertEqual(sets.filter(title__contains="Glean").count(), 2)
+        self.assertTrue(sets.filter(title__endswith="Glean: Final Project").exists())
         # every Comprehension set carries a teacher answer key (never shown to students)
         comp = sets.filter(title__contains="Comprehension")
         self.assertEqual(comp.count(), 4)

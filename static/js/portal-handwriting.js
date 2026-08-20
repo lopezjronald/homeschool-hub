@@ -44,7 +44,14 @@
       surface.style.height = saved.surface.h + "px";
     }
 
-    var tool = { color: "#1d3557", width: 3 };
+    // Start on whichever pen is drawn as selected, not on a colour of our own:
+    // the drawing widget's palette begins with black, and a child who sees
+    // black ringed and draws navy has been told something untrue by the page.
+    var activePen = widget.querySelector(".handwriting-pen.is-active");
+    var tool = {
+      color: (activePen && activePen.dataset.color) || "#1d3557",
+      width: 3,
+    };
     var drawing = false, current = null;
 
     function fit() {

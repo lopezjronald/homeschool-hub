@@ -6808,3 +6808,199 @@ class LessonBlockKindRegistryTests(SimpleTestCase):
             self.assertIn(kind, REQUIRED_KEYS,
                           "%s slips past audit_content unchecked" % kind)
             self.assertTrue(REQUIRED_KEYS[kind], kind)
+
+
+class HandsOnGleanTests(TestCase):
+    """Violet's sixth Glean option for "A Mouse Called Wolf".
+
+    The guide's five final projects all end in "write a paragraph". She read the
+    book, liked it, and wanted none of them — so this option covers the same
+    ground with her hands. The thing these guard is the promise the page makes
+    her on its first line: **there is nothing to write.**
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        from portal.tokens import make_portal_token
+
+        cls.parent = User.objects.create_user(
+            username="wolf", email="wolf@e.com", password="pw")
+        cls.fam = Family.objects.create(name="Wolf Fam")
+        FamilyMembership.objects.create(user=cls.parent, family=cls.fam,
+                                        role="parent")
+        cls.violet = Student.objects.create(
+            parent=cls.parent, first_name="Violet", grade_level="G03",
+            family=cls.fam)
+        cls.token = make_portal_token(cls.violet)
+
+    def _seed(self):
+        call_command("seed_a_mouse_called_wolf", "--for-user", "wolf",
+                     stdout=StringIO())
+
+    def _set(self):
+        return QuestionSet.objects.get(title__contains="Wolf's Big Concert")
+
+    # -- the promise on the first line --------------------------------------
+
+    def test_not_one_question_asks_her_to_write(self):
+        """The whole reason this option exists. A typed-answer question here
+        would put back exactly the thing she said no to."""
+        self._seed()
+        types = {q.response_type for q in self._set().questions.all()}
+        self.assertNotIn(Question.TYPE_TEXT, types)
+        self.assertNotIn(Question.TYPE_PARAGRAPH, types)
+        self.assertNotIn(Question.TYPE_HANDWRITING, types)
+        self.assertNotIn(Question.TYPE_CLOZE, types)
+        self.assertEqual(types, {Question.TYPE_DRAWING, Question.TYPE_CHOICE,
+                                 Question.TYPE_MATCHING, Question.TYPE_SELF_EVAL})
+
+    def test_the_self_check_does_not_ask_for_notes(self):
+        """A self-evaluation normally offers a "how would you strengthen this?"
+        line per item. Six of those is six paragraphs by another name."""
+        self._seed()
+        q = [x for x in self._set().questions.all() if x.is_self_eval][0]
+        self.assertFalse(q.self_eval_wants_notes)
+        self.assertEqual(len(q.self_eval_items), 6)
+        self.assertEqual(q.self_eval_scale, ["Not yet", "Nearly", "Yes!"])
+
+    def test_most_of_it_is_drawing(self):
+        """"More drawing" was the request, not "one drawing at the end"."""
+        self._seed()
+        drawings = [q for q in self._set().questions.all() if q.is_drawing]
+        self.assertGreaterEqual(len(drawings), 6)
+        # The poster and the piano need more paper than a listening doodle.
+        heights = sorted(q.drawing_height for q in drawings)
+        self.assertGreater(heights[-1], heights[0])
+
+    # -- it covers the guide's ground ---------------------------------------
+
+    def test_it_does_the_work_of_the_guide_s_written_options(self):
+        """This is what makes it a legitimate alternative rather than a lighter
+        one: between them the steps cover four of the printed five."""
+        self._seed()
+        prompts = " ".join(q.prompt for q in self._set().questions.all()).lower()
+        for composer in ("mozart", "beethoven", "schubert"):   # option 1
+            self.assertIn(composer, prompts)
+        self.assertIn("grand piano", prompts)                  # option 3
+        self.assertIn("name", prompts)                         # option 4
+        terms = [w for q in self._set().questions.all() if q.is_matching
+                 for w in q.vocab_data["words"]]
+        for term in ("ballad", "bass", "carol", "composer", "discordant", "key",
+                     "measure", "melody", "opus", "reprise", "rhythm", "scales",
+                     "solo", "sonata"):                        # option 5, all 14
+            self.assertIn(term, terms, "the guide lists %r" % term)
+
+    def test_the_guide_s_own_five_options_are_still_there(self):
+        """It is an extra option, not a substitution. The record has to show the
+        purchased guide followed."""
+        self._seed()
+        printed = QuestionSet.objects.get(title__endswith="Glean: Final Project")
+        self.assertIn("Composer compare", printed.intro)
+        self.assertIn("Musical terms", printed.intro)
+        self.assertEqual(printed.questions.count(), 3)
+
+    def test_nothing_she_taps_can_be_marked_wrong_on_the_favourite(self):
+        """"Which composer did you like best" has no right answer, and marking
+        one would be telling a nine-year-old her taste is incorrect."""
+        self._seed()
+        q = [x for x in self._set().questions.all() if x.is_choice][0]
+        self.assertEqual(q.choice_correct, set())
+        sheet = ResponseSheet(question_set=self._set())
+        for key in ("a", "b", "c"):
+            sheet.answers = {str(q.pk): json.dumps({"picked": [key]})}
+            shown = sheet.answer_display(q)
+            self.assertNotIn("not correct", shown)
+            self.assertNotIn("[correct", shown)
+
+    def test_the_word_games_still_mark_themselves(self):
+        """They are the guide's option 5. If they did not mark, a parent would
+        be checking fourteen definitions by hand."""
+        self._seed()
+        for q in [x for x in self._set().questions.all() if x.is_matching]:
+            for d in q.vocab_data["definitions"]:
+                self.assertIn(d["word"], q.vocab_data["words"])
+            self.assertEqual(len(q.vocab_data["words"]),
+                             len(q.vocab_data["definitions"]))
+
+    def test_no_word_game_matches_itself_row_for_row(self):
+        """Straight down the list is free marks — she can pair them by position
+        without reading a single meaning."""
+        self._seed()
+        for q in [x for x in self._set().questions.all() if x.is_matching]:
+            words = q.vocab_data["words"]
+            for i, d in enumerate(q.vocab_data["definitions"]):
+                self.assertNotEqual(d["word"], words[i],
+                                    "%s: row %d pairs itself" % (q.prompt[:24], i + 1))
+
+    # -- what the grown-ups see ---------------------------------------------
+
+    def test_a_drawing_reaches_the_report_as_a_picture_not_as_json(self):
+        """The stored answer is a stroke array. Left unformatted it reached the
+        grader, the parent's work browser and the printed report as raw JSON,
+        which reads as if she had answered in gibberish."""
+        self._seed()
+        q = [x for x in self._set().questions.all() if x.is_drawing][0]
+        sheet = ResponseSheet(question_set=self._set())
+        sheet.answers = {str(q.pk): json.dumps({
+            "strokes": [{"c": "#D64545", "w": 3, "p": [[0.1, 0.2], [0.6, 0.7]]},
+                        {"c": "#2B6CB0", "w": 3, "p": [[0.2, 0.4], [0.8, 0.5]]}],
+            "surface": {"w": 662, "h": 420}})}
+
+        shown = sheet.answer_display(q)
+        self.assertNotIn("strokes", shown)
+        self.assertNotIn("#D64545", shown)
+        self.assertIn("2 pen stroke", shown)
+        # ...and the marks themselves are replayed, not just described.
+        self.assertIsNotNone(sheet.answer_replay(q))
+
+        sheet.answers = {str(q.pk): ""}
+        self.assertEqual(sheet.answer_display(q), "(nothing drawn yet)")
+        self.assertIsNone(sheet.answer_replay(q))
+
+    def test_the_teacher_note_tells_the_grader_not_to_ask_for_prose(self):
+        """An AI grader handed a rubric about paragraphs would mark a project
+        with no paragraphs down for not having any."""
+        self._seed()
+        rubric = self._set().rubric.lower()
+        self.assertIn("20 points", rubric)
+        self.assertIn("not the spelling", rubric)
+        self.assertIn("no prose here to mark", rubric)
+
+    # -- the page she opens -------------------------------------------------
+
+    def test_the_page_gives_her_paper_and_a_box_of_colours(self):
+        self._seed()
+        html = self.client.get(reverse(
+            "portal:portal_questions",
+            args=[self.token, self._set().pk])).content.decode()
+        self.assertIn("drawing-widget", html)
+        self.assertIn("drawing-surface", html)
+        self.assertIn("Draw here", html)
+        # Nine pencils, not the three greys a handwriting box gets.
+        self.assertGreaterEqual(html.count('class="handwriting-pen'), 9)
+        self.assertIn("vocab-matching", html)
+        self.assertIn("choice-widget", html)
+        # And no typing box anywhere on it.
+        self.assertNotIn("portal-answer", html)
+
+    def test_the_selected_pencil_is_the_one_that_draws(self):
+        """The template rings the first colour; the stroke engine used to start
+        on a navy of its own regardless. A child who picks black and gets navy
+        has been told something untrue by her own page."""
+        import os
+
+        from django.conf import settings
+
+        self._seed()
+        html = self.client.get(reverse(
+            "portal:portal_questions",
+            args=[self.token, self._set().pk])).content.decode()
+        first = html.split('class="handwriting-pen is-active"')[1]
+        self.assertIn('data-color="#222222"', first.split(">")[0])
+
+        js = os.path.join(settings.BASE_DIR, "static", "js",
+                          "portal-handwriting.js")
+        with open(js, encoding="utf-8") as fh:
+            source = fh.read()
+        self.assertIn(".handwriting-pen.is-active", source,
+                      "the engine must read its starting colour off the page")

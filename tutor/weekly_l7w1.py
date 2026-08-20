@@ -34,6 +34,19 @@ PUBLICATION = "California Studies Weekly: Medieval and Early Modern Times"
 # away for no gain.
 PAGES = page_images(LEVEL, WEEK, 2)
 
+# What the week says to the child, the parent and the grader. These live with
+# the week rather than in the seeder, because "read the maps" is true of this
+# issue and not of the next one.
+STUDENT_NOTE = ("The maps are the part most of the questions are about, so give "
+                "them a proper look.")
+PARENT_NOTE = """**Where the answers come from.** Questions 6, 8 and 9 cannot be
+answered from the article; they are read off the maps printed with them. If she
+is guessing, that is usually the reason — sit with her and the map rather than
+the text."""
+GRADER_NOTE = ("It asks her to use the maps in the issue as evidence, so look "
+               "for whether she points at something a map actually shows rather "
+               "than repeating the article.")
+
 # The issue's own vocabulary sidebar, verbatim.
 VOCABULARY = [
     ("cardinal directions", "four directions on a compass: north, south, east, and west"),
@@ -106,6 +119,12 @@ QUESTIONS = [
             ('"Why is it harder to travel through mountains?"',
              "human-environment interaction"),
         ],
+        # The printed page lists the themes in the SAME order as the questions,
+        # so five straight lines score five out of five. Ours shuffles them —
+        # reproducing a worksheet that grades itself is not fidelity worth
+        # having.
+        word_order=["place", "human-environment interaction", "movement",
+                    "region", "location"],
         hint="All five themes are in the tinted box on the first page of the "
              "article.",
         standard="%s · %s" % (HSS, C3_D2),

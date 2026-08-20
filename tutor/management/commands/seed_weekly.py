@@ -37,6 +37,13 @@ LEVELS = {
 }
 
 
+# What to say to the grader when a week does not say it itself.
+_DEFAULT_GRADER_NOTE = (
+    "Look for whether she points at something the issue actually shows, rather "
+    "than repeating a sentence from it."
+)
+
+
 def _rubric(mod):
     """What the grader is told, in the issue's own terms."""
     standards = sorted({q.get("standard", "") for q in mod.QUESTIONS if q.get("standard")})
@@ -46,9 +53,9 @@ def _rubric(mod):
 
 Most of this week is a comprehension check with right answers, and those are
 marked automatically — you do not need to re-mark them. Judge the WRITTEN answer
-at the end: it asks her to use the maps in the issue as evidence, so look for
-whether she points at something a map actually shows rather than repeating the
-article.
+at the end.
+
+{grader_note}
 
 If she answered by hand, the strokes are her answer; say so rather than guessing
 at the words.
@@ -59,6 +66,7 @@ at the words.
 Grade-{grade} mastery: Beginning → Developing → Proficient → Mastered.
 """.format(pub=mod.PUBLICATION, week=mod.WEEK, title=mod.TITLE,
            eq="**Essential question:** " + mod.ESSENTIAL_QUESTION,
+           grader_note=getattr(mod, "GRADER_NOTE", "").strip() or _DEFAULT_GRADER_NOTE,
            standards="\n".join("- " + s for s in standards) or "- (not recorded)",
            grade=mod.LEVEL)
 
@@ -153,9 +161,10 @@ class Command(BaseCommand):
                 "child": child, "family": family,
                 "skill_type": Material.SKILL_LESSON,
                 "student_intro": (
-                    "This week's issue. Read both pages, then answer the "
-                    "questions — the maps are the part most of the questions "
-                    "are about, so give them a proper look."),
+                    "This week's issue. Read %s, then answer the questions. %s"
+                    % ("both pages" if len(mod.PAGES) == 2
+                       else "all %d pages" % len(mod.PAGES),
+                       getattr(mod, "STUDENT_NOTE", "").strip())).strip(),
                 "student_content": "",
                 "parent_content": self._parent_guide(mod),
                 "status": Material.DRAFT,
@@ -182,8 +191,21 @@ class Command(BaseCommand):
 
     @staticmethod
     def _parent_guide(mod):
-        rows = "\n".join("| %d | %s |" % (i, q.get("standard", "—"))
-                         for i, q in enumerate(mod.QUESTIONS, start=1))
+        graded = [("%d" % i, q.get("standard", "—"))
+                  for i, q in enumerate(mod.QUESTIONS, start=1)]
+        if getattr(mod, "REFLECTION", None):
+            # Labelled, not numbered: the printed check stops at the last
+            # question, and the writing task is the issue's own extra.
+            graded.append(("Let's write",
+                           mod.REFLECTION.get("standard", "—")))
+        # By standard, not by question. Violet's week files all eight questions
+        # under one ELA standard, and eight identical rows of standard text is
+        # a table nobody reads — including the reviewer it exists for.
+        by_standard = {}
+        for label, standard in graded:
+            by_standard.setdefault(standard, []).append(label)
+        rows = "\n".join("| %s | %s |" % (standard, ", ".join(labels))
+                         for standard, labels in by_standard.items())
         return """## Week {week}: {title}
 
 **Essential question:** {eq}
@@ -191,20 +213,19 @@ class Command(BaseCommand):
 The comprehension check is the issue's own, in its printed order and wording,
 and its answers are the teacher edition's. Right answers are marked
 automatically, so the only thing needing your eye is the written question at the
-end — and whether she actually read the maps.
+end — and whether she actually read the issue.
 
-**Where the answers come from.** Questions 6, 8 and 9 cannot be answered from
-the article; they are read off the maps printed with them. If she is guessing,
-that is usually the reason — sit with her and the map rather than the text.
+{note}
 
-### What each question assesses
-| # | Framework |
+### What this week assesses
+| Framework | Questions |
 |---|---|
 {rows}
 
 Source: {pub}, Unit {unit}, Lesson {lesson}. Digitized from the family's
 purchased issue for private use.
 """.format(week=mod.WEEK, title=mod.TITLE, eq=mod.ESSENTIAL_QUESTION,
+           note=getattr(mod, "PARENT_NOTE", "").strip(),
            rows=rows, pub=mod.PUBLICATION, unit=mod.UNIT, lesson=mod.LESSON)
 
     # -- the check ----------------------------------------------------------
@@ -214,10 +235,12 @@ purchased issue for private use.
             "**{title}** — {pub}, Unit {unit}, Lesson {lesson}.\n\n"
             "**Essential question:** {eq}\n\n"
             "Read this week's issue first (the pages are on the lesson page), "
-            "then work through the check. Several questions are about a map "
-            "printed with them — tap a map to make it bigger."
+            "then work through the check.{pictures}"
         ).format(title=mod.TITLE, pub=mod.PUBLICATION, unit=mod.UNIT,
-                 lesson=mod.LESSON, eq=mod.ESSENTIAL_QUESTION)
+                 lesson=mod.LESSON, eq=mod.ESSENTIAL_QUESTION,
+                 pictures=(" Some questions have a picture printed with them — "
+                           "tap it to make it bigger."
+                           if any(q.get("figure") for q in mod.QUESTIONS) else ""))
         qset, _ = QuestionSet.objects.update_or_create(
             lesson=lesson, title="Week %d · %s — Comprehension Check"
                                  % (mod.WEEK, mod.TITLE),
@@ -267,7 +290,10 @@ purchased issue for private use.
                     ))
                 preview.append(("fill_two", q["prompt"]))
             elif kind == "matching":
-                words = [r for _l, r in q["pairs"]]
+                # As PRINTED, which scrambles the right-hand column. Falling
+                # back to pair order would line the columns up row for row and
+                # let her match by position without reading either side.
+                words = list(q.get("word_order") or [r for _l, r in q["pairs"]])
                 defs = [{"n": i + 1, "text": left, "word": right}
                         for i, (left, right) in enumerate(q["pairs"])]
                 rows.append(dict(
@@ -276,6 +302,14 @@ purchased issue for private use.
                     passage=json.dumps({"words": words, "definitions": defs}),
                 ))
                 preview.append(("matching", q["prompt"]))
+            elif kind == "order":
+                rows.append(dict(
+                    response_type=Question.TYPE_ORDER, category="reading",
+                    prompt=q["prompt"], hint=q["hint"],
+                    passage=json.dumps({"steps": q["steps"],
+                                        "correct": q["correct"]}),
+                ))
+                preview.append(("order", q["prompt"]))
             else:
                 rows.append(dict(
                     response_type=Question.TYPE_TEXT, category="writing",

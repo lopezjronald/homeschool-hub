@@ -93,4 +93,57 @@
     try { remembered = window.localStorage.getItem("answerMode"); } catch (e) {}
     show(panes[remembered] ? remembered : "type");
   });
+
+  /* ---- put the steps in order ---- */
+  Array.prototype.slice.call(
+    document.querySelectorAll('.order-widget')
+  ).forEach(function (widget) {
+    var hidden = widget.querySelector('input[type=hidden][data-question]');
+    if (!hidden) return;
+    var steps = Array.prototype.slice.call(widget.querySelectorAll('.order-step'));
+    var picks = steps.map(function (li) { return li.querySelector('.order-pick'); });
+
+    var saved = [];
+    try {
+      var parsed = JSON.parse(hidden.value || '{}');
+      if (parsed && Array.isArray(parsed.order)) saved = parsed.order.map(String);
+    } catch (e) { /* unreadable answers hydrate blank, never crash the page */ }
+    if (saved.length) {
+      steps.forEach(function (li, i) {
+        var at = saved.indexOf(li.dataset.step);
+        if (at !== -1) picks[i].value = String(at + 1);
+      });
+    }
+
+    function sync() {
+      var placed = [];
+      steps.forEach(function (li, i) {
+        var n = parseInt(picks[i].value, 10);
+        if (n) placed[n - 1] = li.dataset.step;
+      });
+      var full = placed.length === steps.length &&
+                 placed.every(function (x) { return !!x; });
+      hidden.value = placed.some(Boolean)
+        ? JSON.stringify({ order: placed.map(function (x) { return x || ''; }) })
+        : '';
+      hidden.dataset.answered = full ? '1' : '0';
+      if (window.portalTouch) window.portalTouch('Saving…');
+    }
+
+    widget.addEventListener('change', function (e) {
+      if (!e.target.classList.contains('order-pick')) return;
+      var chosen = e.target.value;
+      if (chosen) {
+        // Taking a number that is already used SWAPS the two, so she can never
+        // end up with two step 3s and no step 1 — and never has to clear one
+        // box before filling another.
+        picks.forEach(function (p) {
+          if (p !== e.target && p.value === chosen) p.value = e.target.dataset.was || '';
+        });
+      }
+      picks.forEach(function (p) { p.dataset.was = p.value; });
+      sync();
+    });
+    picks.forEach(function (p) { p.dataset.was = p.value; });
+  });
 })();

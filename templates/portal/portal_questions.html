@@ -357,6 +357,29 @@
                     </div>
                     <input type="hidden" name="answer_{{ q.pk }}" data-question="{{ q.pk }}" value="{{ q.my_answer }}">
                   </div>
+                {% elif q.is_order %}
+                  {% comment %}Put them in order. A number picker per step rather
+                  than drag-and-drop: dragging is fiddly with a finger, hopeless
+                  with a mouse for a nine-year-old, and invisible to a keyboard.
+                  Picking a number that is already used swaps the two, so she can
+                  never end up with two step 3s and no step 1.{% endcomment %}
+                  <div class="order-widget" data-question-widget="{{ q.pk }}">
+                    <ol class="order-list">
+                      {% for step in q.order_steps %}
+                        <li class="order-step" data-step="{{ step }}">
+                          <select class="order-pick" aria-label="Position for: {{ step }}"
+                                  {% if sheet.is_submitted %}disabled{% endif %}>
+                            <option value="">–</option>
+                            {% for n in q.order_positions %}
+                              <option value="{{ n }}">{{ n }}</option>
+                            {% endfor %}
+                          </select>
+                          <span class="order-text">{{ step }}</span>
+                        </li>
+                      {% endfor %}
+                    </ol>
+                    <input type="hidden" name="answer_{{ q.pk }}" data-question="{{ q.pk }}" value="{{ q.my_answer }}">
+                  </div>
                 {% elif q.is_choice %}
                   {% comment %}Pick one, or pick several. Radios vs checkboxes
                   follow the question — "which IS" against "which ARE" — because

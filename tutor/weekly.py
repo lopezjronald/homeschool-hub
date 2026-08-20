@@ -25,6 +25,7 @@ A WEEK is:
 A QUESTION is one of:
 
     choice      pick one, or pick several; options may be pictures
+    order       a scrambled list she numbers back into sequence
     fill_two    a sentence with two blanks, each from its own small bank
     matching    match each prompt to the thing that answers it
     written     an open answer she types or writes by hand
@@ -86,10 +87,39 @@ def fill_two(prompt, bank_a, bank_b, correct_a, correct_b, *, figure=None,
     }
 
 
-def matching(prompt, pairs, *, hint="", standard=""):
-    """Match each question to the thing that answers it. `pairs` is [(left, right)]."""
-    return {"kind": "matching", "prompt": prompt, "pairs": list(pairs),
-            "hint": hint, "standard": standard}
+def matching(prompt, pairs, *, word_order=None, hint="", standard=""):
+    """Match each question to the thing that answers it. `pairs` is [(left, right)].
+
+    `word_order` is the order the right-hand column is PRINTED in. Give it
+    whenever the page scrambles that column, which it usually does: without it
+    the two columns come out row-aligned and she can match them by position
+    without reading either side.
+    """
+    pairs = list(pairs)
+    if word_order is not None:
+        word_order = list(word_order)
+        if sorted(word_order) != sorted(r for _left, r in pairs):
+            raise ValueError(
+                "matching(): word_order must be the same answers as the pairs, "
+                "reordered — a word only in one of them can never be matched.")
+    return {"kind": "matching", "prompt": prompt, "pairs": pairs,
+            "word_order": word_order, "hint": hint, "standard": standard}
+
+
+def order(prompt, steps, correct, *, hint="", standard=""):
+    """Put a scrambled list back into its right sequence.
+
+    Studies Weekly calls this "sorting". `steps` is the order they are PRINTED
+    in; `correct` is the order they belong in. They must be the same strings —
+    a step in one list and not the other is a question she cannot get right.
+    """
+    steps, correct = list(steps), list(correct)
+    if sorted(steps) != sorted(correct):
+        raise ValueError(
+            "order(): the printed steps and the answer are not the same set — "
+            "%r vs %r" % (sorted(steps), sorted(correct)))
+    return {"kind": "order", "prompt": prompt, "steps": steps,
+            "correct": correct, "hint": hint, "standard": standard}
 
 
 def written(prompt, *, hint="", standard="", answer_mode=True):

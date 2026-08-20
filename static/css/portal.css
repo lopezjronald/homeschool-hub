@@ -1606,3 +1606,27 @@ button.portal-subject-card {
   border-color: var(--ss-forest, #0F3D2E);
   color: #fff;
 }
+
+/* ---- put the steps in order ---- */
+.order-widget { margin-top: 0.4rem; }
+.order-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.4rem; }
+.order-step {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  border: 1.5px solid rgba(15, 61, 46, 0.2);
+  border-radius: 12px;
+  padding: 0.5rem 0.7rem;
+  background: #fff;
+  font-size: 1.02rem;
+}
+.order-pick {
+  flex: none;
+  width: 4.2rem;
+  font-size: 1rem;
+  font-weight: 700;
+  border-radius: 8px;
+  border: 1.5px solid rgba(15, 61, 46, 0.3);
+  padding: 0.2rem 0.3rem;
+}
+.order-text { flex: 1 1 auto; }

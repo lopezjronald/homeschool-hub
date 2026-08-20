@@ -6182,14 +6182,20 @@ class StudiesWeeklyTests(TestCase):
         call_command("seed_weekly", "--level", str(level), "--week", str(week),
                      "--for-user", "sw", stdout=StringIO())
 
-    def _set(self, week=1):
-        return QuestionSet.objects.get(lesson__number=week,
-                                       lesson__chapter__curriculum__parent=self.parent)
+    def _set(self, week=1, level=7):
+        return QuestionSet.objects.get(
+            lesson__number=week,
+            lesson__chapter__curriculum__parent=self.parent,
+            lesson__chapter__curriculum__name__startswith=
+                "Studies Weekly %d" % level)
 
-    def _page(self, week=1):
+    def _page(self, week=1, level=7, child=None):
+        from portal.tokens import make_portal_token
+
+        token = make_portal_token(child) if child is not None else self.token
         return self.client.get(reverse(
             "portal:portal_questions",
-            args=[self.token, self._set(week).pk])).content.decode()
+            args=[token, self._set(week, level).pk])).content.decode()
 
     # -- the issue's own answers -------------------------------------------
 
@@ -6379,3 +6385,268 @@ class StudiesWeeklyTests(TestCase):
         self.assertEqual(m.status, Material.DRAFT)      # a parent approves it
         self.assertIn("Geography and Map Skills", m.title)
         self.assertIn("Framework", m.parent_content)    # the standards table
+
+
+class StudiesWeeklyLevel3Tests(TestCase):
+    """Violet's Level 3 — a different shape on the same framework.
+
+    Kaylin's week is one article and a map-heavy check. Violet's is five short
+    articles and a check about the method itself, and it brought two things the
+    framework did not have: a sorting question, and a matching column that has
+    to be shuffled. These pin both, and pin that one child's week cannot put
+    words in the other's mouth.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        from portal.tokens import make_portal_token
+
+        cls.parent = User.objects.create_user(
+            username="sw3", email="sw3@e.com", password="pw")
+        cls.fam = Family.objects.create(name="SW3 Fam")
+        FamilyMembership.objects.create(user=cls.parent, family=cls.fam,
+                                        role="parent")
+        cls.violet = Student.objects.create(
+            parent=cls.parent, first_name="Violet", grade_level="G03",
+            family=cls.fam)
+        cls.kaylin = Student.objects.create(
+            parent=cls.parent, first_name="Kaylin", grade_level="G07",
+            family=cls.fam)
+        cls.token = make_portal_token(cls.violet)
+
+    def _seed(self, week=1):
+        call_command("seed_weekly", "--level", "3", "--week", str(week),
+                     "--for-user", "sw3", stdout=StringIO())
+
+    def _set(self, week=1):
+        return QuestionSet.objects.get(
+            lesson__number=week,
+            lesson__chapter__curriculum__parent=self.parent)
+
+    def _page(self, week=1):
+        return self.client.get(reverse(
+            "portal:portal_questions",
+            args=[self.token, self._set(week).pk])).content.decode()
+
+    # -- the issue's own answers -------------------------------------------
+
+    def test_the_answer_key_is_the_teacher_editions(self):
+        """Marked answers from 1.8-1.9. A drifted key tells a nine-year-old her
+        right answer is wrong, which is the worst thing this file can do."""
+        from tutor import weekly_l3w1 as w
+
+        self.assertEqual([q["correct"] for q in w.QUESTIONS if q["kind"] == "choice"],
+                         [["b"], ["c"], ["a"], ["b"], ["a"]])
+        blanks = [q for q in w.QUESTIONS if q["kind"] == "fill_two"]
+        self.assertEqual([(q["correct_a"], q["correct_b"]) for q in blanks],
+                         [("compelling", "supporting")])
+        pairs = dict(next(q for q in w.QUESTIONS if q["kind"] == "matching")["pairs"])
+        self.assertEqual(pairs["economist"], "How do people make money?")
+        self.assertEqual(pairs["geographer"], "Where is it?")
+        self.assertEqual(pairs["political scientist"], "How are laws created?")
+
+    def test_the_claim_stays_at_step_two(self):
+        """The article numbers "make a claim" SECOND, before the research, and
+        the key agrees. It reads like a mistake and is not one — question 8 is
+        built on it. Anyone "fixing" this marks her right answer wrong."""
+        from tutor import weekly_l3w1 as w
+
+        sort = next(q for q in w.QUESTIONS if q["kind"] == "order")
+        self.assertEqual(sort["correct"][0], "Ask a compelling question")
+        self.assertEqual(sort["correct"][1], "Make a claim")
+        self.assertEqual(sort["correct"][-1], "Present your conclusions")
+
+    def test_nothing_is_in_its_answer_position_before_she_starts(self):
+        """A scrambled question printed unscrambled is free marks. Both the
+        sorting steps and the matching column must actually move."""
+        from tutor import weekly_l3w1 as w
+
+        sort = next(q for q in w.QUESTIONS if q["kind"] == "order")
+        self.assertNotEqual(sort["steps"], sort["correct"])
+        for i, (printed, right) in enumerate(zip(sort["steps"], sort["correct"])):
+            self.assertNotEqual(printed, right, "step %d is already placed" % (i + 1))
+
+        self._seed()
+        q = [x for x in self._set().questions.all() if x.is_matching][0]
+        words = q.vocab_data["words"]
+        for i, d in enumerate(q.vocab_data["definitions"]):
+            self.assertNotEqual(
+                d["word"], words[i],
+                "row %d matches itself — she can draw straight lines" % (i + 1))
+
+    def test_the_shared_word_bank_serves_both_blanks(self):
+        """The page prints ONE bank of four for question 3 and uses it twice, so
+        both blanks must offer all four words — and land on different ones."""
+        self._seed()
+        blanks = [q for q in self._set().questions.order_by("order")
+                  if "guides inquiry" in q.prompt or q.prompt == "**Blank B**"]
+        self.assertEqual(len(blanks), 2)
+        texts = [sorted(o["text"] for o in q.choice_options) for q in blanks]
+        self.assertEqual(texts[0], texts[1])
+        self.assertEqual(texts[0], ["compelling", "mystery", "research", "supporting"])
+        self.assertNotEqual(blanks[0].choice_correct, blanks[1].choice_correct)
+        self.assertEqual(
+            [next(o["text"] for o in q.choice_options
+                  if o["key"] in q.choice_correct) for q in blanks],
+            ["compelling", "supporting"])
+
+    def test_every_correct_answer_is_actually_on_offer(self):
+        from tutor import weekly_l3w1 as w
+
+        for q in w.QUESTIONS:
+            if q["kind"] == "choice":
+                self.assertTrue(set(q["correct"]) <= {o["key"] for o in q["options"]},
+                                q["prompt"][:40])
+            elif q["kind"] == "fill_two":
+                self.assertIn(q["correct_a"], q["bank_a"])
+                self.assertIn(q["correct_b"], q["bank_b"])
+
+    def test_every_figure_and_page_exists_on_disk(self):
+        """A question about "this image" is unanswerable without the image, and
+        under ManifestStaticFilesStorage a missing file raises in production
+        rather than degrading to a broken picture."""
+        from django.contrib.staticfiles import finders
+
+        from tutor import weekly_l3w1 as w
+
+        for q in w.QUESTIONS:
+            if q.get("figure"):
+                self.assertIsNotNone(finders.find(q["figure"]), q["figure"])
+        self.assertEqual(len(w.PAGES), 4)
+        for path in w.PAGES:
+            self.assertIsNotNone(finders.find(path), path)
+
+    # -- what gets built ---------------------------------------------------
+
+    def test_the_page_renders_the_sorting_widget(self):
+        self._seed()
+        html = self._page()
+        self.assertIn("order-widget", html)
+        self.assertIn("order-pick", html)
+        self.assertIn("Search for answers / Experiment", html)
+
+    def test_a_sorted_answer_is_marked_without_the_ai(self):
+        self._seed()
+        q = [x for x in self._set().questions.all() if x.is_order][0]
+        sheet = ResponseSheet(question_set=self._set())
+
+        sheet.answers = {str(q.pk): json.dumps({"order": q.order_correct})}
+        shown = sheet.answer_display(q)
+        self.assertIn("[correct]", shown)
+        self.assertIn("1. Ask a compelling question", shown)
+
+        swapped = list(q.order_correct)
+        swapped[1], swapped[2] = swapped[2], swapped[1]
+        sheet.answers = {str(q.pk): json.dumps({"order": swapped})}
+        shown = sheet.answer_display(q)
+        self.assertIn("not correct", shown)
+        self.assertIn("Ask a compelling question → Make a claim", shown,
+                      "a wrong order should show her the right one")
+
+    def test_a_half_filled_order_is_not_called_correct(self):
+        """She numbers one of five and walks away. Whatever the record says,
+        it must not say she got it right."""
+        self._seed()
+        q = [x for x in self._set().questions.all() if x.is_order][0]
+        sheet = ResponseSheet(question_set=self._set())
+        sheet.answers = {str(q.pk): json.dumps(
+            {"order": ["Ask a compelling question", "", "", "", ""]})}
+        self.assertNotIn("[correct]", sheet.answer_display(q))
+
+    def test_the_written_task_offers_the_answer_mode_picker(self):
+        """It is the only thing she writes this week, and she may want to write
+        it with the stylus."""
+        self._seed()
+        written = [q for q in self._set().questions.all()
+                   if q.response_type == Question.TYPE_TEXT]
+        self.assertEqual(len(written), 1)
+        self.assertTrue(written[0].offers_answer_mode)
+        html = self._page()
+        self.assertIn('data-mode="write"', html)
+        self.assertIn("handwriting-canvas", html)
+
+    # -- one week cannot speak for another ---------------------------------
+
+    def test_her_week_says_nothing_about_kaylins_maps(self):
+        """The seeder used to hard-code Level 7's prose — "read the maps",
+        "questions 6, 8 and 9" — into every week it built. Violet's issue has no
+        maps and eight questions, so that guidance was simply untrue for her."""
+        self._seed()
+        qset = self._set()
+        guide = Material.objects.get(lesson__number=1).parent_content
+        for text in (qset.rubric, guide, qset.intro):
+            self.assertNotIn("6, 8 and 9", text)
+            self.assertNotIn("read the maps", text.lower())
+            self.assertNotIn("sit with her and the map", text.lower())
+        for text in (qset.rubric, qset.intro):
+            self.assertNotIn("map", text.lower())
+        self.assertIn("make a claim", guide.lower())
+        self.assertIn("compelling question", qset.rubric.lower())
+
+    def test_the_standards_are_the_teacher_editions_own(self):
+        """"Meets California standards" has to mean the codes the publisher
+        prints, not a framework name I picked."""
+        from tutor import weekly_l3w1 as w
+
+        self._seed()
+        guide = Material.objects.get(lesson__number=1).parent_content
+        self.assertIn("RI.3.1", guide)
+        self.assertIn("W.3.2", guide)
+        self.assertTrue(w.REFLECTION["standard"].startswith("W.3.2"),
+                        "the writing task is the W standard, not the reading one")
+        self.assertTrue(all(q["standard"].startswith("RI.3.1")
+                            for q in w.QUESTIONS))
+
+    def test_a_level_is_a_grade_and_the_seed_refuses_a_mismatch(self):
+        with self.assertRaises(CommandError) as caught:
+            call_command("seed_weekly", "--level", "3", "--week", "1",
+                         "--for-user", "sw3", "--child-name", "Kaylin",
+                         stdout=StringIO())
+        self.assertIn("G07", str(caught.exception))
+
+    def test_a_missing_week_says_what_to_write(self):
+        with self.assertRaises(ModuleNotFoundError) as caught:
+            call_command("seed_weekly", "--level", "3", "--week", "99",
+                         "--for-user", "sw3", stdout=StringIO())
+        self.assertIn("weekly_l3w99", str(caught.exception))
+
+    def test_the_issue_is_attached_as_the_week_s_reading(self):
+        self._seed()
+        m = Material.objects.get(lesson__number=1)
+        self.assertEqual(m.status, Material.DRAFT)      # a parent approves it
+        self.assertIn("Developing Inquiries", m.title)
+        self.assertIn("all 4 pages", m.student_intro)
+
+
+class StudiesWeeklyBuilderTests(SimpleTestCase):
+    """The two builders that can quietly author an unanswerable question."""
+
+    def test_a_step_that_cannot_be_placed_is_refused(self):
+        from tutor.weekly import order
+
+        with self.assertRaises(ValueError):
+            order("Put these in order.",
+                  steps=["one", "two", "three"],
+                  correct=["one", "two", "THREE"])
+
+    def test_a_matching_column_missing_an_answer_is_refused(self):
+        """A word in the answer but not in the column is a pair she can never
+        make; a word in the column but not in the answer never matches
+        anything."""
+        from tutor.weekly import matching
+
+        pairs = [("a", "1"), ("b", "2")]
+        with self.assertRaises(ValueError):
+            matching("Match them.", pairs, word_order=["1", "3"])
+        with self.assertRaises(ValueError):
+            matching("Match them.", pairs, word_order=["1"])
+        self.assertEqual(matching("Match them.", pairs,
+                                  word_order=["2", "1"])["word_order"],
+                         ["2", "1"])
+
+    def test_a_page_that_does_not_scramble_is_still_allowed(self):
+        """Some pages print the column straight. The builder should not force a
+        shuffle it was not asked for — it should only refuse a wrong one."""
+        from tutor.weekly import matching
+
+        self.assertIsNone(matching("Match them.", [("a", "1")])["word_order"])

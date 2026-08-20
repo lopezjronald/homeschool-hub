@@ -477,6 +477,7 @@ class Question(models.Model):
     TYPE_HANDWRITING = "handwriting"
     TYPE_SELF_EVAL = "self_eval"
     TYPE_CHOICE = "choice"
+    TYPE_ORDER = "order"
     RESPONSE_TYPES = [
         (TYPE_TEXT, "Typed answer"),
         (TYPE_MARKUP, "Mark up the sentence (draw)"),
@@ -489,6 +490,7 @@ class Question(models.Model):
         (TYPE_HANDWRITING, "Handwriting: write it by hand on ruled lines"),
         (TYPE_SELF_EVAL, "Self-evaluation: rate each component, and note why"),
         (TYPE_CHOICE, "Multiple choice: pick one, or pick several"),
+        (TYPE_ORDER, "Put the steps in order"),
     ]
 
     # The three-point scale a self-evaluation offers, and the components it rates,
@@ -610,6 +612,33 @@ class Question(models.Model):
         check does not cost a model call.
         """
         return self.response_type == self.TYPE_CHOICE
+
+    @property
+    def is_order(self):
+        """Put these in the right order.
+
+        Studies Weekly calls it "sorting": five steps of a process, printed
+        scrambled, and she numbers them. Stored as {"steps": [...]} in printed
+        (scrambled) order with {"correct": [...]} holding them in the right one.
+        """
+        return self.response_type == self.TYPE_ORDER
+
+    @property
+    def order_steps(self):
+        """The steps as printed — scrambled — in the order she first sees them."""
+        steps = self.vocab_data.get("steps")
+        return [str(s) for s in steps] if isinstance(steps, list) else []
+
+    @property
+    def order_positions(self):
+        """1..n, for the number picker beside each step."""
+        return list(range(1, len(self.order_steps) + 1))
+
+    @property
+    def order_correct(self):
+        """The steps in the right order."""
+        right = self.vocab_data.get("correct")
+        return [str(s) for s in right] if isinstance(right, list) else []
 
     @property
     def choice_options(self):
@@ -1003,6 +1032,8 @@ class ResponseSheet(models.Model):
             return self._format_self_eval(raw, question)
         if question.is_choice:
             return self._format_choice(raw, question)
+        if question.is_order:
+            return self._format_order(raw, question)
         # A text question whose answer holds strokes: she chose "write it"
         # on the answer-mode picker. The response_type was fixed when the
         # question was authored, so the shape of what she actually wrote is
@@ -1185,6 +1216,22 @@ class ResponseSheet(models.Model):
         except (ValueError, TypeError):
             return False
         return isinstance(data, dict) and isinstance(data.get("strokes"), list)
+
+    @classmethod
+    def _format_order(cls, raw, question):
+        """Render a sorted answer ({"order": ["step", …]}) with its verdict."""
+        data = cls._parse_json_answer(raw)
+        got = data.get("order") if isinstance(data, dict) else None
+        if not isinstance(got, list) or not [g for g in got if str(g).strip()]:
+            return "(no answer)"
+        got = [str(g) for g in got]
+        lines = ["%d. %s" % (i + 1, g) for i, g in enumerate(got)]
+        right = question.order_correct
+        if right:
+            lines.append("[%s]" % ("correct" if got == right else
+                                   "not correct — the order is: "
+                                   + " → ".join(right)))
+        return "\n".join(lines)
 
     @classmethod
     def _format_choice(cls, raw, question):

@@ -1,0 +1,117 @@
+/* Spelling OS. One task per screen, big touch targets, no menus for the child. */
+
+.sp-card {
+  background: #fff;
+  border: 1px solid rgba(20, 35, 28, .1);
+  border-radius: 18px;
+  padding: 1.5rem 1.25rem 1.75rem;
+  box-shadow: 0 2px 10px rgba(20, 35, 28, .05);
+}
+
+.sp-week { font-size: .8rem; letter-spacing: .06em; text-transform: uppercase;
+           color: var(--ss-teal, #0A5C63); font-weight: 700; }
+.sp-pattern { font-size: 1.9rem; font-weight: 800; margin: .25rem 0 .5rem; }
+.sp-rule { font-size: 1.05rem; color: #374151; margin-bottom: 1rem; }
+.sp-rule--big { font-size: 1.2rem; }
+.sp-sub { font-size: .9rem; color: #6b7280; margin-top: .5rem; }
+
+/* Every tappable thing is at least 48px tall. */
+.sp-go {
+  display: inline-block; min-height: 56px; line-height: 1.2;
+  padding: 1rem 1.5rem; border: 0; border-radius: 14px;
+  background: var(--ss-teal, #0A5C63); color: #fff;
+  font-size: 1.15rem; font-weight: 700; text-decoration: none; cursor: pointer;
+}
+.sp-go:hover, .sp-go:focus { background: #08484e; color: #fff; }
+.sp-go:disabled { background: #cbd5e1; color: #64748b; cursor: default; }
+.sp-go--wide { display: block; width: 100%; margin-top: 1rem; }
+
+.sp-speak {
+  min-height: 64px; padding: 1rem 1.5rem; margin: .5rem 0 1rem;
+  border: 2px solid var(--ss-teal, #0A5C63); border-radius: 14px;
+  background: #f0fdfa; color: var(--ss-teal, #0A5C63);
+  font-size: 1.2rem; font-weight: 700; cursor: pointer;
+}
+
+.sp-label { display: block; font-weight: 700; margin: .75rem 0 .35rem; }
+.sp-input {
+  width: 100%; padding: .85rem 1rem; font-size: 1.6rem;
+  font-family: Georgia, "Times New Roman", serif; letter-spacing: .04em;
+  border: 2px solid #cbd5e1; border-radius: 12px;
+}
+.sp-input:focus { outline: 3px solid rgba(10, 92, 99, .35); border-color: var(--ss-teal, #0A5C63); }
+.sp-input--area { font-size: 1.15rem; letter-spacing: 0; }
+
+.sp-progress { height: 8px; background: #e5e7eb; border-radius: 999px; overflow: hidden; }
+.sp-progress-bar { height: 100%; width: 0; background: var(--ss-teal, #0A5C63); transition: width .25s; }
+.sp-count { font-size: .85rem; color: #6b7280; margin: .4rem 0 1rem; text-align: right; }
+
+.sp-verdict { font-size: 1.4rem; font-weight: 800; margin: .5rem 0; }
+.sp-verdict.is-right { color: #1E7A50; }
+.sp-verdict.is-wrong { color: #b45309; }
+
+.sp-compare { background: #f8fafc; border-radius: 12px; padding: .75rem 1rem; margin-bottom: .75rem; }
+.sp-compare-row { display: flex; gap: .75rem; align-items: baseline; margin: .25rem 0; }
+.sp-compare-label { font-size: .8rem; color: #6b7280; min-width: 6.5rem; }
+.sp-yours, .sp-right {
+  font-family: Georgia, serif; font-size: 1.5rem; letter-spacing: .06em;
+}
+.sp-right { font-weight: 700; color: #1E7A50; }
+/* The letters that differ, so the correction is visible rather than a hunt. */
+.sp-miss { color: #b91c1c; text-decoration: underline wavy #b91c1c; font-weight: 700; }
+
+.sp-heart { margin: .5rem 0; color: #9d174d; font-weight: 700; }
+
+.sp-done-emoji { font-size: 3rem; }
+.sp-done-text { font-size: 1.4rem; font-weight: 800; margin-bottom: .25rem; }
+.sp-score { font-size: 1.2rem; font-weight: 700; margin-bottom: .5rem; }
+.sp-streak { margin-top: 1rem; font-weight: 700; color: #b45309; }
+
+/* Learn */
+.sp-wordgrid { display: flex; flex-wrap: wrap; gap: .5rem; margin: 1rem 0; }
+.sp-word {
+  min-height: 48px; padding: .6rem 1rem; border-radius: 12px;
+  border: 2px solid #cbd5e1; background: #fff;
+  font-family: Georgia, serif; font-size: 1.25rem; cursor: pointer;
+}
+.sp-word.is-heard { border-color: var(--ss-teal, #0A5C63); background: #f0fdfa; }
+.sp-word--heart { border-color: #f9a8d4; display: block; text-align: left; }
+.sp-word--heart small { display: block; font-family: system-ui, sans-serif;
+                        font-size: .72rem; color: #9d174d; }
+.sp-hearts { margin-top: 1rem; padding-top: 1rem; border-top: 1px dashed #e5e7eb; }
+.sp-hearts-title { font-weight: 700; color: #9d174d; margin-bottom: .5rem; }
+
+/* Sort */
+.sp-pool { display: flex; flex-wrap: wrap; gap: .5rem; margin: 1rem 0 1.25rem;
+           min-height: 56px; }
+.sp-chip {
+  min-height: 48px; padding: .6rem 1rem; border-radius: 999px;
+  border: 2px solid #cbd5e1; background: #fff;
+  font-family: Georgia, serif; font-size: 1.2rem; cursor: pointer;
+}
+.sp-chip.is-picked { border-color: var(--ss-teal, #0A5C63); background: #ccfbf1;
+                     transform: scale(1.06); }
+.sp-chip.is-placed { border-style: dashed; opacity: .75; cursor: default; }
+.sp-chip.is-bounce { animation: sp-bounce .4s; }
+@keyframes sp-bounce {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-6px); }
+  75% { transform: translateX(6px); }
+}
+.sp-buckets { display: grid; gap: .75rem; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+.sp-bucket { border: 2px dashed #cbd5e1; border-radius: 14px; padding: .6rem; min-height: 120px; }
+.sp-bucket.is-hit { border-color: #1E7A50; background: #f0fdf4; }
+.sp-bucket-title { font-weight: 700; font-size: .85rem; color: #374151; margin-bottom: .4rem; }
+.sp-bucket-body { display: flex; flex-wrap: wrap; gap: .35rem; }
+
+/* Parent dashboard */
+.sp-stat { background: #fff; border: 1px solid rgba(20,35,28,.1); border-radius: 14px;
+           padding: .9rem; text-align: center; }
+.sp-stat .n { font-size: 1.6rem; font-weight: 800; color: var(--ss-teal, #0A5C63); }
+.sp-stat .lbl { font-size: .78rem; color: #6b7280; }
+.sp-trouble { display: flex; flex-wrap: wrap; gap: .5rem; }
+.sp-trouble-word {
+  padding: .4rem .75rem; border-radius: 999px; background: #fef3c7;
+  border: 1px solid #fcd34d; font-family: Georgia, serif; font-size: 1.05rem;
+}
+.sp-trouble-word small { color: #92400e; font-family: system-ui, sans-serif; }

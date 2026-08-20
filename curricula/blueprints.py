@@ -293,6 +293,39 @@ BLACKBIRD_I_AM_DAVID = {
 }
 
 
+# Blackbird & Company Literature Discovery Guide: The Folk Keeper (Franny
+# Billingsley), Level 3 guide used at grade 7. Same five-week shape as I Am David
+# — four reading sections plus a final project week — but the sections are uneven
+# (4, 4, 3 and 5 chapters), which is the guide's own division, not a mistake.
+# Digitized from the family's purchased guide for private use.
+BLACKBIRD_THE_FOLK_KEEPER = {
+    "slug": "blackbird_the_folk_keeper",
+    "name": "The Folk Keeper — Literature Discovery",
+    "subject": "Literature",
+    "grade_level": "G07",
+    "source": "Blackbird & Company Educational Press — Literature & Writing "
+              "Discovery Guide: The Folk Keeper by Franny Billingsley (Level 3)",
+    "chapters": [
+        _bb_section(1, "1–4"),
+        _bb_section(2, "5–8"),
+        _bb_section(3, "9–11"),
+        _bb_section(4, "12–16"),
+        {
+            "number": 5,
+            "title": "Section 5: Glean — Final Project",
+            "lessons": [
+                _ls(1, 1, "Glean: Final Project",
+                    "Complete one or more of the guide's assignment options: research the "
+                    "mythical sealfolk, research a Celtic feast, write journal entries as "
+                    "Corinna after the novel ends, show how Corin and Corinna differed, "
+                    "build a diorama or draw a scene, or write three poems describing "
+                    "things you find beautiful."),
+            ],
+        },
+    ],
+}
+
+
 BLACKBIRD_A_MOUSE_CALLED_WOLF = {
     "slug": "blackbird_a_mouse_called_wolf",
     "name": "A Mouse Called Wolf — Literature Discovery",
@@ -315,6 +348,70 @@ BLACKBIRD_A_MOUSE_CALLED_WOLF = {
                     "Schubert, Beethoven, and Mozart; research Mozart's life; research and "
                     "draw a labeled grand piano; research the history and meaning of your "
                     "own name; or define the story's musical terms."),
+            ],
+        },
+    ],
+}
+
+
+# Blackbird & Company Literature Discovery Guide: Rickshaw Girl (Mitali Perkins),
+# Level 3. Same series, same level and same child as A Mouse Called Wolf above,
+# so it reuses the identical section shape rather than inventing a second one.
+BLACKBIRD_RICKSHAW_GIRL = {
+    "slug": "blackbird_rickshaw_girl",
+    "name": "Rickshaw Girl — Literature Discovery",
+    "subject": "Literature",
+    "grade_level": "G03",
+    "source": "Blackbird & Company Educational Press — Literature Discovery Guide: "
+              "Rickshaw Girl by Mitali Perkins (Level 3). Family-owned guide; "
+              "content follows the workbook for private family use.",
+    "chapters": [
+        _bb_section(1, "1–3"),
+        _bb_section(2, "4–6"),
+        _bb_section(3, "7–10"),
+        _bb_section(4, "11–Author's Notes"),
+        {
+            "number": 5,
+            "title": "Section 5: Glean — Final Project",
+            "lessons": [
+                _ls(1, 1, "Glean: Final Project",
+                    "Complete one or more of the guide's final project options: a poster "
+                    "of a family tradition; research alpanas and rickshaw art and paint "
+                    "your own panel; a Bangla word-cloud poster; a one-hour walk written "
+                    "up; a diorama of a favourite scene; or a poster of what you are "
+                    "thankful for."),
+            ],
+        },
+    ],
+}
+
+
+# Blackbird & Company Literature Discovery Guide: The Year of Miss Agnes
+# (Kirkpatrick Hill), Level 3. Same series, level and child as A Mouse Called
+# Wolf and Rickshaw Girl, so it reuses the identical section shape.
+BLACKBIRD_MISS_AGNES = {
+    "slug": "blackbird_year_of_miss_agnes",
+    "name": "The Year of Miss Agnes — Literature Discovery",
+    "subject": "Literature",
+    "grade_level": "G03",
+    "source": "Blackbird & Company Educational Press — Literature Discovery Guide: "
+              "The Year of Miss Agnes by Kirkpatrick Hill (Level 3). Family-owned "
+              "guide; content follows the workbook for private family use.",
+    "chapters": [
+        _bb_section(1, "1–4"),
+        _bb_section(2, "5–9"),
+        _bb_section(3, "10–13"),
+        _bb_section(4, "14–17"),
+        {
+            "number": 5,
+            "title": "Section 5: Glean — Final Project",
+            "lessons": [
+                _ls(1, 1, "Glean: Final Project",
+                    "Complete one or more of the guide's final project options: a "
+                    "state report about Alaska; a country report about England; a "
+                    "world map of places that matter to you; a paper time line of "
+                    "your life; a small paper book about yourself; or a paragraph "
+                    "written as Miss Agnes."),
             ],
         },
     ],
@@ -935,7 +1032,10 @@ BLUEPRINTS = {
     SCIENCE_G3["slug"]: SCIENCE_G3,
     SCIENCE_G7["slug"]: SCIENCE_G7,
     BLACKBIRD_I_AM_DAVID["slug"]: BLACKBIRD_I_AM_DAVID,
+    BLACKBIRD_THE_FOLK_KEEPER["slug"]: BLACKBIRD_THE_FOLK_KEEPER,
     BLACKBIRD_A_MOUSE_CALLED_WOLF["slug"]: BLACKBIRD_A_MOUSE_CALLED_WOLF,
+    BLACKBIRD_RICKSHAW_GIRL["slug"]: BLACKBIRD_RICKSHAW_GIRL,
+    BLACKBIRD_MISS_AGNES["slug"]: BLACKBIRD_MISS_AGNES,
     ESSENTIALS_IN_WRITING_3["slug"]: ESSENTIALS_IN_WRITING_3,
     SAXON_PREALGEBRA_DIVE["slug"]: SAXON_PREALGEBRA_DIVE,
 }

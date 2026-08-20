@@ -1,5 +1,7 @@
+from django.core.management.base import CommandError
 import json
 import os
+import tempfile
 from datetime import timedelta
 from io import StringIO
 from types import SimpleNamespace
@@ -7,7 +9,7 @@ from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.core.management import call_command
-from django.test import TestCase, override_settings
+from django.test import SimpleTestCase, TestCase, override_settings
 from django.utils import timezone
 from django.urls import reverse
 
@@ -18,7 +20,8 @@ from students.models import Student
 from worklog.models import WorkLogEntry
 
 from . import ai, grading, imagegen, mastery, spend
-from .models import AiSpend, Material, MasteryAssessment, Question, ResponseSheet
+from .models import (AiSpend, Material, MasteryAssessment, Question,
+                     QuestionSet, ResponseSheet)
 
 User = get_user_model()
 
@@ -2434,3 +2437,3945 @@ class LinkifySearchesTests(TestCase):
     def test_plain_text_without_quotes_is_untouched(self):
         raw = "Nothing needed — the steps show the setup."
         self.assertEqual(self._link(raw), raw)
+
+
+class FolkKeeperSeedTests(TestCase):
+    """Kaylin's Blackbird 'The Folk Keeper' course: the guide's own four uneven
+    sections plus a Glean week, discussion-heavy because Joyce leads it orally."""
+
+    @classmethod
+    def setUpTestData(cls):
+        User = get_user_model()
+        cls.parent = User.objects.create_user("fkmom", email="fk@e.com", password="pw")
+        cls.kaylin = Student.objects.create(
+            parent=cls.parent, first_name="Kaylin", grade_level="G07")
+
+    def _seed(self):
+        call_command("seed_the_folk_keeper", "--for-user", "fkmom", stdout=StringIO())
+
+    def test_seeds_the_guides_own_section_divisions(self):
+        from curricula.models import Chapter, CurriculumPlacement
+        self._seed()
+        curr = Curriculum.objects.get(name__startswith="The Folk Keeper")
+        self.assertEqual(curr.subject, "Literature")
+        self.assertEqual(curr.grade_level, "G07")
+        # Four reading sections + the Glean week; the reading sections are
+        # deliberately uneven (4, 4, 3, 5 chapters) — that is the guide's split.
+        chapters = list(Chapter.objects.filter(curriculum=curr).order_by("number"))
+        self.assertEqual(len(chapters), 5)
+        self.assertIn("1–4", chapters[0].title)
+        self.assertIn("5–8", chapters[1].title)
+        self.assertIn("9–11", chapters[2].title)
+        self.assertIn("12–16", chapters[3].title)
+        self.assertIn("Glean", chapters[4].title)
+        self.assertTrue(
+            CurriculumPlacement.objects.filter(child=self.kaylin, curriculum=curr).exists())
+
+    def test_every_section_carries_the_full_set_of_work(self):
+        from tutor.models import QuestionSet
+        self._seed()
+        curr = Curriculum.objects.get(name__startswith="The Folk Keeper")
+        sets = QuestionSet.objects.filter(lesson__chapter__curriculum=curr)
+        self.assertEqual(sets.count(), 25)                    # 4 x 6 + Glean
+        for n in (1, 2, 3, 4):
+            titles = set(sets.filter(lesson__chapter__number=n).values_list("title", flat=True))
+            for kind in ("Journal", "Vocabulary", "Comprehension",
+                         "Writing Exercise", "Discussion", "Socratic Seminar"):
+                self.assertIn(f"Section {n} · {kind}", titles)
+            # Six vocabulary words, then FIVE separate sentence boxes — the guide
+            # prints five numbered lines, so the child gets five inputs, not one.
+            vocab = sets.get(title=f"Section {n} · Vocabulary")
+            self.assertEqual(vocab.questions.count(), 11)
+            sentence_qs = vocab.questions.filter(prompt__contains="Sentence").order_by("order")
+            self.assertEqual(sentence_qs.count(), 5)
+            self.assertEqual(
+                [q.prompt.split("**")[1] for q in sentence_qs],
+                [f"Sentence {i} of 5" for i in range(1, 6)],
+            )
+            # Every one is its own plain typed box.
+            self.assertTrue(all(q.response_type == Question.TYPE_TEXT for q in sentence_qs))
+            # …and fourteen comprehension questions, every one answer-keyed.
+            comp = sets.get(title=f"Section {n} · Comprehension")
+            self.assertEqual(comp.questions.count(), 14)
+            self.assertIn("answer key", comp.answer_key.lower())
+
+    def test_discussion_and_seminar_are_oral_never_typed(self):
+        """Joyce leads these with Kaylin — they must not land in the kid's portal
+        as forms to fill in."""
+        from tutor.models import QuestionSet
+        self._seed()
+        curr = Curriculum.objects.get(name__startswith="The Folk Keeper")
+        sets = QuestionSet.objects.filter(lesson__chapter__curriculum=curr)
+        oral = sets.filter(mode=QuestionSet.MODE_DISCUSSION)
+        self.assertEqual(oral.count(), 8)                     # a Discussion + a Seminar per section
+        for s in oral:
+            self.assertTrue(
+                s.title.endswith("Discussion") or s.title.endswith("Socratic Seminar"), s.title)
+        # Everything else is the child's own written work.
+        self.assertEqual(sets.filter(mode=QuestionSet.MODE_STUDENT).count(), 17)
+
+    def test_answer_key_content_matches_the_publishers_key(self):
+        from tutor.models import QuestionSet
+        self._seed()
+        curr = Curriculum.objects.get(name__startswith="The Folk Keeper")
+        s1 = QuestionSet.objects.get(
+            lesson__chapter__curriculum=curr, title="Section 1 · Comprehension")
+        self.assertIn("steal Matron's breakfast sausage", s1.answer_key)
+        self.assertIn("cannot bear the light", s1.answer_key)
+        s4 = QuestionSet.objects.get(
+            lesson__chapter__curriculum=curr, title="Section 4 · Comprehension")
+        self.assertIn("amber beads", s4.answer_key)           # Taffy's grave
+        # Vocabulary keys carry the publisher's definitions, teacher-side only.
+        v3 = QuestionSet.objects.get(
+            lesson__chapter__curriculum=curr, title="Section 3 · Vocabulary")
+        self.assertIn("unable to be placated", v3.answer_key)  # implacable
+        self.assertIn("teacher reference only", v3.answer_key)
+
+    def test_teacher_only_answer_key_link_is_attached(self):
+        from curricula.models import CurriculumResource
+        self._seed()
+        curr = Curriculum.objects.get(name__startswith="The Folk Keeper")
+        res = CurriculumResource.objects.get(curriculum=curr)
+        self.assertTrue(res.teacher_only)
+        self.assertIn("the-folk-keeper", res.url)
+
+    def test_is_idempotent(self):
+        from tutor.models import QuestionSet
+        self._seed()
+        self._seed()
+        curr = Curriculum.objects.get(name__startswith="The Folk Keeper")
+        sets = QuestionSet.objects.filter(lesson__chapter__curriculum=curr)
+        self.assertEqual(sets.count(), 25)
+        self.assertEqual(sum(s.questions.count() for s in sets), 187)
+
+
+class EIWLessonTenTests(SimpleTestCase):
+    """Lesson 10 (Pronouns and Antecedents) against the printed workbook, pp.35-41.
+
+    Every exercise here used to seed as "Mark the sentences (n)", so the child
+    opening her list could not tell underline-the-pronouns from
+    circle-the-antecedents from rewrite-the-sentence — and two rewrite exercises
+    handed her a drawing pen for a task the workbook asks her to write out.
+    """
+
+    @property
+    def blocks(self):
+        from tutor.management.commands._eiw_content import EXERCISES
+        return EXERCISES[10]
+
+    def test_every_workbook_page_is_present(self):
+        """p.41 (Complete Assessment 4) was missing entirely, so the lesson
+        stopped one exercise short of the book."""
+        pages = [b["workbook_page"] for b in self.blocks]
+        self.assertEqual(pages, [35, 35, 36, 37, 37, 38, 39, 40, 41])
+        self.assertTrue(any(b["assessment"] for b in self.blocks))
+
+    def test_each_exercise_names_the_action_it_wants(self):
+        labels = [b["label"] for b in self.blocks]
+        self.assertEqual(len(labels), len(set(labels)), "duplicate labels are the bug")
+        for b in self.blocks:
+            verb = b["instructions"].split()[0].strip("*").lower()
+            self.assertIn(verb, {"underline", "circle", "rewrite", "read", "write"})
+            # The label has to carry the action too — it is what she reads in the list.
+            self.assertRegex(b["label"].lower(), r"underline|circle|rewrite|missing|write")
+
+    def test_rewrite_exercises_are_typed_not_drawn(self):
+        """A pen tool cannot rewrite a sentence."""
+        for b in self.blocks:
+            if b["instructions"].lower().startswith("rewrite"):
+                self.assertNotEqual(b["kind"], "sentence-editing", b["label"])
+
+    def test_marking_exercises_stay_drawable(self):
+        for b in self.blocks:
+            first = b["instructions"].split()[0].lower()
+            if first in ("underline", "circle"):
+                self.assertEqual(b["kind"], "sentence-editing", b["label"])
+
+    def test_the_words_to_replace_are_marked(self):
+        """The workbook underlines the nouns to swap out; without that the
+        rewrite exercises are ambiguous."""
+        for b in self.blocks:
+            if "underlined" in b["instructions"]:
+                for item in b["items"]:
+                    self.assertIn("<u>", item, b["label"])
+
+    def test_the_pronoun_chart_is_exactly_the_workbook_list(self):
+        import re
+        from tutor.management.commands._eiw_content import pronoun_list_html
+        printed = "I me my you your he they them their our we us him his she her it its"
+        shown = re.findall(r">([A-Za-z]+)</span>", pronoun_list_html())
+        self.assertEqual(
+            sorted({w.lower() for w in shown}),
+            sorted({w.lower() for w in printed.split()}),
+        )
+
+    def test_the_worked_example_shows_both_marks(self):
+        from tutor.management.commands._eiw_content import antecedent_model_html
+        html = antecedent_model_html("Tyrone", "made a cake.", "He", "made a cake.")
+        self.assertIn("border-radius:999px", html)   # circled antecedent
+        self.assertIn("border-bottom", html)         # underlined pronoun
+        self.assertIn("antecedent", html)
+        self.assertIn("pronoun", html)
+
+    def test_the_instruction_comes_first_in_what_she_reads(self):
+        from tutor.management.commands.seed_eiw_violet import build_intro
+        intro = build_intro(self.blocks[0], wants_pen_hint=True)
+        self.assertTrue(intro.startswith("**Underline the pronouns.**"), intro[:80])
+        self.assertLess(intro.index("Underline the pronouns"), intro.index("List of Pronouns"))
+
+
+class MarkupSurfaceRecordedTests(SimpleTestCase):
+    """BOTH drawing widgets must record the surface they were drawn on.
+
+    There are two: portal-markup.js (draw on a printed sentence) and
+    portal-writemarkup.js (type your own sentence, then draw on it). They have
+    separate persist() functions, and teaching only one of them to record the
+    surface is silent — the replay still renders, it just rebuilds the box at a
+    guessed width, re-wraps the sentence, and puts her underline under a
+    different word than the one she marked. Worse than showing nothing.
+    """
+
+    WIDGETS = ["static/js/portal-markup.js", "static/js/portal-writemarkup.js"]
+
+    def test_both_widgets_record_the_surface_size(self):
+        from django.contrib.staticfiles import finders
+        for path in self.WIDGETS:
+            src = open(finders.find(path.split("static/", 1)[1]), encoding="utf-8").read()
+            self.assertIn("surface:", src, path)
+            self.assertIn("getBoundingClientRect", src, path)
+            # Width AND height — the width is what fixes the wrap, but the
+            # height keeps the box the shape she drew in.
+            self.assertRegex(src, r"w:\s*Math\.round", path)
+            self.assertRegex(src, r"h:\s*Math\.round", path)
+
+    def test_the_replay_treats_a_missing_surface_as_a_guess(self):
+        """So that forgetting the JS half shows the caveat rather than passing a
+        misaligned drawing off as exact."""
+        from tutor.markup import replay_for
+        from tutor.models import Question
+        import json
+        q = Question(response_type=Question.TYPE_WRITE_MARKUP, passage="")
+        raw = json.dumps({"text": "My dog is soft.",
+                          "strokes": [{"c": "#333333", "w": 3, "p": [[0.1, 0.5], [0.3, 0.5]]}]})
+        self.assertFalse(replay_for(raw, q).exact)
+
+
+class CharterReportMarkupTests(TestCase):
+    """The charter report is the surface this feature exists for — the packet
+    South Sutter is shown at the Learning Record Meeting. A work sample of a
+    mark-the-sentence exercise has to carry the actual circles and underlines."""
+
+    @classmethod
+    def setUpTestData(cls):
+        import json
+        from django.contrib.auth import get_user_model
+        from django.utils import timezone
+        from core.models import Family, FamilyMembership
+        from curricula.models import Chapter, Curriculum, Lesson
+        from students.models import Student
+        from tutor.models import Question, QuestionSet, ResponseSheet
+        from worklog.models import WorkLogEntry
+        from tutor.models import Question, QuestionSet, ResponseSheet
+
+        User = get_user_model()
+        cls.parent = User.objects.create_user(
+            username="chp", email="chp@e.com", password="pw")
+        cls.family = Family.objects.create(name="Charter Fam")
+        FamilyMembership.objects.create(user=cls.parent, family=cls.family, role="parent")
+        cls.child = Student.objects.create(
+            parent=cls.parent, first_name="Violet", grade_level="G03", family=cls.family)
+        cur = Curriculum.objects.create(
+            parent=cls.parent, family=cls.family, name="Writing", subject="Writing")
+        chap = Chapter.objects.create(curriculum=cur, number=1, title="Pronouns")
+        lesson = Lesson.objects.create(chapter=chap, order=1, number=1, title="Pronouns")
+        qset = QuestionSet.objects.create(
+            lesson=lesson, title="Underline the pronouns", family=cls.family,
+            status=QuestionSet.APPROVED)
+        q = Question.objects.create(
+            question_set=qset, order=1, category="editing",
+            response_type=Question.TYPE_MARKUP,
+            passage="Jim sang a song. It was so pretty!")
+        entry = WorkLogEntry.objects.create(
+            parent=cls.parent, child=cls.child, family=cls.family, curriculum=cur,
+            subject="Writing", date=timezone.localdate(), description="Lesson 10")
+        ResponseSheet.objects.create(
+            question_set=qset, child=cls.child, work_entry=entry,
+            submitted_at=timezone.now(),
+            answers={str(q.pk): json.dumps({
+                "strokes": [{"c": "#2b6cb0", "w": 3, "p": [[0.34, 0.73], [0.37, 0.73]]}],
+                "marks": [{"word": "It", "kind": "underlined"}],
+                "unread": 0,
+                "surface": {"w": 702, "h": 74},
+            })},
+        )
+
+    def test_the_report_carries_the_drawing(self):
+        self.client.login(username="chp", password="pw")
+        resp = self.client.get(reverse("worklog:charter_report"))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "<polyline")
+        self.assertContains(resp, "#2b6cb0")
+        self.assertContains(resp, "--mr-w:702px")
+        self.assertContains(resp, "Read as:")
+
+    def test_the_report_asks_for_its_own_print_scale(self):
+        """Print gets a narrower column than the screen. One shared scale plus
+        overflow:hidden is what silently cropped a quarter off every printed
+        drawing, so the print size must reach the page separately."""
+        self.client.login(username="chp", password="pw")
+        resp = self.client.get(reverse("worklog:charter_report"))
+        self.assertContains(resp, "--mr-print-scale:")
+        self.assertContains(resp, "--mr-print-w:")
+        self.assertContains(resp, "css/markup-replay.")
+
+    def test_the_stylesheet_gives_print_its_own_rules(self):
+        """Guards the two lines that make it print: the container override and
+        the print-specific scale. Both are invisible on screen."""
+        from django.contrib.staticfiles import finders
+        css = open(finders.find("css/markup-replay.css"), encoding="utf-8").read()
+        media = css[css.index("@media print"):]
+        self.assertIn("max-width: 100%", media)          # Bootstrap .container in print
+        self.assertIn("--mr-print-scale", media)
+        self.assertNotIn("overflow: hidden", css)        # clipping is the bug
+
+
+class MarkupReplayTests(SimpleTestCase):
+    """Her drawn work has to survive out of the portal and onto a printed page.
+
+    Reports used to show the sentence and a line of prose about it ("she
+    underlined 'It'"). For a mark-the-sentence exercise the marks ARE the work,
+    so a report without them isn't a report of that exercise.
+    """
+
+    def _q(self, passage="Jim sang a song. It was so pretty!", write=False):
+        from tutor.models import Question
+        return Question(
+            response_type=Question.TYPE_WRITE_MARKUP if write else Question.TYPE_MARKUP,
+            passage="" if write else passage,
+        )
+
+    def _answer(self, **over):
+        data = {
+            "strokes": [{"c": "#2b6cb0", "w": 3, "p": [[0.1, 0.5], [0.3, 0.5]]}],
+            "marks": [{"word": "It", "kind": "underlined"}],
+            "unread": 0,
+        }
+        data.update(over)
+        return json.dumps(data)
+
+    def test_the_strokes_reach_the_page_as_drawable_svg(self):
+        from tutor.markup import replay_for
+        r = replay_for(self._answer(), self._q())
+        self.assertTrue(r.has_drawing)
+        self.assertIn("<polyline", r.svg)
+        self.assertIn("#2b6cb0", r.svg)
+        # Normalized 0..1 scaled into the viewBox — 0.1 -> 100, 0.3 -> 300.
+        self.assertIn("100.0,500.0 300.0,500.0", r.svg)
+        self.assertIn('preserveAspectRatio="none"', r.svg)
+        self.assertIn("non-scaling-stroke", r.svg)   # pen stays a pen when stretched
+
+    def test_the_sentence_comes_back_word_by_word(self):
+        from tutor.markup import replay_for
+        r = replay_for(self._answer(), self._q())
+        words = [w["text"] for line in r.lines for w in line]
+        self.assertEqual(words[:4], ["Jim", "sang", "a", "song."])
+
+    def test_a_typed_sentence_is_reproduced_exactly_as_she_typed_it(self):
+        """She wrote it herself, so it lives in the answer, not the question —
+        and it is mirrored into the portal's drawing surface verbatim under
+        white-space:pre-wrap. Re-joining it on whitespace would shift every word
+        after a double space out from under her marks."""
+        from tutor.markup import replay_for
+        typed = "My dog is soft.  He naps a lot."
+        r = replay_for(self._answer(text=typed), self._q(write=True))
+        self.assertTrue(r.typed)
+        self.assertEqual(r.text, typed)          # both spaces survive
+        self.assertEqual(r.lines, [])            # not rebuilt from words
+
+    def test_a_printed_passage_is_rebuilt_from_its_words(self):
+        from tutor.markup import replay_for
+        r = replay_for(self._answer(), self._q())
+        self.assertFalse(r.typed)
+        self.assertIn("Jim", [w["text"] for line in r.lines for w in line])
+
+    def test_nothing_drawn_means_nothing_to_replay(self):
+        from tutor.markup import replay_for
+        for raw in ("", "not json", "[]", json.dumps({"strokes": []}), json.dumps({})):
+            self.assertIsNone(replay_for(raw, self._q()), raw)
+
+    def test_pre_marks_answers_still_replay(self):
+        """The oldest answers are a bare stroke list. The drawing is still hers."""
+        from tutor.markup import replay_for
+        raw = json.dumps([{"c": "#333333", "w": 3, "p": [[0.2, 0.4], [0.6, 0.4]]}])
+        r = replay_for(raw, self._q())
+        self.assertTrue(r.has_drawing)
+        self.assertEqual(r.summary, "")      # nothing can be named, and it says so
+
+    def test_a_single_tap_still_draws(self):
+        from tutor.markup import replay_for
+        raw = self._answer(strokes=[{"c": "#333333", "w": 3, "p": [[0.5, 0.5]]}])
+        self.assertIn("<polyline", replay_for(raw, self._q()).svg)
+
+    def test_the_reading_is_shown_next_to_the_drawing(self):
+        from tutor.markup import replay_for
+        raw = self._answer(marks=[{"word": "It", "kind": "underlined"},
+                                  {"word": "Jim", "kind": "circled"}])
+        s = replay_for(raw, self._q()).summary
+        self.assertIn("underlined", s)
+        self.assertIn("circled", s)
+        self.assertIn("Jim", s)
+
+    def test_unreadable_marks_are_declared_not_hidden(self):
+        from tutor.markup import replay_for
+        raw = self._answer(unread=2)
+        self.assertIn("2 more mark", replay_for(raw, self._q()).summary)
+
+    def test_a_hostile_colour_cannot_escape_into_the_page(self):
+        """Answers are child-supplied JSON and the colour lands, via mark_safe,
+        straight into an SVG attribute.
+
+        The probes deliberately include values with a VALID hex prefix and
+        trailing junk: drop the anchors on the colour pattern and those match,
+        carrying the payload into the attribute. An oracle of "no <script>"
+        would not notice, since an event handler needs no script tag — so this
+        asserts the whole attribute instead."""
+        from tutor.markup import replay_for
+        hostile = [
+            '"><script>alert(1)</script>',
+            "url(javascript:alert(1))",
+            "red; x",
+            None,
+            "#333 onmouseover=alert(document.cookie) x=",
+            '#333333" onload="alert(1)',
+            '#fff\n" onload="x',
+            "&#106;avascript:alert(1)",
+            "\uff03\uff46\uff46\uff46",
+            "#333333;background:url(x)",
+            ["#ff0000"],
+            {"c": "#ff0000"},
+            True,
+            "#" + "f" * 5000,
+        ]
+        for bad in hostile:
+            svg = replay_for(
+                self._answer(strokes=[{"c": bad, "w": 3, "p": [[0, 0], [1, 1]]}]),
+                self._q(),
+            ).svg
+            self.assertIn('stroke="#333333"', svg, repr(bad))
+            for probe in ("script", "onload", "onmouseover", "javascript:", "&#"):
+                self.assertNotIn(probe, svg.lower(), repr(bad))
+            self.assertEqual(svg.count('stroke="'), 1, repr(bad))
+
+    def test_a_valid_colour_is_kept_exactly(self):
+        """The guard must not be a blanket rewrite — her pen colours are the work."""
+        from tutor.markup import replay_for
+        for good in ("#2b6cb0", "#d64545", "#1E7A50", "#333333", "#abc"):
+            svg = replay_for(
+                self._answer(strokes=[{"c": good, "w": 3, "p": [[0, 0], [1, 1]]}]),
+                self._q(),
+            ).svg
+            self.assertIn('stroke="' + good + '"', svg)
+
+    def test_a_width_cannot_blow_the_page_up(self):
+        from tutor.markup import replay_for
+        cases = [(9e9, "12.0"), (float("inf"), "12.0"), (-5, "1.0"),
+                 ("1e400", "12.0"), (float("nan"), "3.0")]
+        for bad, want in cases:
+            raw = self._answer(strokes=[{"c": "#333333", "w": bad, "p": [[0, 0], [1, 1]]}])
+            self.assertIn('stroke-width="' + want + '"',
+                          replay_for(raw, self._q()).svg, repr(bad))
+
+    def test_an_enormous_answer_cannot_produce_an_unopenable_page(self):
+        """Autosave stores whatever the client posts, and one stored byte fans out
+        into many bytes of SVG path text. The charter report loops over every
+        entry, so an unbounded answer is an unopenable report, not a big drawing."""
+        from tutor.markup import replay_for, MAX_STROKES, MAX_POINTS
+        raw = self._answer(strokes=[
+            {"c": "#333333", "w": 3, "p": [[i / 5000, 0.5] for i in range(5000)]}
+            for _ in range(MAX_STROKES + 50)
+        ])
+        svg = replay_for(raw, self._q()).svg
+        self.assertEqual(svg.count("<polyline"), MAX_STROKES)
+        # Points are capped per stroke too, so one gigantic stroke cannot
+        # sidestep the stroke cap.
+        first = svg.split('points="')[1].split('"')[0]
+        self.assertLessEqual(len(first.split()), MAX_POINTS)
+
+    def test_infinite_and_giant_coordinates_never_reach_the_path(self):
+        """inf formats as the literal "inf"; 1e300 as 300-odd digits."""
+        from tutor.markup import replay_for
+        raw = self._answer(strokes=[{"c": "#333333", "w": 3, "p": [
+            [float("inf"), 0.5], [-float("inf"), 0.5], [1e300, 1e300], [0.5, 0.5],
+        ]}])
+        svg = replay_for(raw, self._q()).svg
+        self.assertNotIn("inf", svg.lower())
+        self.assertNotIn("e+", svg.lower())
+        for chunk in svg.split('points="')[1].split('"')[0].split():
+            for n in chunk.split(","):
+                self.assertLess(len(n), 10, n)
+
+    def test_garbage_points_are_skipped_not_fatal(self):
+        from tutor.markup import replay_for
+        raw = self._answer(strokes=[
+            {"c": "#333333", "w": 3, "p": [["x", "y"], [0.2, 0.2], None, [0.4, 0.4]]},
+        ])
+        svg = replay_for(raw, self._q()).svg
+        self.assertIn("200.0,200.0 400.0,400.0", svg)
+
+    def test_junk_in_place_of_a_stroke_path_does_not_500_the_report(self):
+        """`p` is child-supplied and stored verbatim by autosave. An int slices
+        with TypeError and a dict with KeyError, and one poisoned row would take
+        down the whole charter report for that date range."""
+        from tutor.markup import replay_for
+        for bad in (5, True, {"0": 1}, "x", None, 3.5):
+            raw = self._answer(strokes=[{"c": "#333333", "w": 3, "p": bad}])
+            self.assertIsNone(replay_for(raw, self._q()), repr(bad))
+        # A good stroke beside a bad one still draws.
+        raw = self._answer(strokes=[
+            {"c": "#333333", "w": 3, "p": 5},
+            {"c": "#333333", "w": 3, "p": [[0.1, 0.5], [0.3, 0.5]]},
+        ])
+        self.assertEqual(replay_for(raw, self._q()).svg.count("<polyline"), 1)
+
+    def test_junk_in_place_of_marks_does_not_500_the_report(self):
+        from tutor.markup import replay_for
+        for bad in (5, True, "x", {"a": 1}):
+            raw = self._answer(marks=bad)
+            r = replay_for(raw, self._q())
+            self.assertIsNotNone(r, repr(bad))
+            self.assertEqual(r.summary, "", repr(bad))
+
+    def test_unreadable_marks_are_reported_even_when_none_could_be_named(self):
+        """Silence here reads as "she marked nothing", the opposite of the truth."""
+        from tutor.markup import replay_for
+        raw = self._answer(marks=[], unread=3)
+        self.assertIn("3 mark", replay_for(raw, self._q()).summary)
+
+    # Heights measured in Chrome against the real markup-replay.css at the
+    # legacy width (700px), which is the only width this path ever uses. The
+    # estimate must be >= actual: too short clips the sentence behind a
+    # scrollbar on screen and prints it on top of the caption.
+    HEIGHT_CASES = [
+        ("lowercase", 168,
+         "Callie and John are siblings. They are my friends, and they both play "
+         "the piano. Callie likes to play rag music."),
+        # A single average char width tuned to lowercase under-counts these by a
+        # third: Georgia runs 5px (l) to 23px (W).
+        ("uppercase", 168,
+         "A BIG STORM BLEW THROUGH A SMALL TOWN AND THE WIND KNOCKED DOWN THREE "
+         "OLD TREES ON THE MAIN ROAD NEAR THE SCHOOL"),
+        ("child typing in caps", 168,
+         "I WENT TO THE ZOO WITH MY MOM AND MY DAD AND WE SAW A BIG LION AND "
+         "MANY BIRDS!"),
+        ("widest glyphs", 120, "WWWWW MMMMM WWWWW MMMMM WWWWW MMMMM WWWWW MMMMM WWWWW MMMMM"),
+        ("explicit newlines", 216, "One line.\nTwo line.\nThree line.\nFour line."),
+        ("narrow glyphs", 72, "iiiii iiiii iiiii iiiii iiiii iiiii iiiii iiiii iiiii iiiii iiiii iiiii"),
+        ("short", 72, "The cat sat."),
+        # Breaks between characters rather than at spaces.
+        ("emoji", 168, "\U0001F600" * 40),
+        # Does not break mid-word; overflows on one line, as the portal does.
+        ("unbreakable run", 72, "supercalifragilisticexpialidociousandthensome"),
+    ]
+
+    def test_a_legacy_box_is_tall_enough_for_its_text(self):
+        from tutor.markup import replay_for
+        for name, actual_px, text in self.HEIGHT_CASES:
+            r = replay_for(self._answer(text=text), self._q(write=True))
+            self.assertGreaterEqual(
+                r.height, actual_px,
+                f"{name}: box {r.height}px is shorter than the {actual_px}px the "
+                f"browser needs — the sentence gets clipped",
+            )
+            # And not absurdly generous, or the page fills with empty boxes.
+            self.assertLess(r.height, actual_px + 120, name)
+
+    # Measured the same way as HEIGHT_CASES. None of these is reachable from
+    # real content — the passages are seeded ASCII and a Tab keypress moves focus
+    # rather than inserting a character — but the estimate has to be an upper
+    # bound for every input, not only the plausible ones.
+    HOSTILE_HEIGHT_CASES = [
+        # Tab is a BREAK OPPORTUNITY, so splitting on spaces alone treated this
+        # as one unbreakable run and under-counted it.
+        ("tab separated", 120, "Word\there\tand\tmore\twords\tacross\tthe\tline\there"),
+        # Leading whitespace still occupies width under pre-wrap.
+        ("leading tabs", 120, "\t\t\t\t\t\t\t\tindented deeply after eight tabs on this line"),
+        ("control chars", 216,
+         "".join(chr(c) for c in range(1, 32)) + " visible text after controls"),
+        ("nbsp joined", 120, "one\u00a0two\u00a0three\u00a0four\u00a0five\u00a0six\u00a0seven\u00a0eight\u00a0nine\u00a0ten"),
+        ("combining accents", 72, "e\u0301" * 60),
+        ("thai, no spaces", 72, "\u0e2a\u0e27\u0e31\u0e2a\u0e14\u0e35\u0e04\u0e23\u0e31\u0e1a\u0e19\u0e35\u0e48\u0e04\u0e37\u0e2d\u0e02\u0e49\u0e2d\u0e04\u0e27\u0e32\u0e21\u0e17\u0e14\u0e2a\u0e2d\u0e1a"),
+        ("zwj family emoji", 264, "\U0001F468\u200D\U0001F469\u200D\U0001F467\u200D\U0001F466" * 10),
+        ("skin tone emoji", 168, "\U0001F44D\U0001F3FD" * 25),
+        ("very long", 1320, "the quick brown fox jumps over the lazy dog " * 30),
+        ("many spaces", 120, "a" + "  " * 80 + "b"),
+        ("double spaces", 120,
+         "The  cat  sat  on  the  mat  and  then  the  dog  came  over  to  play  too"),
+    ]
+
+    def test_a_legacy_box_holds_hostile_text_too(self):
+        from tutor.markup import replay_for
+        for name, actual_px, text in self.HOSTILE_HEIGHT_CASES:
+            r = replay_for(self._answer(text=text), self._q(write=True))
+            self.assertGreaterEqual(
+                r.height, actual_px,
+                f"{name}: box {r.height}px is shorter than the {actual_px}px the "
+                f"browser needs — the text gets clipped",
+            )
+
+    def test_the_line_estimate_beats_a_single_average_char_width(self):
+        """Guards the specific regression: an average tuned to lowercase.
+
+        Same word count, same character count — only the case differs. Any model
+        using one width per character gives these the same height, and the
+        upper-case one then clips."""
+        from tutor.markup import replay_for
+        lower = ("the quick brown fox jumps over the lazy dog while nine happy "
+                 "children watch from the green hill")
+        upper = lower.upper()
+        low = replay_for(self._answer(text=lower), self._q(write=True)).height
+        up = replay_for(self._answer(text=upper), self._q(write=True)).height
+        self.assertEqual(len(lower), len(upper))
+        self.assertGreater(up, low)
+
+    def test_an_answer_with_no_recorded_size_is_not_pinned_to_a_guessed_box(self):
+        """Every answer that predates surface recording takes this path. A pinned
+        box that is too short hides the end of a long sentence on screen and
+        prints it over the caption, so these size to their own text instead."""
+        from tutor.markup import replay_for
+        r = replay_for(self._answer(surface=None), self._q())
+        self.assertFalse(r.exact)
+
+    def test_the_surface_is_rebuilt_at_the_width_she_drew_on(self):
+        """Normalized strokes only land right at the ORIGINAL pixel width.
+
+        The type is sized in absolute pixels, so a box of the same aspect but a
+        different width re-wraps the sentence and moves the words out from under
+        her marks."""
+        from tutor.markup import replay_for, SCREEN_TARGET, PRINT_TARGET
+        r = replay_for(self._answer(surface={"w": 900, "h": 260}), self._q())
+        self.assertTrue(r.exact)
+        self.assertEqual((r.width, r.height), (900, 260))
+        self.assertIn("--mr-w:900px;--mr-h:260px", r.style_vars)
+        # Too wide for either column, so the whole surface scales down as a unit.
+        self.assertAlmostEqual(r.scale, SCREEN_TARGET / 900, places=4)
+        self.assertAlmostEqual(r.print_scale, PRINT_TARGET / 900, places=4)
+        # Print gets its OWN scale, independent of the screen's: one shared
+        # number is what cropped every printed drawing.
+        self.assertNotEqual(r.print_scale, r.scale)
+        # Both contexts reserve their post-scale footprint; a transform doesn't.
+        self.assertIn(f"--mr-fit-h:{round(260 * r.scale)}px", r.style_vars)
+        self.assertIn(f"--mr-print-h:{round(260 * r.print_scale)}px", r.style_vars)
+
+    def test_a_small_drawing_is_never_blown_up(self):
+        from tutor.markup import replay_for
+        r = replay_for(self._answer(surface={"w": 320, "h": 110}), self._q())
+        self.assertEqual(r.scale, 1.0)
+        self.assertEqual(r.print_scale, 1.0)
+        self.assertIn("--mr-scale:1.0000", r.style_vars)
+
+    def test_answers_drawn_before_the_size_was_recorded_say_so(self):
+        """Any width is a guess for these, and the page admits it rather than
+        presenting a misaligned drawing as exact."""
+        from tutor.markup import replay_for
+        for surface in (None, {}, {"w": 0, "h": 0}, {"w": "wide", "h": 3}, {"w": 9e9, "h": 9e9}):
+            r = replay_for(self._answer(surface=surface), self._q())
+            self.assertFalse(r.exact, surface)
+            self.assertTrue(r.width > 0 and r.height > 0)
+
+
+class LexiconContentTests(SimpleTestCase):
+    """Operation Lexicon against the printed guide.
+
+    Every answer must be one of that week's ten words: the exercise is choosing
+    between ten plausible traits, so an answer outside the list makes the
+    question unanswerable rather than merely hard.
+    """
+
+    @property
+    def weeks(self):
+        from tutor.lexicon import WEEKS
+        return WEEKS
+
+    def test_ten_weeks_ten_words_ten_sentences(self):
+        self.assertEqual(len(self.weeks), 10)
+        for wk in self.weeks:
+            self.assertEqual(len(wk["words"]), 10, wk["number"])
+            self.assertEqual(len(wk["sentences"]), 10, wk["number"])
+
+    def test_it_is_a_hundred_words(self):
+        """The guide promises a hundred. It repeats "meticulous" across weeks 5
+        and 9, which is the publisher's own doing — so 100 entries, 99 distinct.
+        Asserting only the list length would hide a transcription slip that
+        duplicated a word by accident."""
+        from collections import Counter
+        from tutor.lexicon import all_words
+        counts = Counter(all_words())
+        self.assertEqual(len(all_words()), 100)
+        self.assertEqual(len(counts), 99)
+        self.assertEqual([w for w, n in counts.items() if n > 1], ["meticulous"])
+
+    def test_every_answer_is_one_of_that_weeks_words(self):
+        for wk in self.weeks:
+            words = {w for w, _d in wk["words"]}
+            answers = {a for _t, a in wk["sentences"]}
+            self.assertEqual(answers, words, f"week {wk['number']}")
+
+    def test_no_word_is_used_for_two_sentences_in_a_week(self):
+        """Ten words, ten sentences, one each — otherwise one word has no home."""
+        for wk in self.weeks:
+            answers = [a for _t, a in wk["sentences"]]
+            self.assertEqual(len(answers), len(set(answers)), f"week {wk['number']}")
+
+    def test_every_sentence_has_somewhere_to_write(self):
+        for wk in self.weeks:
+            for text, _a in wk["sentences"]:
+                self.assertIn("_____", text, f"week {wk['number']}: {text[:40]}")
+
+    def test_every_word_has_a_definition(self):
+        for wk in self.weeks:
+            for word, definition in wk["words"]:
+                self.assertTrue(definition.strip(), f"{word} has no definition")
+                self.assertTrue(definition.rstrip().endswith("."), word)
+
+    def test_every_week_names_its_book(self):
+        """The words are anchored to a story; without the book they're a list."""
+        for wk in self.weeks:
+            for field in ("person", "role", "book", "author"):
+                self.assertTrue(wk[field].strip(), f"week {wk['number']} {field}")
+
+
+class HandwritingTests(TestCase):
+    """Writing by hand, not typing.
+
+    A third grader practising writing should be forming letters. Typing these
+    would swap the skill for keyboard hunting.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        import json
+        from django.contrib.auth import get_user_model
+        from core.models import Family, FamilyMembership
+        from curricula.models import Chapter, Curriculum, Lesson
+        from students.models import Student
+        from tutor.models import Question, QuestionSet, ResponseSheet
+
+        User = get_user_model()
+        cls.parent = User.objects.create_user(
+            username="hw", email="hw@e.com", password="pw")
+        cls.family = Family.objects.create(name="HW Fam")
+        FamilyMembership.objects.create(user=cls.parent, family=cls.family, role="parent")
+        cls.child = Student.objects.create(
+            parent=cls.parent, first_name="Violet", grade_level="G03", family=cls.family)
+        from curricula.models import CurriculumPlacement
+
+        cur = Curriculum.objects.create(
+            parent=cls.parent, family=cls.family, name="Lexicon", subject="Language Arts")
+        chap = Chapter.objects.create(curriculum=cur, number=1, title="Traits")
+        # Shared (not child-pinned) work is only visible through a placement —
+        # the portal's own gate, so the fixture has to place her.
+        CurriculumPlacement.objects.create(child=cls.child, curriculum=cur)
+        cls.lesson = Lesson.objects.create(chapter=chap, order=1, number=1, title="Erdős")
+        cls.qset = QuestionSet.objects.create(
+            lesson=cls.lesson, title="What amazed you?", family=cls.family,
+            status=QuestionSet.APPROVED)
+        cls.q = Question.objects.create(
+            question_set=cls.qset, order=1, category="writing",
+            response_type=Question.TYPE_HANDWRITING, prompt="Amazing thing #1")
+        cls.answer = json.dumps({
+            "strokes": [{"c": "#1d3557", "w": 3, "p": [[0.05, 0.2], [0.4, 0.22]]}],
+            "surface": {"w": 702, "h": 192},
+        })
+
+    def test_a_handwritten_answer_is_not_reported_as_blank(self):
+        """"(no answer)" against a full page of writing would mark her down for
+        work she actually did."""
+        sheet = ResponseSheet.objects.create(
+            question_set=self.qset, child=self.child,
+            answers={str(self.q.pk): self.answer})
+        display = sheet.answer_display(self.q)
+        self.assertNotIn("no answer", display.lower())
+        self.assertIn("handwritten", display.lower())
+
+    def test_writing_nothing_still_reads_as_nothing(self):
+        sheet = ResponseSheet.objects.create(
+            question_set=self.qset, child=self.child, answers={str(self.q.pk): ""})
+        self.assertIn("nothing written", sheet.answer_display(self.q).lower())
+
+    def test_her_handwriting_replays_for_the_parent(self):
+        """The whole point: the parent and the charter report see the writing."""
+        sheet = ResponseSheet.objects.create(
+            question_set=self.qset, child=self.child,
+            answers={str(self.q.pk): self.answer})
+        replay = sheet.answer_replay(self.q)
+        self.assertIsNotNone(replay)
+        self.assertTrue(replay.has_drawing)
+        self.assertTrue(replay.exact)               # surface size was recorded
+        self.assertEqual((replay.width, replay.height), (702, 192))
+        self.assertIn("#1d3557", replay.svg)
+
+    def test_the_portal_gives_her_a_pen_not_a_keyboard(self):
+        from portal.tokens import make_portal_token
+        token = make_portal_token(self.child)
+        resp = self.client.get(
+            reverse("portal:portal_questions", args=[token, self.qset.pk]))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "handwriting-canvas")
+        self.assertContains(resp, "js/portal-handwriting.")
+        # No typing box for THIS question — typing is the thing we're avoiding.
+        # Asserting on the raw class string would pass even if a textarea were
+        # rendered (the template emits it followed by a newline, not a space),
+        # so count the widgets instead: one handwriting canvas, no answer boxes.
+        html = resp.content.decode()
+        self.assertEqual(html.count("handwriting-canvas"), 1)
+        self.assertEqual(html.count("portal-answer"), 0)
+
+    def test_an_emptied_drawing_is_not_read_back_as_her_answer(self):
+        """_parse_markup accepts a bare array as a legacy stroke shape, so
+        checking only the first character would hand "[]" or "null" to the
+        grader and the report as if she had written that."""
+        for payload in ("[]", "null", '{"strokes": [], "surface": null}'):
+            with self.subTest(payload=payload):
+                sheet = ResponseSheet.objects.create(
+                    question_set=self.qset, child=self.child,
+                    answers={str(self.q.pk): payload})
+                self.assertEqual(sheet.answer_display(self.q),
+                                 "(nothing written yet)")
+                sheet.delete()
+
+    def test_words_she_typed_before_the_switch_are_not_lost(self):
+        """A question can change instrument under an answer she already gave —
+        Lexicon's three boxes were typed for a few days. Reading her sentence
+        back as "(nothing written yet)" would hide real work from the grader,
+        the parent's work browser and the printed report."""
+        sheet = ResponseSheet.objects.create(
+            question_set=self.qset, child=self.child,
+            answers={str(self.q.pk): "I never knew Kandinsky could hear colours."})
+        self.assertEqual(sheet.answer_display(self.q),
+                         "I never knew Kandinsky could hear colours.")
+        self.assertIsNone(sheet.answer_replay(self.q))   # there is nothing to draw
+
+    def test_a_typed_question_is_untouched(self):
+        typed = Question.objects.create(
+            question_set=self.qset, order=2, category="writing",
+            response_type=Question.TYPE_TEXT, prompt="Type this one")
+        sheet = ResponseSheet.objects.create(
+            question_set=self.qset, child=self.child,
+            answers={str(typed.pk): "I typed my answer."})
+        self.assertEqual(sheet.answer_display(typed), "I typed my answer.")
+        self.assertIsNone(sheet.answer_replay(typed))
+
+
+class HandwritingGradingTests(HandwritingTests):
+    """The AI must not score writing it cannot see.
+
+    The rubric asks for complete sentences and a real thought. Handed
+    "[handwritten answer — 2 pen stroke(s)]", a grader will confabulate a level
+    for work it never read, and the child gets feedback on nothing.
+    """
+
+    def test_the_grader_is_told_it_cannot_read_the_answers(self):
+        sheet = ResponseSheet.objects.create(
+            question_set=self.qset, child=self.child,
+            answers={str(self.q.pk): self.answer})
+        text = sheet.as_worklog_text()
+        self.assertTrue(sheet.is_handwritten_only)
+        self.assertIn("written BY HAND", text)
+        self.assertIn("do not", text.lower())
+        # The answers are still there for the record, just labelled unreadable.
+        self.assertIn("handwritten answer", text)
+
+    def test_a_mixed_sheet_names_which_answers_cannot_be_read(self):
+        """A mixed sheet has something real to grade AND something unreadable.
+
+        A Lexicon week is the case in point: ten typed sentences plus three
+        written with the pen. Saying nothing lets the grader score the three it
+        never saw; saying "this whole page is handwritten" would throw away the
+        ten it can. So it names them.
+        """
+        typed = Question.objects.create(
+            question_set=self.qset, order=2, category="writing",
+            response_type=Question.TYPE_TEXT, prompt="Type this one")
+        sheet = ResponseSheet.objects.create(
+            question_set=self.qset, child=self.child,
+            answers={str(self.q.pk): self.answer,
+                     str(typed.pk): "Paul Erdős amazed me."})
+        self.assertFalse(sheet.is_handwritten_only)
+        text = sheet.as_worklog_text()
+        self.assertIn(f"Q{self.q.order} were written BY HAND", text)
+        self.assertIn("Grade only the other questions", text)
+        # The typed answer is still handed over in full.
+        self.assertIn("Paul Erdős amazed me.", text)
+        self.assertNotIn("every answer here was written BY HAND", text)
+
+    def test_a_typed_only_sheet_is_untouched(self):
+        from tutor.models import Question, QuestionSet, ResponseSheet
+        typed_set = QuestionSet.objects.create(
+            lesson=self.lesson, title="Typed", family=self.family,
+            status=QuestionSet.APPROVED)
+        q = Question.objects.create(
+            question_set=typed_set, order=1, category="writing",
+            response_type=Question.TYPE_TEXT, prompt="Write something")
+        sheet = ResponseSheet.objects.create(
+            question_set=typed_set, child=self.child,
+            answers={str(q.pk): "Paul Erdős amazed me."})
+        self.assertFalse(sheet.is_handwritten_only)
+        self.assertNotIn("NOTE TO THE GRADER", sheet.as_worklog_text())
+        self.assertIn("Paul Erdős amazed me.", sheet.as_worklog_text())
+
+
+class LexiconPosterTests(TestCase):
+    """The hundred-word poster.
+
+    The paper guide has her colour in each week's words on a wall poster; this
+    is that, except it fills itself from work she has actually turned in. It has
+    to be REACHABLE from the unit — a poster nobody can find is not a reward.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        from django.contrib.auth import get_user_model
+        from core.models import Family, FamilyMembership
+        from curricula.models import Chapter, Curriculum, CurriculumPlacement, Lesson
+        from students.models import Student
+        from portal.tokens import make_portal_token
+        from tutor.lexicon import CURRICULUM_NAME, WEEKS
+        from tutor.models import Question, QuestionSet
+
+        User = get_user_model()
+        cls.parent = User.objects.create_user(
+            username="lx", email="lx@e.com", password="pw")
+        cls.family = Family.objects.create(name="LX Fam")
+        FamilyMembership.objects.create(user=cls.parent, family=cls.family, role="parent")
+        cls.child = Student.objects.create(
+            parent=cls.parent, first_name="Violet", grade_level="G03", family=cls.family)
+        cls.cur = Curriculum.objects.create(
+            parent=cls.parent, family=cls.family, name=CURRICULUM_NAME,
+            subject="Language Arts")
+        chap = Chapter.objects.create(curriculum=cls.cur, number=1, title="Traits")
+        CurriculumPlacement.objects.create(child=cls.child, curriculum=cls.cur)
+        cls.sets = {}
+        for week in WEEKS[:3]:
+            lesson = Lesson.objects.create(
+                chapter=chap, order=week["number"], number=week["number"],
+                title=week["person"])
+            qset = QuestionSet.objects.create(
+                lesson=lesson, family=cls.family, status=QuestionSet.APPROVED,
+                title=f"Week {week['number']} · {week['person']} — {week['role']}")
+            Question.objects.create(
+                question_set=qset, order=1, category="grammar",
+                response_type=Question.TYPE_CLOZE, passage="_____ test.")
+            cls.sets[week["number"]] = qset
+        cls.token = make_portal_token(cls.child)
+
+    def _url(self):
+        return reverse("portal:lexicon_poster", args=[self.token])
+
+    def _submit(self, week_number):
+        from django.utils import timezone
+        from tutor.models import ResponseSheet
+        qset = self.sets[week_number]
+        q = qset.questions.first()
+        ResponseSheet.objects.create(
+            question_set=qset, child=self.child,
+            answers={str(q.pk): "focused"},
+            status=ResponseSheet.SUBMITTED, submitted_at=timezone.now())
+
+    def test_it_starts_empty_but_shows_what_is_coming(self):
+        """Seeing the words she hasn't earned yet is the point of a poster."""
+        resp = self.client.get(self._url())
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.context["collected"], 0)
+        self.assertEqual(resp.context["total"], 100)
+        self.assertContains(resp, "inquisitive")     # week 1, not yet earned
+        self.assertContains(resp, "environmentalist")  # week 10, far away
+
+    def test_turning_in_a_week_colours_in_its_ten_words(self):
+        self._submit(1)
+        resp = self.client.get(self._url())
+        self.assertEqual(resp.context["collected"], 10)
+        self.assertEqual(resp.context["weeks_done"], 1)
+        rows = {r["number"]: r for r in resp.context["rows"]}
+        self.assertTrue(rows[1]["earned"])
+        self.assertFalse(rows[2]["earned"])
+        self.assertTrue(all(w["earned"] for w in rows[1]["words"]))
+
+    def test_work_started_but_not_turned_in_earns_nothing(self):
+        """The poster records work finished, not work opened — otherwise it
+        colours itself in for a page she merely looked at."""
+        from tutor.models import ResponseSheet
+        qset = self.sets[1]
+        ResponseSheet.objects.create(
+            question_set=qset, child=self.child,
+            answers={str(qset.questions.first().pk): "focused"})
+        self.assertEqual(self.client.get(self._url()).context["collected"], 0)
+
+    def test_the_bar_is_a_percentage_not_a_count(self):
+        """It reads correctly only by accident while the total is exactly 100."""
+        self._submit(1)
+        self._submit(2)
+        resp = self.client.get(self._url())
+        self.assertEqual(resp.context["pct"], 20)
+
+    def test_a_sibling_cannot_read_her_poster(self):
+        from portal.tokens import make_portal_token
+        from students.models import Student
+        sibling = Student.objects.create(
+            parent=self.parent, first_name="Kaylin", grade_level="G07",
+            family=self.family)
+        self._submit(1)
+        resp = self.client.get(
+            reverse("portal:lexicon_poster", args=[make_portal_token(sibling)]))
+        # Not placed in the unit, so there is no poster for her at all.
+        self.assertEqual(resp.status_code, 404)
+
+    def test_a_bad_token_gets_nothing(self):
+        self.assertEqual(
+            self.client.get(
+                reverse("portal:lexicon_poster", args=["not-a-token"])).status_code, 404)
+
+    def test_the_unit_page_links_to_the_poster(self):
+        """Built-but-unreachable is not built. This has bitten twice."""
+        resp = self.client.get(
+            reverse("portal:portal_subject", args=[self.token, self.cur.pk]))
+        self.assertEqual(resp.status_code, 200)
+        self.assertTrue(resp.context["show_lexicon_poster"])
+        self.assertContains(resp, self._url())
+
+    def test_other_units_do_not_advertise_a_poster_they_lack(self):
+        from curricula.models import Curriculum, CurriculumPlacement
+        other = Curriculum.objects.create(
+            parent=self.parent, family=self.family, name="Dimensions Math 3A",
+            subject="Math")
+        CurriculumPlacement.objects.create(child=self.child, curriculum=other)
+        resp = self.client.get(
+            reverse("portal:portal_subject", args=[self.token, other.pk]))
+        self.assertFalse(resp.context["show_lexicon_poster"])
+        self.assertNotContains(resp, self._url())
+
+
+class LexiconOnePageTests(TestCase):
+    """A week is ONE page, the way the printed guide lays it out.
+
+    Splitting it into "meet the words" / "finish the sentences" / "what amazed
+    you" made her navigate between parts of a single spread, which the book
+    never asks of her.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        from django.contrib.auth import get_user_model
+        from core.models import Family, FamilyMembership
+        from students.models import Student
+        from portal.tokens import make_portal_token
+
+        User = get_user_model()
+        cls.parent = User.objects.create_user(
+            username="op", email="op@e.com", password="pw")
+        cls.family = Family.objects.create(name="OP Fam")
+        FamilyMembership.objects.create(user=cls.parent, family=cls.family, role="parent")
+        cls.child = Student.objects.create(
+            parent=cls.parent, first_name="Violet", grade_level="G03", family=cls.family)
+        cls.token = make_portal_token(cls.child)
+
+    def _seed(self):
+        from io import StringIO
+        from django.core.management import call_command
+        call_command("seed_lexicon_violet", "--for-user", "op", stdout=StringIO())
+
+    def test_each_week_is_a_single_page(self):
+        from curricula.models import Curriculum, Lesson
+        from tutor.lexicon import CURRICULUM_NAME
+        from tutor.models import QuestionSet
+
+        self._seed()
+        cur = Curriculum.objects.get(name=CURRICULUM_NAME, parent=self.parent)
+        lessons = Lesson.objects.filter(chapter__curriculum=cur)
+        self.assertEqual(lessons.count(), 10)
+        for lesson in lessons:
+            sets = QuestionSet.objects.filter(lesson=lesson)
+            self.assertEqual(sets.count(), 1, f"week {lesson.number}")
+            self.assertEqual(sets.first().questions.count(), 13)
+
+    def test_the_page_carries_words_sentences_and_writing_together(self):
+        from tutor.models import Question, QuestionSet
+
+        self._seed()
+        qset = QuestionSet.objects.filter(
+            lesson__number=1, lesson__chapter__curriculum__parent=self.parent).first()
+        kinds = [q.response_type for q in qset.questions.order_by("order")]
+        self.assertEqual(kinds.count(Question.TYPE_CLOZE), 10)
+        self.assertEqual(kinds.count(Question.TYPE_HANDWRITING), 3)
+        # Sentences first, writing last — the order the book uses.
+        self.assertEqual(kinds[:10], [Question.TYPE_CLOZE] * 10)
+        self.assertEqual(kinds[10:], [Question.TYPE_HANDWRITING] * 3)
+
+        resp = self.client.get(
+            reverse("portal:portal_questions", args=[self.token, qset.pk]))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "Paul Erdős")           # who the week is about
+        self.assertContains(resp, "The Boy Who Loved Math")  # the book to read
+        self.assertContains(resp, "inquisitive")          # a word and its meaning
+        self.assertContains(resp, "eager for knowledge")
+        self.assertContains(resp, "lxa-hand")             # and the three writing boxes
+
+    def test_the_word_list_never_reaches_her_as_raw_markdown(self):
+        """It shipped once showing "## Week 1" and "**focused**" with the
+        asterisks, because the content was dumped instead of rendered."""
+        from tutor.models import QuestionSet
+
+        self._seed()
+        qset = QuestionSet.objects.filter(
+            lesson__number=1, lesson__chapter__curriculum__parent=self.parent).first()
+        html = self.client.get(
+            reverse("portal:portal_questions", args=[self.token, qset.pk])
+        ).content.decode()
+        body = html[html.index("<body"):]
+        self.assertNotIn("**", body)
+        self.assertNotIn("## Week", body)
+        # Rendered as cards instead.
+        self.assertIn("lxw-card", body)
+
+    def test_reseeding_retires_the_old_three_part_shape(self):
+        from curricula.models import Lesson
+        from tutor.models import Material, QuestionSet
+
+        self._seed()
+        lesson = Lesson.objects.get(
+            number=1, chapter__curriculum__parent=self.parent)
+        # Simulate the earlier shape sitting beside the new page.
+        QuestionSet.objects.create(
+            lesson=lesson, family=self.family, status=QuestionSet.APPROVED,
+            title="Week 1 · Paul Erdős — finish the sentences")
+        Material.objects.create(
+            lesson=lesson, family=self.family, title="Week 1: meet the words",
+            student_content="old", status=Material.APPROVED)
+        self._seed()
+        self.assertEqual(QuestionSet.objects.filter(lesson=lesson).count(), 1)
+        self.assertEqual(Material.objects.filter(lesson=lesson).count(), 0)
+
+    def test_a_stale_page_she_has_worked_in_is_kept(self):
+        """Sweeping away the old shape must never take work with it."""
+        from django.utils import timezone
+        from curricula.models import Lesson
+        from tutor.models import QuestionSet, ResponseSheet
+
+        self._seed()
+        lesson = Lesson.objects.get(
+            number=1, chapter__curriculum__parent=self.parent)
+        old = QuestionSet.objects.create(
+            lesson=lesson, family=self.family, status=QuestionSet.APPROVED,
+            title="Week 1 · Paul Erdős — finish the sentences")
+        ResponseSheet.objects.create(
+            question_set=old, child=self.child, answers={"1": "focused"},
+            status=ResponseSheet.SUBMITTED, submitted_at=timezone.now())
+        self._seed()
+        self.assertTrue(QuestionSet.objects.filter(pk=old.pk).exists())
+
+    def test_turning_in_the_week_earns_its_words_on_the_poster(self):
+        """The poster keyed on a title string, which stopped earning anything
+        the moment the page was renamed."""
+        from django.utils import timezone
+        from tutor.models import QuestionSet, ResponseSheet
+
+        self._seed()
+        qset = QuestionSet.objects.filter(
+            lesson__number=1, lesson__chapter__curriculum__parent=self.parent).first()
+        ResponseSheet.objects.create(
+            question_set=qset, child=self.child, answers={"1": "focused"},
+            status=ResponseSheet.SUBMITTED, submitted_at=timezone.now())
+        resp = self.client.get(reverse("portal:lexicon_poster", args=[self.token]))
+        self.assertEqual(resp.context["collected"], 10)
+
+
+class LexiconWritingBoxTests(LexiconOnePageTests):
+    """The three "what amazes you" boxes.
+
+    This is the one place in the week she writes her own thought, and she writes
+    it BY HAND with a stylus — so her sentences reach the parent's work browser
+    and the printed charter report exactly as she formed them.
+    """
+
+    def _page(self):
+        from tutor.models import QuestionSet
+
+        self._seed()
+        qset = QuestionSet.objects.filter(
+            lesson__number=1, lesson__chapter__curriculum__parent=self.parent).first()
+        return self.client.get(
+            reverse("portal:portal_questions", args=[self.token, qset.pk])
+        ).content.decode()
+
+    def test_she_writes_these_three_with_the_pen(self):
+        html = self._page()
+        self.assertEqual(html.count("handwriting-canvas"), 3)
+        self.assertNotIn("lxa-input", html)   # no typed box left behind
+
+    def test_the_pen_sits_inside_the_designed_card(self):
+        """The generic handwriting branch matches these questions too, so
+        whichever branch the template tests first wins. When it was the generic
+        one she lost the card, the medallion and the shared heading, and got the
+        bare widget with its own "write by hand" hint three times over.
+        """
+        html = self._page()
+        self.assertEqual(html.count('class="lxa-box'), 3)
+        self.assertEqual(html.count("lxa-num"), 3)
+        self.assertEqual(html.count("lxa-hand"), 3)
+        self.assertNotIn("handwriting-hint", html)
+
+    def test_the_page_never_hands_her_a_pen_the_database_disagrees_with(self):
+        """The seed is a manual step after a deploy, so the template can be live
+        while the rows still say "text". If the page decided on its own that
+        these three are handwriting, her strokes would be stored against a text
+        question: nothing would replay them, and the grader would be handed raw
+        coordinate JSON as her sentence."""
+        from tutor.models import Question, QuestionSet
+
+        self._seed()
+        qset = QuestionSet.objects.filter(
+            lesson__number=1, lesson__chapter__curriculum__parent=self.parent).first()
+        qset.questions.filter(order__gt=10).update(
+            response_type=Question.TYPE_TEXT)   # the not-yet-re-seeded state
+        html = self.client.get(
+            reverse("portal:portal_questions", args=[self.token, qset.pk])
+        ).content.decode()
+        self.assertNotIn("handwriting-canvas", html)
+        self.assertNotIn("lxa-box", html)
+        # And she is not left staring at three unlabelled boxes either. The
+        # question is asked in this state too — it appears nowhere else on the
+        # page, and this is exactly the state prod is in between a deploy and
+        # the re-seed.
+        self.assertEqual(html.count("portal-qnum"), 13)
+        self.assertIn("Amazing thing 1", html)
+        self.assertEqual(html.count("What are three things that amaze you"), 1)
+        self.assertIn("Paul Erdős", html)
+
+    def test_an_older_set_is_left_alone(self):
+        """The seed KEEPS the earlier three-part sets when a child has work in
+        them, and those hold the same three writing questions at orders 1-3. The
+        page used to number its cards `order - 10`, so it offered her medallions
+        reading -9, -8, -7 — and, because the shared heading only renders above
+        card 1, asked her no question at all."""
+        from tutor.models import Question, QuestionSet
+
+        self._seed()
+        lesson = Lesson.objects.get(
+            number=1, chapter__curriculum__parent=self.parent)
+        old = QuestionSet.objects.create(
+            lesson=lesson, family=self.family, status=QuestionSet.APPROVED,
+            title="Week 1 · Paul Erdős — what amazed you?")
+        for i in (1, 2, 3):
+            Question.objects.create(
+                question_set=old, order=i, category="writing",
+                response_type=Question.TYPE_HANDWRITING,
+                prompt=f"Amazing thing {i}")
+        html = self.client.get(
+            reverse("portal:portal_questions", args=[self.token, old.pk])
+        ).content.decode()
+        # Not a bare "-9": the portal token is base64 and contains that pair
+        # about one page in a hundred, which would fail this for no reason.
+        self.assertNotIn("Amazing thing -9", html)
+        self.assertNotIn("lxa-box", html)
+        # It falls back to the ordinary handwriting widget, which asks the
+        # question in the prompt the way every other page does.
+        self.assertEqual(html.count("handwriting-canvas"), 3)
+        self.assertEqual(html.count("portal-qnum"), 3)
+        self.assertIn("Amazing thing 1", html)
+
+    def test_the_question_is_asked_once_above_the_boxes(self):
+        """Asking it three times would read as three separate assignments."""
+        html = self._page()
+        self.assertEqual(html.count("What are three things that amaze you"), 1)
+        self.assertIn("Paul Erdős", html)
+
+    def test_each_box_keeps_its_number_and_visible_label(self):
+        """The medallion and label are what tell her which of the three she is
+        on — the surface itself carries no wording but "Write here…"."""
+        html = self._page()
+        self.assertEqual(html.count("Amazing thing 1"), 1)
+        self.assertEqual(html.count('class="lxa-label"'), 3)
+        # Nothing on these boxes leans on a placeholder attribute.
+        start = html.index("lxa-box")
+        self.assertNotIn("placeholder", html[start:html.index("Turn it in")])
+
+    def test_the_pens_are_put_away_once_the_week_is_turned_in(self):
+        """A submitted page must show her writing, not invite more of it."""
+        from django.utils import timezone
+        from tutor.models import QuestionSet, ResponseSheet
+
+        self._seed()
+        qset = QuestionSet.objects.filter(
+            lesson__number=1, lesson__chapter__curriculum__parent=self.parent).first()
+        ResponseSheet.objects.create(
+            question_set=qset, child=self.child, answers={},
+            status=ResponseSheet.SUBMITTED, submitted_at=timezone.now())
+        html = self.client.get(
+            reverse("portal:portal_questions", args=[self.token, qset.pk])
+        ).content.decode()
+        self.assertEqual(html.count("handwriting-canvas"), 3)
+        self.assertEqual(html.count('data-readonly="1"'), 3)
+        self.assertNotIn("lxa-pens", html)
+
+    def test_the_grader_is_told_not_to_mark_the_handwriting(self):
+        """Her strokes reach the AI as stroke JSON, which it would happily
+        "read" and grade as gibberish. It must abstain and leave these to me."""
+        from django.utils import timezone
+        from tutor.models import QuestionSet, ResponseSheet
+
+        self._seed()
+        qset = QuestionSet.objects.filter(
+            lesson__number=1, lesson__chapter__curriculum__parent=self.parent).first()
+        sheet = ResponseSheet.objects.create(
+            question_set=qset, child=self.child,
+            answers={str(q.pk): "focused" for q in qset.questions.all()[:10]},
+            status=ResponseSheet.SUBMITTED, submitted_at=timezone.now())
+        for q in qset.questions.filter(order__gt=10):
+            sheet.answers[str(q.pk)] = (
+                '{"strokes":[{"c":"#1d3557","w":3,"p":[[0.1,0.1],[0.4,0.2]]}],'
+                '"surface":{"w":600,"h":192}}')
+        sheet.save()
+        text = sheet.as_worklog_text()
+        # Mixed sheet: it must name the three, not claim the whole page is
+        # unreadable — the ten sentences are exactly what it should be grading.
+        self.assertIn("Q11, Q12, Q13 were written BY HAND", text)
+        self.assertIn("Grade only the other questions", text)
+        self.assertNotIn("every answer here was written BY HAND", text)
+        self.assertNotIn('"strokes"', text)
+        # And it is told to keep that between itself and me. The highlights and
+        # the encouragement are printed straight onto her feedback page, and
+        # "a grown-up will have to read your writing" lands on a nine-year-old
+        # as "what you did was no good".
+        self.assertIn("never in the encouragement", text)
+        self.assertIn("child-facing highlights", text)
+
+    def test_the_generic_question_chrome_stands_down(self):
+        """The medallion and label already say the number and the task; the
+        badge, chip and prompt would say all three a second time."""
+        html = self._page()
+        self.assertEqual(html.count("own-chrome"), 3)
+        self.assertEqual(html.count("portal-qnum"), 10)   # the ten cloze rows only
+
+    def test_the_week_tint_reaches_the_boxes(self):
+        """The medallions are coloured by the week; without the class on a
+        common ancestor they fall back to teal on every week."""
+        html = self._page()
+        self.assertIn("lx-week-1", html)
+
+    def test_turning_it_in_is_never_blocked_by_an_empty_box(self):
+        """She works alone. A dead button with no explanation reads as broken,
+        and punishes exactly the child who is already stuck."""
+        html = self._page()
+        button = html[html.index("Turn it in") - 400:html.index("Turn it in")]
+        self.assertNotIn("disabled", button)
+
+
+class DickinsonSeedTests(TestCase):
+    """Kaylin's Operation Lexicon: Emily Dickinson.
+
+    23 weeks, three days each, the way the guide numbers itself. The copying is
+    done with a pen — that is the skill the guide is teaching.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        from django.contrib.auth import get_user_model
+        from core.models import Family, FamilyMembership
+        from portal.tokens import make_portal_token
+
+        User = get_user_model()
+        cls.parent = User.objects.create_user(
+            username="dk", email="dk@e.com", password="pw")
+        cls.family = Family.objects.create(name="DK Fam")
+        FamilyMembership.objects.create(
+            user=cls.parent, family=cls.family, role="parent")
+        cls.child = Student.objects.create(
+            parent=cls.parent, first_name="Kaylin", grade_level="G07",
+            family=cls.family)
+        cls.token = make_portal_token(cls.child)
+
+    def _seed(self):
+        from io import StringIO
+        from django.core.management import call_command
+        call_command("seed_lexicon_kaylin", "--for-user", "dk", stdout=StringIO())
+
+    def _set(self, week, day):
+        from tutor.dickinson import CURRICULUM_NAME
+        from tutor.models import QuestionSet
+        return QuestionSet.objects.get(
+            lesson__number=week, title__endswith="Day %d" % day,
+            lesson__chapter__curriculum__name=CURRICULUM_NAME,
+            lesson__chapter__curriculum__parent=self.parent)
+
+    def _page(self, week=1, day=1):
+        return self.client.get(reverse(
+            "portal:portal_questions", args=[self.token, self._set(week, day).pk])
+        ).content.decode()
+
+    def test_the_guide_is_laid_out_as_twenty_three_weeks_of_three_days(self):
+        from curricula.models import Curriculum, Lesson
+        from tutor.dickinson import CURRICULUM_NAME
+        from tutor.models import QuestionSet
+
+        self._seed()
+        cur = Curriculum.objects.get(name=CURRICULUM_NAME, parent=self.parent)
+        lessons = Lesson.objects.filter(chapter__curriculum=cur)
+        self.assertEqual(lessons.count(), 23)
+        for lesson in lessons:
+            sets = QuestionSet.objects.filter(lesson=lesson)
+            self.assertEqual(sets.count(), 3, "week %s" % lesson.number)
+        # Two words a day, three steps each; day 3 is the word and the story.
+        self.assertEqual(self._set(1, 1).questions.count(), 6)
+        self.assertEqual(self._set(1, 2).questions.count(), 6)
+        self.assertEqual(self._set(1, 3).questions.count(), 2)
+
+    def test_the_copying_is_done_with_a_pen(self):
+        """The guide teaches handwriting and 'contemplative attention to
+        detail' through the copying. Typed, it practises neither."""
+        from tutor.models import Question
+
+        self._seed()
+        for day in (1, 2):
+            kinds = [q.response_type
+                     for q in self._set(1, day).questions.order_by("order")]
+            self.assertEqual(kinds, [Question.TYPE_HANDWRITING] * 6,
+                             "day %d" % day)
+        # Day 3 is a 150-word story that wants revising — that one is typed.
+        self.assertEqual(
+            [q.response_type for q in self._set(1, 3).questions.order_by("order")],
+            [Question.TYPE_TEXT] * 2)
+
+    def test_she_can_see_what_she_is_copying(self):
+        """The words live in tutor.dickinson, not on the questions, so the page
+        has to put them back. Without the card there is nothing to copy from —
+        just an instruction to copy something invisible."""
+        html = self._seed() or self._page(1, 1)
+        self.assertEqual(html.count("dk-word"), 2)          # two words today
+        self.assertIn("agate", html)
+        self.assertIn("an ornamental stone", html)          # the definition
+        self.assertIn("To joint this Agate were a work", html)   # her lines
+        self.assertIn("1134 pg. 509", html)                 # the citation
+        self.assertEqual(html.count("handwriting-canvas"), 6)
+
+    def test_dickinsons_line_breaks_reach_the_page(self):
+        """Her line breaks are the poem. Collapsed into a paragraph, Kaylin
+        would copy out prose and the exercise would be pointless.
+
+        This pins the breaks into the HTML; keeping them VISIBLE is
+        `white-space: pre-wrap` on .dk-quote, which no request-level test can
+        see — that half is checked by looking at the rendered page.
+        """
+        self._seed()
+        html = self._page(1, 2)
+        self.assertIn("But if they only stay\nAmpler to fly away", html)
+
+    def test_the_guides_own_misspelling_is_flagged_where_she_will_copy_it(self):
+        """Week 16 prints "perrenial". She is copying it out by hand, so the
+        page says so rather than letting her learn it wrong."""
+        self._seed()
+        html = self._page(16, 1)
+        self.assertIn("perrenial", html)      # as printed — she copies the book
+        self.assertIn("dk-note", html)
+        self.assertIn("perennial", html)      # and is told the real spelling
+
+    def test_day_three_asks_for_the_story_and_offers_the_starters(self):
+        self._seed()
+        html = self._page(1, 3)
+        self.assertIn("micro-story", html)
+        self.assertIn("COURAGE is a lion", html)
+        self.assertNotIn("handwriting-canvas", html)   # typed, for revising
+        self.assertEqual(html.count("dk-word"), 0)     # no words to copy today
+
+    def test_a_set_that_does_not_match_the_book_still_shows_the_words(self):
+        """If a question is pruned, or the content is edited to a different
+        number of words, the cards can no longer be matched one-to-one. Falling
+        back to no words at all would leave her instructions to copy something
+        that isn't on the page."""
+        self._seed()
+        qset = self._set(1, 1)
+        # Delete the FIRST question, not the last. Removing the last one is the
+        # single case where the unguarded path still happens to render correctly,
+        # so a test built on it cannot tell the fallback from the bug.
+        qset.questions.order_by("order").first().delete()
+        html = self.client.get(reverse(
+            "portal:portal_questions", args=[self.token, qset.pk])).content.decode()
+        self.assertEqual(html.count("dk-word"), 2)
+        self.assertIn("an ornamental stone", html)
+        self.assertIn("a fine-grained, translucent form of gypsum", html)
+        # Header mode puts BOTH words above ALL the questions. Paired mode
+        # interleaves them. That position is the only thing in the HTML that
+        # tells the two apart — the card markup itself is identical.
+        self.assertLess(html.index("a fine-grained, translucent form of gypsum"),
+                        html.index("— copy the word and the definition"))
+
+    def test_reseeding_changes_nothing(self):
+        from tutor.models import Question, QuestionSet
+
+        self._seed()
+        before = (QuestionSet.objects.count(), Question.objects.count())
+        self._seed()
+        self.assertEqual(
+            (QuestionSet.objects.count(), Question.objects.count()), before)
+
+
+class DickinsonGuideTests(DickinsonSeedTests):
+    """The parent guide — the booklet's front matter, which the app was
+    otherwise swallowing."""
+
+    def _guide(self):
+        from curricula.models import Curriculum
+        from tutor.dickinson import CURRICULUM_NAME
+
+        self._seed()
+        cur = Curriculum.objects.get(name=CURRICULUM_NAME, parent=self.parent)
+        self.client.force_login(self.parent)
+        return cur, self.client.get(reverse("tutor:dickinson_guide", args=[cur.pk]))
+
+    def test_it_explains_the_method_and_lists_every_word(self):
+        _cur, resp = self._guide()
+        self.assertEqual(resp.status_code, 200)
+        html = resp.content.decode()
+        self.assertIn("How a week runs", html)
+        self.assertIn("Copy the word and its definition", html)
+        # All 92 words, with their definitions, at a glance.
+        from tutor.dickinson import all_words
+        for entry in all_words():
+            self.assertIn(entry["word"], html)
+
+    def test_it_says_which_portions_are_written_by_hand(self):
+        """This is the guide's pedagogy, not a preference of ours, and the
+        parent has no other way to find out which portions take the pen."""
+        _cur, resp = self._guide()
+        html = resp.content.decode()
+        self.assertIn("Why the copying is done by hand", html)
+        start = html.index("Why the copying is done by hand")
+        block = html[start:start + 1400]
+        self.assertEqual(block.count("written by hand"), 3)   # the three copy steps
+        self.assertIn("typed", block)                          # day 3
+
+    def test_it_carries_the_printed_guides_misspelling_forward(self):
+        _cur, resp = self._guide()
+        html = resp.content.decode()
+        self.assertIn("perrenial", html)
+        self.assertIn("perennial", html)
+
+    def test_a_week_counts_as_done_only_when_all_three_days_are_in(self):
+        """One day turned in is progress, not a finished week — counting it as
+        one would tell the parent she is three times further along."""
+        from django.utils import timezone
+        from tutor.models import ResponseSheet
+
+        self._seed()
+        ResponseSheet.objects.create(
+            question_set=self._set(1, 1), child=self.child, answers={},
+            status=ResponseSheet.SUBMITTED, submitted_at=timezone.now())
+        _cur, resp = self._guide()
+        row = resp.context["children"][0]
+        self.assertEqual(row["weeks_done"], 0)
+        self.assertEqual(row["days_done"], 1)
+        for day in (2, 3):
+            ResponseSheet.objects.create(
+                question_set=self._set(1, day), child=self.child, answers={},
+                status=ResponseSheet.SUBMITTED, submitted_at=timezone.now())
+        _cur, resp = self._guide()
+        row = resp.context["children"][0]
+        self.assertEqual(row["weeks_done"], 1)
+        self.assertEqual(row["words"], 4)
+        self.assertEqual(row["next_week"]["number"], 2)
+
+    def test_the_guide_is_not_reachable_for_other_curricula(self):
+        """The URL takes any curriculum id; without the name check it would
+        render Dickinson's front matter over somebody else's course."""
+        from curricula.models import Curriculum
+
+        self._seed()
+        other = Curriculum.objects.create(
+            parent=self.parent, name="Something Else", subject="Math",
+            family=self.family)
+        self.client.force_login(self.parent)
+        resp = self.client.get(reverse("tutor:dickinson_guide", args=[other.pk]))
+        self.assertEqual(resp.status_code, 404)
+
+    def test_the_link_shows_on_this_curriculum_and_not_on_others(self):
+        from curricula.models import Curriculum
+
+        cur, _resp = self._guide()
+        detail = self.client.get(
+            reverse("curricula:curriculum_detail", args=[cur.pk])).content.decode()
+        self.assertIn("dickinson-guide", detail)
+        other = Curriculum.objects.create(
+            parent=self.parent, name="Something Else", subject="Math",
+            family=self.family)
+        detail = self.client.get(
+            reverse("curricula:curriculum_detail", args=[other.pk])).content.decode()
+        self.assertNotIn("dickinson-guide", detail)
+        self.assertNotIn("lexicon-guide", detail)
+
+
+class DickinsonSeamTests(DickinsonSeedTests):
+    """The ways the page could show her the wrong thing to copy."""
+
+    def _html(self, qset):
+        return self.client.get(reverse(
+            "portal:portal_questions", args=[self.token, qset.pk])).content.decode()
+
+    def test_the_cards_and_the_answers_stay_in_step(self):
+        """Positional pairing is only as good as its guard. A delete PLUS an
+        insert leaves the count unchanged and shifts every word one slot, so
+        she would be told to copy alabaster's definition while looking at
+        agate's card — wrong, with nothing on the page to reveal it."""
+        from tutor.models import Question
+
+        self._seed()
+        qset = self._set(1, 1)
+        qset.questions.order_by("order").first().delete()
+        Question.objects.create(
+            question_set=qset, order=7, category="writing",
+            response_type=Question.TYPE_HANDWRITING, prompt="an inserted extra")
+        html = self._html(qset)
+        # Count is back to six, but the prompts no longer match the words, so
+        # the page falls back instead of pairing them wrongly.
+        self.assertEqual(qset.questions.count(), 6)
+        self.assertEqual(html.count("dk-word"), 2)
+        # Both cards above all the questions = header mode. If the count-only
+        # guard let this pair up, alabaster's card would sit BETWEEN them.
+        self.assertLess(html.index("a fine-grained, translucent form of gypsum"),
+                        html.index("— copy the lines from Dickinson"))
+
+    def test_the_happy_path_really_does_pair_each_word_with_its_own_answers(self):
+        """The whole seam. Without an ordering assertion, mispairing the words
+        still renders two cards and passes every other test here."""
+        self._seed()
+        html = self._html(self._set(1, 1))
+        agate_card = html.index("an ornamental stone")
+        alabaster_card = html.index("a fine-grained, translucent form of gypsum")
+        agate_q = html.index("agate — copy the word and the definition")
+        alabaster_q = html.index("alabaster — copy the word and the definition")
+        self.assertLess(agate_card, agate_q)
+        self.assertLess(agate_q, alabaster_card)
+        self.assertLess(alabaster_card, alabaster_q)
+
+    def test_a_renamed_set_shows_the_whole_week_not_a_guessed_day(self):
+        """Guessing the day from the set's position among its siblings put Day
+        2's words above Day 1's prompts. Showing her the wrong words while
+        telling her she is on the right day is worse than showing none."""
+        self._seed()
+        qset = self._set(1, 3)
+        qset.title = "Week 1 · something else"
+        qset.save(update_fields=["title"])
+        html = self._html(qset)
+        self.assertNotIn("Day 2", html)
+        self.assertEqual(html.count("dk-word"), 4)   # the whole week
+        for definition in ("an ornamental stone", "food or nourishment"):
+            self.assertIn(definition, html)
+
+    def test_a_dry_run_writes_nothing(self):
+        """It created the curriculum, the chapter and all 23 lessons, then said
+        "nothing written" — leaving a phantom course in the parent's list."""
+        from io import StringIO
+        from django.core.management import call_command
+        from curricula.models import Chapter, Curriculum, Lesson
+
+        out = StringIO()
+        call_command("seed_lexicon_kaylin", "--for-user", "dk", "--dry-run",
+                     stdout=out)
+        self.assertIn("nothing written", out.getvalue())
+        self.assertEqual(Curriculum.objects.count(), 0)
+        self.assertEqual(Chapter.objects.count(), 0)
+        self.assertEqual(Lesson.objects.count(), 0)
+
+    def test_reseeding_restores_a_question_that_was_tampered_with(self):
+        """update_or_create has to actually refresh the row. The prod Lexicon
+        deploy was already bitten once by a response_type left stale."""
+        from tutor.models import Question
+
+        self._seed()
+        q = self._set(1, 1).questions.order_by("order").first()
+        Question.objects.filter(pk=q.pk).update(
+            response_type=Question.TYPE_TEXT, prompt="STALE")
+        self._seed()
+        q.refresh_from_db()
+        self.assertEqual(q.response_type, Question.TYPE_HANDWRITING)
+        self.assertTrue(q.prompt.startswith("agate"))
+
+    def test_the_guides_own_confusions_are_flagged_on_her_card(self):
+        """Two places where copying the guide exactly would teach her something
+        false. She still copies what is printed — the card just says so."""
+        self._seed()
+        html = self._html(self._set(9, 1))
+        self.assertIn("Debachee", html)          # as printed
+        self.assertIn("Debauchee", html)         # and what the word really is
+        html = self._html(self._set(17, 1))
+        self.assertIn("Quenching—in Purple", html)
+        self.assertIn("put a fire or a light OUT", html)
+
+
+class OneTrueSentenceTests(TestCase):
+    """Violet's One True Sentence: Tools of Style.
+
+    Twenty weeks, each a lesson page and a practice page, the way the book is
+    laid out. The copying and her own sentences are done with the pen.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        from django.contrib.auth import get_user_model
+        from core.models import Family, FamilyMembership
+        from portal.tokens import make_portal_token
+
+        User = get_user_model()
+        cls.parent = User.objects.create_user(
+            username="ot", email="ot@e.com", password="pw")
+        cls.family = Family.objects.create(name="OT Fam")
+        FamilyMembership.objects.create(
+            user=cls.parent, family=cls.family, role="parent")
+        cls.child = Student.objects.create(
+            parent=cls.parent, first_name="Violet", grade_level="G03",
+            family=cls.family)
+        cls.token = make_portal_token(cls.child)
+
+    def _seed(self):
+        from io import StringIO
+        from django.core.management import call_command
+        call_command("seed_onetrue_violet", "--for-user", "ot", stdout=StringIO())
+
+    def _set(self, week, practice=False):
+        from tutor.models import QuestionSet
+        from tutor.onetrue import CURRICULUM_NAME
+        qs = QuestionSet.objects.filter(
+            lesson__number=week,
+            lesson__chapter__curriculum__name=CURRICULUM_NAME,
+            lesson__chapter__curriculum__parent=self.parent)
+        return (qs.filter(title__endswith="now you try!").get() if practice
+                else qs.exclude(title__endswith="now you try!").get())
+
+    def _page(self, week=1, practice=False):
+        return self.client.get(reverse(
+            "portal:portal_questions",
+            args=[self.token, self._set(week, practice).pk])).content.decode()
+
+    def test_twenty_weeks_each_a_lesson_and_a_practice(self):
+        from curricula.models import Curriculum, Lesson
+        from tutor.models import QuestionSet
+        from tutor.onetrue import CURRICULUM_NAME
+
+        self._seed()
+        cur = Curriculum.objects.get(name=CURRICULUM_NAME, parent=self.parent)
+        lessons = Lesson.objects.filter(chapter__curriculum=cur)
+        self.assertEqual(lessons.count(), 20)
+        for lesson in lessons:
+            self.assertEqual(
+                QuestionSet.objects.filter(lesson=lesson).count(), 2,
+                "week %s" % lesson.number)
+
+    def test_the_copying_and_her_own_sentences_use_the_pen(self):
+        """Copying a Caldecott sentence at a keyboard is transcription, not
+        noticing how it is built. And she is nine — five sentences hunted out on
+        a keyboard is an endurance test, not sentence craft."""
+        from tutor.models import Question
+
+        self._seed()
+        lesson = list(self._set(1).questions.order_by("order"))
+        self.assertEqual(lesson[0].response_type, Question.TYPE_HANDWRITING)
+        self.assertTrue(lesson[0].prompt.startswith("Read and copy"))
+        # The noticing questions are typed, so the grader can read them.
+        self.assertTrue(all(q.response_type == Question.TYPE_TEXT
+                            for q in lesson[1:]))
+        practice = list(self._set(1, practice=True).questions.all())
+        self.assertEqual([q.response_type for q in practice],
+                         [Question.TYPE_HANDWRITING] * 5)
+
+    def test_she_can_see_the_sentence_she_is_copying(self):
+        self._seed()
+        html = self._page(1)
+        self.assertIn("Vivid and descriptive", html)          # the explanation
+        self.assertIn("Wordsworth, Daffodils", html)          # its example
+        self.assertIn("chuckleberry blossoms", html)          # Sentence 1
+        self.assertIn("Margaret Wise Brown, The Little Island", html)
+        self.assertIn("pastel hues", html)                    # Sentence 2
+        self.assertIn("whispered tone", html)
+
+    def test_the_practice_page_does_not_show_the_model_sentence(self):
+        """She is composing there. Leaving the model sentence on screen invites
+        copying it a second time instead of writing her own."""
+        self._seed()
+        html = self._page(1, practice=True)
+        self.assertIn("Vivid and descriptive", html)     # the tool, still
+        self.assertNotIn("chuckleberry blossoms", html)  # but not the model
+        self.assertNotIn("Margaret Wise Brown", html)
+        self.assertEqual(html.count("handwriting-canvas"), 5)
+
+    def test_the_weeks_that_split_into_groups_ask_for_the_right_number(self):
+        """The practice page is not always five. Week 3 splits into two groups
+        of three, week 7 into three pairs, week 20 into two and two."""
+        self._seed()
+        for week, expected in ((1, 5), (3, 6), (7, 6), (18, 6), (20, 4)):
+            self.assertEqual(
+                self._set(week, practice=True).questions.count(), expected,
+                "week %d" % week)
+        prompts = " ".join(
+            q.prompt for q in self._set(3, practice=True).questions.all())
+        # "using you" is a substring of "using your", so asserting it proves
+        # nothing — two "your" groups and no "you're" group would pass.
+        self.assertIn("using you're", prompts)
+        self.assertIn("using your", prompts)
+
+    def test_the_paired_weeks_ask_for_both_halves(self):
+        """Weeks 8 and 19 are craft-then-rewrite: a fragment then the whole
+        sentence, a run-on then the split version. One box each would lose half
+        the exercise."""
+        self._seed()
+        eight = list(self._set(8, practice=True).questions.order_by("order"))
+        self.assertEqual(len(eight), 8)            # four items, two answers each
+        self.assertTrue(eight[0].prompt.startswith("Fragment 1"))
+        self.assertTrue(eight[1].prompt.startswith("Sentence 1"))
+        nineteen = list(self._set(19, practice=True).questions.order_by("order"))
+        self.assertEqual(len(nineteen), 6)         # three items, two answers each
+        self.assertTrue(nineteen[0].prompt.startswith("Run-on 1"))
+        self.assertTrue(nineteen[1].prompt.startswith("Rewritten 1"))
+
+    def test_a_dry_run_writes_nothing(self):
+        from io import StringIO
+        from django.core.management import call_command
+        from curricula.models import Curriculum, Lesson
+
+        out = StringIO()
+        call_command("seed_onetrue_violet", "--for-user", "ot", "--dry-run",
+                     stdout=out)
+        self.assertIn("nothing written", out.getvalue())
+        self.assertEqual(Curriculum.objects.count(), 0)
+        self.assertEqual(Lesson.objects.count(), 0)
+
+    def test_reseeding_changes_nothing(self):
+        from tutor.models import Question, QuestionSet
+
+        self._seed()
+        before = (QuestionSet.objects.count(), Question.objects.count())
+        self._seed()
+        self.assertEqual(
+            (QuestionSet.objects.count(), Question.objects.count()), before)
+
+
+class OneTrueGuideTests(OneTrueSentenceTests):
+    """The parent guide."""
+
+    def _guide(self):
+        from curricula.models import Curriculum
+        from tutor.onetrue import CURRICULUM_NAME
+
+        self._seed()
+        cur = Curriculum.objects.get(name=CURRICULUM_NAME, parent=self.parent)
+        self.client.force_login(self.parent)
+        return cur, self.client.get(reverse("tutor:onetrue_guide", args=[cur.pk]))
+
+    def test_it_carries_the_books_own_reference_material(self):
+        from tutor.onetrue import WEEKS
+
+        _cur, resp = self._guide()
+        self.assertEqual(resp.status_code, 200)
+        html = resp.content.decode()
+        self.assertIn("Sentence construction basics", html)
+        self.assertIn("Part 3: Phrases", html)          # the reference section
+        self.assertIn("Because the sun was shining", html)
+        # escape(): the apostrophe in "You're / Your" reaches the page as
+        # &#x27; — asserting the raw topic would fail for reasons that have
+        # nothing to do with whether the week is listed.
+        from django.utils.html import escape
+        for week in WEEKS:                              # every tool, in a table
+            self.assertIn(escape(week["topic"]), html)
+
+    def test_it_says_which_parts_she_writes_by_hand(self):
+        _cur, resp = self._guide()
+        html = resp.content.decode()
+        start = html.index("Which parts she writes by hand")
+        block = html[start:start + 1800]
+        self.assertEqual(block.count("written by hand"), 2)   # copy + her own
+        self.assertIn("typed", block)                          # the noticing qs
+
+    def test_a_week_counts_as_done_only_when_both_pages_are_in(self):
+        from django.utils import timezone
+        from tutor.models import ResponseSheet
+
+        self._seed()
+        ResponseSheet.objects.create(
+            question_set=self._set(1), child=self.child, answers={},
+            status=ResponseSheet.SUBMITTED, submitted_at=timezone.now())
+        _cur, resp = self._guide()
+        self.assertEqual(resp.context["children"][0]["weeks_done"], 0)
+        ResponseSheet.objects.create(
+            question_set=self._set(1, practice=True), child=self.child,
+            answers={}, status=ResponseSheet.SUBMITTED,
+            submitted_at=timezone.now())
+        _cur, resp = self._guide()
+        row = resp.context["children"][0]
+        self.assertEqual(row["weeks_done"], 1)
+        self.assertEqual(row["next_week"]["number"], 2)
+
+    def test_the_guide_is_not_reachable_for_other_curricula(self):
+        from curricula.models import Curriculum
+
+        self._seed()
+        other = Curriculum.objects.create(
+            parent=self.parent, name="Something Else", subject="Math",
+            family=self.family)
+        self.client.force_login(self.parent)
+        self.assertEqual(
+            self.client.get(
+                reverse("tutor:onetrue_guide", args=[other.pk])).status_code, 404)
+
+    def test_the_link_shows_only_on_this_curriculum(self):
+        from curricula.models import Curriculum
+
+        cur, _resp = self._guide()
+        detail = self.client.get(
+            reverse("curricula:curriculum_detail", args=[cur.pk])).content.decode()
+        self.assertIn("onetrue-guide", detail)
+        other = Curriculum.objects.create(
+            parent=self.parent, name="Something Else", subject="Math",
+            family=self.family)
+        detail = self.client.get(
+            reverse("curricula:curriculum_detail", args=[other.pk])).content.decode()
+        self.assertNotIn("onetrue-guide", detail)
+
+
+class OneTrueSeamTests(OneTrueSentenceTests):
+    """Things the build could get wrong quietly."""
+
+    def test_the_practice_prompts_lead_with_what_makes_them_different(self):
+        """Week 8's instruction runs to four lines. Repeated in full above all
+        eight boxes with the only difference at the very end, it is a wall of
+        identical text to a nine-year-old."""
+        self._seed()
+        prompts = [q.prompt for q in
+                   self._set(8, practice=True).questions.order_by("order")]
+        self.assertTrue(prompts[0].startswith("Fragment 1 —"))
+        self.assertTrue(prompts[1].startswith("Sentence 1"))
+        self.assertTrue(prompts[2].startswith("Fragment 2"))
+        # The long instruction appears once, not eight times.
+        self.assertEqual(sum("rewrite each as a complete" in p for p in prompts), 1)
+        self.assertEqual(sum("Across the deep, dark sky" in p for p in prompts), 1)
+
+    def test_every_group_says_what_to_do_once(self):
+        """A multi-group week must not leave a group with no instruction — she
+        would reach box 4 of week 7 with nothing telling her it wants "their"."""
+        self._seed()
+        for week, groups in ((3, 2), (7, 3), (18, 3), (20, 2)):
+            prompts = [q.prompt for q in
+                       self._set(week, practice=True).questions.order_by("order")]
+            leading = [p for p in prompts if " — " in p]
+            self.assertEqual(len(leading), groups, "week %d" % week)
+
+    def test_question_orders_are_contiguous_and_unique(self):
+        """update_or_create is keyed on (set, order), and there is a unique
+        constraint on the pair — a gap or a repeat is a silently dropped
+        question or an IntegrityError."""
+        from tutor.models import QuestionSet
+        from tutor.onetrue import CURRICULUM_NAME
+
+        self._seed()
+        for qset in QuestionSet.objects.filter(
+                lesson__chapter__curriculum__name=CURRICULUM_NAME,
+                lesson__chapter__curriculum__parent=self.parent):
+            orders = list(qset.questions.order_by("order")
+                          .values_list("order", flat=True))
+            self.assertEqual(orders, list(range(1, len(orders) + 1)), qset.title)
+
+    def test_reseeding_restores_a_question_that_was_tampered_with(self):
+        """The trap the prod Lexicon deploy already hit: update_or_create has to
+        actually refresh the row, not just leave the old one in place."""
+        from tutor.models import Question
+
+        self._seed()
+        q = self._set(1).questions.order_by("order").first()
+        Question.objects.filter(pk=q.pk).update(
+            response_type=Question.TYPE_TEXT, prompt="STALE")
+        self._seed()
+        q.refresh_from_db()
+        self.assertEqual(q.response_type, Question.TYPE_HANDWRITING)
+        self.assertTrue(q.prompt.startswith("Read and copy"))
+
+    def test_the_guides_own_mistakes_are_flagged_where_she_meets_them(self):
+        """Two places where the printed guide is wrong in a way she would copy
+        or reason from. She still gets what is printed — the page just says so."""
+        self._seed()
+        html = self._page(17)
+        self.assertIn("stone drunk", html)      # as printed, and she copies it
+        self.assertIn("stone-", html)           # and what Steig actually wrote
+        html = self._page(12)
+        self.assertIn("Dorothy&#x27;s hand", html)
+        self.assertIn("mistake in the guide", html)
+
+    def test_the_page_never_tells_her_to_write_by_hand_over_a_keyboard(self):
+        """The wording follows the seed's flag rather than restating it."""
+        self._seed()
+        self.assertIn("Write each one by hand", self._page(1, practice=True))
+
+
+class RickshawGirlTests(TestCase):
+    """Violet's Blackbird Level 3 guide for Rickshaw Girl."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from django.contrib.auth import get_user_model
+        from core.models import Family, FamilyMembership
+        from portal.tokens import make_portal_token
+
+        User = get_user_model()
+        cls.parent = User.objects.create_user(
+            username="rg", email="rg@e.com", password="pw")
+        cls.family = Family.objects.create(name="RG Fam")
+        FamilyMembership.objects.create(
+            user=cls.parent, family=cls.family, role="parent")
+        cls.child = Student.objects.create(
+            parent=cls.parent, first_name="Violet", grade_level="G03",
+            family=cls.family)
+        cls.token = make_portal_token(cls.child)
+
+    def _seed(self):
+        from io import StringIO
+        from django.core.management import call_command
+        call_command("seed_rickshaw_girl", "--for-user", "rg", stdout=StringIO())
+
+    def _set(self, title):
+        from tutor.models import QuestionSet
+        from tutor.rickshaw import CURRICULUM_NAME
+        return QuestionSet.objects.get(
+            title=title, lesson__chapter__curriculum__name=CURRICULUM_NAME,
+            lesson__chapter__curriculum__parent=self.parent)
+
+    def _page(self, title):
+        return self.client.get(reverse(
+            "portal:portal_questions", args=[self.token, self._set(title).pk])
+        ).content.decode()
+
+    def test_the_guides_five_sections_are_all_there(self):
+        from curricula.models import Chapter, Lesson
+        from tutor.models import Question, QuestionSet
+        from tutor.rickshaw import CURRICULUM_NAME
+
+        self._seed()
+        lessons = Lesson.objects.filter(
+            chapter__curriculum__name=CURRICULUM_NAME,
+            chapter__curriculum__parent=self.parent)
+        # The shared Blackbird blueprint: four sections of Read/Journal/Acquire/
+        # Recollect/Explore, plus the final project — the same skeleton as
+        # A Mouse Called Wolf, which is the same publisher, level and child.
+        self.assertEqual(
+            Chapter.objects.filter(curriculum__name=CURRICULUM_NAME,
+                                   curriculum__parent=self.parent).count(), 5)
+        self.assertEqual(lessons.count(), 21)
+        sets = QuestionSet.objects.filter(lesson__in=lessons)
+        self.assertEqual(sets.count(), 21)            # 4 x 5 + the final project
+        # 82 for the four sections, plus the final project's three scaffolded
+        # questions (pick → plan → reflect) in place of the single 233-word one.
+        self.assertEqual(
+            Question.objects.filter(question_set__in=sets).count(), 84)
+
+    def test_vocabulary_keeps_the_guides_own_two_exercises(self):
+        """Level 3 matches words to numbered definitions and fills blanks. Both
+        widgets already existed, so the page keeps the guide's format instead of
+        flattening it into text boxes."""
+        import json
+        from tutor.models import Question
+
+        self._seed()
+        match, fill = self._set("Section 1 · Vocabulary").questions.order_by("order")
+        self.assertEqual(match.response_type, Question.TYPE_MATCHING)
+        self.assertEqual(fill.response_type, Question.TYPE_FILL_BLANK)
+
+        data = json.loads(match.passage)
+        self.assertEqual(len(data["words"]), 6)
+        self.assertEqual(len(data["definitions"]), 6)
+        # Every definition carries the word it belongs to, and each word is used
+        # exactly once — a mis-paired key is what this catches.
+        self.assertEqual(sorted(d["word"] for d in data["definitions"]),
+                         sorted(data["words"]))
+        by_n = {d["n"]: d["word"] for d in data["definitions"]}
+        self.assertEqual(by_n[3], "rickshaw")     # "a small, two-wheeled vehicle"
+        self.assertEqual(by_n[1], "hut")          # "a small, roughly made shelter"
+
+        blanks = json.loads(fill.passage)["sentences"]
+        self.assertEqual(len(blanks), 6)
+        for s in blanks:
+            # The widget splits on six underscores; the content stores three.
+            self.assertIn("______", s["text"])
+            self.assertNotIn("___ ", s["text"].replace("______", ""))
+
+    def test_every_blank_can_actually_be_answered(self):
+        """THE one that matters. The dropdown is built from the bank, so a blank
+        keyed to a word the bank doesn't carry can never be selected: she picks
+        the only sensible option, is told she is wrong, and can never finish the
+        page. Section 4 shipped exactly that — 'scolded' and 'labored' keyed
+        against a bank printing 'scold' and 'labor'."""
+        import json
+
+        self._seed()
+        for n in (1, 2, 3, 4):
+            fill = self._set("Section %d · Vocabulary" % n).questions.order_by("order")[1]
+            data = json.loads(fill.passage)
+            bank = set(data["words"])
+            for sentence in data["sentences"]:
+                self.assertIn(sentence["word"], bank,
+                              "section %d: %r is not selectable" % (n, sentence["word"]))
+
+    def test_the_blanks_that_need_a_different_ending_offer_it(self):
+        """Section 4 prints 'scold' and 'labor' in its word list, but its
+        sentences want 'scolded' and 'labored'. The bank has to carry the form
+        the sentence needs — the matching list keeps the printed one."""
+        import json
+
+        self._seed()
+        match, fill = self._set("Section 4 · Vocabulary").questions.order_by("order")
+        self.assertIn("scolded", json.loads(fill.passage)["words"])
+        self.assertIn("labored", json.loads(fill.passage)["words"])
+        # The matching exercise still uses the guide's printed base forms.
+        self.assertIn("scold", json.loads(match.passage)["words"])
+        self.assertNotIn("scolded", json.loads(match.passage)["words"])
+
+    def test_the_dropdown_on_her_page_offers_every_answer(self):
+        """The data being right is not enough — this is what she actually sees."""
+        import re
+
+        self._seed()
+        html = self._page("Section 4 · Vocabulary")
+        block = html[html.index("vocab-fillblank"):]
+        options = set(re.findall(r'<option value="([^"]+)"', block))
+        needed = set(re.findall(r"data-word=\"([^\"]+)\"", block))
+        self.assertTrue(needed)
+        self.assertTrue(needed <= options,
+                        "unselectable: %s" % (needed - options))
+
+    def test_the_journal_names_the_sections_own_characters(self):
+        from tutor.models import Question
+
+        self._seed()
+        q = self._set("Section 1 · Journal").questions.order_by("order").first()
+        self.assertEqual(q.response_type, Question.TYPE_CHARACTERS)
+        self.assertEqual(q.character_names,
+                         ["Naima", "Rashida", "Father", "Saleem"])
+        # Section 4 swaps Rashida and Saleem for the widow.
+        q4 = self._set("Section 4 · Journal").questions.order_by("order").first()
+        self.assertIn("The Widow", q4.character_names)
+        self.assertNotIn("Rashida", q4.character_names)
+
+    def test_the_final_draft_is_recopied_by_hand(self):
+        """The guide asks for it 'using your best penmanship'. The rough draft
+        stays typed — it is meant to be revised."""
+        from tutor.models import Question
+
+        self._seed()
+        rough, final = self._set(
+            "Section 1 · Writing Exercise").questions.order_by("order")
+        self.assertEqual(rough.response_type, Question.TYPE_PARAGRAPH)
+        self.assertEqual(rough.paragraph_sections,
+                         ["Introduction / Topic Sentence",
+                          "Supporting Sentences", "Concluding Sentence"])
+        self.assertEqual(final.response_type, Question.TYPE_HANDWRITING)
+        self.assertIn("penmanship", final.prompt)
+
+    def test_discussion_is_teacher_led_not_written(self):
+        from tutor.models import QuestionSet
+
+        self._seed()
+        qset = self._set("Section 3 · Discussion")
+        self.assertEqual(qset.mode, QuestionSet.MODE_DISCUSSION)
+        self.assertEqual(qset.questions.count(), 8)
+
+    def test_the_pages_render_for_her(self):
+        self._seed()
+        html = self._page("Section 1 · Vocabulary")
+        self.assertIn("vocab-matching", html)
+        self.assertIn("vocab-fillblank", html)
+        self.assertIn("threshold", html)
+        self.assertIn("the sill of a door", html)
+        self.assertEqual(html.count("vocab-blank-select"), 6)
+        html = self._page("Section 1 · Journal")
+        self.assertEqual(html.count("character-field"), 4)
+
+    def test_a_dry_run_writes_nothing(self):
+        from io import StringIO
+        from django.core.management import call_command
+        from curricula.models import Curriculum, Lesson
+
+        out = StringIO()
+        call_command("seed_rickshaw_girl", "--for-user", "rg", "--dry-run",
+                     stdout=out)
+        self.assertIn("nothing written", out.getvalue())
+        self.assertEqual(Curriculum.objects.count(), 0)
+        self.assertEqual(Lesson.objects.count(), 0)
+
+    def test_reseeding_restores_a_question_that_was_tampered_with(self):
+        from tutor.models import Question
+
+        self._seed()
+        q = self._set("Section 1 · Vocabulary").questions.order_by("order").first()
+        Question.objects.filter(pk=q.pk).update(
+            response_type=Question.TYPE_TEXT, passage="", prompt="STALE")
+        self._seed()
+        q.refresh_from_db()
+        self.assertEqual(q.response_type, Question.TYPE_MATCHING)
+        self.assertIn("threshold", q.passage)
+
+    def test_reseeding_changes_nothing(self):
+        from tutor.models import Question, QuestionSet
+
+        self._seed()
+        before = (QuestionSet.objects.count(), Question.objects.count())
+        self._seed()
+        self.assertEqual(
+            (QuestionSet.objects.count(), Question.objects.count()), before)
+
+
+class RickshawContentTests(TestCase):
+    """Semantic spot-checks on the transcription.
+
+    The bijection check in RickshawGirlTests cannot catch a mis-pairing: swap
+    two definition numbers and it is still a bijection. These pin the meaning,
+    across every section rather than only the first.
+    """
+
+    def test_each_word_means_what_its_definition_says(self):
+        from tutor.rickshaw import SECTIONS, section_by_number
+
+        # (section, word, a phrase that must appear in ITS definition)
+        for n, word, phrase in [
+            (1, "hut", "shelter"), (1, "rickshaw", "two-wheeled"),
+            (1, "threshold", "sill"), (1, "grime", "dirt"),
+            (2, "coiled", "wound circles"), (2, "recognize", "know and remember"),
+            (2, "lotus", "flowering plant"), (2, "disguise", "change the usual appearance"),
+            (3, "idle", "doing nothing"), (3, "numb", "unable to feel"),
+            (3, "symmetry", "two sides or halves"), (3, "dim", "not bright"),
+            (4, "decent", "polite, moral"), (4, "jubilant", "great joy"),
+            (4, "fierce", "wild or threatening"), (4, "scold", "find fault"),
+        ]:
+            section = section_by_number(n)
+            number = dict(section["vocab"])[word]
+            definition = section["definitions"][number - 1]
+            self.assertIn(phrase, definition,
+                          "section %d: %r points at %r" % (n, word, definition))
+        self.assertEqual(len(SECTIONS), 4)
+
+    def test_each_blank_takes_the_word_that_fits_it(self):
+        from tutor.rickshaw import section_by_number
+
+        # (section, a phrase from the sentence, the word that belongs in it)
+        for n, phrase, word in [
+            (1, "toured part of the city", "rickshaw"),
+            (1, "kitchen sink", "grime"),
+            (1, "carried his bride across", "threshold"),
+            (2, "rattlesnake", "coiled"),
+            (2, "Hulk costume", "disguise"),
+            (2, "sour milk", "grim"),
+            (3, "sit around and be", "idle"),
+            (3, "look in the mirror", "symmetry"),
+            (3, "difficult to read", "dim"),
+            (4, "barked wildly", "fierce"),
+            (4, "at the wedding", "jubilant"),
+            (4, "water buffalo", "labored"),
+        ]:
+            blanks = section_by_number(n)["blanks"]
+            match = [(s, a) for s, a in blanks if phrase in s]
+            self.assertEqual(len(match), 1,
+                             "section %d: %r matched %d sentences" % (n, phrase, len(match)))
+            self.assertEqual(match[0][1], word,
+                             "section %d: %r wants %r" % (n, phrase, match[0][1]))
+
+    def test_each_section_journals_its_own_characters(self):
+        from tutor.rickshaw import section_by_number
+
+        self.assertEqual(section_by_number(1)["characters"],
+                         ["Naima", "Rashida", "Father", "Saleem"])
+        self.assertEqual(section_by_number(4)["characters"],
+                         ["Naima", "The Widow", "Mother", "Father"])
+        for n in (1, 2, 3, 4):
+            self.assertIn("Naima", section_by_number(n)["characters"])
+
+    def test_the_writing_prompts_are_the_guides_own(self):
+        from tutor.rickshaw import section_by_number
+
+        for n, phrase in ((1, "alpanas on holidays"), (2, "costing her family"),
+                          (3, "crazy idea"), (4, "microfinance")):
+            self.assertIn(phrase, section_by_number(n)["writing_prompt"])
+
+
+class RickshawChildFacingTests(RickshawGirlTests):
+    """What a nine-year-old working alone actually meets on the page.
+
+    A UI review of the first build found these missing or wrong; they are the
+    difference between a page she can finish by herself and one she stalls on.
+    """
+
+    def test_she_can_open_a_nudge_on_the_work_she_does_alone(self):
+        """The sibling course carries 31 of these. Shipping with none is the
+        single thing that made the two feel like different products — and the
+        hint is the mechanism a child alone uses to get unstuck."""
+        from tutor.models import Question, QuestionSet
+        from tutor.rickshaw import CURRICULUM_NAME
+
+        self._seed()
+        sets = QuestionSet.objects.filter(
+            lesson__chapter__curriculum__name=CURRICULUM_NAME,
+            mode=QuestionSet.MODE_STUDENT)
+        for qset in sets:
+            hinted = qset.questions.exclude(hint="").count()
+            if "Comprehension" in qset.title:
+                # Deliberately none. The only thing a nudge could say here is
+                # already the intro directly above, and seven identical ones per
+                # set teach her the 💡 is not worth tapping — which costs her on
+                # the pages where the nudges genuinely help.
+                self.assertEqual(hinted, 0, qset.title)
+            else:
+                self.assertEqual(hinted, qset.questions.count(),
+                                 "%s has unhinted questions" % qset.title)
+        self.assertGreater(
+            Question.objects.filter(question_set__in=sets).exclude(hint="").count(),
+            25)
+
+    def test_the_journal_chips_name_the_three_different_boxes(self):
+        """They read 'Character · Comprehension · Comprehension' — two adjacent
+        chips repeating one word while the prompts under them said SETTING and
+        PLOT. A child reads the chip as the box's label."""
+        self._seed()
+        for n in (1, 2, 3, 4):
+            chips = [q.get_category_display() for q in
+                     self._set("Section %d · Journal" % n).questions.order_by("order")]
+            self.assertEqual(chips, ["Character", "Setting", "Plot"])
+
+    def test_the_fill_in_never_claims_the_word_is_in_the_list_above(self):
+        """Section 4's blanks want 'scolded' and 'labored' while the matching
+        list prints 'scold' and 'labor'. Telling her to use a word 'from the
+        list above' sends her hunting for one that isn't there."""
+        self._seed()
+        fill = self._set("Section 4 · Vocabulary").questions.order_by("order")[1]
+        self.assertNotIn("from the vocabulary list above", fill.prompt)
+        self.assertIn("ending", fill.prompt)
+
+    def test_the_final_project_is_scaffolded_not_a_wall_of_prose(self):
+        """It opened with five weeks of scheduling admin, then asked which
+        option she chose BEFORE listing the options, in a 233-word prompt."""
+        self._seed()
+        qset = self._set("Section 5 · Glean: Final Project")
+        self.assertEqual(qset.questions.count(), 3)
+        longest = max(len(q.prompt.split()) for q in qset.questions.all())
+        self.assertLess(longest, 30)
+        # The options are shown up front, each with a short scannable name.
+        self.assertIn("Build a diorama", qset.intro)
+        self.assertIn("Tradition poster", qset.intro)
+        self.assertNotIn("designed to be completed in five weeks", qset.intro)
+
+
+class PoetrySmallFormsTests(TestCase):
+    """Kaylin's Poetry: Small Forms — the grid, the attachments, the method."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from django.contrib.auth import get_user_model
+        from core.models import Family, FamilyMembership
+        from portal.tokens import make_portal_token
+
+        User = get_user_model()
+        cls.parent = User.objects.create_user(
+            username="po", email="po@e.com", password="pw")
+        cls.family = Family.objects.create(name="PO Fam")
+        FamilyMembership.objects.create(
+            user=cls.parent, family=cls.family, role="parent")
+        cls.child = Student.objects.create(
+            parent=cls.parent, first_name="Kaylin", grade_level="G07",
+            family=cls.family)
+        cls.token = make_portal_token(cls.child)
+
+    def _seed(self):
+        from io import StringIO
+        from django.core.management import call_command
+        call_command("seed_poetry_kaylin", "--for-user", "po", stdout=StringIO())
+
+    def _set(self, number):
+        from tutor.models import QuestionSet
+        from tutor.poetry import CURRICULUM_NAME
+        return QuestionSet.objects.get(
+            lesson__number=number,
+            lesson__chapter__curriculum__name=CURRICULUM_NAME,
+            lesson__chapter__curriculum__parent=self.parent)
+
+    def _page(self, number):
+        return self.client.get(reverse(
+            "portal:portal_questions", args=[self.token, self._set(number).pk])
+        ).content.decode()
+
+    def test_twelve_sections_of_four_steps(self):
+        from curricula.models import Lesson
+        from tutor.models import Question, QuestionSet
+        from tutor.poetry import CURRICULUM_NAME
+
+        self._seed()
+        lessons = Lesson.objects.filter(
+            chapter__curriculum__name=CURRICULUM_NAME,
+            chapter__curriculum__parent=self.parent)
+        self.assertEqual(lessons.count(), 12)
+        sets = QuestionSet.objects.filter(lesson__in=lessons)
+        self.assertEqual(sets.count(), 12)
+        self.assertEqual(
+            Question.objects.filter(question_set__in=sets).count(), 48)
+        for qset in sets:
+            self.assertEqual(
+                qset.questions.exclude(hint="").count(), 4, qset.title)
+
+    def test_the_grid_matches_each_forms_own_pattern(self):
+        """The whole point: nonet counts down 9..1, cinquain climbs 2-4-6-8-2.
+        A wrong grid teaches her the wrong form."""
+        self._seed()
+        html = self._page(8)                       # nonet
+        import re
+        targets = re.findall(r'data-target="(\d*)"', html)
+        self.assertEqual([t for t in targets if t],
+                         ["9", "8", "7", "6", "5", "4", "3", "2", "1"])
+        html = self._page(5)                       # cinquain
+        targets = [t for t in re.findall(r'data-target="(\d*)"', html) if t]
+        self.assertEqual(targets, ["2", "4", "6", "8", "2"])
+
+    def test_tricube_breaks_into_three_stanzas(self):
+        self._seed()
+        html = self._page(7)
+        self.assertEqual(html.count("po-grid-stanza"), 2)   # before lines 4 and 7
+
+    def test_a_form_with_no_syllable_rule_gets_lines_not_targets(self):
+        import re
+
+        self._seed()
+        html = self._page(10)                      # gogyohka
+        self.assertEqual([t for t in re.findall(r'data-target="(\d*)"', html) if t], [])
+        self.assertIn("no syllable rule", html)
+        # five rows for five lines
+        self.assertEqual(html.count('aria-label="Line '), 5)
+
+    def test_the_original_pages_are_attached_and_exist_on_disk(self):
+        """Her guide's worked examples are handwritten; she reads the real
+        pages. Every section links its own pages, and every file exists."""
+        import os
+        from django.conf import settings
+        from tutor.poetry import SECTIONS, page_images
+
+        self._seed()
+        for s in SECTIONS:
+            for img in page_images(s):
+                self.assertTrue(
+                    os.path.exists(os.path.join(
+                        settings.BASE_DIR, "static", img)),
+                    "%s missing" % img)
+        html = self._page(9)                       # shadorma
+        self.assertIn("poetry/shadorma/p1", html)
+        self.assertNotIn("poetry/haiku/p1", html)  # its own pages only
+
+    def test_the_sevenling_grid_carries_the_guides_line_roles(self):
+        self._seed()
+        html = self._page(11)
+        self.assertIn('placeholder="the twist"', html)
+        self.assertEqual(html.count('placeholder="first of three"'), 2)
+
+    def test_the_stored_answer_is_readable_plain_text(self):
+        """The grid writes title-then-lines into the normal answer field, so
+        the grader and the printed report need nothing new."""
+        from tutor.models import ResponseSheet
+
+        self._seed()
+        qset = self._set(1)
+        final = qset.questions.order_by("order").last()
+        sheet = ResponseSheet.objects.create(
+            question_set=qset, child=self.child,
+            answers={str(final.pk):
+                     "Backyard Morning\ncold dew on the grass\n"
+                     "a sparrow lands and listens\nthe kettle whistles"})
+        self.assertIn("sparrow", sheet.as_worklog_text())
+        self.assertNotIn("strokes", sheet.as_worklog_text())
+
+    def test_a_dry_run_writes_nothing(self):
+        from io import StringIO
+        from django.core.management import call_command
+        from curricula.models import Curriculum, Lesson
+
+        out = StringIO()
+        call_command("seed_poetry_kaylin", "--for-user", "po", "--dry-run",
+                     stdout=out)
+        self.assertIn("nothing written", out.getvalue())
+        self.assertEqual(Curriculum.objects.count(), 0)
+        self.assertEqual(Lesson.objects.count(), 0)
+
+    def test_reseeding_restores_a_tampered_question(self):
+        from tutor.models import Question
+
+        self._seed()
+        q = self._set(1).questions.order_by("order").first()
+        Question.objects.filter(pk=q.pk).update(prompt="STALE", hint="")
+        self._seed()
+        q.refresh_from_db()
+        self.assertTrue(q.prompt.startswith("Craft a detailed sentence"))
+        self.assertNotEqual(q.hint, "")
+
+    def test_reseeding_changes_nothing(self):
+        from tutor.models import Question, QuestionSet
+
+        self._seed()
+        before = (QuestionSet.objects.count(), Question.objects.count())
+        self._seed()
+        self.assertEqual(
+            (QuestionSet.objects.count(), Question.objects.count()), before)
+
+
+class PoetryGuideTests(PoetrySmallFormsTests):
+    """The parent guide."""
+
+    def _guide(self):
+        from curricula.models import Curriculum
+        from tutor.poetry import CURRICULUM_NAME
+
+        self._seed()
+        cur = Curriculum.objects.get(name=CURRICULUM_NAME, parent=self.parent)
+        self.client.force_login(self.parent)
+        return cur, self.client.get(reverse("tutor:poetry_guide", args=[cur.pk]))
+
+    def test_it_shows_all_twelve_forms_with_their_patterns(self):
+        _cur, resp = self._guide()
+        self.assertEqual(resp.status_code, 200)
+        html = resp.content.decode()
+        for name in ("haiku", "tanka", "shadorma", "sevenling"):
+            self.assertIn(name, html)
+        self.assertIn("9-8-7-6-5-4-3-2-1", html)      # the nonet countdown
+        self.assertIn("3-4-3-3-7-5", html)            # shadorma
+        self.assertIn("no syllable rule", html)       # gogyohka and friends
+
+    def test_progress_counts_submitted_sections(self):
+        from django.utils import timezone
+        from tutor.models import ResponseSheet
+
+        self._seed()
+        ResponseSheet.objects.create(
+            question_set=self._set(1), child=self.child, answers={},
+            status=ResponseSheet.SUBMITTED, submitted_at=timezone.now())
+        _cur, resp = self._guide()
+        row = resp.context["children"][0]
+        self.assertEqual(row["sections_done"], 1)
+        self.assertEqual(row["next_section"]["number"], 2)
+
+    def test_the_guide_is_not_reachable_for_other_curricula(self):
+        from curricula.models import Curriculum
+
+        self._seed()
+        other = Curriculum.objects.create(
+            parent=self.parent, name="Something Else", subject="Math",
+            family=self.family)
+        self.client.force_login(self.parent)
+        self.assertEqual(
+            self.client.get(
+                reverse("tutor:poetry_guide", args=[other.pk])).status_code, 404)
+
+    def test_the_link_shows_only_on_this_curriculum(self):
+        from curricula.models import Curriculum
+
+        cur, _resp = self._guide()
+        detail = self.client.get(
+            reverse("curricula:curriculum_detail", args=[cur.pk])).content.decode()
+        self.assertIn("poetry-guide", detail)
+        other = Curriculum.objects.create(
+            parent=self.parent, name="Something Else", subject="Math",
+            family=self.family)
+        detail = self.client.get(
+            reverse("curricula:curriculum_detail", args=[other.pk])).content.decode()
+        self.assertNotIn("poetry-guide", detail)
+
+
+class MissAgnesTests(TestCase):
+    """Violet's Blackbird Level 3 guide for The Year of Miss Agnes.
+
+    The seed is Rickshaw Girl's builders pointed at this book's module, so the
+    tests pin what actually differs: the chapter splits, the two-character
+    journals, the discussion counts, and that no blank needs an inflected form.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        from django.contrib.auth import get_user_model
+        from core.models import Family, FamilyMembership
+        from portal.tokens import make_portal_token
+
+        User = get_user_model()
+        cls.parent = User.objects.create_user(
+            username="ag", email="ag@e.com", password="pw")
+        cls.family = Family.objects.create(name="AG Fam")
+        FamilyMembership.objects.create(
+            user=cls.parent, family=cls.family, role="parent")
+        cls.child = Student.objects.create(
+            parent=cls.parent, first_name="Violet", grade_level="G03",
+            family=cls.family)
+        cls.token = make_portal_token(cls.child)
+
+    def _seed(self):
+        from io import StringIO
+        from django.core.management import call_command
+        call_command("seed_year_of_miss_agnes", "--for-user", "ag",
+                     stdout=StringIO())
+
+    def _set(self, title):
+        from tutor.agnes import CURRICULUM_NAME
+        from tutor.models import QuestionSet
+        return QuestionSet.objects.get(
+            title=title, lesson__chapter__curriculum__name=CURRICULUM_NAME,
+            lesson__chapter__curriculum__parent=self.parent)
+
+    def test_the_books_own_shape(self):
+        from curricula.models import Chapter, Lesson
+        from tutor.agnes import CURRICULUM_NAME
+        from tutor.models import Question, QuestionSet
+
+        self._seed()
+        self.assertEqual(Chapter.objects.filter(
+            curriculum__name=CURRICULUM_NAME,
+            curriculum__parent=self.parent).count(), 5)
+        lessons = Lesson.objects.filter(
+            chapter__curriculum__name=CURRICULUM_NAME,
+            chapter__curriculum__parent=self.parent)
+        self.assertEqual(lessons.count(), 21)
+        sets = QuestionSet.objects.filter(lesson__in=lessons)
+        self.assertEqual(sets.count(), 21)
+        self.assertEqual(
+            Question.objects.filter(question_set__in=sets).count(), 83)
+
+    def test_journals_name_this_books_pairs_not_rickshaws_four(self):
+        from tutor.models import Question
+
+        self._seed()
+        q = self._set("Section 1 · Journal").questions.order_by("order").first()
+        self.assertEqual(q.response_type, Question.TYPE_CHARACTERS)
+        self.assertEqual(len(q.character_names), 2)
+        self.assertIn("Fred", q.character_names)
+        q4 = self._set("Section 4 · Journal").questions.order_by("order").first()
+        self.assertIn("Miss Agnes", q4.character_names)
+
+    def test_every_blank_is_answerable_with_no_inflection_needed(self):
+        """This guide, unlike Rickshaw §4, needs no inflected forms — so the
+        bank must equal the printed word list and the "ending changed" sentence
+        must NOT appear in any fill-in prompt."""
+        import json
+
+        self._seed()
+        for n in (1, 2, 3, 4):
+            fill = self._set("Section %d · Vocabulary" % n).questions.order_by("order")[1]
+            data = json.loads(fill.passage)
+            bank = set(data["words"])
+            for s in data["sentences"]:
+                self.assertIn(s["word"], bank, "section %d" % n)
+            self.assertNotIn("ending changed", fill.prompt)
+
+    def test_discussion_counts_follow_the_book(self):
+        from tutor.models import QuestionSet
+
+        self._seed()
+        for n, count in ((1, 5), (2, 8), (3, 6), (4, 5)):
+            qset = self._set("Section %d · Discussion" % n)
+            self.assertEqual(qset.mode, QuestionSet.MODE_DISCUSSION)
+            self.assertEqual(qset.questions.count(), count, "section %d" % n)
+
+    def test_the_glean_page_offers_the_six_options(self):
+        self._seed()
+        qset = self._set("Section 5 · Glean: Final Project")
+        self.assertEqual(qset.questions.count(), 3)   # pick / plan / reflect
+        self.assertIn("Alaska", qset.intro)
+        self.assertIn("Miss Agnes", qset.intro)
+
+    def test_the_page_renders_for_her(self):
+        self._seed()
+        html = self.client.get(reverse(
+            "portal:portal_questions",
+            args=[self.token, self._set("Section 1 · Journal").pk])
+        ).content.decode()
+        self.assertEqual(html.count("character-field"), 2)
+        self.assertIn("Need a nudge", html)
+
+    def test_a_dry_run_writes_nothing(self):
+        from io import StringIO
+        from django.core.management import call_command
+        from curricula.models import Curriculum, Lesson
+
+        out = StringIO()
+        call_command("seed_year_of_miss_agnes", "--for-user", "ag", "--dry-run",
+                     stdout=out)
+        self.assertIn("nothing written", out.getvalue())
+        self.assertEqual(Curriculum.objects.count(), 0)
+        self.assertEqual(Lesson.objects.count(), 0)
+
+    def test_reseeding_changes_nothing(self):
+        from tutor.models import Question, QuestionSet
+
+        self._seed()
+        before = (QuestionSet.objects.count(), Question.objects.count())
+        self._seed()
+        self.assertEqual(
+            (QuestionSet.objects.count(), Question.objects.count()), before)
+
+
+class MissAgnesContentTests(TestCase):
+    """Semantic spot-checks — a bijection survives swapping two numbers, so
+    these pin the meaning, at least two words per section."""
+
+    def test_each_word_means_what_its_definition_says(self):
+        from tutor.agnes import section_by_number
+
+        for n, word, phrase in [
+            (1, "harness", "working animal"), (1, "quill", "feather"),
+            (1, "moccasins", "soft leather"),
+            (2, "holler", "shout"), (2, "geography", "earth"),
+            (2, "hunker", "squat"),
+            (3, "microscope", "small particles"), (3, "echo", "reflected"),
+            (3, "brittle", "easily broken"),
+            (4, "invent", "create"), (4, "gloomy", "dark"),
+            (4, "brag", "highly of oneself"),
+        ]:
+            section = section_by_number(n)
+            number = dict(section["vocab"])[word]
+            definition = section["definitions"][number - 1]
+            self.assertIn(phrase, definition,
+                          "S%d: %r points at %r" % (n, word, definition))
+
+    def test_each_section_journals_its_own_pair(self):
+        from tutor.agnes import SECTIONS
+
+        pairs = [set(s["characters"]) for s in SECTIONS]
+        self.assertEqual(len(pairs), 4)
+        for p in pairs:
+            self.assertEqual(len(p), 2)
+        self.assertIn("Miss Agnes", pairs[2] | pairs[3])
+
+
+class OneTrue3Tests(TestCase):
+    """Volume C3: twenty rhetorical devices.
+
+    Its shape is NOT C1's — no Sentence 2, two copy tasks per lesson — so these
+    pin the differences rather than re-testing the shared machinery.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        from django.contrib.auth import get_user_model
+        from core.models import Family, FamilyMembership
+        from portal.tokens import make_portal_token
+
+        User = get_user_model()
+        cls.parent = User.objects.create_user(
+            username="o3", email="o3@e.com", password="pw")
+        cls.family = Family.objects.create(name="O3 Fam")
+        FamilyMembership.objects.create(
+            user=cls.parent, family=cls.family, role="parent")
+        # The publisher puts this volume at Grades 6-8, so it is Kaylin's.
+        cls.child = Student.objects.create(
+            parent=cls.parent, first_name="Kaylin", grade_level="G07",
+            family=cls.family)
+        # C1 is Violet's (Grades 4-5) and one test below seeds it, so she has
+        # to exist here too.
+        cls.violet = Student.objects.create(
+            parent=cls.parent, first_name="Violet", grade_level="G03",
+            family=cls.family)
+        cls.token = make_portal_token(cls.child)
+
+    def _seed(self):
+        from io import StringIO
+        from django.core.management import call_command
+        call_command("seed_onetrue3_kaylin", "--for-user", "o3", stdout=StringIO())
+
+    def _set(self, week, practice=False):
+        from tutor.models import QuestionSet
+        from tutor.onetrue3 import CURRICULUM_NAME
+        qs = QuestionSet.objects.filter(
+            lesson__number=week,
+            lesson__chapter__curriculum__name=CURRICULUM_NAME,
+            lesson__chapter__curriculum__parent=self.parent)
+        return (qs.filter(title__endswith="now you try!").get() if practice
+                else qs.exclude(title__endswith="now you try!").get())
+
+    def _page(self, week=1, practice=False):
+        return self.client.get(reverse(
+            "portal:portal_questions",
+            args=[self.token, self._set(week, practice).pk])).content.decode()
+
+    def test_twenty_weeks_each_a_lesson_and_a_practice(self):
+        from curricula.models import Lesson
+        from tutor.models import QuestionSet
+        from tutor.onetrue3 import CURRICULUM_NAME
+
+        self._seed()
+        lessons = Lesson.objects.filter(
+            chapter__curriculum__name=CURRICULUM_NAME,
+            chapter__curriculum__parent=self.parent)
+        self.assertEqual(lessons.count(), 20)
+        for lesson in lessons:
+            self.assertEqual(
+                QuestionSet.objects.filter(lesson=lesson).count(), 2,
+                "week %s" % lesson.number)
+
+    def test_both_copy_tasks_take_the_pen_and_sit_where_the_book_prints_them(self):
+        """Task 1 copies the EXPLANATION; the copy-the-example task is printed
+        fourth, right after 'read it silently'. The transcription lifted the
+        latter into its own field, so getting it back into position is the one
+        thing this seed has to do carefully."""
+        from tutor.models import Question
+
+        self._seed()
+        qs = list(self._set(1).questions.order_by("order"))
+        self.assertTrue(qs[0].prompt.startswith("Read and copy the explanation"))
+        self.assertEqual(qs[0].response_type, Question.TYPE_HANDWRITING)
+        self.assertIn("silently", qs[2].prompt)
+        self.assertEqual(qs[3].prompt, "Copy the example sentence.")
+        self.assertEqual(qs[3].response_type, Question.TYPE_HANDWRITING)
+        # Everything else is typed, so the grader can read it.
+        for q in qs[1:3] + qs[4:]:
+            self.assertEqual(q.response_type, Question.TYPE_TEXT, q.prompt[:40])
+        # …and the POSITIONS hold in every week, not just the first. Counting
+        # two pens per week would still pass if the copy task were inserted in
+        # the wrong place, which is the mistake worth catching.
+        for n in range(1, 21):
+            week = list(self._set(n).questions.order_by("order"))
+            pens = [i for i, q in enumerate(week)
+                    if q.response_type == Question.TYPE_HANDWRITING]
+            self.assertEqual(pens, [0, 3], "week %d" % n)
+            self.assertTrue(week[0].prompt.startswith("Read and copy the explanation"),
+                            "week %d" % n)
+            self.assertEqual(week[3].prompt, "Copy the example sentence.",
+                             "week %d" % n)
+
+    def test_the_page_does_not_invent_a_sentence_two(self):
+        """This volume has none — one Example box IS the model. C1's header
+        would otherwise print an empty 'Sentence 2' chip."""
+        self._seed()
+        html = self._page(1)
+        self.assertNotIn("Sentence 2", html)
+        self.assertIn(">Example<", html)
+        self.assertIn("Though the torrential downpour", html)
+
+    def test_her_own_sentences_are_handwritten(self):
+        from tutor.models import Question
+
+        self._seed()
+        practice = list(self._set(1, practice=True).questions.order_by("order"))
+        self.assertEqual(len(practice), 5)
+        self.assertEqual([q.response_type for q in practice],
+                         [Question.TYPE_HANDWRITING] * 5)
+        self.assertTrue(practice[0].prompt.startswith("Sentence 1 of 5 —"))
+        self.assertTrue(practice[1].prompt.startswith("Sentence 2 of 5"))
+        # The long instruction appears once, not five times.
+        self.assertEqual(
+            sum("antanagoge" in q.prompt.lower() for q in practice), 1)
+
+    def test_the_printed_quirks_are_preserved(self):
+        """Four weeks carry the guide's own oddities verbatim, with notes."""
+        from tutor.onetrue3 import WEEKS
+
+        noted = [w for w in WEEKS if w.get("note")]
+        self.assertGreaterEqual(len(noted), 4)
+        text = " ".join(q for w in WEEKS for q in w["questions_one"])
+        self.assertIn("paranthesis", text)
+        self.assertIn("elliminates", text)
+        self.assertIn("Why?.", text)
+        self.assertIn("write rewrite", text)
+
+    def test_every_question_carries_a_nudge(self):
+        self._seed()
+        for n in (1, 10, 20):
+            for practice in (False, True):
+                qset = self._set(n, practice)
+                self.assertEqual(qset.questions.exclude(hint="").count(),
+                                 qset.questions.count(), qset.title)
+
+    def test_a_dry_run_writes_nothing(self):
+        from io import StringIO
+        from django.core.management import call_command
+        from curricula.models import Curriculum, Lesson
+
+        out = StringIO()
+        call_command("seed_onetrue3_kaylin", "--for-user", "o3", "--dry-run",
+                     stdout=out)
+        self.assertIn("nothing written", out.getvalue())
+        self.assertEqual(Curriculum.objects.count(), 0)
+        self.assertEqual(Lesson.objects.count(), 0)
+
+    def test_reseeding_changes_nothing(self):
+        from tutor.models import Question, QuestionSet
+
+        self._seed()
+        before = (QuestionSet.objects.count(), Question.objects.count())
+        self._seed()
+        self.assertEqual(
+            (QuestionSet.objects.count(), Question.objects.count()), before)
+
+    def test_volume_c1_still_renders_its_own_shape(self):
+        """The two volumes share a header; C3's changes must not strip C1's
+        Sentence 2, which is live in production."""
+        from io import StringIO
+        from django.core.management import call_command
+        from tutor.models import QuestionSet
+        from tutor.onetrue import CURRICULUM_NAME as C1
+
+        from portal.tokens import make_portal_token
+
+        call_command("seed_onetrue_violet", "--for-user", "o3", stdout=StringIO())
+        qset = QuestionSet.objects.filter(
+            lesson__number=1, lesson__chapter__curriculum__name=C1,
+            lesson__chapter__curriculum__parent=self.parent).exclude(
+            title__endswith="now you try!").get()
+        html = self.client.get(reverse(
+            "portal:portal_questions",
+            args=[make_portal_token(self.violet), qset.pk])).content.decode()
+        self.assertIn("Sentence 2", html)
+        self.assertIn("Margaret Wise Brown", html)
+        self.assertIn(">Sentence 1<", html)
+        # The read-aloud line: branching the template for C3 once hoisted "the"
+        # outside the {% if %}, so all twenty of Violet's LIVE pages read
+        # "Read the Sentence 1 silently". Checking only the chip missed it.
+        import re
+        flat = re.sub(r"\s+", " ", html)
+        self.assertIn("Read Sentence 1 silently", flat)
+        self.assertNotIn("Read the Sentence 1", flat)
+        # …and her practice page is untouched too.
+        practice = QuestionSet.objects.filter(
+            lesson__number=1, lesson__chapter__curriculum__name=C1,
+            lesson__chapter__curriculum__parent=self.parent,
+            title__endswith="now you try!").get()
+        phtml = self.client.get(reverse(
+            "portal:portal_questions",
+            args=[make_portal_token(self.violet), practice.pk])).content.decode()
+        self.assertIn("Now you try", phtml)
+        # The MODEL sentence is withheld on the practice page. ("Sentence 1"
+        # itself still appears there — the practice prompts are numbered
+        # "Sentence 1 of 5".)
+        self.assertNotIn("chuckleberry blossoms", phtml)
+
+
+class EssayVolume2Tests(TestCase):
+    """Intro to Composition: The Essay, Volume 2 — Kaylin's ten weeks.
+
+    The two halves of each lesson are different shapes, and most of what can go
+    wrong here is one half quietly acquiring the other's furniture, so these
+    pin the halves against each other rather than testing either alone.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        from portal.tokens import make_portal_token
+
+        cls.parent = User.objects.create_user(
+            username="es", email="es@e.com", password="pw")
+        cls.family = Family.objects.create(name="Essay Fam")
+        FamilyMembership.objects.create(
+            user=cls.parent, family=cls.family, role="parent")
+        cls.child = Student.objects.create(
+            parent=cls.parent, first_name="Kaylin", grade_level="G07",
+            family=cls.family)
+        cls.token = make_portal_token(cls.child)
+
+    def _seed(self):
+        call_command("seed_essay_kaylin", "--for-user", "es", stdout=StringIO())
+
+    def _set(self, week):
+        from tutor.essay import CURRICULUM_NAME
+        from tutor.models import QuestionSet
+        return QuestionSet.objects.get(
+            lesson__number=week,
+            lesson__chapter__curriculum__name=CURRICULUM_NAME,
+            lesson__chapter__curriculum__parent=self.parent)
+
+    def _page(self, week):
+        return self.client.get(reverse(
+            "portal:portal_questions",
+            args=[self.token, self._set(week).pk])).content.decode()
+
+    # -- the book's own arithmetic -----------------------------------------
+
+    def test_the_blueprint_adds_up_to_the_thirty_sentences_it_claims(self):
+        """Every paragraph must list exactly as many lines as it says it has.
+
+        The blueprint is the spine: it drives the rough-draft boxes, the
+        thirty-item checklist AND the size of each box, so a paragraph whose
+        line list and sentence count disagree corrupts three things at once.
+        """
+        from tutor import essay
+
+        self.assertEqual(essay.blueprint_total(), 30)
+        for para in essay.BLUEPRINT:
+            self.assertEqual(len(para["lines"]), para["sentences"], para["tag"])
+        self.assertEqual([p["sentences"] for p in essay.BLUEPRINT],
+                         [3, 8, 8, 8, 3])
+
+    def test_the_teacher_form_sections_sum_to_the_printed_fifty(self):
+        from tutor import essay
+
+        self.assertEqual(essay.TOTAL_POINTS, 50)
+        self.assertEqual(sum(t for _, t, _ in essay.TEACHER_FORM), 50)
+        for name, total, items in essay.TEACHER_FORM:
+            self.assertEqual(sum(v for _, v in items), total, name)
+
+    def test_the_rubric_keeps_all_five_bands_and_all_their_criteria(self):
+        """The grader is handed these verbatim; a dropped bullet is a real loss."""
+        from tutor import essay
+
+        self.assertEqual([n for n, _ in essay.EVALUATION_RUBRIC],
+                         ["ACCOMPLISHED", "PROFICIENT", "BASIC", "LIMITED", "POOR"])
+        for name, criteria in essay.EVALUATION_RUBRIC:
+            self.assertEqual(len(criteria), 6, name)
+
+    # -- shape -------------------------------------------------------------
+
+    def test_ten_weeks_five_essays_two_weeks_each(self):
+        from tutor.essay import CURRICULUM_NAME
+
+        self._seed()
+        lessons = Lesson.objects.filter(
+            chapter__curriculum__name=CURRICULUM_NAME,
+            chapter__curriculum__parent=self.parent).order_by("number")
+        self.assertEqual([x.number for x in lessons], list(range(1, 11)))
+        self.assertEqual(Curriculum.objects.get(
+            name=CURRICULUM_NAME, parent=self.parent).grade_level, "G07")
+
+    def test_the_two_halves_of_a_lesson_are_different_shapes(self):
+        """Odd week: the guide's pre-writing, typed. Even week: one essay.
+
+        Pinned against each other because the failure mode is one half
+        acquiring the other's furniture — a drafting week full of short-answer
+        boxes, or a pre-writing week that hands her a paragraph widget.
+        """
+        self._seed()
+        for start in (1, 3, 5, 7, 9):
+            odd = list(self._set(start).questions.all())
+            even = list(self._set(start + 1).questions.order_by("order"))
+
+            self.assertGreater(len(odd), 15, "week %d" % start)
+            self.assertNotIn(Question.TYPE_PARAGRAPH,
+                             {q.response_type for q in odd},
+                             "week %d must not draft" % start)
+
+            self.assertEqual([q.response_type for q in even],
+                             [Question.TYPE_PARAGRAPH, Question.TYPE_SELF_EVAL,
+                              Question.TYPE_SELF_EVAL],
+                             "week %d" % (start + 1))
+
+    def test_the_rough_draft_boxes_are_the_blueprint_sized_to_its_paragraphs(self):
+        """The three BODY paragraphs are eight sentences and need the room.
+
+        The widget used to hardcode "the second box is the tall one" — right
+        for a three-part paragraph, and it left two of the three body
+        paragraphs of a five-paragraph essay with a two-row box.
+        """
+        from tutor import essay
+
+        self._seed()
+        draft = self._set(2).questions.order_by("order").first()
+        self.assertEqual(draft.paragraph_sections, essay.PARAGRAPH_SECTIONS)
+        self.assertEqual(draft.paragraph_section_rows, [3, 8, 8, 8, 3])
+        self.assertEqual([b["rows"] for b in draft.paragraph_boxes], [3, 8, 8, 8, 3])
+        self.assertEqual([b["label"] for b in draft.paragraph_boxes],
+                         essay.PARAGRAPH_SECTIONS)
+
+    def test_the_blueprint_checklist_has_one_box_per_sentence_and_names_it(self):
+        """Thirty boxes, each saying which paragraph it belongs to.
+
+        Flattened, "Opener" and "Clincher" each appear three times; without the
+        paragraph tag she cannot tell which of the three she is ticking.
+        """
+        self._seed()
+        checklist = self._set(2).questions.order_by("order")[1]
+        items = checklist.self_eval_items
+        self.assertEqual(len(items), 30)
+        self.assertEqual(len(set(items)), 30, "every row distinct")
+        self.assertTrue(items[0].startswith("P1"))
+        self.assertTrue(items[-1].startswith("P5"))
+        self.assertIn("Hook", items[0])
+        self.assertIn("Twist", items[-1])
+        self.assertEqual(sum(1 for i in items if "Opener" in i), 3)
+        # A bare checkbox in the book: no "how would you improve this" line.
+        self.assertFalse(checklist.self_eval_wants_notes)
+        # Two options, because a checkbox has two states. Collapse this to one
+        # and every row renders pre-decided, with nothing for her to say.
+        self.assertEqual(checklist.self_eval_scale, ["In my draft", "Not yet"])
+
+    def test_the_self_evaluation_is_the_guides_twelve_components(self):
+        self._seed()
+        form = self._set(2).questions.order_by("order")[2]
+        self.assertEqual(len(form.self_eval_items), 12)
+        self.assertEqual(form.self_eval_items[0], "Follows Essay Format")
+        self.assertEqual(form.self_eval_items[-1], "Vocal Creativity")
+        self.assertEqual(form.self_eval_scale,
+                         ["Excellent", "Satisfactory", "Needs to Improve"])
+        self.assertTrue(form.self_eval_wants_notes)
+
+    def test_the_self_check_groups_only_ever_ask_questions(self):
+        """"Now write the final pair of sentences and the clincher." is an
+        instruction, and was briefly being offered to her as something to rate
+        Yes / Not yet. Every self-check the book prints is a question."""
+        from tutor.essay_lessons import LESSONS
+
+        for lesson in LESSONS:
+            for step in lesson["steps"]:
+                for check in step.get("checks", []):
+                    self.assertTrue(check.endswith("?"),
+                                    "L%d: %r" % (lesson["number"], check))
+        self._seed()
+        for week in (1, 3, 5, 7, 9):
+            for q in self._set(week).questions.filter(
+                    response_type=Question.TYPE_SELF_EVAL):
+                for item in q.self_eval_items:
+                    self.assertTrue(item.endswith("?"),
+                                    "week %d: %r" % (week, item))
+
+    def test_the_three_sub_topics_get_three_boxes(self):
+        """The page prints three numbered rules, not one three-line box —
+        three of the five readers collapsed them, the second reader caught it."""
+        from tutor.essay_lessons import LESSONS
+
+        for lesson in LESSONS:
+            slots = [p["text"] for step in lesson["steps"]
+                     for p in step["prompts"] if "Sub-topic" in p["text"]]
+            self.assertEqual(len(slots), 3, "L%d" % lesson["number"])
+            self.assertIn("Choose three sub-topics", slots[0])
+            self.assertTrue(slots[1].endswith("2 of 3"))
+
+    # -- the printed guide's own mistakes ----------------------------------
+
+    def test_the_guides_typos_are_preserved_and_explained(self):
+        """Transcribed verbatim, warned about separately — never silently fixed.
+
+        "complimentary" is the one that matters: the prompt orders her to go
+        and research the word, and the word the guide prints is the wrong one.
+        """
+        from tutor.essay_lessons import LESSONS
+
+        l1 = LESSONS[0]
+        vangogh = [p["text"] for step in l1["steps"] for p in step["prompts"]
+                   if "Van Gogh" in p["text"]]
+        self.assertEqual(len(vangogh), 1)
+        self.assertIn("complimentary colors", vangogh[0])
+        self.assertNotIn("complementary colors", vangogh[0])
+        self.assertIn("COMPLEMENTARY", " ".join(n["text"] for n in l1["notes"]))
+
+        # PS» for P5» — in lessons 1, 3 and 5 only, which is how we know it is
+        # the book's own slip and not somebody misreading a scan.
+        for lesson in LESSONS:
+            texts = " ".join(n["text"] for n in lesson.get("notes", []))
+            self.assertEqual("PS»" in texts, lesson["number"] in (1, 3, 5),
+                             "L%d" % lesson["number"])
+
+    def test_a_note_appears_only_on_the_week_it_is_about(self):
+        """The blueprint-checklist typo belongs to the drafting week; the
+        research-the-wrong-word warning belongs to the week that asks."""
+        self._seed()
+        first, draft = self._page(1), self._page(2)
+        self.assertIn("COMPLEMENTARY", first)
+        self.assertNotIn("COMPLEMENTARY", draft)
+        self.assertIn("PS»", draft)
+        self.assertNotIn("PS»", first)
+
+    def test_the_guides_own_pages_are_reachable_while_she_writes(self):
+        from tutor import essay
+
+        self._seed()
+        html = self._page(2)
+        for path, _title in essay.reference_images():
+            self.assertIn(path.rsplit(".", 1)[0], html, path)
+        self.assertIn("The Model - Descriptive Essay", html)
+
+    # -- what the grader is told -------------------------------------------
+
+    def test_a_self_evaluation_reaches_the_grader_as_her_judgement(self):
+        """Not as answers to be marked. A grader handed a column of "Needs to
+        Improve" would otherwise mark her down for the very honesty the
+        exercise is asking for."""
+        self._seed()
+        qset = self._set(2)
+        form = qset.questions.order_by("order")[2]
+        sheet = ResponseSheet.objects.create(
+            question_set=qset, child=self.child,
+            answers={str(form.pk): json.dumps({
+                "ratings": {"0": "Excellent", "2": "Needs to Improve"},
+                "notes": {"2": "my hook is boring"}})})
+        shown = sheet.answer_display(form)
+        self.assertIn("her judgement", shown)
+        self.assertIn("1. Follows Essay Format — Excellent", shown)
+        self.assertIn("3. Hook Grabs Reader's Attention — Needs to Improve",
+                      shown)
+        self.assertIn("my hook is boring", shown)
+        # Untouched rows stay out rather than reading as unrated failures.
+        self.assertNotIn("2. Clearly Communicates", shown)
+
+    def test_an_untouched_self_evaluation_is_not_an_answer(self):
+        self._seed()
+        qset = self._set(2)
+        form = qset.questions.order_by("order")[2]
+        sheet = ResponseSheet.objects.create(
+            question_set=qset, child=self.child,
+            answers={str(form.pk): json.dumps({"ratings": {}, "notes": {}})})
+        self.assertEqual(sheet.answer_display(form), "(no answer)")
+
+    def test_the_rubric_hands_over_the_guides_own_form(self):
+        from tutor import essay
+
+        self._seed()
+        rubric = self._set(2).rubric
+        for _name, _total, items in essay.TEACHER_FORM:
+            for label, _pts in items:
+                self.assertIn(label, rubric)
+        self.assertIn("ACCOMPLISHED", rubric)
+        self.assertIn("Grade the FINAL DRAFT", rubric)
+
+    # -- the usual guards --------------------------------------------------
+
+    def test_every_week_renders(self):
+        self._seed()
+        for week in range(1, 11):
+            r = self.client.get(reverse(
+                "portal:portal_questions", args=[self.token, self._set(week).pk]))
+            self.assertEqual(r.status_code, 200, "week %d" % week)
+
+    def test_every_question_carries_a_nudge(self):
+        self._seed()
+        for week in range(1, 11):
+            qset = self._set(week)
+            self.assertEqual(qset.questions.exclude(hint="").count(),
+                             qset.questions.count(), qset.title)
+
+    def test_a_dry_run_writes_nothing(self):
+        out = StringIO()
+        call_command("seed_essay_kaylin", "--for-user", "es", "--dry-run",
+                     stdout=out)
+        self.assertIn("nothing written", out.getvalue())
+        self.assertEqual(Curriculum.objects.count(), 0)
+        self.assertEqual(Lesson.objects.count(), 0)
+
+    def test_reseeding_changes_nothing(self):
+        from tutor.models import QuestionSet
+
+        self._seed()
+        before = (QuestionSet.objects.count(), Question.objects.count())
+        self._seed()
+        self.assertEqual(
+            (QuestionSet.objects.count(), Question.objects.count()), before)
+
+    def test_the_auditor_catches_a_self_evaluation_with_nothing_to_judge(self):
+        self._seed()
+        form = self._set(2).questions.order_by("order")[2]
+        form.passage = json.dumps({"items": [], "scale": ["Yes", "No"]})
+        form.save(update_fields=["passage"])
+        out = StringIO()
+        # The command exits non-zero when it finds anything — that exit IS the
+        # signal, so a clean run here would mean the auditor missed it.
+        with self.assertRaises(SystemExit):
+            call_command("audit_content", stdout=out)
+        self.assertIn("self-evaluation lists no components", out.getvalue())
+
+    def test_the_auditor_catches_a_scale_with_nothing_to_choose_between(self):
+        """One option is not a rating — every row renders already decided."""
+        self._seed()
+        form = self._set(2).questions.order_by("order")[2]
+        form.passage = json.dumps({"items": ["Follows Essay Format"],
+                                   "scale": ["Excellent"]})
+        form.save(update_fields=["passage"])
+        out = StringIO()
+        with self.assertRaises(SystemExit):
+            call_command("audit_content", stdout=out)
+        self.assertIn("nothing to choose between", out.getvalue())
+
+    # -- guards the review found missing -----------------------------------
+
+    def test_a_paragraph_question_without_row_sizes_renders_as_it_always_did(self):
+        """The ONE line in this change that touches already-live pages.
+
+        Every paragraph question in Rickshaw Girl, Miss Agnes and Essentials in
+        Writing predates `section_rows` and must keep the exact shape the
+        template used to hardcode: `{% if forloop.counter == 2 %}4{% else %}2`,
+        i.e. the SECOND box tall and the rest short, whatever the section count.
+        """
+        from tutor.models import QuestionSet
+
+        self._seed()
+        qset = QuestionSet.objects.create(
+            family=self.family, title="legacy", status=QuestionSet.APPROVED,
+            lesson=Lesson.objects.filter(
+                chapter__curriculum__parent=self.parent).first())
+        for sections, expected in (
+                (["Topic", "Support", "Conclusion"], [2, 4, 2]),
+                (["A", "B"], [2, 4]),
+                (["only"], [2]),
+                (["a", "b", "c", "d", "e"], [2, 4, 2, 2, 2]),
+        ):
+            q = Question.objects.create(
+                question_set=qset, order=1, prompt="p",
+                response_type=Question.TYPE_PARAGRAPH,
+                passage=json.dumps({"sections": sections}))
+            self.assertEqual(q.paragraph_section_rows, expected, sections)
+            self.assertEqual([b["rows"] for b in q.paragraph_boxes], expected)
+            self.assertEqual([b["label"] for b in q.paragraph_boxes], sections)
+            q.delete()
+
+        # And a question with no passage at all still gets the default sections.
+        bare = Question.objects.create(
+            question_set=qset, order=2, prompt="p",
+            response_type=Question.TYPE_PARAGRAPH)
+        self.assertEqual(bare.paragraph_section_rows, [2, 4, 2])
+
+    def test_the_self_evaluation_actually_renders_as_a_rating_widget(self):
+        """Without this, deleting the template branch falls through to the
+        generic textarea — which prints the stored JSON into a text box — and
+        every test still passes, because they only check for a 200."""
+        self._seed()
+        html = self._page(2)
+        self.assertIn("selfeval-widget", html)
+        self.assertIn('class="se-rating"', html)
+        self.assertIn("Needs to Improve", html)
+        self.assertIn("Follows Essay Format", html)
+        # The blueprint checklist's thirty rows are there and are radio inputs,
+        # not a textarea holding raw JSON.
+        self.assertIn("P1 · Introduction — Hook", html)
+        self.assertNotIn('&quot;ratings&quot;', html)
+
+    def test_the_widget_and_the_grader_agree_on_how_a_rating_is_keyed(self):
+        """The widget writes ratings keyed by the component's INDEX and the
+        formatter reads them back the same way. Shift one and every rating
+        slides onto the wrong component with the last one silently lost —
+        which no hand-built-JSON test can see."""
+        import re
+
+        self._seed()
+        html = self._page(2)
+        form = self._set(2).questions.order_by("order")[2]
+        indexes = re.findall(r'class="se-item" data-index="(\d+)"', html)
+        # Both self-evaluations on the page, each keyed 0..n-1 in printed order.
+        self.assertEqual(indexes,
+                         [str(i) for i in range(30)] + [str(i) for i in range(12)])
+
+        # The last component must be reachable: key it the way the widget does
+        # and the formatter must find it.
+        last = len(form.self_eval_items) - 1
+        sheet, _ = ResponseSheet.objects.update_or_create(
+            question_set=self._set(2), child=self.child,
+            defaults={"answers": {str(form.pk): json.dumps(
+                {"ratings": {str(last): "Excellent"}, "notes": {}})}})
+        self.assertIn("12. Vocal Creativity — Excellent",
+                      sheet.answer_display(form))
+
+    def test_every_reference_page_exists_on_disk(self):
+        """Under ManifestStaticFilesStorage a missing static file does not
+        degrade — it raises, and takes the drafting week down with it. The
+        render test cannot catch a typo'd page number because it iterates the
+        same list the template does."""
+        from django.contrib.staticfiles import finders
+        from tutor import essay
+
+        for path, title in essay.reference_images():
+            self.assertIsNotNone(finders.find(path), path)
+            self.assertTrue(title.strip(), path)
+
+    def test_the_labelled_model_essay_is_one_of_the_pages_offered(self):
+        """The page tells her the model has "every part labelled in the
+        margin". Folio 14 is the plain prose; folio 15 is the labelled one, and
+        it was committed but left out of the list — so the promise pointed at
+        an essay with nothing marked on it."""
+        from tutor import essay
+
+        folios = [p["folio"] for p in essay.REFERENCE_PAGES]
+        self.assertIn(15, folios)
+        self.assertEqual(folios, sorted(folios), "printed order")
+        labelled = [p for p in essay.REFERENCE_PAGES if p["folio"] == 15][0]
+        self.assertIn("labelled", labelled["title"])
+
+    def test_the_drafting_week_is_the_even_one(self):
+        """`is_draft_week` decides whether the blueprint opens expanded and
+        whether the title says "(cont.)". It is computed separately from the
+        note scoping, so the note test cannot catch it being inverted."""
+        self._seed()
+        for week in range(1, 11):
+            html = self._page(week)
+            self.assertEqual("(cont.)" in html, week % 2 == 0, "week %d" % week)
+
+    def test_no_step_asks_the_same_thing_twice(self):
+        """The body-paragraph warm-up prints six rules under three labels —
+        "1a. FACTUAL (TELL): / 1b. SENSORY (SHOW): / 2a. …". With the book's
+        numbering dropped, three lessons showed her "FACTUAL (TELL):" twice and
+        "SENSORY (SHOW):" three times, with no way to tell the pairs apart."""
+        from tutor.essay_lessons import LESSONS
+
+        for lesson in LESSONS:
+            for step in lesson["steps"]:
+                texts = [p["text"] for p in step["prompts"]]
+                self.assertEqual(len(set(texts)), len(texts),
+                                 "L%d %s" % (lesson["number"], step["heading"]))
+        self._seed()
+        for week in (1, 3, 5, 7, 9):
+            prompts = [q.prompt for q in self._set(week).questions.all()]
+            self.assertEqual(len(set(prompts)), len(prompts), "week %d" % week)
+
+    def test_no_transcription_scaffolding_reaches_her(self):
+        """"[arrow callout]" is a reader describing the paper, not the guide
+        speaking. It was landing in the hint she opens when she is stuck."""
+        from tutor.essay_lessons import LESSONS
+
+        for lesson in LESSONS:
+            blob = json.dumps(lesson)
+            for marker in ("[arrow callout]", "LINE CUT OFF", "[PAGE TRUNCATED",
+                           "cannot be read reliably", "pdf_page"):
+                self.assertNotIn(marker, blob,
+                                 "L%d leaks %r" % (lesson["number"], marker))
+        self._seed()
+        for week in range(1, 11):
+            for q in self._set(week).questions.all():
+                self.assertNotIn("[arrow", q.prompt + q.hint)
+
+    def test_every_lesson_that_sends_her_to_the_missing_section_says_so(self):
+        """"Thinking In Threes" is referred to in all five lessons and exists
+        in none of them. The warning was written for two."""
+        from tutor.essay_lessons import LESSONS
+
+        for lesson in LESSONS:
+            mentions = any(
+                "Thinking In Threes" in p["text"]
+                for step in lesson["steps"] for p in step["prompts"])
+            mentions = mentions or any(
+                "thought in threes" in c.lower()
+                for step in lesson["steps"] for c in step.get("checks", []))
+            noted = any("Thinking In Threes" in n["text"]
+                        for n in lesson.get("notes", []))
+            self.assertEqual(noted, mentions, "L%d" % lesson["number"])
+            self.assertTrue(mentions, "L%d should mention it" % lesson["number"])
+
+    def test_the_lesson_module_is_what_the_generator_makes_of_the_pages(self):
+        """The committed module must be exactly what the generator emits.
+
+        `tutor/essay_lessons.py` is generated, and every rule about the guide's
+        content — the numbering folded into the prompts, the transcription
+        scaffolding stripped, which lessons get which warning — lives in
+        `scripts/gen_essay_lessons.py`. Nothing else can see a change there:
+        edit the generator, forget to regenerate, and the module keeps whatever
+        it had while the rules say otherwise. Mutating the generator survived
+        every other test in this class until this one existed.
+
+        It also pins the provenance. The page transcriptions are the source of
+        this curriculum; kept only in a scratch directory they would be swept
+        up, and the generator would be unrunnable.
+        """
+        import subprocess
+        import sys
+        from pathlib import Path
+
+        root = Path(__file__).resolve().parent.parent
+        gen = root / "scripts" / "gen_essay_lessons.py"
+        pages = root / "tutor" / "data" / "essay_vol2_pages.json"
+        committed = root / "tutor" / "essay_lessons.py"
+        self.assertTrue(gen.exists(), gen)
+        self.assertTrue(pages.exists(), pages)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp) / "regenerated.py"
+            proc = subprocess.run(
+                [sys.executable, str(gen), str(pages), str(out)],
+                capture_output=True, text=True)
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            self.assertEqual(
+                out.read_text(encoding="utf-8"),
+                committed.read_text(encoding="utf-8"),
+                "tutor/essay_lessons.py is stale — re-run "
+                "scripts/gen_essay_lessons.py tutor/data/essay_vol2_pages.json "
+                "tutor/essay_lessons.py")
+
+    def test_the_page_transcriptions_still_describe_this_guide(self):
+        """A cheap sanity pin on the source data, so a truncated or swapped
+        file is caught here rather than as a mystifying diff in the module."""
+        import json as _json
+        from pathlib import Path
+
+        root = Path(__file__).resolve().parent.parent
+        pages = _json.loads(
+            (root / "tutor" / "data" / "essay_vol2_pages.json").read_text(
+                encoding="utf-8"))
+        self.assertEqual([p["lesson_number"] for p in pages], [1, 2, 3, 4, 5])
+        # Pages 18-72 of the scan, which is where the five lessons live.
+        seen = sorted(pg["pdf_page"] for p in pages for pg in p["pages"])
+        self.assertEqual(seen, list(range(18, 73)))
+
+    # -- guards for what a second review found unpinned --------------------
+
+    def test_the_dictionary_words_are_asked(self):
+        """Four lessons open with "Use a dictionary to define:".
+
+        Deleting that loop from the seed dropped twelve questions and every
+        test still passed — the shape test only asserted "more than fifteen
+        questions", and the weeks stay above fifteen without them.
+        """
+        from tutor.essay_lessons import LESSONS
+
+        self._seed()
+        expected = {L["weeks"][0]: L["vocabulary"] for L in LESSONS}
+        self.assertEqual([len(v) for _w, v in sorted(expected.items())],
+                         [0, 2, 3, 3, 4], "lesson 1 has no word list; the rest do")
+        for week, words in expected.items():
+            prompts = [q.prompt for q in self._set(week).questions.all()]
+            for word in words:
+                self.assertTrue(
+                    any(word in p and "dictionary" in p for p in prompts),
+                    "week %d never asks for %r" % (week, word))
+            self.assertEqual(
+                sum(1 for p in prompts if "Use a dictionary" in p), len(words),
+                "week %d" % week)
+
+    def test_every_week_asks_exactly_what_the_guide_prints(self):
+        """A per-week count, so questions cannot quietly go missing.
+
+        Derived from the lesson data rather than hardcoded, so it tracks a
+        re-transcription — but it still fails the moment the seed stops
+        emitting something the pages contain.
+        """
+        from tutor.essay_lessons import LESSONS
+
+        self._seed()
+        for lesson in LESSONS:
+            odd, even = lesson["weeks"]
+            expected = len(lesson["vocabulary"])
+            for step in lesson["steps"]:
+                expected += len(step["prompts"])
+                if step.get("checks"):
+                    expected += 1
+            self.assertEqual(self._set(odd).questions.count(), expected,
+                             "week %d" % odd)
+            self.assertEqual(self._set(even).questions.count(), 3,
+                             "week %d: draft + checklist + self-evaluation" % even)
+
+    def test_the_drafting_prompt_names_the_essay_without_stuttering(self):
+        """The titles are already imperative, so prefixing "Write" gave
+        "Write write an orange" — on the one question of every drafting week,
+        and in the text handed to the grader."""
+        self._seed()
+        for week in (2, 4, 6, 8, 10):
+            prompt = self._set(week).questions.order_by("order").first().prompt
+            self.assertNotIn("write write", prompt.lower())
+            self.assertNotIn("Write **write", prompt)
+        self.assertIn("Write an Orange",
+                      self._set(2).questions.order_by("order").first().prompt)
+
+    def test_the_guides_closing_direction_comes_after_the_week_s_work(self):
+        """It tells her to begin crafting the essay from a hook and three
+        sub-topics — which she writes ON that page. Printed above the
+        questions it read as an instruction to start with none of them, and to
+        hand-write on pages that do not exist in the app."""
+        self._seed()
+        html = self._page(1)
+        self.assertIn("es-handover", html)
+        # After the last question, not before the first.
+        self.assertGreater(html.index("es-handover"), html.rindex("portal-answer"))
+        # And it is honest about the app being typed.
+        self.assertIn("you will type", html)
+        # Not on the drafting week — that week's intro carries the order.
+        self.assertNotIn("es-handover", self._page(2))
+
+    def test_the_grader_is_told_not_to_punish_an_honest_self_evaluation(self):
+        """This lives in the seeded rubric, a different file and a different
+        sentence from the formatter's label — deleting it left every test
+        green while the grader lost the only thing stopping it from marking
+        her down for saying "Needs to Improve"."""
+        self._seed()
+        rubric = self._set(2).rubric
+        self.assertIn("her own judgement of her own work", rubric)
+        self.assertIn("never mark her down", rubric)
+        self.assertIn("rough-draft sections are planning and are not marked",
+                      rubric)
+
+    def test_the_rubric_criteria_are_the_printed_words(self):
+        """Counting six bullets per band catches a DROPPED one and nothing
+        else — a corrupted or duplicated bullet passed. The grader is handed
+        these verbatim."""
+        from tutor import essay
+
+        for name, criteria in essay.EVALUATION_RUBRIC:
+            self.assertEqual(len(set(criteria)), len(criteria),
+                             "%s repeats a criterion" % name)
+        bands = dict(essay.EVALUATION_RUBRIC)
+        self.assertEqual(bands["ACCOMPLISHED"][0], "Creatively focuses on the topic")
+        self.assertEqual(bands["ACCOMPLISHED"][2], "Varies sentence structure")
+        self.assertEqual(bands["POOR"][-1],
+                         "Frequent errors in basic writing conventions")
+        # The band-to-band wording the second reader flagged as the book's own
+        # inconsistency: LIMITED says "Organization pattern", POOR says
+        # "Organizational pattern". Both are printed; keep both.
+        self.assertIn("Organization pattern is weak", bands["LIMITED"])
+        self.assertIn("Organizational pattern is lacking", bands["POOR"])
+
+    def test_the_teacher_form_line_items_are_the_printed_weights(self):
+        """Section totals alone survive a compensating swap inside a section
+        (Hook 1 → 2, Context 1 → 0)."""
+        from tutor import essay
+
+        items = {label: pts for _n, _t, rows in essay.TEACHER_FORM
+                 for label, pts in rows}
+        self.assertEqual(items["Hook"], 1)
+        self.assertEqual(items["Context"], 1)
+        self.assertEqual(items["Thesis Statement"], 1)
+        self.assertEqual(items["Body Paragraphs on Topic"], 6)
+        self.assertEqual(items["Supporting Facts & Details"], 6)
+        self.assertEqual(items["Clear Sequence of Ideas"], 6)
+        self.assertEqual(items["Weave"], 1)
+        self.assertEqual(items["Echo"], 1)
+        self.assertEqual(items["Twist"], 1)
+        self.assertEqual(len(items), 22)
+
+    def test_no_bracketed_reader_annotation_survives_anywhere(self):
+        """Stronger than listing the markers we happened to see: a NEW reader
+        annotation in a re-transcription would have shipped."""
+        from tutor.essay_lessons import LESSONS
+
+        for lesson in LESSONS:
+            for step in lesson["steps"]:
+                blob = " ".join(
+                    [step["heading"], step.get("instruction", "")]
+                    + [p["text"] for p in step["prompts"]]
+                    + list(step.get("checks", [])))
+                self.assertNotIn("[", blob, "L%d %s" % (lesson["number"],
+                                                        step["heading"]))
+
+    def test_she_is_told_the_page_numbers_are_the_paper_book_s(self):
+        """"Choose one of your three sub-topics from page 32" — she typed those
+        into this app a few questions earlier, and that printed page is blank."""
+        from tutor.essay_lessons import LESSONS
+        import re
+
+        for lesson in LESSONS:
+            refs = [m for step in lesson["steps"]
+                    for m in re.findall(r"from page (\d+)",
+                                        step.get("instruction", ""))]
+            noted = any("page" in n["text"] and "paper book" in n["text"]
+                        for n in lesson.get("notes", []))
+            self.assertEqual(bool(refs), noted,
+                             "L%d refs=%s noted=%s" % (lesson["number"], refs, noted))
+
+    def test_the_sub_topic_lead_keeps_its_line_break(self):
+        """textwrap turns a newline into a space unless told not to, which
+        silently rewrote this prompt in the generated file."""
+        from tutor.essay_lessons import LESSONS
+
+        for lesson in LESSONS:
+            leads = [p["text"] for step in lesson["steps"] for p in step["prompts"]
+                     if "Choose three sub-topics" in p["text"]]
+            self.assertEqual(len(leads), 1, "L%d" % lesson["number"])
+            self.assertIn("\n\nSub-topic 1 of 3", leads[0],
+                          "L%d lost the break" % lesson["number"])
+
+    def test_every_reference_page_we_ship_is_actually_offered(self):
+        """A page committed under static/essay/reference/ and left out of the
+        list is invisible to her.
+
+        That is exactly what happened twice: folio 15 (the LABELLED model essay,
+        the page the template promises) and folio 17 (the course map) were both
+        rendered, committed and never listed. Checking that the listed pages
+        resolve cannot catch it — the list is the thing that was wrong.
+        """
+        from pathlib import Path
+
+        from tutor import essay
+
+        root = Path(__file__).resolve().parent.parent / "static" / "essay" / "reference"
+        on_disk = {p.name for p in root.glob("*.jpg")}
+        offered = {"p%02d.jpg" % p["pdf_page"] for p in essay.REFERENCE_PAGES}
+        self.assertEqual(on_disk - offered, set(),
+                         "committed but never shown to her")
+        self.assertEqual(offered - on_disk, set(), "listed but not on disk")
+
+    def test_the_rubric_bands_are_pinned_word_for_word(self):
+        """All thirty bullets, not three.
+
+        The grader is handed these verbatim, and a corrupted bullet reads as
+        plausible guidance — "Transitions are creative and adequate" under
+        PROFICIENT would quietly invert what the band means.
+        """
+        from tutor import essay
+
+        expected = {
+            "ACCOMPLISHED": [
+                "Creatively focuses on the topic",
+                "Uses logical progression of ideas to develop and supports topic with details",
+                "Varies sentence structure",
+                "Uses interesting transitions",
+                "Makes strong word choice",
+                "Mature understanding of writing conventions",
+            ],
+            "PROFICIENT": [
+                "Focuses on topic and includes adequate support",
+                "Uses logical progression of ideas to develop and loosely supports topic",
+                "Some varied sentence structure",
+                "Transitions are adequate but not creative",
+                "Word choice is adequate but not creative",
+                "General understanding of writing conventions",
+            ],
+            "BASIC": [
+                "Topic is addressed, but unclear",
+                "Lacks logical progression of ideas and support is weak",
+                "Sentences are stagnant and uninteresting",
+                "Lack of transitions",
+                "Average word choice",
+                "Partial understanding of writing conventions",
+            ],
+            "LIMITED": [
+                "Topic may be mentioned, but not clearly addressed and loosely supported",
+                "Organization pattern is weak",
+                "Writing contains sentence fragments and run-ons",
+                "Poor transitions",
+                "Poor word choice",
+                "Definite misunderstanding of writing conventions",
+            ],
+            "POOR": [
+                "Topic is not addressed or clearly supported",
+                "Organizational pattern is lacking",
+                "Sentence structure is insufficient",
+                "Non-existent transitions",
+                "Weak word choice",
+                "Frequent errors in basic writing conventions",
+            ],
+        }
+        self.assertEqual(dict(essay.EVALUATION_RUBRIC), expected)
+
+    def test_no_bracketed_annotation_anywhere_in_the_lesson_data(self):
+        """Wider than the per-step blob: banners, word lists and checklist
+        lead-ins are child-facing too.
+
+        Walks the string VALUES — serialising the whole lesson and searching
+        the JSON would flag its own array brackets and pass for the wrong
+        reason forever after.
+        """
+        from tutor.essay_lessons import LESSONS
+
+        def strings(value, path="L"):
+            if isinstance(value, str):
+                yield path, value
+            elif isinstance(value, dict):
+                for k, v in value.items():
+                    yield from strings(v, "%s.%s" % (path, k))
+            elif isinstance(value, (list, tuple)):
+                for i, v in enumerate(value):
+                    yield from strings(v, "%s[%d]" % (path, i))
+
+        for lesson in LESSONS:
+            for path, text in strings(lesson, "L%d" % lesson["number"]):
+                self.assertNotIn("[", text, path)
+
+
+class StudiesWeeklyTests(TestCase):
+    """California Studies Weekly — one issue a week, per grade, for years.
+
+    The point of the framework is that week 2 is a content file, not a build.
+    These pin the parts that would silently rot: the answer key matching the
+    teacher edition, the figures existing, and the level/grade pairing.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        from portal.tokens import make_portal_token
+
+        cls.parent = User.objects.create_user(
+            username="sw", email="sw@e.com", password="pw")
+        cls.fam = Family.objects.create(name="SW Fam")
+        FamilyMembership.objects.create(user=cls.parent, family=cls.fam, role="parent")
+        cls.kaylin = Student.objects.create(
+            parent=cls.parent, first_name="Kaylin", grade_level="G07", family=cls.fam)
+        cls.violet = Student.objects.create(
+            parent=cls.parent, first_name="Violet", grade_level="G03", family=cls.fam)
+        cls.token = make_portal_token(cls.kaylin)
+
+    def _seed(self, level=7, week=1):
+        call_command("seed_weekly", "--level", str(level), "--week", str(week),
+                     "--for-user", "sw", stdout=StringIO())
+
+    def _set(self, week=1):
+        return QuestionSet.objects.get(lesson__number=week,
+                                       lesson__chapter__curriculum__parent=self.parent)
+
+    def _page(self, week=1):
+        return self.client.get(reverse(
+            "portal:portal_questions",
+            args=[self.token, self._set(week).pk])).content.decode()
+
+    # -- the issue's own answers -------------------------------------------
+
+    def test_the_answer_key_is_the_teacher_editions(self):
+        """Marked answers from pp. 1.13-1.14 of the issue. If a re-transcription
+        ever drifts, a child gets told her right answer is wrong."""
+        from tutor import weekly_l7w1 as w
+
+        correct = [q.get("correct") for q in w.QUESTIONS if q["kind"] == "choice"]
+        self.assertEqual(correct, [["c"], ["a", "b", "e"], ["d"], ["c"], ["b"],
+                                   ["c"], ["a"]])
+        pairs = [q for q in w.QUESTIONS if q["kind"] == "fill_two"]
+        self.assertEqual(
+            [(p["correct_a"], p["correct_b"]) for p in pairs],
+            [("Physical geography", "human geography"), ("north", "west")])
+
+    def test_only_one_question_takes_several_answers(self):
+        """"Which ARE examples" is multi; every "which IS" is single. A child
+        who can tick three boxes on a one-answer question has been told
+        something untrue about the question."""
+        from tutor import weekly_l7w1 as w
+
+        multi = [q["prompt"] for q in w.QUESTIONS
+                 if q["kind"] == "choice" and q["multi"]]
+        self.assertEqual(len(multi), 1)
+        self.assertIn("Which are examples", multi[0])
+
+    def test_every_correct_answer_is_actually_on_offer(self):
+        """An answer key naming an option that does not exist is a question she
+        cannot get right — the same class of defect as an unwinnable blank."""
+        from tutor import weekly_l7w1 as w
+
+        for q in w.QUESTIONS:
+            if q["kind"] == "choice":
+                keys = {o["key"] for o in q["options"]}
+                self.assertTrue(set(q["correct"]) <= keys, q["prompt"][:40])
+            elif q["kind"] == "fill_two":
+                self.assertIn(q["correct_a"], q["bank_a"])
+                self.assertIn(q["correct_b"], q["bank_b"])
+
+    def test_every_figure_and_page_exists_on_disk(self):
+        """"Study the map" is unanswerable without the map, and under
+        ManifestStaticFilesStorage a missing file raises rather than degrades."""
+        from django.contrib.staticfiles import finders
+
+        from tutor import weekly_l7w1 as w
+
+        for q in w.QUESTIONS:
+            for path in ([q.get("figure")] if q.get("figure") else []) + \
+                        [o["image"] for o in q.get("options", []) if o.get("image")]:
+                self.assertIsNotNone(finders.find(path), path)
+        for path in w.PAGES:
+            self.assertIsNotNone(finders.find(path), path)
+
+    # -- what gets built ---------------------------------------------------
+
+    def test_a_two_blank_sentence_becomes_two_questions(self):
+        """The printed page gives each blank its own bank, so half-right is a
+        real outcome — one combined answer could not record it."""
+        self._seed()
+        prompts = [q.prompt for q in self._set().questions.order_by("order")]
+        self.assertIn("two branches of geography", prompts[0])
+        self.assertIn("Blank A", prompts[0])
+        self.assertEqual(prompts[1], "**Blank B**")
+
+    def test_the_figure_rides_with_the_first_blank_only(self):
+        """Printing the same map twice pushes the second blank off the screen."""
+        self._seed()
+        qs = list(self._set().questions.order_by("order"))
+        pair = [q for q in qs if "Physical Map" in q.figure_caption]
+        self.assertEqual(len(pair), 1)
+        self.assertIn("Blank A", pair[0].prompt)
+
+    def test_the_written_question_offers_the_answer_mode_picker(self):
+        self._seed()
+        written = [q for q in self._set().questions.all()
+                   if q.response_type == Question.TYPE_TEXT]
+        self.assertEqual(len(written), 1)
+        self.assertTrue(written[0].offers_answer_mode)
+        html = self._page()
+        self.assertIn('data-mode="write"', html)
+        self.assertIn('data-mode-pane="write"', html)
+        self.assertIn("handwriting-canvas", html)
+
+    def test_the_page_renders_every_question(self):
+        self._seed()
+        html = self._page()
+        self.assertIn("choice-widget", html)
+        self.assertIn("choice-options--pictures", html)   # the five photographs
+        self.assertIn("q-figure", html)                    # the maps
+        self.assertIn("Biomes of North America", html)
+
+    # -- self-marking ------------------------------------------------------
+
+    def test_a_choice_answer_is_marked_without_the_ai(self):
+        """Ten recall questions should not cost a model call."""
+        self._seed()
+        q = [x for x in self._set().questions.all()
+             if x.response_type == Question.TYPE_CHOICE and not x.choice_is_multi][0]
+        right = sorted(q.choice_correct)[0]
+        wrong = next(o["key"] for o in q.choice_options if o["key"] != right)
+        sheet = ResponseSheet(question_set=self._set())
+
+        sheet.answers = {str(q.pk): json.dumps({"picked": [right]})}
+        self.assertIn("correct", sheet.answer_display(q))
+        sheet.answers = {str(q.pk): json.dumps({"picked": [wrong]})}
+        self.assertIn("not correct", sheet.answer_display(q))
+
+    def test_a_multi_answer_needs_every_one_of_them(self):
+        self._seed()
+        q = [x for x in self._set().questions.all()
+             if x.response_type == Question.TYPE_CHOICE and x.choice_is_multi][0]
+        sheet = ResponseSheet(question_set=self._set())
+        sheet.answers = {str(q.pk): json.dumps({"picked": ["a", "b"]})}
+        self.assertIn("not correct", sheet.answer_display(q),
+                      "two of the three is not the answer")
+        sheet.answers = {str(q.pk): json.dumps({"picked": ["a", "b", "e"]})}
+        self.assertIn("correct", sheet.answer_display(q))
+
+    def test_the_grader_is_shown_the_words_not_the_letters(self):
+        """"a, c" makes the grader go and look them up."""
+        self._seed()
+        q = [x for x in self._set().questions.all()
+             if x.response_type == Question.TYPE_CHOICE
+             and "human-environment" in x.prompt][0]
+        sheet = ResponseSheet(question_set=self._set())
+        sheet.answers = {str(q.pk): json.dumps({"picked": ["c"]})}
+        self.assertIn("Hoover Dam", sheet.answer_display(q))
+
+    def test_writing_by_hand_on_a_typed_question_still_reads_as_handwriting(self):
+        """The answer-mode picker lets her write on a question authored for
+        typing. The stored shape is the only thing that can tell us, and the
+        reports must show the marks rather than the JSON."""
+        self._seed()
+        q = [x for x in self._set().questions.all()
+             if x.response_type == Question.TYPE_TEXT][0]
+        sheet = ResponseSheet(question_set=self._set())
+        sheet.answers = {str(q.pk): json.dumps({
+            "strokes": [{"c": "#1d3557", "w": 3, "p": [[0.1, 0.5], [0.6, 0.5]]}],
+            "surface": {"w": 662, "h": 192}})}
+        shown = sheet.answer_display(q)
+        self.assertIn("handwritten", shown)
+        self.assertNotIn("strokes", shown)
+        self.assertIsNotNone(sheet.answer_replay(q))
+
+        sheet.answers = {str(q.pk): "Maps show where things are."}
+        self.assertEqual(sheet.answer_display(q), "Maps show where things are.")
+        self.assertIsNone(sheet.answer_replay(q))
+
+    # -- the framework -----------------------------------------------------
+
+    def test_a_level_is_a_grade_and_the_seed_refuses_a_mismatch(self):
+        """Level 7 is Grades 6-8 material. Seeding it for a third-grader is a
+        typo worth stopping, not a curriculum decision."""
+        with self.assertRaises(CommandError) as caught:
+            call_command("seed_weekly", "--level", "7", "--week", "1",
+                         "--for-user", "sw", "--child-name", "Violet",
+                         stdout=StringIO())
+        self.assertIn("G03", str(caught.exception))
+
+    def test_a_missing_week_says_what_to_write(self):
+        with self.assertRaises(ModuleNotFoundError) as caught:
+            call_command("seed_weekly", "--level", "7", "--week", "99",
+                         "--for-user", "sw", stdout=StringIO())
+        self.assertIn("weekly_l7w99", str(caught.exception))
+
+    def test_a_dry_run_writes_nothing(self):
+        out = StringIO()
+        call_command("seed_weekly", "--level", "7", "--week", "1",
+                     "--for-user", "sw", "--dry-run", stdout=out)
+        self.assertIn("nothing written", out.getvalue())
+        self.assertEqual(Curriculum.objects.count(), 0)
+
+    def test_reseeding_changes_nothing(self):
+        self._seed()
+        before = (QuestionSet.objects.count(), Question.objects.count())
+        self._seed()
+        self.assertEqual(
+            (QuestionSet.objects.count(), Question.objects.count()), before)
+
+    def test_the_issue_is_attached_as_the_week_s_reading(self):
+        """She reads the real newspaper page — the layout IS the lesson."""
+        from tutor.models import Material
+
+        self._seed()
+        m = Material.objects.get(lesson__number=1)
+        self.assertEqual(m.status, Material.DRAFT)      # a parent approves it
+        self.assertIn("Geography and Map Skills", m.title)
+        self.assertIn("Framework", m.parent_content)    # the standards table

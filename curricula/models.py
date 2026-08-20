@@ -62,15 +62,72 @@ class Curriculum(models.Model):
     )
     is_active = models.BooleanField(
         default=True,
-        help_text="Inactive curricula are hidden from the Curricula list by default "
-                  "and from every child's portal. Toggle 'Show deactivated' to find them.",
+        help_text="Off means the girls can't see it — either it's queued up for later "
+                  "or it's finished. Everything is kept either way.",
+    )
+    archived_at = models.DateTimeField(
+        null=True, blank=True,
+        help_text="Set when a course is finished and retired. This is what separates "
+                  "'not started yet' from 'done' — both are switched off, but only one "
+                  "of them is ever coming back.",
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    # One switch decides visibility (is_active — the gate every portal query already
+    # honours); archived_at records WHY it is off. A shelf full of "deactivated"
+    # courses can't tell you which are upcoming and which are behind you.
+    STATE_IN_USE = "in_use"
+    STATE_READY = "ready"
+    STATE_ARCHIVED = "archived"
+    STATE_LABELS = {
+        STATE_IN_USE: "In use",
+        STATE_READY: "Ready to start",
+        STATE_ARCHIVED: "Archived",
+    }
+
+    @property
+    def state(self):
+        if self.is_active:
+            return self.STATE_IN_USE
+        return self.STATE_ARCHIVED if self.archived_at else self.STATE_READY
+
+    @property
+    def state_label(self):
+        return self.STATE_LABELS[self.state]
+
+    @property
+    def is_archived(self):
+        return self.state == self.STATE_ARCHIVED
+
+    @property
+    def is_ready_to_start(self):
+        """Loaded ahead of time and waiting — not started, not finished."""
+        return self.state == self.STATE_READY
+
     class Meta:
         ordering = ["subject", "name"]
         verbose_name_plural = "curricula"
+
+    def save(self, **kwargs):
+        """Switching a course on always drops the archive stamp.
+
+        The invariant lives here rather than in the toggle view because the edit
+        form and the admin can both set is_active directly. Without it you can
+        save a row that is visible AND archived, which makes the shelf counts
+        report courses that no filter will ever return.
+        """
+        if self.is_active and self.archived_at is not None:
+            self.archived_at = None
+            update_fields = kwargs.get("update_fields")
+            if update_fields is not None:
+                # Materialise first: Django accepts a generator here, and testing
+                # membership on one would consume it and drop every other field.
+                update_fields = list(update_fields)
+                if "archived_at" not in update_fields:
+                    update_fields.append("archived_at")
+                kwargs["update_fields"] = update_fields
+        super().save(**kwargs)
 
     def __str__(self):
         return self.name
@@ -254,6 +311,11 @@ class CurriculumPlacement(models.Model):
         default=True,
         help_text="Inactive placements hide this subject from this child's portal only "
                   "(siblings can keep the same curriculum).",
+    )
+    weekly_pace = models.PositiveSmallIntegerField(
+        null=True, blank=True,
+        help_text="Project remaining lessons onto the family calendar at this many "
+                  "per week (Mon–Fri). Blank = no due dates for this subject.",
     )
     updated_at = models.DateTimeField(auto_now=True)
 

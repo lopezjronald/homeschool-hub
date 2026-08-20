@@ -1,0 +1,32 @@
+{% comment %}
+One curriculum tile. Shared by all three shelf sections on the list page, so a
+change to the card shape lands everywhere at once.
+{% endcomment %}
+<div class="col">
+  <div class="card h-100">
+    <div class="card-body">
+      <div class="ss-feature-emoji mb-2">{{ curriculum.emoji }}</div>
+      <h5 class="card-title mb-1">
+        <a href="{% url 'curricula:curriculum_detail' curriculum.pk %}" class="text-decoration-none">{{ curriculum.name }}</a>
+        {% if curriculum.is_ready_to_start %}
+          <span class="badge bg-warning text-dark">{{ curriculum.state_label }}</span>
+        {% elif curriculum.is_archived %}
+          <span class="badge bg-secondary">{{ curriculum.state_label }}</span>
+        {% endif %}
+      </h5>
+      <p class="mb-0">
+        {% if curriculum.subject %}<span class="badge bg-light text-dark">{{ curriculum.subject }}</span>{% endif %}
+        {% if curriculum.grade_level %}<span class="badge bg-secondary">{{ curriculum.get_grade_level_display }}</span>{% endif %}
+      </p>
+    </div>
+    <div class="card-footer bg-transparent d-flex gap-2">
+      <a href="{% url 'curricula:curriculum_detail' curriculum.pk %}" class="btn btn-sm btn-outline-primary">Open</a>
+      {% if curriculum.website_url %}
+        <a href="{{ curriculum.website_url }}" target="_blank" rel="noopener noreferrer" class="btn btn-sm btn-outline-secondary">Launch ↗</a>
+      {% endif %}
+      {% if can_edit %}
+        <a href="{% url 'curricula:curriculum_update' curriculum.pk %}" class="btn btn-sm btn-outline-secondary ms-auto">Edit</a>
+      {% endif %}
+    </div>
+  </div>
+</div>

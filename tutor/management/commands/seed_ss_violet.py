@@ -358,7 +358,8 @@ class Command(BaseCommand):
 
         # 3. Place the child on it so the subject shows on her portal.
         CurriculumPlacement.objects.get_or_create(
-            child=child, curriculum=curriculum, defaults={"is_active": True})
+            child=child, curriculum=curriculum,
+            defaults={"is_active": True, "weekly_pace": 3})
 
         # 4. Upsert one APPROVED Material per mission.
         seeded = 0

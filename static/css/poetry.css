@@ -1,0 +1,111 @@
+/* Poetry: Small Forms — Kaylin's pages.
+ *
+ * Two jobs. The head shows the form and links the ORIGINAL guide pages — those
+ * carry the handwriting and the crossings-out, and the design stays out of
+ * their way. The grid is the app's own contribution: one ruled input per line
+ * of the form, its target count beside it, and a live estimate that turns
+ * green on target. Quiet, bookish, no decoration near the writing.
+ */
+
+.po-head { margin: 0 0 1rem; }
+.po-eyebrow {
+  font: 600 .72rem/1 system-ui, sans-serif;
+  letter-spacing: .14em; text-transform: uppercase; color: #6b7280;
+}
+.po-title {
+  font: 400 2rem/1.15 Georgia, "Times New Roman", serif;
+  color: #14232b; margin: .3rem 0 0;
+}
+.po-title em { font-style: italic; }
+.po-subtitle {
+  font: italic 400 1.05rem/1.4 Georgia, serif; color: #6b7280;
+}
+
+.po-def {
+  background: linear-gradient(180deg, #eef1f3 0%, #e6ebee 100%);
+  border: 1px solid rgba(20, 35, 43, .12);
+  border-radius: 16px; padding: 1rem 1.25rem; margin: 1rem 0 1.25rem;
+}
+.po-def-label {
+  font: 700 .7rem/1 system-ui, sans-serif;
+  letter-spacing: .12em; text-transform: uppercase; color: #3d4d57;
+  margin-bottom: .4rem;
+}
+.po-def-body {
+  margin: 0 0 .7rem; color: #1b2a33;
+  font: 400 1.0625rem/1.6 system-ui, sans-serif;
+}
+.po-pattern { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem; }
+.po-pattern-label {
+  font: 700 .74rem/1 system-ui, sans-serif; color: #3d4d57;
+  letter-spacing: .08em; text-transform: uppercase;
+}
+.po-chip {
+  display: inline-block; min-width: 30px; text-align: center;
+  background: #14232b; color: #fff; border-radius: 7px;
+  font: 700 .95rem/1 system-ui, sans-serif; padding: .35rem .45rem;
+}
+.po-pattern-total {
+  font: 400 .9rem/1.4 system-ui, sans-serif; color: #4b5563;
+}
+
+/* The original pages, as a horizontally scrollable strip of full-page shots. */
+.po-pages { margin: 0 0 1.5rem; }
+.po-pages summary {
+  cursor: pointer; font-weight: 600; color: #0A5C63; width: fit-content;
+}
+.po-pages-note {
+  margin: .5rem 0 .6rem; color: #6b7280;
+  font: 400 .92rem/1.5 system-ui, sans-serif; max-width: 56ch;
+}
+.po-pages-strip {
+  display: flex; gap: .6rem; overflow-x: auto; padding-bottom: .5rem;
+  -webkit-overflow-scrolling: touch;
+}
+.po-pages-strip a { flex: 0 0 auto; }
+.po-pages-strip img {
+  height: 230px; width: auto; display: block;
+  border: 1px solid rgba(20, 35, 43, .2); border-radius: 6px;
+  box-shadow: 0 1px 4px rgba(20, 35, 28, .12);
+  background: #fff;
+}
+
+/* The LINE # / SYLLABLES grid. */
+.po-grid {
+  background: #fffdf7;
+  border: 1.5px solid rgba(15, 61, 46, .2);
+  border-radius: 14px; padding: 14px 16px;
+}
+.po-grid-row {
+  display: flex; align-items: center; gap: .6rem;
+  padding: .25rem 0;
+}
+.po-grid-n {
+  flex: 0 0 26px; text-align: right;
+  font: 600 .8rem/1 system-ui, sans-serif; color: #9aa6ad;
+}
+.po-grid-input {
+  flex: 1 1 auto; min-width: 0;
+  border: 0; outline: 0; background: transparent;
+  border-bottom: 1px solid rgba(20, 35, 28, .25);
+  font: 400 1.125rem/1.9 Georgia, "Times New Roman", serif; color: #1a2b24;
+  padding: 0 2px;
+}
+.po-grid-input:focus { border-bottom-color: #0A5C63; }
+.po-grid-title { font-style: italic; }
+.po-grid-count {
+  flex: 0 0 44px; text-align: right;
+  font: 600 .85rem/1 system-ui, sans-serif; color: #9aa6ad;
+  font-variant-numeric: tabular-nums;
+}
+.po-grid-row.po-near .po-grid-count { color: #b45309; }
+.po-grid-row.po-hit .po-grid-count { color: #1E7A50; }
+.po-grid-row.po-hit .po-grid-input { border-bottom-color: rgba(30, 122, 80, .55); }
+.po-grid-stanza { height: 1.1rem; }
+
+@media (max-width: 480px) {
+  .po-title { font-size: 1.55rem; }
+  .po-pages-strip img { height: 190px; }
+  .po-grid { padding: 10px 10px; }
+  .po-grid-count { flex-basis: 38px; }
+}

@@ -24,6 +24,13 @@ Use exactly these mastery levels: no_evidence, beginning, developing, proficient
 Judge at the child's grade level. Be specific and reference the rubric. Keep feedback warm and \
 encouraging for a young learner, and actionable for the parent.
 
+Some answers are written BY HAND on the page and reach you only as a note saying so — you cannot \
+read them. Never guess at their content. Say so in "summary" and "parent_pointers", and NEVER in \
+"encouragement" or "kid_highlights": those two are printed straight onto the child's own page, and \
+being told a grown-up will have to read her writing lands on a young child as "what you did was no \
+good". If you cannot read ANY of the work, still return a level of "no_evidence" — the field is \
+required, and the parent sets the real level afterwards.
+
 Respond with ONLY a JSON object (no prose, no markdown fences) matching this shape:
 {
   "level": "<one of: no_evidence|beginning|developing|proficient|mastered>",

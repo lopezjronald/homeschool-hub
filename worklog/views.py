@@ -99,10 +99,28 @@ def worklog_report(request):
             user=request.user, family=family, initial={"start": start, "end": end},
         )
 
+    from tutor import mastery
+    from tutor.models import ResponseSheet
+
     entries = (
         scoped_queryset(WorkLogEntry.objects.all(), request.user, family)
         .filter(date__range=(start, end))
         .select_related("child", "curriculum")
+        # The report shows the WORK, not a sentence about the work, so each
+        # entry needs its answer sheet and that sheet's questions. Prefetched
+        # rather than walked per row: a month is ~80 entries and this page is
+        # printed, so it renders every one of them.
+        .prefetch_related(
+            Prefetch(
+                "response_sheets",
+                queryset=ResponseSheet.objects.select_related("question_set")
+                .prefetch_related("question_set__questions"),
+            ),
+            # _report_item reads the entry's assessments too. This report does
+            # not show grades, but leaving them unprefetched is a query per
+            # entry — which on a month of work is most of the page's cost.
+            "assessments",
+        )
         .order_by("child__first_name", "child__last_name", "child_id", "-date", "-created_at")
     )
     if selected_child:
@@ -115,6 +133,10 @@ def worklog_report(request):
         groups.append({
             "child": items[0].child,
             "entries": items,
+            # The same view-model the charter report uses, so a mark-the-sentence
+            # exercise prints as the marks she drew rather than as
+            # "[marked up the sentence … annotated: yes]".
+            "items": [_report_item(e, mastery) for e in items],
             "count": len(items),
             "day_count": len({e.date for e in items}),
             "subjects": sorted({e.subject for e in items}),
@@ -348,11 +370,26 @@ def _report_item(entry, mastery):
                 "question": q,
                 "answer": display,
                 "answered": display not in ("", "(no answer)"),
+                # The drawn work itself, so a printed sample of a
+                # mark-the-sentence exercise shows the marks.
+                "replay": sheet.answer_replay(q),
             })
 
     ext = os.path.splitext(entry.attachment.name)[1].lower() if entry.attachment else ""
     show_image = bool(entry.attachment) and entry.is_image and ext != ".heic"
-    kind = "portal" if sheet else ("image" if show_image else ("file" if entry.attachment else "note"))
+    # Work done on PAPER: the uploaded scan is the work, and the report has to
+    # show it. Without this the entry renders as an empty portal sheet — a row
+    # saying a section was completed, with nothing to show a reviewing teacher.
+    # `approved_at` is part of the test, not just `is_on_paper`. Without it a
+    # child who uploaded a photo AND then typed her answers and turned them in
+    # got a report that said "Completed on paper" and showed the photo INSTEAD
+    # of her answers — her writing gone from the record that goes to the
+    # charter school, over a file no parent had approved.
+    on_paper = bool(sheet and sheet.is_on_paper and sheet.attachment
+                    and sheet.approved_at)
+    kind = ("paper" if on_paper else
+            "portal" if sheet else
+            ("image" if show_image else ("file" if entry.attachment else "note")))
     stamped = bool(a and a.final_level and a.status == MasteryAssessment.FINALIZED)
 
     return {
@@ -361,6 +398,11 @@ def _report_item(entry, mastery):
             entry.curriculum.name if entry.curriculum else entry.subject),
         "kind": kind,
         "show_image": show_image,
+        # The paper copy, if that is how this section was done. Owned by the
+        # sheet, not copied onto the entry, so there is exactly one file and
+        # one place it can be deleted from.
+        "paper_file": sheet.attachment if on_paper else None,
+        "paper_is_image": bool(on_paper and sheet.project_is_image),
         "sheet": sheet,
         "qa_rows": qa_rows,
         "assessment": a,

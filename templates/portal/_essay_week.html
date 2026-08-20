@@ -1,0 +1,58 @@
+{% comment %}The head of an Essay week. The guide assumes the paperback is open
+on the desk beside her — the blueprint on page 13 is referred to by page number
+from the drafting page, and the model essay is annotated in the margins. Neither
+survives being retyped as prose, so the real pages are attached; the blueprint
+itself is also laid out as text, because that is the one she works FROM and she
+should not have to open an image to read it.{% endcomment %}
+{% load static %}
+<div class="es-head">
+  <div class="es-eyebrow">Intro to Composition · The Essay</div>
+  <h2 class="es-title">Lesson {{ essay_week.lesson.number }}:
+    <em>{{ essay_week.lesson.title }}</em>{% if essay_week.is_draft_week %} <span class="es-cont">(cont.)</span>{% endif %}</h2>
+  <div class="es-subtitle">Week {{ essay_week.week }} of 10 —
+    {% if essay_week.is_draft_week %}draft, check, and publish{% else %}look closely, then build the parts{% endif %}</div>
+</div>
+
+{% for note in essay_week.notes %}
+  <p class="es-note">⚠️ {{ note }}</p>
+{% endfor %}
+
+{% comment %}The guide's closing direction for this week is NOT rendered here —
+it is printed after the questions, in portal_questions.html, because that is
+where the book prints it. Shown at the top it told her to begin crafting an
+essay from a hook and three sub-topics she had not written yet.{% endcomment %}
+
+<details class="es-blueprint"{% if essay_week.is_draft_week %} open{% endif %}>
+  <summary>📐 The Blueprint — your essay in {{ essay_week.blueprint_total }} sentences</summary>
+  <p class="es-blueprint-intro">{{ essay_week.blueprint_intro }}</p>
+  {% for para in essay_week.blueprint %}
+    <div class="es-para">
+      <div class="es-para-head">
+        <span class="es-para-tag">{{ para.tag }}»</span>
+        <span class="es-para-name">{{ para.name }}</span>
+        <span class="es-para-count">({{ para.sentences }} sentences)</span>
+      </div>
+      {% if para.note %}<div class="es-para-note">{{ para.note }}</div>{% endif %}
+      <ol class="es-lines">
+        {% for label, gloss in para.lines %}
+          <li><span class="es-line-label">{{ label }}</span> — <em>{{ gloss }}</em></li>
+        {% endfor %}
+      </ol>
+    </div>
+  {% endfor %}
+</details>
+
+<details class="es-pages">
+  <summary>📖 The guide's own pages — the writing process, the model essay</summary>
+  <p class="es-pages-note">These are the real pages from your book, including
+    the model essay with every part labelled in the margin. When you are stuck on
+    what a hook or a clincher should sound like, read the model.</p>
+  <div class="es-pages-strip">
+    {% for img, title in essay_week.pages %}
+      <a href="{% static img %}" target="_blank" rel="noopener" title="{{ title }}">
+        <img src="{% static img %}" alt="{{ title }}" loading="lazy">
+        <span class="es-page-caption">{{ title }}</span>
+      </a>
+    {% endfor %}
+  </div>
+</details>

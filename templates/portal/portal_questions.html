@@ -2,9 +2,14 @@
 {% load static %}
 {% load tutor_extras %}
 {% block title %}{{ question_set.title }} · Steadfast Scholars{% endblock %}
+{% block extra_css %}<link href="{% static 'css/lexicon.css' %}" rel="stylesheet">
+<link href="{% static 'css/dickinson.css' %}" rel="stylesheet">
+<link href="{% static 'css/onetrue.css' %}" rel="stylesheet">
+<link href="{% static 'css/poetry.css' %}" rel="stylesheet">
+<link href="{% static 'css/essay.css' %}" rel="stylesheet">{% endblock %}
 
 {% block content %}
-<div class="container">
+<div class="container{% if lexicon_week %} lx-week-{{ lexicon_week.number }}{% endif %}">
   <div class="row justify-content-center">
     <div class="col-lg-8">
 
@@ -42,10 +47,38 @@
             </div>
           {% endif %}
 
+          {% if lesson_material %}
+            <div class="portal-reading-first">
+              📖 Need the steps again?
+              <a href="{% url 'portal:portal_material' token=token pk=lesson_material.pk %}">
+                Open the mission instructions ➜
+              </a>
+            </div>
+          {% endif %}
+
           {% if question_set.reading %}
             <div class="portal-reading-first">
               📖 <strong>Read first:</strong> {{ question_set.reading }}
             </div>
+          {% endif %}
+
+          {% if lexicon_week %}
+            {% include "portal/_lexicon_week.html" %}
+          {% endif %}
+
+          {% if dickinson_day %}
+            {% include "portal/_dickinson_day.html" %}
+          {% endif %}
+
+          {% if onetrue_week %}
+            {% include "portal/_onetrue_week.html" %}
+          {% endif %}
+
+          {% if essay_week %}
+            {% include "portal/_essay_week.html" %}
+          {% endif %}
+          {% if poetry_section %}
+            {% include "portal/_poetry_section.html" %}
           {% endif %}
 
           {% if question_set.intro %}
@@ -63,13 +96,58 @@
             {% csrf_token %}
 
             {% for q in questions %}
-              <div class="portal-question">
-                <div class="d-flex align-items-center gap-2 mb-1">
-                  <span class="portal-qnum">{{ q.order }}</span>
-                  <span class="portal-chip chip-{{ q.category }}">{{ q.get_category_display }}</span>
-                </div>
-                {% if q.prompt %}
-                  <label class="portal-prompt" {% if q.response_type == "text" %}for="q{{ q.pk }}"{% endif %}>{{ q.prompt|markdownify_inline }}</label>
+              {% comment %}Only a question that really is getting a lexicon card
+              gives up the generic number, chip and prompt — otherwise a legacy
+              set, or a row the re-seed hasn't reached yet, would render with no
+              question text at all.{% endcomment %}
+              {% if q.dk_first %}
+                {% include "portal/_dickinson_word.html" with w=q.dk_word %}
+              {% endif %}
+              <div class="portal-question{% if q.lexicon_slot %} portal-question--own-chrome{% endif %}{% if q.dk_word %} portal-question--dk{% endif %}">
+                {% comment %}The question is asked once, above the three answers,
+                and it is asked whichever widget they end up with — it appears
+                nowhere else on the page.{% endcomment %}
+                {% if q.lexicon_asks %}
+                  <div class="lxa-head">
+                    <span class="lxa-rule" aria-hidden="true"></span>
+                    <div class="lxa-eyebrow">In your own words</div>
+                    <p class="lxa-question">
+                      What are three things that amaze you about
+                      <em>{{ lexicon_week.person }}</em>?
+                    </p>
+                    {% if not sheet.is_submitted %}
+                      <details class="lxa-stems">
+                        <summary>Need an idea to start?</summary>
+                        <ul>
+                          <li>I never knew that…</li>
+                          <li>It amazed me that…</li>
+                          <li>I couldn't believe…</li>
+                        </ul>
+                      </details>
+                    {% endif %}
+                  </div>
+                {% endif %}
+                {% if not q.lexicon_slot %}
+                  <div class="d-flex align-items-center gap-2 mb-1">
+                    <span class="portal-qnum">{{ q.order }}</span>
+                    <span class="portal-chip chip-{{ q.category }}">{{ q.get_category_display }}</span>
+                  </div>
+                  {% if q.prompt %}
+                    <label class="portal-prompt" {% if q.response_type == "text" %}for="q{{ q.pk }}"{% endif %}>{{ q.prompt|markdownify_inline }}</label>
+                  {% endif %}
+                {% endif %}
+                {% if q.figure %}
+                  {% comment %}A map or source the question is ABOUT — "study the
+                  map". Tappable, because the answer is often in small print on
+                  it and she is reading this on a tablet.{% endcomment %}
+                  <figure class="q-figure">
+                    <a href="{% static q.figure %}" target="_blank" rel="noopener">
+                      <img src="{% static q.figure %}" alt="{{ q.figure_caption|default:'Figure for this question' }}" loading="lazy">
+                    </a>
+                    {% if q.figure_caption %}
+                      <figcaption>{{ q.figure_caption }} <span class="q-figure-tap">— tap to enlarge</span></figcaption>
+                    {% endif %}
+                  </figure>
                 {% endif %}
                 {% if q.hint %}
                   <details class="portal-hint">
@@ -78,7 +156,42 @@
                   </details>
                 {% endif %}
 
-                {% if q.is_characters %}
+                {% comment %}The lexicon writing branch is FIRST on purpose. These
+                questions are handwriting questions, so the generic
+                q.is_handwriting branch below would otherwise claim them and she
+                would lose the card, the medallion and the label.
+
+                lexicon_slot is set by the view, which can see the response_type
+                and the shape of the set — see _mark_lexicon_writing_slots.{% endcomment %}
+                {% if q.lexicon_slot %}
+                  <div class="lxa-box{% if q.my_answer %} is-filled{% endif %}">
+                    <span class="lxa-num" aria-hidden="true">{{ q.lexicon_slot }}</span>
+                    <span class="lxa-label">
+                      Amazing thing {{ q.lexicon_slot }}
+                      <span class="lxa-check" aria-hidden="true">✓</span>
+                    </span>
+                    {% comment %}She writes these by hand with the pen. Same card,
+                    same medallion, same label — only the instrument changes.{% endcomment %}
+                    <div class="handwriting-widget lxa-hand" data-question-widget="{{ q.pk }}"
+                         data-readonly="{% if sheet.is_submitted %}1{% else %}0{% endif %}">
+                      {% if not sheet.is_submitted %}
+                        <div class="lxa-pens" role="toolbar" aria-label="Pens">
+                          <button type="button" class="handwriting-pen is-active" data-color="#1d3557" style="--pen:#1d3557" title="Blue pencil" aria-label="Blue pencil"></button>
+                          <button type="button" class="handwriting-pen" data-color="#333333" style="--pen:#333333" title="Pencil" aria-label="Pencil"></button>
+                          <button type="button" class="handwriting-pen" data-color="#1E7A50" style="--pen:#1E7A50" title="Green pen" aria-label="Green pen"></button>
+                          <span class="lxa-pens-sep"></span>
+                          <button type="button" class="markup-btn" data-tool="undo">↶ Undo</button>
+                          <button type="button" class="markup-btn" data-tool="clear">Erase</button>
+                        </div>
+                      {% endif %}
+                      <div class="handwriting-surface lxa-surface">
+                        <div class="handwriting-empty">Write here…</div>
+                        <canvas class="handwriting-canvas"></canvas>
+                      </div>
+                      <input type="hidden" name="answer_{{ q.pk }}" data-question="{{ q.pk }}" value="{{ q.my_answer }}">
+                    </div>
+                  </div>
+                {% elif q.is_characters %}
                   <div class="character-widget">
                     {% for name in q.character_names %}
                       <div class="character-field">
@@ -157,6 +270,27 @@
                     </div>
                     <input type="hidden" name="answer_{{ q.pk }}" data-question="{{ q.pk }}" value="{{ q.my_answer }}">
                   </div>
+                {% elif q.is_handwriting %}
+                  <div class="handwriting-widget" data-question-widget="{{ q.pk }}"
+                       data-readonly="{% if sheet.is_submitted %}1{% else %}0{% endif %}">
+                    <div class="handwriting-hint">✍️ Write your answer by hand — use your finger or your pen.</div>
+                    {% if not sheet.is_submitted %}
+                      <div class="markup-toolbar" role="toolbar" aria-label="Pens">
+                        <span class="markup-tool-label">Pens:</span>
+                        <button type="button" class="handwriting-pen is-active" data-color="#1d3557" style="--pen:#1d3557" title="Blue pencil" aria-label="Blue pencil"></button>
+                        <button type="button" class="handwriting-pen" data-color="#333333" style="--pen:#333333" title="Pencil" aria-label="Pencil"></button>
+                        <button type="button" class="handwriting-pen" data-color="#1E7A50" style="--pen:#1E7A50" title="Green pen" aria-label="Green pen"></button>
+                        <span class="markup-tool-sep"></span>
+                        <button type="button" class="markup-btn" data-tool="undo">↶ Undo</button>
+                        <button type="button" class="markup-btn" data-tool="clear">Erase all</button>
+                      </div>
+                    {% endif %}
+                    <div class="handwriting-surface">
+                      <div class="handwriting-empty">Write here…</div>
+                      <canvas class="handwriting-canvas"></canvas>
+                    </div>
+                    <input type="hidden" name="answer_{{ q.pk }}" data-question="{{ q.pk }}" value="{{ q.my_answer }}">
+                  </div>
                 {% elif q.is_write_markup %}
                   <div class="writemark-widget" data-question-widget="{{ q.pk }}">
                     <textarea class="form-control portal-answer writemark-input" rows="2"
@@ -185,12 +319,12 @@
                   <div class="paragraph-widget" data-question-widget="{{ q.pk }}">
                     <div class="para-rough">
                       <div class="para-heading">✏️ Rough Draft</div>
-                      {% for label in q.paragraph_sections %}
+                      {% for box in q.paragraph_boxes %}
                         <div class="para-section">
-                          <label class="para-label">{{ label }}</label>
+                          <label class="para-label">{{ box.label }}</label>
                           <textarea class="form-control portal-answer para-box" data-section="{{ forloop.counter0 }}"
-                                    rows="{% if forloop.counter == 2 %}4{% else %}2{% endif %}"
-                                    placeholder="{{ label }}…"
+                                    rows="{{ box.rows }}"
+                                    placeholder="{{ box.label }}…"
                                     autocomplete="off" autocorrect="off" autocapitalize="sentences"
                                     lang="en" spellcheck="{% if spellcheck_on %}true{% else %}false{% endif %}" data-gramm="false"
                                     {% if sheet.is_submitted %}readonly{% endif %}></textarea>
@@ -223,7 +357,123 @@
                     </div>
                     <input type="hidden" name="answer_{{ q.pk }}" data-question="{{ q.pk }}" value="{{ q.my_answer }}">
                   </div>
+                {% elif q.is_choice %}
+                  {% comment %}Pick one, or pick several. Radios vs checkboxes
+                  follow the question — "which IS" against "which ARE" — because
+                  a child who can tick three boxes on a single-answer question
+                  has been told something untrue about the question.{% endcomment %}
+                  <div class="choice-widget" data-question-widget="{{ q.pk }}"
+                       data-multi="{% if q.choice_is_multi %}1{% else %}0{% endif %}">
+                    {% if q.choice_is_multi %}
+                      <p class="choice-hint">Pick every one that fits.</p>
+                    {% endif %}
+                    <div class="choice-options{% if q.choice_has_images %} choice-options--pictures{% endif %}">
+                      {% for opt in q.choice_options %}
+                        <label class="choice-option">
+                          <input type="{% if q.choice_is_multi %}checkbox{% else %}radio{% endif %}"
+                                 class="choice-input" name="choice_{{ q.pk }}"
+                                 value="{{ opt.key }}"
+                                 {% if sheet.is_submitted %}disabled{% endif %}>
+                          <span class="choice-key">{{ opt.key }}</span>
+                          {% if opt.image %}
+                            <img class="choice-img" src="{% static opt.image %}"
+                                 alt="Option {{ opt.key }}" loading="lazy">
+                          {% endif %}
+                          {% if opt.text %}<span class="choice-text">{{ opt.text }}</span>{% endif %}
+                        </label>
+                      {% endfor %}
+                    </div>
+                    <input type="hidden" name="answer_{{ q.pk }}" data-question="{{ q.pk }}" value="{{ q.my_answer }}">
+                  </div>
+                {% elif q.is_self_eval %}
+                  {% comment %}She reads her own draft aloud a second time and
+                  judges it component by component. A fieldset per component
+                  rather than one wide rating table: the guide's grid has four
+                  columns, which on a tablet becomes unreadable, and a radio
+                  group needs a legend to be announced properly.{% endcomment %}
+                  <div class="selfeval-widget" data-question-widget="{{ q.pk }}">
+                    {% for item in q.self_eval_items %}
+                      <fieldset class="se-item" data-index="{{ forloop.counter0 }}">
+                        <legend class="se-legend">{{ forloop.counter }}. {{ item }}</legend>
+                        <div class="se-options">
+                          {% for opt in q.self_eval_scale %}
+                            <label class="se-choice">
+                              <input type="radio" class="se-rating"
+                                     name="se_{{ q.pk }}_{{ forloop.parentloop.counter0 }}"
+                                     value="{{ opt }}"
+                                     {% if sheet.is_submitted %}disabled{% endif %}>
+                              <span class="se-choice-label">{{ opt }}</span>
+                            </label>
+                          {% endfor %}
+                        </div>
+                        {% if q.self_eval_wants_notes %}
+                          <label class="se-note-label">
+                            <span class="se-note-lead">Notes:</span>
+                            <input type="text" class="se-note"
+                                   placeholder="How could you make this stronger?"
+                                   autocomplete="off" autocapitalize="sentences" lang="en"
+                                   spellcheck="{% if spellcheck_on %}true{% else %}false{% endif %}"
+                                   data-gramm="false"
+                                   {% if sheet.is_submitted %}readonly{% endif %}>
+                          </label>
+                        {% endif %}
+                      </fieldset>
+                    {% endfor %}
+                    <input type="hidden" name="answer_{{ q.pk }}" data-question="{{ q.pk }}" value="{{ q.my_answer }}">
+                  </div>
+                {% elif q.poetry_grid %}
+                  <div class="po-grid" data-question-widget="{{ q.pk }}"
+                       data-readonly="{% if sheet.is_submitted %}1{% else %}0{% endif %}">
+                    <div class="po-grid-row po-grid-row--title">
+                      <span class="po-grid-n" aria-hidden="true">✎</span>
+                      <input type="text" class="po-grid-input po-grid-title" spellcheck="false" autocomplete="off"
+                             placeholder="Title" aria-label="Title"
+                             {% if sheet.is_submitted %}readonly{% endif %}>
+                      <span class="po-grid-count" aria-hidden="true"></span>
+                    </div>
+                    {% for row in q.poetry_grid %}
+                      {% if row.stanza_break %}<div class="po-grid-stanza" aria-hidden="true"></div>{% endif %}
+                      <div class="po-grid-row" data-target="{{ row.target|default_if_none:'' }}">
+                        <span class="po-grid-n">{{ row.n }}</span>
+                        <input type="text" class="po-grid-input" spellcheck="false" autocomplete="off"
+                               aria-label="Line {{ row.n }}{% if row.target %}, {{ row.target }} syllables{% endif %}"
+                               {% if row.role %}placeholder="{{ row.role }}"{% endif %}
+                               {% if sheet.is_submitted %}readonly{% endif %}>
+                        <span class="po-grid-count">{% if row.target %}<b class="po-got">0</b>/{{ row.target }}{% endif %}</span>
+                      </div>
+                    {% endfor %}
+                    <textarea name="answer_{{ q.pk }}" data-question="{{ q.pk }}"
+                              class="po-grid-store" hidden>{{ q.my_answer }}</textarea>
+                  </div>
                 {% else %}
+                  {% comment %}"Type it or write it" — she picks. Both surfaces
+                  are rendered and share ONE answer field, so switching never
+                  loses what is already there. Offered only while the sheet is
+                  open and only when the question asks for writing.{% endcomment %}
+                  {% if q.offers_answer_mode and not sheet.is_submitted %}
+                    <div class="answer-modes">
+                      <div class="answer-mode" role="group" aria-label="How do you want to answer?">
+                        <button type="button" class="answer-mode-btn" data-mode="type" aria-pressed="true">⌨️ Type it</button>
+                        <button type="button" class="answer-mode-btn" data-mode="write" aria-pressed="false">✍️ Write it</button>
+                      </div>
+                      <div data-mode-pane="write" hidden>
+                        <div class="handwriting-widget" data-question-widget="{{ q.pk }}" data-readonly="0">
+                          <div class="markup-toolbar" role="toolbar" aria-label="Pens">
+                            <span class="markup-tool-label">Pens:</span>
+                            <button type="button" class="handwriting-pen is-active" data-color="#1d3557" style="--pen:#1d3557" title="Blue pencil" aria-label="Blue pencil"></button>
+                            <button type="button" class="handwriting-pen" data-color="#333333" style="--pen:#333333" title="Pencil" aria-label="Pencil"></button>
+                            <span class="markup-tool-sep"></span>
+                            <button type="button" class="markup-btn" data-tool="undo">↶ Undo</button>
+                            <button type="button" class="markup-btn" data-tool="clear">Erase all</button>
+                          </div>
+                          <div class="handwriting-surface">
+                            <div class="handwriting-empty">Write here…</div>
+                            <canvas class="handwriting-canvas"></canvas>
+                          </div>
+                        </div>
+                      </div>
+                      <div data-mode-pane="type">
+                  {% endif %}
                   <textarea
                     id="q{{ q.pk }}"
                     name="answer_{{ q.pk }}"
@@ -236,6 +486,10 @@
                     {% if sheet.is_submitted %}readonly{% endif %}>
 {{ q.my_answer }}</textarea>
                   <div class="portal-wordcount text-muted" data-count-for="{{ q.pk }}"></div>
+                  {% if q.offers_answer_mode and not sheet.is_submitted %}
+                      </div>{# /type pane #}
+                    </div>{# /answer-modes #}
+                  {% endif %}
                   {% if wordhelp_on and not sheet.is_submitted %}
                     <div class="wordhelp-hint">✨ Tip: pick a word (double-tap it) to find better words.</div>
                   {% endif %}
@@ -256,6 +510,58 @@
               </div>
             {% endfor %}
 
+            {% if essay_week.handover and not essay_week.is_draft_week %}
+              {% comment %}The guide's own closing direction for the pre-writing
+              week, printed where the BOOK prints it — after the work, not
+              before it. At the top it read as an instruction to start drafting
+              immediately, using a hook and sub-topics she had not written yet.
+              {% endcomment %}
+              <div class="es-handover">
+                <div class="es-handover-head">When you have finished this page</div>
+                <p class="es-handover-body">✍️ {{ essay_week.handover }}</p>
+                <p class="es-handover-note">The guide is written for the paper
+                  book. Here you will type next week's draft into the boxes, so
+                  your writing coach can read it — you do not need to hand-write
+                  it first unless you want to.</p>
+              </div>
+            {% endif %}
+
+            {% comment %}Some of this work is done on paper — the guide is a
+            paper book, and a page she has written on IS the work. She hands in
+            a photo of it; a grown-up is the one who says it counts, so this
+            deliberately does NOT complete the section.{% endcomment %}
+            {% if not sheet.is_submitted %}
+              <div class="pj-upload">
+                <div class="pj-upload-head">📄 Did this one on paper?</div>
+                {% if sheet.attachment %}
+                  <p class="pj-upload-have">
+                    Handed in: <strong>{{ sheet.project_filename }}</strong> —
+                    waiting for a grown-up to look at it.
+                    You can send a better photo if you want to.
+                  </p>
+                {% else %}
+                  <p class="pj-upload-note">
+                    Take a photo of your finished page and send it here. A PDF or
+                    a document works too.
+                  </p>
+                {% endif %}
+                <div class="pj-upload-row">
+                  <input type="file" name="project" form="project-form"
+                         accept=".png,.jpg,.jpeg,.heic,.webp,.pdf,.doc,.docx"
+                         class="form-control form-control-sm pj-upload-input">
+                  <button type="submit" form="project-form"
+                          class="btn btn-sm btn-outline-secondary">Send it</button>
+                </div>
+              </div>
+            {% elif sheet.is_on_paper %}
+              <div class="pj-upload pj-upload--done">
+                <div class="pj-upload-head">📄 Done on paper</div>
+                <p class="pj-upload-have mb-0">
+                  <strong>{{ sheet.project_filename }}</strong> is on the record.
+                </p>
+              </div>
+            {% endif %}
+
             {% if not sheet.is_submitted %}
               <div class="d-flex justify-content-between align-items-center mt-4">
                 <span class="text-muted small" id="answered-progress" data-total="{{ questions|length }}">
@@ -269,6 +575,17 @@
             {% endif %}
           </form>
 
+          {% comment %}A SEPARATE form, sitting outside the answers form because
+          forms cannot nest. The file input above points at it by id, which is
+          what the HTML `form=` attribute is for — the control renders where it
+          belongs on the page while posting somewhere else entirely.{% endcomment %}
+          {% if not sheet.is_submitted %}
+            <form id="project-form" method="post" enctype="multipart/form-data"
+                  action="{% url 'portal:portal_project_upload' token=token set_pk=question_set.pk %}">
+              {% csrf_token %}
+            </form>
+          {% endif %}
+
         </div>
       </div>
 
@@ -281,9 +598,14 @@
 <script src="{% static 'js/portal-autosave.js' %}"></script>
 <script src="{% static 'js/portal-markup.js' %}"></script>
 <script src="{% static 'js/portal-writemarkup.js' %}"></script>
+<script src="{% static 'js/portal-handwriting.js' %}"></script>
+<script src="{% static 'js/lexicon-writing.js' %}"></script>
 <script src="{% static 'js/portal-characters.js' %}"></script>
 <script src="{% static 'js/portal-paragraph.js' %}"></script>
+<script src="{% static 'js/portal-selfeval.js' %}"></script>
+<script src="{% static 'js/portal-choice.js' %}"></script>
 <script src="{% static 'js/portal-vocab.js' %}"></script>
+<script src="{% static 'js/poetry-grid.js' %}"></script>
 <script src="{% static 'js/portal-coach.js' %}"></script>
 <script src="{% static 'js/portal-wordhelp.js' %}"></script>
 <script src="{% static 'js/portal-spellcheck.js' %}"></script>

@@ -1,6 +1,7 @@
 import json
 
 from django.conf import settings
+from django.core.validators import FileExtensionValidator
 from django.db import models
 
 from . import mastery
@@ -473,6 +474,9 @@ class Question(models.Model):
     TYPE_CLOZE = "cloze"
     TYPE_PARAGRAPH = "paragraph"
     TYPE_WRITE_MARKUP = "write_markup"
+    TYPE_HANDWRITING = "handwriting"
+    TYPE_SELF_EVAL = "self_eval"
+    TYPE_CHOICE = "choice"
     RESPONSE_TYPES = [
         (TYPE_TEXT, "Typed answer"),
         (TYPE_MARKUP, "Mark up the sentence (draw)"),
@@ -482,7 +486,15 @@ class Question(models.Model):
         (TYPE_CLOZE, "Fill in the blanks with your own words"),
         (TYPE_PARAGRAPH, "Paragraph: rough draft (sections) → final draft"),
         (TYPE_WRITE_MARKUP, "Write a sentence, then mark it up (draw)"),
+        (TYPE_HANDWRITING, "Handwriting: write it by hand on ruled lines"),
+        (TYPE_SELF_EVAL, "Self-evaluation: rate each component, and note why"),
+        (TYPE_CHOICE, "Multiple choice: pick one, or pick several"),
     ]
+
+    # The three-point scale a self-evaluation offers, and the components it rates,
+    # when the question does not carry its own. Override per-question with passage
+    # JSON {"items": [...], "scale": [...]}.
+    DEFAULT_SELF_EVAL_SCALE = ["Excellent", "Satisfactory", "Needs to Improve"]
 
     # The rough-draft sections a paragraph question shows by default (the standard
     # workbook shape); override per-question with passage JSON {"sections": [...]}.
@@ -558,8 +570,138 @@ class Question(models.Model):
         return self.response_type == self.TYPE_PARAGRAPH
 
     @property
+    def is_handwriting(self):
+        """Written by hand with a finger or pen, not typed.
+
+        Third-grade writing IS handwriting — asking her to type it trades the
+        skill being practised for keyboard hunting. The strokes are stored the
+        same way markup strokes are, so the parent's work browser and the
+        printed report replay them.
+        """
+        return self.response_type == self.TYPE_HANDWRITING
+
+    @property
     def is_write_markup(self):
         return self.response_type == self.TYPE_WRITE_MARKUP
+
+    @property
+    def offers_answer_mode(self):
+        """Whether to offer "type it or write it" on this question.
+
+        Only for plain typed answers, and only where there is real writing to
+        do — a one-word vocabulary answer does not need a pen, and a pen is
+        slower for it. Set per question with passage JSON {"answer_mode": true}.
+        """
+        return (self.response_type == self.TYPE_TEXT
+                and self.vocab_data.get("answer_mode") is True)
+
+    @property
+    def is_choice(self):
+        """Pick one answer, or pick several.
+
+        Studies Weekly is mostly multiple choice, several questions carrying a
+        map or a photograph, and one asking her to pick every picture that
+        shows human geography. Options live in passage JSON:
+
+            {"options": [{"key": "a", "text": "...", "image": "weekly/..."}],
+             "multi": false}
+
+        Gradeable without the AI — see ``choice_correct`` — so a ten-question
+        check does not cost a model call.
+        """
+        return self.response_type == self.TYPE_CHOICE
+
+    @property
+    def choice_options(self):
+        """The options as printed, in order. Empty if the JSON is malformed —
+        the template must degrade rather than render a question with no answers."""
+        opts = self.vocab_data.get("options")
+        if not isinstance(opts, list):
+            return []
+        out = []
+        for i, o in enumerate(opts):
+            if not isinstance(o, dict):
+                continue
+            out.append({
+                "key": str(o.get("key") or chr(97 + i)),
+                "text": str(o.get("text") or ""),
+                "image": str(o.get("image") or ""),
+            })
+        return out
+
+    @property
+    def choice_has_images(self):
+        """True when the options ARE pictures — lay them out as a grid, not a list."""
+        return any(o["image"] for o in self.choice_options)
+
+    @property
+    def choice_is_multi(self):
+        """True when more than one option is expected — 'which ARE examples'."""
+        return bool(self.vocab_data.get("multi"))
+
+    @property
+    def choice_correct(self):
+        """The option keys that count as right, as a set."""
+        raw = self.vocab_data.get("correct")
+        if isinstance(raw, str):
+            raw = [raw]
+        return {str(k) for k in raw} if isinstance(raw, list) else set()
+
+    @property
+    def figure(self):
+        """A picture the question is ABOUT — a map to read, a source to study.
+
+        Distinct from an option's image: this one sits above the question and
+        is not an answer. Static path, from passage JSON {"figure": "..."}.
+        """
+        return str(self.vocab_data.get("figure") or "")
+
+    @property
+    def figure_caption(self):
+        return str(self.vocab_data.get("figure_caption") or "")
+
+    @property
+    def is_self_eval(self):
+        """She judges her own draft against a list of components.
+
+        The writing guides all reach this step — read it aloud a second time,
+        rate each part, note how you would strengthen it — and it is the step
+        that turns a rough draft into a final one. It is HER judgement, not a
+        graded answer — ``ResponseSheet._format_self_eval`` labels it as her own
+        judgement so the grader does not mark her down for naming a weakness.
+        """
+        return self.response_type == self.TYPE_SELF_EVAL
+
+    @property
+    def self_eval_items(self):
+        """The components she rates, in printed order.
+
+        From passage JSON {"items": [...]}; empty if the question carries none,
+        which the template must degrade on rather than render an empty form.
+        """
+        items = self.vocab_data.get("items")
+        if isinstance(items, list):
+            return [str(i) for i in items if str(i).strip()]
+        return []
+
+    @property
+    def self_eval_scale(self):
+        """The rating options, from passage JSON {"scale": [...]}."""
+        scale = self.vocab_data.get("scale")
+        if isinstance(scale, list) and scale:
+            return [str(s) for s in scale]
+        return list(self.DEFAULT_SELF_EVAL_SCALE)
+
+    @property
+    def self_eval_wants_notes(self):
+        """Whether each component gets a "how would you strengthen this?" line.
+
+        The rating form does; the blueprint checklist does not — the book prints
+        thirty bare checkboxes there, and thirty note fields would turn a
+        two-minute check into a chore and bury the ratings that matter.
+        Suppress with passage JSON {"notes": false}.
+        """
+        return self.vocab_data.get("notes", True) is not False
 
     @property
     def paragraph_sections(self):
@@ -576,6 +718,36 @@ class Question(models.Model):
         except (ValueError, TypeError, AttributeError):
             pass
         return list(self.DEFAULT_PARAGRAPH_SECTIONS)
+
+    @property
+    def paragraph_section_rows(self):
+        """How tall each rough-draft box should be, in rows.
+
+        From passage JSON {"section_rows": [...]}. The fallback is the shape the
+        template used to hardcode — a short opener, a tall middle, a short close
+        — which is right for a three-part paragraph and wrong for anything else:
+        the essay's three BODY paragraphs are eight sentences each, and two of
+        them were being handed a two-row box.
+        """
+        rows = self.vocab_data.get("section_rows")
+        sections = self.paragraph_sections
+        if isinstance(rows, list) and len(rows) == len(sections):
+            try:
+                return [max(2, int(r)) for r in rows]
+            except (TypeError, ValueError):
+                pass
+        return [4 if i == 1 else 2 for i in range(len(sections))]
+
+    @property
+    def paragraph_boxes(self):
+        """(label, rows) per rough-draft section, paired for the template.
+
+        Django templates cannot index one list by another's loop counter, and
+        the near-miss (`|slice:forloop.counter0`) silently yields nothing — so
+        the pairing is done here where it can be tested.
+        """
+        return [{"label": label, "rows": rows} for label, rows
+                in zip(self.paragraph_sections, self.paragraph_section_rows)]
 
     @property
     def supports_draft_coach(self):
@@ -698,6 +870,45 @@ class ResponseSheet(models.Model):
         help_text="Writing-coach feedback per question id: {qid: {praise, suggestions, at}}.",
     )
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=DRAFT)
+
+    # HOW the section was completed. Some of this work is done on paper — the
+    # guide is a paper book — and a photo or scan of it IS the work. A paper
+    # section still becomes SUBMITTED and still lands in the work log; this
+    # field is what tells the report to show the file instead of the answers.
+    ON_SCREEN = "on_screen"
+    ON_PAPER = "on_paper"
+    COMPLETION_CHOICES = [
+        (ON_SCREEN, "Answered on screen"),
+        (ON_PAPER, "Done on paper, uploaded"),
+    ]
+    completion_mode = models.CharField(
+        max_length=20, choices=COMPLETION_CHOICES, default=ON_SCREEN)
+
+    # The project itself: a photo of her page, a scan, a PDF, a document.
+    # ONE owner for the file — the sheet. The work-log entry does NOT get a
+    # copy, so deleting one cannot leave the other pointing at a dead key.
+    PROJECT_EXTENSIONS = (".png", ".jpg", ".jpeg", ".heic", ".webp",
+                          ".pdf", ".doc", ".docx")
+    PROJECT_MAX_BYTES = 25 * 1024 * 1024
+    attachment = models.FileField(
+        upload_to="projects/%Y/%m/",
+        blank=True,
+        validators=[FileExtensionValidator(
+            allowed_extensions=[e.lstrip(".") for e in PROJECT_EXTENSIONS])],
+        help_text="A photo, scan, PDF or document of the finished work.",
+    )
+    attachment_uploaded_at = models.DateTimeField(null=True, blank=True)
+    # Set when a parent says the uploaded work counts. Completion needs BOTH
+    # a file and this — an upload on its own is not a finished section, and a
+    # tick on its own has nothing behind it.
+    approved_at = models.DateTimeField(null=True, blank=True)
+    approved_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name="approved_response_sheets",
+    )
+
     work_entry = models.ForeignKey(
         "worklog.WorkLogEntry",
         on_delete=models.SET_NULL,
@@ -724,6 +935,39 @@ class ResponseSheet(models.Model):
     @property
     def is_submitted(self):
         return self.status == self.SUBMITTED
+
+    @property
+    def is_on_paper(self):
+        return self.completion_mode == self.ON_PAPER
+
+    @property
+    def has_project_file(self):
+        return bool(self.attachment)
+
+    @property
+    def awaiting_approval(self):
+        """She has handed something in and it needs a parent's eye."""
+        return self.has_project_file and not self.is_submitted
+
+    @property
+    def project_filename(self):
+        import os
+
+        return os.path.basename(self.attachment.name) if self.attachment else ""
+
+    @property
+    def project_is_image(self):
+        """True if the upload can be shown inline rather than linked.
+
+        HEIC is excluded deliberately: browsers do not render it, so an <img>
+        would be a broken icon in the middle of the printed report.
+        """
+        import os
+
+        if not self.attachment:
+            return False
+        ext = os.path.splitext(self.attachment.name)[1].lower()
+        return ext in (".png", ".jpg", ".jpeg", ".webp")
 
     def answer_for(self, question):
         return (self.answers or {}).get(str(question.pk), "")
@@ -753,6 +997,18 @@ class ResponseSheet(models.Model):
             return self._format_cloze(raw, question)
         if question.is_paragraph:
             return self._format_paragraph(raw, question)
+        if question.is_handwriting:
+            return self._format_handwriting(raw, question)
+        if question.is_self_eval:
+            return self._format_self_eval(raw, question)
+        if question.is_choice:
+            return self._format_choice(raw, question)
+        # A text question whose answer holds strokes: she chose "write it"
+        # on the answer-mode picker. The response_type was fixed when the
+        # question was authored, so the shape of what she actually wrote is
+        # the only thing that can tell us.
+        if question.response_type == question.TYPE_TEXT and self._looks_drawn(raw):
+            return self._format_handwriting(raw, question)
         if question.is_write_markup:
             data = self._parse_json_answer(raw)
             if data:
@@ -764,6 +1020,35 @@ class ResponseSheet(models.Model):
             return raw or "(no answer)"  # legacy plain-text answer from before this was a markup box
         return raw or "(no answer)"
 
+    def answer_replay(self, question):
+        """Her drawn work for one question, redrawn — or None if she drew nothing.
+
+        The text rendering from ``answer_display`` says what the marks were read
+        as; this is the marks themselves. A report of a mark-the-sentence
+        exercise that shows only prose about the marks isn't showing the work.
+        """
+        if not (question.is_markup or question.is_write_markup
+                or question.is_handwriting):
+            # …unless she used the answer-mode picker and wrote it by hand on a
+            # question that was authored for typing. The marks are the answer
+            # either way, and the reports have to show them.
+            if not (question.response_type == question.TYPE_TEXT
+                    and self._looks_drawn(str(self.answer_for(question)).strip())):
+                return None
+        from .markup import replay_for
+        return replay_for(str(self.answer_for(question)).strip(), question)
+
+    @property
+    def _handwriting_orders(self):
+        return [q.order for q in self.question_set.questions.all()
+                if q.response_type == Question.TYPE_HANDWRITING]
+
+    @property
+    def is_handwritten_only(self):
+        """True when every answer on this sheet was written by hand."""
+        types = {q.response_type for q in self.question_set.questions.all()}
+        return bool(types) and types == {Question.TYPE_HANDWRITING}
+
     def as_worklog_text(self):
         """Format the Q&A as readable text for the work log / grader."""
         lines = []
@@ -771,7 +1056,69 @@ class ResponseSheet(models.Model):
             lines.append(f"Q{q.order} [{q.get_category_display()}]: {q.prompt}")
             lines.append(f"A: {self.answer_display(q)}")
             lines.append("")
-        return "\n".join(lines).strip()
+        text = "\n".join(lines).strip()
+        # Say plainly that there is nothing to read. Without this the grader
+        # gets "[handwritten answer — 2 pen stroke(s)]" against a rubric asking
+        # for complete sentences and a real thought, and scores her on writing it
+        # never saw. A MIXED sheet needs this just as much: a Lexicon week is ten
+        # typed sentences plus three handwritten ones, and only the ten are
+        # readable.
+        # Whatever it is told here, it must not be repeated to the child. The
+        # child-facing fields are hers to read, and "a grown-up will have to read
+        # your writing" lands on a nine-year-old as "what you did was no good".
+        privately = (
+            " Say this in the summary and the parent pointers only — never in "
+            "the encouragement or the child-facing highlights, and never tell "
+            "the child anything about her handwriting being unreadable."
+        )
+        hand = self._handwriting_orders
+        if self.is_handwritten_only:
+            text = (
+                "NOTE TO THE GRADER: every answer here was written BY HAND on the "
+                "page and cannot be read as text. Do not judge the content, "
+                "spelling, or sentence structure — you cannot see it. Report that "
+                "this work is handwritten and needs a person's eyes, and return a "
+                'level of "no_evidence" for me to set myself.' + privately
+                + "\n\n" + text
+            )
+        elif hand:
+            which = ", ".join(f"Q{o}" for o in hand)
+            text = (
+                f"NOTE TO THE GRADER: {which} were written BY HAND on the page "
+                "and cannot be read as text. Grade only the other questions. Do "
+                "not judge the content, spelling, or sentence structure of the "
+                "handwritten ones — you cannot see them — and report that they "
+                "need a person's eyes." + privately + "\n\n" + text
+            )
+        return text
+
+    @classmethod
+    def _format_handwriting(cls, raw, question):
+        """There is no text to read back — the writing IS the answer.
+
+        Says how much she wrote rather than pretending to transcribe it: a
+        grader who sees "(no answer)" for a full page of handwriting would mark
+        her down for work she did.
+        """
+        strokes, _marks, _unread = cls._parse_markup(raw)
+        if strokes:
+            return f"[handwritten answer — {len(strokes)} pen stroke(s); see the drawing]"
+        # A question can change instrument under an answer she already gave —
+        # Operation Lexicon's three writing boxes were typed for a few days. Her
+        # words are still sitting in the sheet; reporting "nothing written" would
+        # hide work she did from the grader, the work browser and the report.
+        typed = str(raw or "").strip()
+        if not typed:
+            return "(nothing written yet)"
+        try:
+            json.loads(typed)
+        except ValueError:
+            # Not JSON at all, so it can only be something she typed. Testing
+            # the first character instead would hand "[]" and "null" back as if
+            # they were her sentence — both are stroke payloads that parsed to
+            # nothing, and _parse_markup accepts a bare array as a legacy shape.
+            return typed
+        return "(nothing written yet)"
 
     @staticmethod
     def _format_characters(raw):
@@ -828,6 +1175,80 @@ class ResponseSheet(models.Model):
         return "\n".join(lines)
 
     @staticmethod
+    def _looks_drawn(raw):
+        """True if a stored answer is a stroke payload rather than words."""
+        text = (raw or "").strip()
+        if not text.startswith("{"):
+            return False
+        try:
+            data = json.loads(text)
+        except (ValueError, TypeError):
+            return False
+        return isinstance(data, dict) and isinstance(data.get("strokes"), list)
+
+    @classmethod
+    def _format_choice(cls, raw, question):
+        """Render a chosen answer ({"picked": ["a", "c"]}) as words, not letters.
+
+        A grader handed "a, c" has to go and find what a and c were; handed the
+        option text it can say something useful. The right/wrong mark comes from
+        the question itself, so a ten-question check needs no model call.
+        """
+        data = cls._parse_json_answer(raw)
+        picked = data.get("picked") if isinstance(data, dict) else None
+        if not isinstance(picked, list):
+            picked = [raw] if raw else []
+        picked = [str(k) for k in picked if str(k).strip()]
+        if not picked:
+            return "(no answer)"
+        by_key = {o["key"]: o for o in question.choice_options}
+        shown = []
+        for k in picked:
+            o = by_key.get(k)
+            label = o["text"] if o and o["text"] else (
+                "the picture labelled %s" % k if o else k)
+            shown.append("%s) %s" % (k, label))
+        out = "; ".join(shown)
+        correct = question.choice_correct
+        if correct:
+            got = set(picked) == correct
+            want = ", ".join(sorted(correct))
+            out += "   [%s — the answer is %s]" % (
+                "correct" if got else "not correct", want)
+        return out
+
+    @classmethod
+    def _format_self_eval(cls, raw, question):
+        """Render a self-evaluation answer ({"ratings": {...}, "notes": {...}}).
+
+        Keys are the item's index as a string, matching the widget. The output
+        says plainly that this is HER judgement of her own draft, because a
+        grader handed a bare list of "Needs to Improve" will otherwise mark her
+        down for the very honesty the exercise is asking for — the guide's point
+        here is noticing what to strengthen, not having nothing to strengthen.
+        """
+        data = cls._parse_json_answer(raw)
+        ratings = data.get("ratings") if isinstance(data, dict) else None
+        notes = data.get("notes") if isinstance(data, dict) else None
+        ratings = ratings if isinstance(ratings, dict) else {}
+        notes = notes if isinstance(notes, dict) else {}
+        items = question.self_eval_items
+        lines = []
+        for i, label in enumerate(items):
+            rating = str(ratings.get(str(i), "")).strip()
+            note = str(notes.get(str(i), "")).strip()
+            if not rating and not note:
+                continue
+            row = "%d. %s — %s" % (i + 1, label, rating or "(not rated)")
+            if note:
+                row += " · note: %s" % note
+            lines.append(row)
+        if not lines:
+            return "(no answer)"
+        return ("[self-evaluation of her own draft — her judgement, not "
+                "answers to be marked right or wrong]\n" + "\n".join(lines))
+
+    @staticmethod
     def _parse_markup(raw):
         """(strokes, marks, unread) from a markup answer, old shape or new.
 
@@ -843,13 +1264,16 @@ class ResponseSheet(models.Model):
             return data, [], 0
         if not isinstance(data, dict):
             return [], [], 0
-        marks = [m for m in (data.get("marks") or []) if isinstance(m, dict)]
+        raw_marks = data.get("marks")
+        # A non-list here is a 500 on every page that renders the answer.
+        marks = ([m for m in raw_marks if isinstance(m, dict)]
+                 if isinstance(raw_marks, list) else [])
         # Autosave accepts whatever the client posts, and this is parsed inside the
         # transaction that turns the work in — so a junk `unread` must degrade, not
         # raise, or a child cannot submit at all.
         try:
             unread = int(data.get("unread") or 0)
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, OverflowError):   # 1e400 -> inf -> int() raises
             unread = 0
         strokes = data.get("strokes")
         return (strokes if isinstance(strokes, list) else []), marks, unread

@@ -24,6 +24,14 @@
         {% if current_lesson %}· now on <strong>{{ current_lesson.code }}</strong>{% endif %}</div>
     {% endif %}
 
+    {% if show_lexicon_poster %}
+      {% comment %}The poster is the reward for this unit — it has to be reachable
+      from the unit, not just by knowing its URL.{% endcomment %}
+      <a href="{% url 'portal:lexicon_poster' token=token %}" class="portal-poster-link">
+        🏆 My Lexicon — see the words I've collected
+      </a>
+    {% endif %}
+
     {% if curriculum.is_external %}
       <a href="{{ curriculum.website_url }}" target="_blank" rel="noopener noreferrer" class="btn btn-amber btn-lg portal-continue">
         Open {{ curriculum.name }} ↗
@@ -63,12 +71,16 @@
                   </div>
 
                   {% for m in les.materials %}
-                    <a href="{% url 'portal:portal_material' token=token pk=m.pk %}" class="portal-set-row portal-manga-row">
+                    <a href="{% url 'portal:portal_material' token=token pk=m.pk %}" class="portal-set-row portal-manga-row {% if les.is_resolved and not les.sets %}is-done{% endif %}">
                       <span class="portal-set-title">
                         🦸 {{ m.title }}
                         <small class="portal-set-reading">{{ m.get_skill_type_display }}</small>
                       </span>
-                      <span class="badge portal-badge-new">Open ➜</span>
+                      {% if les.is_resolved and not les.sets %}
+                        <span class="badge bg-success">Finished ✓</span>
+                      {% else %}
+                        <span class="badge portal-badge-new">Open ➜</span>
+                      {% endif %}
                     </a>
                   {% endfor %}
 

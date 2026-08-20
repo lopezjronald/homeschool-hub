@@ -1,0 +1,134 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}One True Sentence — parent guide{% endblock %}
+{% block extra_css %}<link href="{% static 'css/lexicon.css' %}" rel="stylesheet">
+<link href="{% static 'css/onetrue.css' %}" rel="stylesheet">{% endblock %}
+
+{% block content %}
+<div class="container py-4" style="max-width:860px;">
+
+  <div class="lxg-head">
+    <div class="lxg-kicker">Parent guide</div>
+    <h1 class="mb-1">One True Sentence: Tools of Style</h1>
+    <div class="text-muted">Blackbird &amp; Company · Volume C1 · Grade 3 · 20 weeks</div>
+    <blockquote class="lxg-epigraph">
+      “{{ epigraph.0 }}”<cite>— {{ epigraph.1 }}</cite>
+    </blockquote>
+  </div>
+
+  {% if children %}
+    <div class="row g-3 mb-4">
+      {% for row in children %}
+        <div class="col-sm-6">
+          <div class="lxg-progress">
+            <div class="lxg-progress-name">{{ row.child.first_name }}</div>
+            <div class="lxg-progress-n">{{ row.weeks_done }}<span>/20 weeks</span></div>
+            <div class="lxg-progress-next">
+              {{ row.sets_done }} page{{ row.sets_done|pluralize }} turned in<br>
+              {% if row.next_week %}
+                Next up: <strong>Week {{ row.next_week.number }}</strong> ·
+                {{ row.next_week.topic }}
+              {% else %}
+                All twenty weeks finished 🎉
+              {% endif %}
+            </div>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  {% endif %}
+
+  <div class="card mb-4">
+    <div class="card-body">
+      <h2 class="h5">What this is for</h2>
+      <p>{{ for_the_teacher }}</p>
+      <p class="mb-0">{{ how_it_teaches }}</p>
+    </div>
+  </div>
+
+  <div class="card mb-4">
+    <div class="card-body">
+      <h2 class="h5">How a week runs</h2>
+      <p>Each week is two pages, and here that is two things to turn in.</p>
+      <ol class="mb-0">
+        <li><strong>The lesson.</strong> Read the explanation and its example.
+          Copy Sentence 1 — a real sentence from a prize-winning picture book —
+          by hand. Read it silently, then again slowly in a whisper. Then answer
+          the questions about Sentence 2 and Sentence 1: where is the tool, what
+          is it doing, why did the author reach for it?</li>
+        <li><strong>Now you try!</strong> Her own sentences using the same tool.
+          Usually five; some weeks split into smaller groups (three with
+          <em>you're</em> and three with <em>your</em>), and two weeks are paired —
+          write a fragment then make it whole, write a run-on then break it up.</li>
+      </ol>
+    </div>
+  </div>
+
+  <div class="card mb-4 border-primary">
+    <div class="card-body">
+      <h2 class="h5">Which parts she writes by hand</h2>
+      <ul>
+        <li><strong>Copying Sentence 1</strong> —
+          {% if by_hand.copy_sentence %}written by hand{% else %}typed{% endif %}.
+          The point of putting a real author's sentence in front of her is that
+          she writes it out slowly enough to notice how it is built.</li>
+        <li><strong>The noticing questions</strong> —
+          {% if by_hand.notice %}written by hand{% else %}typed{% endif %}. They
+          are short, often a word or a phrase, and typing them means the grader
+          can read them and tell you whether she actually found the device.</li>
+        <li><strong>Her own sentences</strong> —
+          {% if by_hand.own_sentences %}written by hand{% else %}typed{% endif %}.
+          She is a slow typist; five sentences hunted out on a keyboard is an
+          endurance test with nothing to do with sentence craft.</li>
+      </ul>
+      <p class="mb-0 text-muted small">Handwritten answers are kept exactly as she
+        formed them and appear in the work browser and the printed charter report.
+        The AI grader is told plainly that it cannot read handwriting and must
+        leave those to you.</p>
+    </div>
+  </div>
+
+  <div class="card mb-4">
+    <div class="card-body">
+      <h2 class="h5">Sentence construction basics</h2>
+      <p class="text-muted small">The book prints this for the teacher. It is
+        what the weekly lessons quietly assume you know.</p>
+      {% for b in basics %}
+        <h3 class="h6 mt-3">{{ b.part }}</h3>
+        <p class="mb-1">{{ b.body }}</p>
+        <ul class="mb-0" style="font-family:Georgia,serif;font-style:italic;color:#4b5563;">
+          {% for ex in b.examples %}<li>{{ ex }}</li>{% endfor %}
+        </ul>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="card mb-4">
+    <div class="card-body">
+      <h2 class="h5">The twenty weeks</h2>
+      <p class="text-muted small">The guide calls these “sentences from Caldecott
+        Award winning books”. Nineteen of them are; week 18's <em>The Hundred
+        Penny Box</em> is a Newbery Honor, not a Caldecott — its illustrators won
+        Caldecotts for other books. The guide's own framing, left as it is.</p>
+      <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0">
+          <thead><tr><th style="width:4rem;">Week</th><th>Tool of style</th><th>Model sentence from</th></tr></thead>
+          <tbody>
+            {% for week in weeks %}
+              <tr>
+                <td class="text-muted">{{ week.number }}</td>
+                <td><strong>{{ week.topic }}</strong></td>
+                <td class="small">{{ week.sentence_one.citation }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <a href="{% url 'curricula:curriculum_detail' curriculum.pk %}" class="btn btn-secondary">
+    ← Back to {{ curriculum.name }}
+  </a>
+</div>
+{% endblock %}

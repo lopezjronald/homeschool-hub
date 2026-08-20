@@ -1,0 +1,57 @@
+{% extends "spelling/base_spelling.html" %}
+{% load static %}
+
+{% block spelling %}
+<div class="sp-card" id="dictation"
+     data-items="{{ items_json }}"
+     data-finish-url="{% url 'spelling:finish' token=token %}"
+     data-home-url="{% url 'spelling:home' token=token %}">
+  {% csrf_token %}
+  <div class="sp-week">Week {{ week.number }} · sentence dictation</div>
+  <h1 class="sp-pattern">Write the whole sentence</h1>
+  <div class="sp-sub">Capital letter at the start. Punctuation at the end.</div>
+
+  <div id="d-gate" class="text-center">
+    <button type="button" class="sp-go" id="d-start">🔊 Turn on sound and start</button>
+  </div>
+
+  <div id="d-play" hidden>
+    <div class="sp-count"><span id="d-at">1</span> of <span id="d-total"></span></div>
+    <div class="text-center">
+      <button type="button" class="sp-speak" id="d-say">🔊 <span>Read it again</span></button>
+    </div>
+    <form id="d-form" autocomplete="off">
+      <textarea class="sp-input sp-input--area" id="d-typed" rows="3"
+                autocomplete="off" autocorrect="off" autocapitalize="sentences"
+                spellcheck="false" data-gramm="false"></textarea>
+      <button type="submit" class="sp-go sp-go--wide">Check</button>
+    </form>
+    <div id="d-feedback" hidden>
+      <div class="sp-verdict" id="d-verdict"></div>
+      <div class="sp-compare">
+        <div class="sp-compare-row"><span class="sp-compare-label">The sentence</span>
+          <span class="sp-right" id="d-right"></span></div>
+      </div>
+      <div id="d-fixbox" hidden>
+        <label class="sp-label" for="d-fix">Type it correctly</label>
+        <textarea class="sp-input sp-input--area" id="d-fix" rows="3"
+                  autocomplete="off" autocorrect="off" spellcheck="false"
+                  data-gramm="false"></textarea>
+      </div>
+      <button type="button" class="sp-go sp-go--wide" id="d-next" hidden>Next ➜</button>
+    </div>
+  </div>
+
+  <div id="d-done" hidden class="text-center">
+    <div class="sp-done-emoji" aria-hidden="true">🎉</div>
+    <div class="sp-score" id="d-score"></div>
+    <a class="sp-go" href="{% url 'spelling:home' token=token %}">Back to spelling</a>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'js/spelling-speak.js' %}"></script>
+<script src="{% static 'js/spelling-post.js' %}"></script>
+<script src="{% static 'js/spelling-dictation.js' %}"></script>
+{% endblock %}

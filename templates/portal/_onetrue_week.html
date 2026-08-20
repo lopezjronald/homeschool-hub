@@ -1,0 +1,59 @@
+{% comment %}The week's tool of style, set the way the book sets it: the
+explanation in a tinted box with its worked example, then Sentence 1 — the one
+she copies — labelled and credited, then Sentence 2 for the noticing questions.
+
+The practice page deliberately shows the explanation but NOT the sentences. She
+is composing there, and a model sentence still on screen invites copying it
+again.{% endcomment %}
+<div class="ot-head">
+  <div class="ot-eyebrow">One True Sentence · Tools of Style</div>
+  <h2 class="ot-title">Week {{ onetrue_week.week.number }}: {{ onetrue_week.week.topic }}</h2>
+</div>
+
+<div class="ot-explain">
+  <div class="ot-explain-label">{{ onetrue_week.week.explanation_label }}</div>
+  <p class="ot-explain-body">{{ onetrue_week.week.explanation }}</p>
+  {% if onetrue_week.week.example %}
+    <div class="ot-example">
+      <div class="ot-example-label">Example</div>
+      <div class="ot-example-text">{{ onetrue_week.week.example.text }}</div>
+      {% if onetrue_week.week.example.citation %}
+        <cite class="ot-cite">({{ onetrue_week.week.example.citation }})</cite>
+      {% endif %}
+    </div>
+  {% endif %}
+</div>
+
+{% if onetrue_week.week.note %}
+  <p class="dk-note">⚠️ {{ onetrue_week.week.note }}</p>
+{% endif %}
+
+{% if onetrue_week.is_practice %}
+  {% comment %}"by hand" is read from the seed's own flag — hardcoding it means
+  flipping the flag leaves the page telling her to write by hand while handing
+  her a keyboard.{% endcomment %}
+  <p class="ot-lede">Now you try.
+    {% if onetrue_week.own_by_hand %}Write each one by hand, and make{% else %}Make{% endif %}
+    sure the tool is really doing something — a sentence that reads the same
+    without it hasn't used it.</p>
+{% else %}
+  <div class="ot-sentence">
+    <span class="ot-tag">{% if onetrue_week.week.sentence_two %}Sentence 1{% else %}Example{% endif %}</span>
+    <blockquote class="ot-quote">{{ onetrue_week.week.sentence_one.text }}</blockquote>
+    {% if onetrue_week.week.sentence_one.citation %}
+      <cite class="ot-cite">({{ onetrue_week.week.sentence_one.citation }})</cite>
+    {% endif %}
+  </div>
+
+  {% comment %}Volume C3 has no Sentence 2 — its single Example box IS the
+  model she copies — so the chip only appears when the week carries one.{% endcomment %}
+  {% if onetrue_week.week.sentence_two %}
+    <div class="ot-sentence">
+      <span class="ot-tag ot-tag--two">Sentence 2</span>
+      <blockquote class="ot-quote">{{ onetrue_week.week.sentence_two.text }}</blockquote>
+    </div>
+  {% endif %}
+
+  <p class="ot-aloud">📖 Read {% if onetrue_week.week.sentence_two %}Sentence 1{% else %}the example sentence{% endif %}
+    silently, then read it again, slowly, in a whispered tone.</p>
+{% endif %}

@@ -87,6 +87,89 @@ LESSON_TITLES = {
     82: 'Research Project – Writing a Bibliography',
 }
 
+
+# ---------------------------------------------------------------------------
+# Kid-facing visuals.
+#
+# The workbook prints a "List of Pronouns" reference box on the lesson pages and
+# a worked antecedent -> pronoun example at the top of each one. Both were being
+# flattened into a parenthetical inside a wall of instruction text, so the child
+# got the words but never the picture. These render them as real, self-contained
+# HTML (the intro is passed through `markdownify`, which allows raw HTML).
+#
+# Inline styles on purpose: this has to look right inside the portal without
+# depending on a stylesheet that may not be loaded on every surface.
+# ---------------------------------------------------------------------------
+
+_PRONOUN_GROUPS = [
+    ("These DO the action", "#1d4ed8", ["I", "you", "he", "she", "it", "we", "they"]),
+    ("These RECEIVE the action", "#0f766e", ["me", "you", "him", "her", "it", "us", "them"]),
+    ("These show who OWNS it", "#7c3aed", ["my", "your", "his", "her", "its", "our", "their"]),
+]
+
+
+def pronoun_list_html():
+    """The workbook's List of Pronouns, grouped so the child can see the pattern.
+
+    Same 18 words the workbook prints, nothing added: I, me, my, you, your, he,
+    they, them, their, our, we, us, him, his, she, her, it, its.
+    """
+    cols = []
+    for heading, color, words in _PRONOUN_GROUPS:
+        chips = "".join(
+            f'<span style="display:inline-block;background:#fff;border:2px solid {color};'
+            f'color:{color};border-radius:999px;padding:2px 10px;margin:3px 3px 0 0;'
+            f'font-weight:700;font-size:1.05rem;">{w}</span>'
+            for w in words
+        )
+        cols.append(
+            f'<div style="flex:1 1 200px;min-width:190px;">'
+            f'<div style="font-size:.8rem;font-weight:700;letter-spacing:.03em;'
+            f'text-transform:uppercase;color:{color};margin-bottom:4px;">{heading}</div>'
+            f'<div>{chips}</div></div>'
+        )
+    return (
+        '<div style="background:#f8fafc;border:2px solid #cbd5e1;border-radius:14px;'
+        'padding:14px 16px;margin:12px 0;">'
+        '<div style="font-weight:800;margin-bottom:10px;font-size:1.05rem;">'
+        'List of Pronouns</div>'
+        '<div style="display:flex;flex-wrap:wrap;gap:16px;">' + "".join(cols) + '</div>'
+        '</div>'
+    )
+
+
+def antecedent_model_html(antecedent, rest_a, pronoun, rest_b):
+    """The worked example, showing WHICH mark goes with which word.
+
+    Circle = antecedent, underline = pronoun. That is exactly what the exercises
+    ask her to do, so the example should show it rather than describe it.
+    """
+    return (
+        '<div style="background:#fffbeb;border:2px solid #fcd34d;border-radius:14px;'
+        'padding:14px 16px;margin:12px 0;">'
+        '<div style="font-size:1.15rem;line-height:2;">'
+        f'<span style="border:2px solid #c2410c;border-radius:999px;padding:2px 10px;'
+        f'font-weight:700;">{antecedent}</span> {rest_a}'
+        '<span style="margin:0 10px;font-weight:700;color:#64748b;">&#8594;</span>'
+        f'<span style="border-bottom:3px solid #1d4ed8;font-weight:700;">{pronoun}</span>'
+        f' {rest_b}'
+        '</div>'
+        '<div style="margin-top:8px;font-size:.9rem;color:#475569;">'
+        '<span style="border:2px solid #c2410c;border-radius:999px;padding:0 8px;">'
+        '&nbsp;</span> circle the <strong>antecedent</strong> (the noun) &nbsp;&nbsp;'
+        '<span style="border-bottom:3px solid #1d4ed8;">&nbsp;&nbsp;&nbsp;</span> '
+        'underline the <strong>pronoun</strong> (the word that replaced it)'
+        '</div></div>'
+    )
+
+
+TEACH_NOTES = {
+    "pronoun-antecedent": (
+        "A **pronoun** is a word used in place of a noun. The noun it replaces is "
+        "called the **antecedent**."
+    ),
+}
+
 # {lesson_number: [ {instructions, kind, assessment, items:[...]} ]}
 EXERCISES = {
     1: [
@@ -619,9 +702,14 @@ EXERCISES = {
     ],
     10: [
         {
-            'instructions': 'A pronoun is a word that can be used in place of a noun. The word that the pronoun replaces is called an antecedent. Model example: "Tyrone made a cake." → "He made a cake." Underline the pronouns. (Reference List of Pronouns provided: I, me, my, you, your, he, they, them, their, our, we, us, him, his, she, her, it, its.)',
+            'label': 'Underline the pronouns',
+            'instructions': 'Underline the pronouns.',
             'kind': 'sentence-editing',
+            'teach': 'pronoun-antecedent',
+            'visual': 'pronoun-list',
+            'model': ('Tyrone', 'made a cake.', 'He', 'made a cake.'),
             'assessment': False,
+            'workbook_page': 35,
             'items': [
                 'Jim sang a song. It was so pretty!',
                 'Kelly jumped on the bed. She was happy.',
@@ -631,9 +719,13 @@ EXERCISES = {
             ],
         },
         {
-            'instructions': 'Circle the antecedents. (Reference List of Pronouns provided: I, me, my, you, your, he, they, them, their, our, we, us, him, his, she, her, it, its.)',
+            'label': 'Circle the antecedents',
+            'instructions': 'Circle the antecedents.',
             'kind': 'sentence-editing',
+            'teach': 'pronoun-antecedent',
+            'visual': 'pronoun-list',
             'assessment': False,
+            'workbook_page': 35,
             'items': [
                 'Ken drove home. He parked the car.',
                 'Elle came to the party. She wore a red dress.',
@@ -643,57 +735,143 @@ EXERCISES = {
             ],
         },
         {
-            'instructions': 'A pronoun is a word that can be used in place of a noun. The word that the pronoun replaces is called an antecedent. Model example: "Jess played the drums." → "She played the drums." Rewrite the sentences and replace the underlined nouns with the correct pronouns. (Reference List of Pronouns provided: I, me, my, you, your, he, they, them, their, our, we, us, him, his, she, her, it, its.)',
+            # A REWRITE, not a markup exercise: the child types the new sentence.
+            # Seeding this as a pen-and-paper markup box gave her a drawing tool
+            # for a task the workbook asks her to write out.
+            'label': 'Rewrite with pronouns',
+            'instructions': (
+                'Rewrite each sentence. Replace the underlined words with the '
+                'correct pronoun.'
+            ),
+            'kind': 'short-answer',
+            'teach': 'pronoun-antecedent',
+            'visual': 'pronoun-list',
+            'model': ('Jess', 'played the drums.', 'She', 'played the drums.'),
+            'assessment': False,
+            'workbook_page': 36,
+            'items': [
+                "Gal's best friend is <u>Gal's</u> sister.",
+                "Hal worked on <u>Hal's</u> project all night.",
+                'Mrs. Tally told Jessica that <u>Jessica</u> was pretty.',
+                "Dev and Caleb saved <u>Dev and Caleb's</u> money.",
+                'Bri and I want Lindsey to join <u>Bri and me</u>.',
+                'I have a book, and I took <u>the book</u> to the park.',
+            ],
+        },
+        {
+            'label': 'Underline the pronouns in the paragraph',
+            'instructions': 'Underline the pronouns in the paragraph below.',
             'kind': 'sentence-editing',
+            'teach': 'pronoun-antecedent',
+            'visual': 'pronoun-list',
+            'model': ('Cal and I', 'sang for our family.', 'We', 'sang for them.'),
             'assessment': False,
+            'workbook_page': 37,
             'items': [
-                "Gal's best friend is Gal's sister.",
-                "Hal worked on Hal's project all night.",
-                'Mrs. Tally told Jessica that Jessica was pretty.',
-                "Dev and Caleb saved Dev and Caleb's money.",
-                'Bri and I want Lindsey to join Bri and me.',
-                'I have a book, and I took the book to the park.',
+                'Callie and John are siblings. They are my friends, and they both '
+                'play the piano. Callie likes to play rag music. She plays so fast! '
+                'John likes to play songs by Brahms. His music is pretty. Callie and '
+                'John play songs for us. We love to hear them play!',
             ],
         },
         {
-            'instructions': 'A pronoun is a word that can be used in place of a noun. The word that the pronoun replaces is called an antecedent. Model example: "Cal and I sang for our family." → "We sang for them." Underline the pronouns in the paragraph below. (Reference List of Pronouns provided: I, me, my, you, your, he, they, them, their, our, we, us, him, his, she, her, it, its.)',
+            'label': 'Circle the antecedents in the paragraph',
+            'instructions': 'Circle the antecedents in the paragraph below.',
             'kind': 'sentence-editing',
+            'teach': 'pronoun-antecedent',
+            'visual': 'pronoun-list',
             'assessment': False,
+            'workbook_page': 37,
             'items': [
-                'Callie and John are siblings. They are my friends, and they both play the piano. Callie likes to play rag music. She plays so fast! John likes to play songs by Brahms. His music is pretty. Callie and John play songs for us. We love to hear them play!',
+                'Micah has two little bunnies. They are named Wes and Mollie, and '
+                'they are his pets. Wes has a pink nose. He wiggles it. Mollie has a '
+                'fuzzy white tail. She is so cute! They live in a small hutch. It '
+                'keeps Wes and Mollie safe. Micah loves his pet bunnies so much!',
             ],
         },
         {
-            'instructions': 'Circle the antecedents in the paragraph below. (Reference List of Pronouns provided: I, me, my, you, your, he, they, them, their, our, we, us, him, his, she, her, it, its.)',
-            'kind': 'sentence-editing',
-            'assessment': False,
-            'items': [
-                'Micah has two little bunnies. They are named Wes and Mollie, and they are his pets. Wes has a pink nose. He wiggles it. Mollie has a fuzzy white tail. She is so cute! They live in a small hutch. It keeps Wes and Mollie safe. Micah loves his pet bunnies so much!',
-            ],
-        },
-        {
-            'instructions': 'A pronoun is a word that can be used in place of a noun. The word that the pronoun replaces is called an antecedent. Model example: "Elle held the cat." → "She held it." Read the paragraph below. Rewrite the paragraph, replacing the underlined nouns with the correct pronouns.',
-            'kind': 'sentence-editing',
-            'assessment': False,
-            'items': [
-                'Beth has a bell. Grandma gave the bell to Beth. The bell is gold. Beth rings the bell every afternoon. Beth loves the bell.',
-            ],
-        },
-        {
-            'instructions': 'A pronoun is a word that can be used in place of a noun. The word that the pronoun replaces is called an antecedent. Read the paragraph below. Which is missing? (choices: pronouns / antecedents) Read the paragraph again below. Which is missing? (choices: pronouns / antecedents)',
-            'kind': 'multiple-choice',
-            'assessment': False,
-            'items': [
-                'Paragraph A (Which is missing? pronouns / antecedents): "Easton and Jay played basketball together. Easton and Jay practiced every day together with the team, and Easton and Jay also practiced alone. Easton and Jay wanted to do Easton and Jay\'s very best. Easton and Jay\'s coach noticed Easton and Jay\'s hard work. Easton and Jay\'s coach made Easton and Jay starters for the big game. Easton and Jay were so excited! Easton and Jay knew Easton and Jay\'s extra practice had paid off."',
-                'Paragraph B (Which is missing? pronouns / antecedents): "They played basketball together. They practiced every day together with the team, and they also practiced alone. They wanted to do their very best. Their coach noticed their hard work. Their coach made them starters for the big game. They were so excited! They knew their extra practice had paid off."',
-            ],
-        },
-        {
-            'instructions': 'A pronoun is a word that can be used in place of a noun. The word that the pronoun replaces is called an antecedent. Rewrite the paragraph from the previous page, using both antecedents and pronouns correctly.',
+            'label': 'Rewrite the paragraph with pronouns',
+            'instructions': (
+                'Read the paragraph below. Rewrite the whole paragraph, replacing '
+                'the underlined words with the correct pronouns.'
+            ),
             'kind': 'paragraph-writing',
+            'teach': 'pronoun-antecedent',
+            'model': ('Elle', 'held the cat.', 'She', 'held it.'),
             'assessment': False,
+            'workbook_page': 38,
             'items': [
-                "(Source paragraph is the Easton and Jay basketball paragraph from workbook p.39; student rewrites it mixing antecedents and pronouns so neither is missing — e.g., beginning with the noun antecedent 'Easton and Jay' then switching to the pronoun 'They' in following sentences.)",
+                'Beth has a bell. Grandma gave <u>the bell</u> to <u>Beth</u>. '
+                '<u>The bell</u> is gold. <u>Beth</u> rings <u>the bell</u> every '
+                'afternoon. <u>Beth</u> loves <u>the bell</u>.',
+            ],
+        },
+        {
+            'label': 'Which one is missing?',
+            'instructions': (
+                'Read each paragraph. Then answer: which one is missing — '
+                '**pronouns** or **antecedents**?'
+            ),
+            'kind': 'short-answer',
+            'teach': 'pronoun-antecedent',
+            'assessment': False,
+            'workbook_page': 39,
+            'items': [
+                'Paragraph 1 — "Easton and Jay played basketball together. Easton '
+                'and Jay practiced every day together with the team, and Easton and '
+                "Jay also practiced alone. Easton and Jay wanted to do Easton and "
+                "Jay's very best. Easton and Jay's coach noticed Easton and Jay's "
+                "hard work. Easton and Jay's coach made Easton and Jay starters for "
+                'the big game. Easton and Jay were so excited! Easton and Jay knew '
+                "Easton and Jay's extra practice had paid off."
+                '"\n\nWhich is missing — pronouns or antecedents?',
+                'Paragraph 2 — "They played basketball together. They practiced '
+                'every day together with the team, and they also practiced alone. '
+                'They wanted to do their very best. Their coach noticed their hard '
+                'work. Their coach made them starters for the big game. They were '
+                'so excited! They knew their extra practice had paid off."'
+                '\n\nWhich is missing — pronouns or antecedents?',
+            ],
+        },
+        {
+            'label': 'Rewrite it using both',
+            'instructions': (
+                'Rewrite the basketball paragraph so it uses **both** antecedents '
+                'and pronouns correctly. Start by naming Easton and Jay, then use '
+                'pronouns so you are not repeating their names over and over.'
+            ),
+            'kind': 'paragraph-writing',
+            'teach': 'pronoun-antecedent',
+            'assessment': False,
+            'workbook_page': 40,
+            'items': [
+                'Easton and Jay played basketball together. Easton and Jay practiced '
+                'every day together with the team, and Easton and Jay also practiced '
+                "alone. Easton and Jay wanted to do Easton and Jay's very best. "
+                "Easton and Jay's coach noticed Easton and Jay's hard work. Easton "
+                "and Jay's coach made Easton and Jay starters for the big game. "
+                'Easton and Jay were so excited! Easton and Jay knew Easton and '
+                "Jay's extra practice had paid off.",
+            ],
+        },
+        {
+            # Workbook p.41 "Complete Assessment 4" — this page was missing from
+            # the app entirely, so the lesson ended one exercise early.
+            'label': 'Assessment 4 — write your own',
+            'instructions': (
+                'Write sentences according to the instructions below. Underline '
+                'each pronoun you use and circle the antecedents.'
+            ),
+            'kind': 'paragraph-writing',
+            'teach': 'pronoun-antecedent',
+            'model': ('Lin and Beth', 'have a pool.', 'They', 'like to swim.'),
+            'assessment': True,
+            'workbook_page': 41,
+            'items': [
+                'Write two sentences about your pet. Use a pronoun in the second '
+                'sentence.',
+                'Write two sentences about your house. Use a pronoun in the second '
+                'sentence.',
             ],
         },
     ],

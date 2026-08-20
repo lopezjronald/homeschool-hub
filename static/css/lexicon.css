@@ -1,0 +1,332 @@
+/* The hundred-word Lexicon poster.
+ *
+ * The paper guide has her colour in each week's words on a wall poster. This is
+ * that: words she has not reached yet are outlines waiting to be filled, and a
+ * finished week fills in with its own colour so the page shows, at a glance,
+ * how much of the wall is hers.
+ */
+
+.lx-head { text-align: center; margin-bottom: 1.5rem; }
+.lx-title { font-size: 2.1rem; font-weight: 800; margin-bottom: .1rem; }
+.lx-sub { color: #6b7280; font-size: .95rem; }
+
+.lx-count { margin: .75rem 0 .35rem; }
+.lx-count-n { font-size: 2.6rem; font-weight: 800; color: var(--ss-teal, #0A5C63); }
+.lx-count-of { font-size: 1rem; color: #6b7280; margin-left: .25rem; }
+
+.lx-bar {
+  height: 12px; border-radius: 999px; background: #e5e7eb;
+  overflow: hidden; max-width: 520px; margin: 0 auto .5rem;
+}
+.lx-bar-fill {
+  height: 100%; border-radius: 999px; transition: width .4s ease;
+  /* Two stops, not three: a three-colour gradient squeezed into the first
+     20% of the bar reads as mud rather than progress. */
+  background: linear-gradient(90deg, #0A5C63, #1E7A50);
+}
+
+.lx-row {
+  background: #fff; border: 1px solid rgba(20, 35, 28, .1);
+  border-radius: 16px; padding: .9rem 1rem 1rem; margin-bottom: .85rem;
+}
+.lx-row-head { display: flex; align-items: center; gap: .7rem; margin-bottom: .6rem; }
+.lx-num {
+  width: 34px; height: 34px; flex: none; border-radius: 50%;
+  display: grid; place-items: center; font-weight: 800;
+  background: #eef2f1; color: #6b7280;
+}
+.lx-row.is-earned .lx-num { background: var(--lx-tint, #0A5C63); color: #fff; }
+.lx-person { font-weight: 700; }
+.lx-role { font-size: .8rem; color: #6b7280; }
+.lx-ribbon { margin-left: auto; font-size: 1.4rem; color: #d9a441; }
+
+.lx-words { display: flex; flex-wrap: wrap; gap: .4rem; }
+
+/* Not yet collected: an outline waiting to be filled. Still readable — seeing
+   what is coming is part of the point — but plainly not hers yet. */
+.lx-word {
+  display: inline-block; padding: .42rem .8rem; border-radius: 999px;
+  font-family: Georgia, "Times New Roman", serif; font-size: 1.02rem;
+  border: 2px dashed #d5dbd8; color: #b6c2bd; background: transparent;
+}
+
+/* Collected: filled in the week's colour, and tappable for its meaning. */
+.lx-word.is-earned {
+  border: 2px solid var(--lx-tint, #0A5C63);
+  background: var(--lx-wash, #e8f4f3);
+  color: var(--lx-ink, #0A5C63);
+  cursor: pointer; font-weight: 600;
+}
+.lx-word.is-earned:hover, .lx-word.is-earned:focus { filter: brightness(0.96); }
+.lx-word.is-open { outline: 3px solid rgba(10, 92, 99, .35); }
+
+/* Ten weeks, ten colours — so a full poster reads as a collection rather than
+   a wall of one hue. */
+.lx-week-1  { --lx-tint:#0A5C63; --lx-wash:#e6f3f3; --lx-ink:#07474d; }
+.lx-week-2  { --lx-tint:#1E7A50; --lx-wash:#e8f5ee; --lx-ink:#155c3c; }
+.lx-week-3  { --lx-tint:#b45309; --lx-wash:#fdf0e2; --lx-ink:#8a3f07; }
+.lx-week-4  { --lx-tint:#7c3aed; --lx-wash:#f2ecfe; --lx-ink:#5b21b6; }
+.lx-week-5  { --lx-tint:#be185d; --lx-wash:#fdeaf2; --lx-ink:#9d174d; }
+.lx-week-6  { --lx-tint:#0369a1; --lx-wash:#e6f2fa; --lx-ink:#024a73; }
+.lx-week-7  { --lx-tint:#4338ca; --lx-wash:#ecebfb; --lx-ink:#312a94; }
+.lx-week-8  { --lx-tint:#a16207; --lx-wash:#fbf3e2; --lx-ink:#7a4a05; }
+.lx-week-9  { --lx-tint:#0f766e; --lx-wash:#e6f4f2; --lx-ink:#0b5952; }
+.lx-week-10 { --lx-tint:#15803d; --lx-wash:#e9f6ed; --lx-ink:#106030; }
+
+/* The meaning panel: sticks to the bottom so a tap never scrolls the page away
+   from the word she just touched. */
+.lx-meaning {
+  position: sticky; bottom: 12px; margin-top: 1rem;
+  background: #fffdf7; border: 2px solid var(--ss-teal, #0A5C63);
+  border-radius: 14px; padding: .8rem 1rem;
+  box-shadow: 0 6px 20px rgba(20, 35, 28, .12);
+}
+.lx-meaning-word {
+  font-family: Georgia, serif; font-size: 1.3rem; font-weight: 700;
+  color: var(--ss-teal, #0A5C63);
+}
+.lx-meaning-text { color: #374151; }
+
+@media print {
+  .lx-word { border-color: #999; color: #999; }
+  .lx-meaning { display: none; }
+}
+
+/* ---- One Lexicon week: the "meet the words" page --------------------------
+ * The ten words are the lesson, so they get the page. A bulleted list of
+ * definitions reads like a dictionary and gets skimmed; cards get read.
+ * Colours come from the .lx-week-N tints above, so a week looks the same here
+ * as it does on the poster.
+ */
+
+.lxw-hero {
+  background: var(--lx-wash, #e8f4f3);
+  border: 2px solid var(--lx-tint, #0A5C63);
+  border-radius: 18px;
+  padding: 1.1rem 1.25rem;
+  text-align: center;
+  margin-bottom: 1rem;
+}
+.lxw-week {
+  font-size: .78rem; font-weight: 800; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--lx-tint, #0A5C63);
+}
+.lxw-person {
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 2rem; font-weight: 700; margin: .15rem 0 .1rem;
+  color: var(--lx-ink, #07474d);
+}
+.lxw-role { color: #4b5563; font-size: 1rem; }
+
+.lxw-book {
+  display: flex; gap: .9rem; align-items: flex-start;
+  background: #fffdf7; border: 1.5px solid rgba(15, 61, 46, .18);
+  border-radius: 14px; padding: .9rem 1rem; margin-bottom: 1.4rem;
+}
+.lxw-book-icon { font-size: 2rem; line-height: 1; }
+.lxw-book-label {
+  font-size: .72rem; font-weight: 800; letter-spacing: .06em;
+  text-transform: uppercase; color: #8a5b12;
+}
+.lxw-book-title {
+  font-family: Georgia, serif; font-size: 1.15rem; font-weight: 700;
+  color: #24303a; margin: .1rem 0;
+}
+.lxw-book-by { font-size: .85rem; color: #6b7280; }
+.lxw-book-tip { font-size: .9rem; color: #374151; margin-top: .4rem; }
+
+.lxw-heading {
+  font-size: 1.15rem; font-weight: 800; margin: 0 0 .7rem;
+  color: var(--lx-ink, #07474d);
+}
+
+.lxw-words {
+  display: grid; gap: .6rem;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+}
+.lxw-card {
+  border: 2px solid var(--lx-tint, #0A5C63);
+  border-left-width: 7px;               /* a coloured spine, like a shelf of books */
+  border-radius: 12px;
+  background: #fff;
+  padding: .65rem .85rem;
+}
+.lxw-word {
+  font-family: Georgia, serif; font-size: 1.35rem; font-weight: 700;
+  color: var(--lx-ink, #07474d); line-height: 1.2;
+}
+.lxw-def { font-size: .92rem; color: #374151; margin-top: .15rem; }
+
+.lxw-note {
+  margin-top: 1.2rem; padding: .8rem 1rem; border-radius: 12px;
+  background: var(--lx-wash, #e8f4f3); color: var(--lx-ink, #07474d);
+  font-weight: 600;
+}
+
+.lxw-poster-link {
+  display: inline-block; margin-top: 1rem;
+  padding: .6rem 1rem; border-radius: 12px;
+  background: #fff7e6; border: 2px solid #f0c674;
+  color: #8a5b12; font-weight: 700; text-decoration: none;
+}
+.lxw-poster-link:hover, .lxw-poster-link:focus { background: #fdefd0; color: #6d470e; }
+
+/* Markdown-authored lesson materials, rendered rather than dumped raw. */
+.lesson-prose { font-size: 1.02rem; color: #24303a; }
+.lesson-prose h2 { font-size: 1.5rem; font-weight: 800; margin: .2rem 0 .6rem; }
+.lesson-prose h3 { font-size: 1.2rem; font-weight: 700; margin: 1rem 0 .4rem; }
+.lesson-prose ul { padding-left: 1.2rem; }
+.lesson-prose li { margin-bottom: .3rem; }
+
+/* ---- Parent guide ---------------------------------------------------------
+ * The booklet's own front matter. The app had swallowed it, leaving the parent
+ * to infer the method from the child's pages.
+ */
+.lxg-head { margin-bottom: 1.5rem; }
+.lxg-kicker {
+  font-size: .75rem; font-weight: 800; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--ss-teal, #0A5C63);
+}
+.lxg-epigraph {
+  margin: .9rem 0 0; padding: .7rem 1rem;
+  border-left: 5px solid var(--ss-teal, #0A5C63);
+  background: #f0f7f6; border-radius: 0 10px 10px 0;
+  font-family: Georgia, serif; font-size: 1.15rem; font-style: italic;
+  color: #24303a;
+}
+.lxg-epigraph cite {
+  display: block; font-size: .85rem; font-style: normal;
+  color: #6b7280; margin-top: .25rem;
+}
+
+.lxg-progress {
+  height: 100%; background: #fff; border: 1px solid rgba(20,35,28,.1);
+  border-radius: 14px; padding: .9rem 1rem;
+}
+.lxg-progress-name { font-weight: 700; }
+.lxg-progress-n {
+  font-size: 1.9rem; font-weight: 800; color: var(--ss-teal, #0A5C63);
+  line-height: 1.1;
+}
+.lxg-progress-n span { font-size: .85rem; color: #6b7280; font-weight: 600; }
+.lxg-progress-next { font-size: .9rem; margin-top: .35rem; }
+
+.lxg-materials { list-style: none; padding: 0; margin: 0; }
+.lxg-materials li {
+  display: flex; gap: .7rem; align-items: flex-start;
+  padding: .6rem 0; border-top: 1px solid rgba(20,35,28,.08);
+}
+.lxg-materials li:first-child { border-top: 0; }
+.lxg-mark { font-size: 1.2rem; line-height: 1.4; }
+.lxg-materials .is-covered strong { color: #6b7280; }
+
+.lxg-books { padding-left: 1.3rem; margin: 0; }
+.lxg-books li { margin-bottom: .55rem; }
+.lxg-book-t { font-family: Georgia, serif; font-size: 1.05rem; color: #24303a; }
+
+/* ---- "Three things that amaze you" ---------------------------------------
+ * The one place in the week she writes her OWN thought, so it changes material:
+ * cream ruled paper instead of white cards, and Georgia — the serif her word
+ * cards use — so her sentence looks like it belongs in the book rather than in
+ * a form.
+ */
+
+.lxa-head { margin: 2.5rem 0 1.25rem; }
+.lxa-rule {
+  display: block; width: 44px; height: 3px; border-radius: 2px;
+  background: var(--lx-tint, #0A5C63); margin-bottom: .55rem;
+}
+.lxa-eyebrow {
+  font: 600 .72rem/1 system-ui, sans-serif; letter-spacing: .14em;
+  text-transform: uppercase; color: var(--lx-ink, #07474d); opacity: .72;
+}
+.lxa-question {
+  /* Roman, not italic: italic serif slows a nine-year-old's reading. Only the
+     name is italicised. */
+  font: 400 1.5rem/1.35 Georgia, "Times New Roman", serif;
+  color: var(--lx-ink, #07474d); max-width: 34ch; margin: .5rem 0 0;
+}
+.lxa-question em { font-style: italic; }
+
+.lxa-stems { margin-top: .75rem; font-size: .9rem; }
+.lxa-stems summary {
+  cursor: pointer; color: var(--lx-tint, #0A5C63); font-weight: 600;
+  width: fit-content;
+}
+.lxa-stems ul {
+  margin: .4rem 0 0; padding-left: 1.2rem; color: #6b7280;
+  font-family: Georgia, serif; font-style: italic;
+}
+
+.lxa-box {
+  position: relative;
+  background: #fffdf7;
+  border: 1.5px solid rgba(15, 61, 46, .2);
+  border-radius: 14px;
+  padding: 22px 20px 18px 22px;
+  margin-top: 26px;
+  box-shadow: 0 1px 0 rgba(20, 35, 28, .04);
+  transition: box-shadow .15s, border-color .15s;
+}
+/* A medallion, not the dark graded-question badge — these answers are hers. */
+.lxa-num {
+  position: absolute; top: -15px; left: -13px;
+  width: 34px; height: 34px; border-radius: 50%;
+  background: var(--lx-tint, #0A5C63); color: #fff;
+  font: 700 1.05rem/34px Georgia, serif; text-align: center;
+  box-shadow: 0 0 0 4px #f4f1ea;
+}
+.lxa-label {
+  display: block; font: 600 .78rem/1 system-ui, sans-serif;
+  letter-spacing: .06em; text-transform: uppercase;
+  color: var(--lx-ink, #07474d); opacity: .7; margin-bottom: .35rem;
+}
+.lxa-check { color: #1E7A50; opacity: 0; margin-left: .3rem; }
+.lxa-box.is-filled .lxa-check { opacity: 1; }
+
+/* Filled: a spine like the word cards — her sentence joined the vocabulary.
+   inset so it costs no reflow. */
+.lxa-box.is-filled {
+  box-shadow: inset 5px 0 0 var(--lx-tint, #0A5C63);
+  padding-left: 27px;
+}
+
+/* These questions carry their own medallion and label; the generic badge,
+   chip, prompt and word-count would say all of it a second time. */
+.portal-question--own-chrome { border-top: 0; padding-top: 0; }
+.portal-question--own-chrome .portal-wordcount,
+.portal-question--own-chrome .wordhelp-hint { display: none; }
+
+@media (max-width: 480px) {
+  .lxa-num { position: static; display: inline-block; margin-bottom: .4rem;
+             box-shadow: none; }
+  .lxa-box { padding: 18px 16px; }
+  .lxa-question { font-size: 1.3rem; }
+}
+
+
+/* The three boxes hold a PEN, not a keyboard. The card, medallion and label are
+   unchanged — only the instrument differs — so the writing surface drops its own
+   frame rather than drawing a second box inside the first. */
+.lxa-pens {
+  display: flex; align-items: center; gap: .4rem; margin-bottom: .6rem;
+}
+.lxa-pens-sep {
+  width: 1px; height: 22px; background: rgba(15, 61, 46, .18); margin: 0 .3rem;
+}
+.lxa-surface {
+  border: 0; border-radius: 0; background: transparent;
+  /* Baselines only, at 48px — a child's handwriting needs more room than her
+     typing, and the extra height keeps letters off the line above. The generic
+     widget's dashed mid-guide is dropped here: it lands at 24px, exactly where
+     the "Write here…" prompt sits, and reads as a strikethrough through it. */
+  background-image:
+    repeating-linear-gradient(transparent, transparent 47px, rgba(20,35,28,.20) 47px, rgba(20,35,28,.20) 48px);
+  height: 192px;
+}
+.lxa-box.is-filled .lxa-surface {
+  /* Her writing should dominate once it is there. */
+  background-image:
+    repeating-linear-gradient(transparent, transparent 47px, rgba(20,35,28,.11) 47px, rgba(20,35,28,.11) 48px);
+}
+.lxa-hand .handwriting-empty { left: 2px; }

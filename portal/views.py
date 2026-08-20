@@ -17,11 +17,14 @@ from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.db import transaction
 from django.urls import NoReverseMatch, reverse
+from django.contrib import messages
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
-from django.views.decorators.http import require_POST
+from django.views.decorators.http import require_GET, require_POST
 
 from activities.models import ExternalActivity
+from family_calendar import feeds as calendar_feeds
+from family_calendar.models import CalendarEvent
 from lingua import comprehension as lingua_comprehension
 from lingua import services as lingua_services
 from lingua import storage as lingua_storage
@@ -33,8 +36,15 @@ from lingua.models import Story as LinguaStory
 from curricula.models import Curriculum, CurriculumPlacement
 from curricula.subjects import emoji_for, is_spelling
 from tutor import ai, grading
-from tutor.models import Material, QuestionSet, ResponseSheet
+from tutor.models import Material, Question, QuestionSet, ResponseSheet
 from worklog.models import WorkLogEntry
+
+from tutor.dickinson import CURRICULUM_NAME as DICKINSON_CURRICULUM_NAME
+from tutor.essay import CURRICULUM_NAME as ESSAY_CURRICULUM_NAME
+from tutor.lexicon import CURRICULUM_NAME as LEXICON_CURRICULUM_NAME
+from tutor.onetrue import CURRICULUM_NAME as ONETRUE_CURRICULUM_NAME
+from tutor.onetrue3 import CURRICULUM_NAME as ONETRUE3_CURRICULUM_NAME
+from tutor.poetry import CURRICULUM_NAME as POETRY_CURRICULUM_NAME
 
 from .tokens import student_from_token
 
@@ -565,6 +575,143 @@ def _visible_activities(student):
     )
 
 
+def _visible_calendar_events(student):
+    """Calendar events this child may see: theirs + whole-family. Never a
+    sibling's — same shape as _visible_activities, including the null-family
+    fallback that pins whole-family events to the owning parent."""
+    qs = CalendarEvent.objects.all()
+    if student.family_id:
+        return qs.filter(Q(child=student) | Q(child__isnull=True, family=student.family))
+    return qs.filter(
+        Q(child=student)
+        | Q(child__isnull=True, family__isnull=True, parent=student.parent)
+    )
+
+
+def _student_color(student):
+    """The child's event color — same palette position as the parent calendar."""
+    from students.models import Student
+
+    if student.family_id:
+        siblings = list(Student.objects.filter(family=student.family))
+    else:
+        siblings = list(Student.objects.filter(parent=student.parent, family__isnull=True))
+    return calendar_feeds.child_color_map(siblings).get(
+        student.pk, calendar_feeds.CHILD_PALETTE[0])
+
+
+def _paced_placements(student):
+    return (
+        CurriculumPlacement.objects
+        .filter(child=student, is_active=True, weekly_pace__isnull=False,
+                curriculum__is_active=True)
+        .select_related("curriculum")
+    )
+
+
+def portal_calendar(request, token):
+    """The kid's read-only calendar: countdown chips and a Today/This-week agenda
+    strip up top, the full FullCalendar grid below."""
+    from datetime import timedelta
+
+    from curricula.pacing import next_due
+
+    student = _resolve_student(token)
+    today = timezone.localdate()
+    events = list(_visible_calendar_events(student).select_related("activity"))
+    pace_window = (today, today + timedelta(days=56))
+    breaks = calendar_feeds.break_dates(events, pace_window, child=student)
+
+    # Countdown chips: the next projected mission per paced subject.
+    from curricula.models import Lesson
+
+    chips = []
+    for placement in _paced_placements(student):
+        due = next_due(placement, today, skip_dates=breaks)
+        if due is None:
+            continue
+        lesson = Lesson.objects.filter(pk=due[0]).first()
+        if lesson is None:
+            continue
+        days = (due[1] - today).days
+        chips.append({
+            "lesson": lesson,
+            "curriculum": placement.curriculum,
+            "due": due[1],
+            "days": days,
+            "when": "due today" if days == 0 else (
+                "due tomorrow" if days == 1 else f"due in {days} days"),
+        })
+    chips.sort(key=lambda c: c["days"])
+
+    # Server-rendered agenda: today's plan plus the coming week, grouped by day.
+    # Weekdays include the daily 📖 Español habit so the day's plan is complete.
+    from types import SimpleNamespace
+
+    week = []
+    for offset in range(7):
+        day = today + timedelta(days=offset)
+        items = []
+        for event in events:
+            if event.event_type == CalendarEvent.TYPE_BREAK:
+                continue
+            if day in event.occurrences(day, day):
+                items.append(event)
+        items.sort(key=lambda e: (e.start_time is None, e.start_time or timezone.datetime.min.time()))
+        if day.weekday() < 5:
+            items.append(SimpleNamespace(
+                emoji="📖", title="Español", start_time=None, location=""))
+        if items:
+            week.append({"day": day, "is_today": offset == 0, "items": items})
+
+    return render(request, "portal/portal_calendar.html", {
+        "student": student,
+        "token": token,
+        "week": week,
+        "today": today,
+        "chips": chips,
+    })
+
+
+@require_GET
+def portal_calendar_feed(request, token):
+    """FullCalendar JSON feed for ONE child — token-authed, read-only. Mission
+    due-date links go to the kid's own subject page (token-carrying), never a
+    parent URL."""
+    from datetime import timedelta
+
+    student = _resolve_student(token)
+    window = calendar_feeds.parse_window(request)
+    events = list(_visible_calendar_events(student).select_related("activity"))
+    colors = {student.pk: _student_color(student)}
+    payload = calendar_feeds.event_layer(events, window, colors)
+
+    today = timezone.localdate()
+    pace_window = (today, today + timedelta(days=56))
+    breaks = calendar_feeds.break_dates(events, pace_window, child=student)
+    payload += calendar_feeds.mission_layer(
+        _paced_placements(student), window, colors, breaks=breaks,
+        url_for=lambda p, l: reverse(
+            "portal:portal_subject",
+            kwargs={"token": token, "curriculum_id": p.curriculum_id}),
+    )
+    # Her own ✓ history (a garden of done days) + the whole family's birthdays
+    # + the daily 📖 Español habit linking straight into her Camino.
+    from students.models import Student
+
+    payload += calendar_feeds.history_layer([student], window, named=False)
+    if student.family_id:
+        family_kids = Student.objects.filter(family=student.family)
+    else:
+        family_kids = Student.objects.filter(parent=student.parent, family__isnull=True)
+    payload += calendar_feeds.birthday_layer(family_kids, window)
+    payload += calendar_feeds.spanish_layer(
+        [student], window,
+        url_for=lambda c: reverse("portal:lingua_plan", kwargs={"token": token}),
+    )
+    return JsonResponse(payload, safe=False)
+
+
 def _set_is_done(qs):
     """True if this child has already turned in the set."""
     return bool(getattr(qs, "my_response", None) and qs.my_response.is_submitted)
@@ -631,20 +778,126 @@ def _subject_cards(student):
     return cards
 
 
+
+def _spelling_card(student, today):
+    """Her spelling programme, or None if a parent hasn't placed her in it.
+
+    Imported lazily and defensively: spelling is a separate programme, and the
+    portal home is the page every child lands on — it must not break because a
+    sibling programme is mid-migration or switched off.
+    """
+    try:
+        from spelling import services as spelling_services
+        from spelling.models import SpellingPlacement
+    except Exception:
+        return None
+    placement = SpellingPlacement.objects.filter(child=student, is_active=True).first()
+    if placement is None:
+        return None
+    kind, week = spelling_services.next_activity(student, today=today)
+    if week is None:
+        return None
+    labels = {
+        "learn": "Learn", "sort": "Sort", "quiz": "Spell", "dictation": "Write",
+    }
+    return {
+        "label": labels.get(kind, "Done"),
+        "pattern": week.pattern if kind else "all done this week!",
+        "week": week,
+    }
+
+
+
+def lexicon_poster(request, token):
+    """The hundred-word poster, filling in as she collects them.
+
+    The paper guide has her colour in each week's words on a wall poster. This
+    is that, except it colours itself from work she has actually turned in — a
+    record rather than a checklist she can tick.
+    """
+    student = _resolve_student(token)
+    from tutor.lexicon import CURRICULUM_NAME, poster_rows
+
+    curriculum = (
+        viewable_curricula_for_student(student)
+        .filter(name=CURRICULUM_NAME)
+        .first()
+    )
+    if curriculum is None:
+        raise Http404
+
+    # A week is earned when its sentences have been turned in.
+    earned = set()
+    sheets = ResponseSheet.objects.filter(
+        child=student,
+        question_set__lesson__chapter__curriculum=curriculum,
+    ).select_related("question_set", "question_set__lesson")
+    for sheet in sheets:
+        # Keyed on the LESSON, not the set's title: a week is one page now, and
+        # matching on a title string silently stopped earning anything the
+        # moment that title changed.
+        if sheet.is_submitted and sheet.question_set.lesson.number:
+            earned.add(sheet.question_set.lesson.number)
+
+    rows = poster_rows(earned)
+    collected = sum(1 for row in rows for w in row["words"] if w["earned"])
+    total = sum(len(row["words"]) for row in rows)
+    return render(request, "portal/lexicon_poster.html", {
+        "student": student,
+        "token": token,
+        "curriculum": curriculum,
+        "rows": rows,
+        "collected": collected,
+        "total": total,
+        # A real percentage: the bar was reading the raw count, which is only
+        # correct while the total happens to be exactly 100.
+        "pct": round(collected / total * 100) if total else 0,
+        "weeks_done": len(earned),
+    })
+
+
+def viewable_curricula_for_student(student):
+    """Curricula this child is actually placed in and allowed to see."""
+    return Curriculum.objects.filter(
+        pk__in=student.placements.filter(
+            is_active=True, curriculum__is_active=True
+        ).values_list("curriculum_id", flat=True)
+    )
+
+
 def portal_home(request, token):
     """The kid's 'Today' surface: one calm card per subject, one next step each."""
+    from curricula.models import Lesson
+    from curricula.pacing import next_due
+
     student = _resolve_student(token)
+    today = timezone.localdate()
+    next_up = calendar_feeds.upcoming_occurrences(
+        _visible_calendar_events(student), limit=1, days=7)
+    # A mission due TODAY beats next week's practice on the My Week card.
+    mission_today = None
+    for placement in _paced_placements(student):
+        due = next_due(placement, today)
+        if due and due[1] == today:
+            lesson = Lesson.objects.filter(pk=due[0]).first()
+            if lesson:
+                mission_today = lesson
+                break
     return render(request, "portal/portal_home.html", {
         "student": student,
         "token": token,
+        "spelling": _spelling_card(student, today),
         "subjects": _subject_cards(student),
         "activities": _visible_activities(student),
+        "calendar_next": next_up[0] if next_up else None,
+        "mission_today": mission_today,
+        "today": today,
     })
 
 
 def portal_subject(request, token, curriculum_id):
     """Drill into one subject: chapter → lesson outline with nested manga + sets (HH-148)."""
-    from curricula.models import Chapter
+    from curricula.models import Chapter, Lesson
 
     student = _resolve_student(token)
     placement = (
@@ -672,6 +925,10 @@ def portal_subject(request, token, curriculum_id):
     materials_by_lesson = defaultdict(list)
     for m in materials:
         materials_by_lesson[m.lesson_id].append(m)
+
+    # One resolution pass for the whole page: parent marks, submitted work, and
+    # the placement floor. This is what lets a manga-only math lesson count.
+    ordered_ids, resolved = placement.resolved_lesson_ids()
 
     next_set = next((qs for qs in sets if not _set_is_done(qs)), None)
     if next_set is not None:
@@ -704,18 +961,31 @@ def portal_subject(request, token, curriculum_id):
                 "sets": les_sets,
                 "sets_done": sum(1 for qs in les_sets if _set_is_done(qs)),
                 "sets_total": len(les_sets),
+                "is_resolved": lesson.pk in resolved,
             })
         if not lessons_out:
             continue
-        set_count = sum(l["sets_total"] for l in lessons_out)
-        set_done = sum(l["sets_done"] for l in lessons_out)
+        # Chapter counter: lessons WITH student sets count by turned-in sets (the
+        # literature/mission behavior, unchanged); material-only lessons count by
+        # resolution (parent mark / kid ✓) — previously they were stuck at 0
+        # forever, which is how math read "0/5" after a finished chapter.
+        done = total = 0
+        for les in lessons_out:
+            if les["sets_total"]:
+                done += les["sets_done"]
+                total += les["sets_total"]
+            elif les["lesson"].lesson_type == Lesson.TYPE_OPENER:
+                continue  # openers are never "resolved" — don't make them undone forever
+            else:
+                total += 1
+                done += 1 if les["is_resolved"] else 0
         chapters.append({
             "pk": chapter.pk,
             "number": chapter.number,
             "title": chapter.title,
             "lessons": lessons_out,
-            "done": set_done,
-            "total": set_count or len(lessons_out),
+            "done": done,
+            "total": total,
             "is_current": chapter.number == current_chapter,
         })
     if chapters and not any(ch["is_current"] for ch in chapters):
@@ -723,21 +993,25 @@ def portal_subject(request, token, curriculum_id):
 
     next_material = None
     if next_set is None:
+        # "Continue ➜" points at the first material of an UNFINISHED lesson —
+        # not the first material ever, which pinned math at manga #1 forever.
         for ch in chapters:
             for les in ch["lessons"]:
-                if les["materials"]:
+                if les["materials"] and not les["is_resolved"]:
                     next_material = les["materials"][0]
                     break
             if next_material:
                 break
 
     return render(request, "portal/portal_subject.html", {
+        # Only this unit has a poster; the link must not appear on others.
+        "show_lexicon_poster": curriculum.name == LEXICON_CURRICULUM_NAME,
         "student": student,
         "token": token,
         "curriculum": curriculum,
         "emoji": emoji_for(curriculum.subject),
         "placement": placement,
-        "progress": placement.progress(),
+        "progress": placement.progress(precomputed=(ordered_ids, resolved)),
         "current_lesson": placement.current_lesson,
         "next_set": next_set,
         "next_material": next_material,
@@ -746,14 +1020,91 @@ def portal_subject(request, token, curriculum_id):
 
 
 def portal_material(request, token, pk):
-    """Kid view of an approved material — student layers only, never the teaching guide."""
+    """Kid view of an approved material — student layers only, never the teaching
+    guide. The lesson's whole workflow lives HERE: its journal/quiz sets render as
+    Start/Turned-in buttons under the lesson, and a set-less lesson (manga math)
+    gets an "I finished this ✓" self-mark instead."""
+    from curricula.models import LessonProgress
+
     student = _resolve_student(token)
     material = get_object_or_404(_visible_materials(student), pk=pk)
+    lesson_sets = [
+        qs for qs in _annotated_question_sets(student)
+        if qs.lesson_id == material.lesson_id
+    ]
+    # Resolve the same way the subject outline does (marks ∪ submitted work ∪
+    # the placement floor) — otherwise the outline says "Finished ✓" while this
+    # page still offers the finish button for the same lesson.
+    curriculum_id = material.lesson.chapter.curriculum_id
+    placement = CurriculumPlacement.objects.filter(
+        child=student, curriculum_id=curriculum_id, is_active=True,
+        curriculum__is_active=True,
+    ).first()
+    if placement is not None:
+        _, resolved = placement.resolved_lesson_ids()
+        is_resolved = material.lesson_id in resolved
+    else:
+        # A bookmarked material whose placement is shelved: fall back to marks.
+        is_resolved = LessonProgress.objects.filter(
+            child=student, lesson_id=material.lesson_id,
+            status__in=(LessonProgress.COMPLETED, LessonProgress.SKIPPED),
+        ).exists()
+    # An Operation Lexicon week is a word list, and a word list rendered as
+    # markdown bullets is a wall of text. Hand the template the structured week
+    # so it can lay the words out as something worth looking at.
+    lexicon_week = None
+    if material.lesson.chapter.curriculum.name == LEXICON_CURRICULUM_NAME:
+        from tutor.lexicon import WEEKS
+
+        lexicon_week = next(
+            (w for w in WEEKS if w["number"] == material.lesson.number), None)
+
     return render(request, "portal/portal_material.html", {
         "student": student,
         "token": token,
         "material": material,
+        "lexicon_week": lexicon_week,
+        "lesson_sets": lesson_sets,
+        "is_resolved": is_resolved,
+        "can_mark_done": not lesson_sets and not is_resolved,
+        # The subject page 404s without an active placement, so a bookmarked
+        # link from a shelved subject must go home instead of to a dead end.
+        "back_url": (
+            reverse("portal:portal_subject",
+                    kwargs={"token": token, "curriculum_id": curriculum_id})
+            if placement is not None
+            else reverse("portal:portal_home", kwargs={"token": token})
+        ),
+        "back_label": (
+            material.lesson.chapter.curriculum.name if placement is not None
+            else "my portal"
+        ),
     })
+
+
+@require_POST
+def portal_material_done(request, token, pk):
+    """The kid's own "I finished this ✓" on a material whose lesson has no
+    turn-in work (manga math and friends). Idempotent: a second tap, or a lesson
+    the parent already marked, changes nothing. The parent's weekly checklist
+    (students:student_lessons) can always override."""
+    from curricula.models import LessonProgress
+
+    student = _resolve_student(token)
+    material = get_object_or_404(_visible_materials(student), pk=pk)
+    has_sets = any(
+        qs.lesson_id == material.lesson_id
+        for qs in _visible_question_sets(student)
+    )
+    if not has_sets:
+        LessonProgress.objects.get_or_create(
+            child=student, lesson_id=material.lesson_id,
+            defaults={
+                "status": LessonProgress.COMPLETED,
+                "note": f"{student.first_name} marked it done from the portal.",
+            },
+        )
+    return redirect("portal:portal_material", token=token, pk=material.pk)
 
 
 # Brute-force guard for the parent gate. Per-worker with the default LocMemCache,
@@ -815,6 +1166,222 @@ def _sheet_for(student, question_set):
     return sheet
 
 
+def _dickinson_day(question_set, questions):
+    """Attach Dickinson's words to the day's questions, or hand back a header.
+
+    She cannot copy a definition she cannot see, so the words, the quotations
+    and the citations have to reach the page. They live in tutor.dickinson
+    rather than on the questions, so that fixing a definition never means
+    re-seeding — which means the view has to put them back together here.
+
+    Returns a dict for the template. ``cards`` is the normal path: each word is
+    rendered above its own three answers. If the set does not have the shape the
+    seed builds — an older set, a pruned question, content edited to a different
+    number of words — the questions are left plain and ``header`` carries the
+    words instead, so the page is never a list of instructions to copy something
+    that isn't there.
+    """
+    from tutor.dickinson import STORY_STARTERS, week_by_number, words_for_day
+
+    week = week_by_number(question_set.lesson.number)
+    if week is None:
+        return None
+    for q in questions:
+        q.dk_word = None
+        q.dk_first = False
+        q.dk_slot = 0
+
+    title = question_set.title or ""
+    day = next((d for d in (1, 2, 3) if title.endswith("Day %d" % d)), None)
+    if day is None:
+        # A renamed set: show the WHOLE week and let her find her place. Working
+        # the day out from the set's position among its siblings looked helpful
+        # and was worse than useless — a set created out of order resolved to the
+        # wrong day and put Day 2's words above Day 1's prompts, which is her
+        # copying the wrong thing while being told she is right.
+        return {"week": week, "day": None, "words": week["words"],
+                "header": True, "starters": []}
+
+    info = {"week": week, "day": day, "words": [], "header": False,
+            "starters": STORY_STARTERS if day == 3 else []}
+    if day == 3:
+        return info
+
+    words = words_for_day(week, day)
+    info["words"] = words
+    # Three answers per word, in the book's order, is what the seed builds. The
+    # count alone is not enough: deleting one question and adding another leaves
+    # it at six and silently shifts every word one slot, so each answer ends up
+    # under the wrong card. The seed puts the headword at the front of every
+    # prompt, so check that they actually line up.
+    paired = len(questions) == 3 * len(words) and all(
+        q.prompt.startswith(words[i // 3]["word"])
+        for i, q in enumerate(questions))
+    if not paired:
+        info["header"] = True
+        return info
+    for i, q in enumerate(questions):
+        q.dk_word = words[i // 3]
+        q.dk_slot = (i % 3) + 1
+        q.dk_first = q.dk_slot == 1
+    return info
+
+
+def _onetrue_week(question_set, module=None):
+    """The week's tool of style, for the page she is on.
+
+    Only the lesson page carries the explanation and the sentence she copies —
+    the practice page is her own writing, and putting the model sentence back in
+    front of her there would invite copying it again instead of composing.
+
+    Unlike the Dickinson pages this needs no per-question pairing: everything is
+    a header, so there is nothing to get out of step.
+    """
+    # Each volume's flags come from ITS OWN seed. Dispatching on "was a module
+    # passed" instead would hand a future Volume C2 whichever volume happened to
+    # be in the else-branch, silently flipping which portions take the pen.
+    from tutor import onetrue
+    from tutor import onetrue3
+    from tutor.management.commands.seed_onetrue_violet import (
+        WRITTEN_BY_HAND as C1_BY_HAND)
+    from tutor.management.commands.seed_onetrue3_kaylin import (
+        WRITTEN_BY_HAND as C3_BY_HAND)
+
+    flags = {onetrue: C1_BY_HAND, onetrue3: C3_BY_HAND}
+    if module is None:
+        module = onetrue
+    WRITTEN_BY_HAND = flags[module]
+
+    week = module.week_by_number(question_set.lesson.number)
+    if week is None:
+        return None
+    title = question_set.title or ""
+    return {
+        "week": week,
+        "is_practice": title.endswith("now you try!"),
+        # So the page's own wording can follow the flag rather than restate it.
+        "own_by_hand": WRITTEN_BY_HAND["own_sentences"],
+    }
+
+
+def _essay_week(question_set):
+    """The week's essay, and the reference pages she writes it against.
+
+    Which half of the lesson she is on is decided HERE rather than in the
+    template: the template can see the title but not the week number, and
+    "is this the drafting week?" is the difference between showing her a
+    blueprint she is about to follow and one she is being marked against.
+    """
+    from tutor import essay
+    from tutor.essay_lessons import LESSONS
+
+    week = question_set.lesson.number
+    lesson = next((L for L in LESSONS if week in L["weeks"]), None)
+    if lesson is None:
+        return None
+    half = "even" if week % 2 == 0 else "odd"
+    return {
+        "lesson": lesson,
+        "week": week,
+        "is_draft_week": week % 2 == 0,
+        "blueprint": essay.BLUEPRINT,
+        "blueprint_intro": essay.BLUEPRINT_INTRO,
+        "blueprint_total": essay.blueprint_total(),
+        "pages": essay.reference_images(),
+        # The guide's own closing direction for the pre-writing week — how it
+        # wants the essay produced ("Hand write your rough draft on the
+        # following pages… Type your final draft with double line spacing").
+        # The seed drops this step because it carries no answer boxes, and
+        # dropping it loses the one place the book says how to write the thing.
+        "handover": next((s["instruction"] for s in lesson["steps"]
+                          if s["heading"].startswith("The Essay")), ""),
+        # A warning about a week-one prompt has no business shouting at her on
+        # the drafting page, and the blueprint-checklist typo only exists on the
+        # page that prints the checklist.
+        "notes": [n["text"] for n in (lesson.get("notes") or [])
+                  if n["where"] in (half, "both")],
+    }
+
+
+def _poetry_section(question_set, questions):
+    """The small form this section teaches, for the page she works on.
+
+    Marks the LAST question as the grid (q.poetry_grid): step 4 is "write out
+    the final poem with the proper line breaks", and the grid is one input per
+    line labelled with its target syllables. Decided here, off the section's own
+    pattern, for the same reason as the other curricula: the view can see the
+    data, the template can only guess.
+    """
+    from tutor.poetry import page_images, section_by_number, total_syllables
+
+    section = section_by_number(question_set.lesson.number)
+    if section is None:
+        return None
+    for q in questions:
+        q.poetry_grid = None
+    if questions:
+        rows = []
+        for i, target in enumerate(section["pattern"], start=1):
+            roles = section.get("line_roles") or []
+            rows.append({
+                "n": i,
+                "target": target,
+                "role": roles[i - 1] if i <= len(roles) else "",
+                "stanza_break": bool(section.get("stanza_every"))
+                                and i > 1 and (i - 1) % section["stanza_every"] == 0,
+            })
+        questions[-1].poetry_grid = rows
+    return {
+        "section": section,
+        "total": total_syllables(section),
+        "pages": page_images(section),
+        "approximate": section.get("approximate", False),
+    }
+
+
+def _mark_lexicon_writing_slots(questions):
+    """Number the three "what amazed you" answers 1, 2, 3 for the page.
+
+    The template used to work this out itself, from ``category == 'writing'``
+    and ``order - 10``. Both assumptions are things only the seed guarantees,
+    and the template had no way to check them:
+
+    - ``order - 10`` assumes the ten sentences come first. An older three-part
+      set — which the seed deliberately KEEPS when a child has work in it —
+      holds the same three writing questions at orders 1, 2 and 3, so the page
+      offered her medallions reading -9, -8 and -7 and asked no question at all.
+
+    - Nothing tied the widget to ``response_type``. The seed is a manual step
+      after a deploy, so the page could hand her a pen while the row still said
+      "text": her strokes would be stored as an answer nobody replays, and the
+      grader would be handed raw coordinate JSON as her sentence.
+
+    Deciding here, where the rows are actually visible, means a question gets
+    the pen only if the database says it takes one — and ``lexicon_asks`` makes
+    sure she is asked the question either way.
+    """
+    for q in questions:
+        q.lexicon_slot = 0
+        q.lexicon_asks = False
+
+    # Only the one-page weekly shape gets any of this. Anything else is an older
+    # set that still renders fine with the ordinary widget.
+    writing = [q for q in questions if q.category == "writing"]
+    if len(writing) != 3 or len(questions) != len(writing) + 10:
+        return
+
+    # The question itself is asked once, above the three, and it is asked in
+    # BOTH states — the cards and the plain fallback. It lives nowhere else on
+    # the page, so gating it on the cards meant that between a deploy and the
+    # re-seed she opened the page to three boxes labelled only "Amazing thing
+    # 1/2/3" with nothing telling her what to write.
+    writing[0].lexicon_asks = True
+
+    if all(q.response_type == Question.TYPE_HANDWRITING for q in writing):
+        for slot, q in enumerate(writing, start=1):
+            q.lexicon_slot = slot
+
+
 def portal_questions(request, token, set_pk):
     """The response form: no autocorrect, autosaves as the child types."""
     student = _resolve_student(token)
@@ -857,10 +1424,65 @@ def portal_questions(request, token, set_pk):
             "Science Log": "🔬", "Lab Notebook": "🔬",
         }.get(journal_label, "📓")
 
+    # Mid-log, a kid often needs to re-check a step — link the lesson's material
+    # (the mission instructions) when one exists. Filter in the DB: scanning every
+    # visible material would drag each one's parent teaching guide into a kid
+    # request, and this page is student-layers-only.
+    lesson_material = _visible_materials(student).filter(
+        lesson_id=question_set.lesson_id).first()
+
+    # An Operation Lexicon week is one page: the words, then the sentences,
+    # then the writing. The word list is rendered from tutor.lexicon rather than
+    # stored on the set, so correcting a definition needs no re-seed.
+    lexicon_week = None
+    if question_set.lesson.chapter.curriculum.name == LEXICON_CURRICULUM_NAME:
+        from tutor.lexicon import WEEKS
+
+        lexicon_week = next(
+            (w for w in WEEKS if w["number"] == question_set.lesson.number), None)
+        _mark_lexicon_writing_slots(questions)
+
+    # Kaylin's guide: the words she is copying from have to reach the page.
+    dickinson_day = None
+    if question_set.lesson.chapter.curriculum.name == DICKINSON_CURRICULUM_NAME:
+        dickinson_day = _dickinson_day(question_set, questions)
+
+    # Tools of Style — C1 is Violet's, C3 is Kaylin's (the publisher levels it
+    # at Grades 6-8). The two volumes share a header, but C3 has no Sentence 2
+    # — one Example box IS the model — so the template branches on whether the
+    # week actually carries one rather than on which volume it is.
+    onetrue_week = None
+    curriculum_name = question_set.lesson.chapter.curriculum.name
+    if curriculum_name == ONETRUE_CURRICULUM_NAME:
+        onetrue_week = _onetrue_week(question_set)
+    elif curriculum_name == ONETRUE3_CURRICULUM_NAME:
+        from tutor import onetrue3
+
+        onetrue_week = _onetrue_week(question_set, module=onetrue3)
+
+    # Kaylin's Poetry: the form's definition, its syllable grid, and the
+    # ORIGINAL guide pages as attachments — the worked examples are in the
+    # author's own handwriting and she should see the real thing.
+    poetry_section = None
+    if question_set.lesson.chapter.curriculum.name == POETRY_CURRICULUM_NAME:
+        poetry_section = _poetry_section(question_set, questions)
+
+    # The Essay: while she drafts, the guide's blueprint and its worked model
+    # have to be one tap away. The book expects the open paperback beside her;
+    # on screen the pages are attached to the week instead.
+    essay_week = None
+    if question_set.lesson.chapter.curriculum.name == ESSAY_CURRICULUM_NAME:
+        essay_week = _essay_week(question_set)
+
     return render(request, "portal/portal_questions.html", {
         "student": student,
         "token": token,
         "question_set": question_set,
+        "lexicon_week": lexicon_week,
+        "dickinson_day": dickinson_day,
+        "onetrue_week": onetrue_week,
+        "poetry_section": poetry_section,
+        "essay_week": essay_week,
         "questions": questions,
         "sheet": sheet,
         "spellcheck_on": not spelling,
@@ -868,6 +1490,7 @@ def portal_questions(request, token, set_pk):
         "journal_theme": journal_theme,
         "journal_label": journal_label,
         "journal_emoji": journal_emoji,
+        "lesson_material": lesson_material,
     })
 
 
@@ -887,6 +1510,11 @@ def _submit_sheet(student, question_set, post_data):
         _merge_answers(sheet, post_data)
         sheet.status = ResponseSheet.SUBMITTED
         sheet.submitted_at = timezone.now()
+        # She answered on screen, so this is on-screen work even if she also
+        # uploaded a photo earlier. Both controls sit on the same page, and
+        # leaving the paper flag set made the reports show the file INSTEAD of
+        # the answers she just turned in. The upload stays attached.
+        sheet.completion_mode = ResponseSheet.ON_SCREEN
         curriculum = question_set.lesson.chapter.curriculum
         sheet.work_entry = WorkLogEntry.objects.create(
             parent=student.parent,
@@ -1098,6 +1726,67 @@ def portal_draft_feedback(request, token, set_pk):
 
     return JsonResponse({"ok": True, "praise": result["praise"],
                          "suggestions": result["suggestions"]})
+
+
+@require_POST
+def portal_project_upload(request, token, set_pk):
+    """She hands in a photo, scan or document of work done on paper.
+
+    This does NOT complete the section. It puts the work in front of a parent,
+    who is the one who says it counts — see students.views.student_work_set_approve,
+    which is where the file-AND-approval rule is actually enforced. A
+    child marking her own work complete would make the work log a record of
+    what she said she did rather than of what was done.
+
+    Re-uploading before approval replaces the file, so a bad photo is fixed by
+    taking another one. After approval the section is closed and the upload is
+    refused, the same way a submitted sheet stops accepting answers.
+    """
+    import os
+
+    student = _resolve_student(token)
+    question_set = get_object_or_404(_visible_question_sets(student), pk=set_pk)
+    back = redirect("portal:portal_questions", token=token, set_pk=set_pk)
+
+    upload = request.FILES.get("project")
+    if upload is None:
+        messages.error(request, "Choose a file first.")
+        return back
+
+    ext = os.path.splitext(upload.name)[1].lower()
+    if ext not in ResponseSheet.PROJECT_EXTENSIONS:
+        messages.error(
+            request,
+            "That file type isn't one we can take. Use a photo (JPG, PNG, "
+            "HEIC), a PDF, or a Word document.")
+        return back
+    if upload.size > ResponseSheet.PROJECT_MAX_BYTES:
+        messages.error(
+            request,
+            "That file is too big (%.0f MB). The limit is %d MB — a photo "
+            "taken at a lower quality setting will fit."
+            % (upload.size / 1024 / 1024,
+               ResponseSheet.PROJECT_MAX_BYTES // (1024 * 1024)))
+        return back
+
+    with transaction.atomic():
+        sheet, _ = ResponseSheet.objects.select_for_update().get_or_create(
+            question_set=question_set, child=student,
+        )
+        if sheet.is_submitted:
+            messages.info(request, "This one is already turned in.")
+            return back
+        sheet.attachment = upload
+        sheet.attachment_uploaded_at = timezone.now()
+        sheet.completion_mode = ResponseSheet.ON_PAPER
+        sheet.save(update_fields=["attachment", "attachment_uploaded_at",
+                                  "completion_mode"])
+
+    messages.success(
+        request,
+        "Got it — %s is saved. It counts as done once a grown-up has looked "
+        "at it." % sheet.project_filename)
+    return back
 
 
 @csrf_exempt

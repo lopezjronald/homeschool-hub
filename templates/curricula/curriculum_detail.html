@@ -12,8 +12,10 @@
         <div class="card-header d-flex justify-content-between align-items-center">
           <h4 class="mb-0">
             {{ curriculum.name }}
-            {% if not curriculum.is_active %}
-              <span class="badge bg-secondary ms-1">Deactivated</span>
+            {% if curriculum.is_ready_to_start %}
+              <span class="badge bg-warning text-dark ms-1">{{ curriculum.state_label }}</span>
+            {% elif curriculum.is_archived %}
+              <span class="badge bg-secondary ms-1">{{ curriculum.state_label }}</span>
             {% endif %}
           </h4>
           <div class="d-flex align-items-center gap-2">
@@ -24,9 +26,21 @@
               <form method="post" action="{% url 'curricula:curriculum_toggle_active' curriculum.pk %}">
                 {% csrf_token %}
                 {% if curriculum.is_active %}
-                  <button type="submit" class="btn btn-sm btn-outline-secondary">Deactivate</button>
+                  <button type="submit" class="btn btn-sm btn-outline-secondary"
+                          title="Hide it from the girls. Nothing is lost.">Turn off for now</button>
                 {% else %}
-                  <button type="submit" class="btn btn-sm btn-success">Reactivate</button>
+                  <button type="submit" class="btn btn-sm btn-success"
+                          title="Let the girls see it again.">Turn on</button>
+                {% endif %}
+              </form>
+              <form method="post" action="{% url 'curricula:curriculum_toggle_archived' curriculum.pk %}">
+                {% csrf_token %}
+                {% if curriculum.is_archived %}
+                  <button type="submit" class="btn btn-sm btn-outline-secondary"
+                          title="Move it back to the waiting shelf.">Un-archive</button>
+                {% else %}
+                  <button type="submit" class="btn btn-sm btn-outline-secondary"
+                          title="Finished with this one — file it away.">Archive</button>
                 {% endif %}
               </form>
             {% endif %}
@@ -240,6 +254,42 @@
           {% endif %}
         </div>
       </div>
+
+      {% if is_lexicon %}
+        <div class="alert alert-light d-flex justify-content-between align-items-center flex-wrap gap-2">
+          <span>📘 <strong>New to this one?</strong> The guide's own instructions —
+            how a week runs, and which books to borrow.</span>
+          <a href="{% url 'tutor:lexicon_guide' curriculum.pk %}" class="btn btn-sm btn-primary">
+            Parent guide
+          </a>
+        </div>
+      {% elif is_dickinson %}
+        <div class="alert alert-light d-flex justify-content-between align-items-center flex-wrap gap-2">
+          <span>📘 <strong>New to this one?</strong> How a week runs, why the
+            copying is done by hand, and all 92 words at a glance.</span>
+          <a href="{% url 'tutor:dickinson_guide' curriculum.pk %}" class="btn btn-sm btn-primary">
+            Parent guide
+          </a>
+        </div>
+      {% elif is_poetry %}
+        <div class="alert alert-light d-flex justify-content-between align-items-center flex-wrap gap-2">
+          <span>📘 <strong>New to this one?</strong> How the four-step method
+            runs, and all twelve forms with their syllable patterns at a
+            glance.</span>
+          <a href="{% url 'tutor:poetry_guide' curriculum.pk %}" class="btn btn-sm btn-primary">
+            Parent guide
+          </a>
+        </div>
+      {% elif is_onetrue %}
+        <div class="alert alert-light d-flex justify-content-between align-items-center flex-wrap gap-2">
+          <span>📘 <strong>New to this one?</strong> How a week runs, which parts
+            she writes by hand, and the sentence-construction basics the lessons
+            assume you know.</span>
+          <a href="{% url 'tutor:onetrue_guide' curriculum.pk %}" class="btn btn-sm btn-primary">
+            Parent guide
+          </a>
+        </div>
+      {% endif %}
 
       <div class="d-flex justify-content-between">
         <a href="{% url 'curricula:curriculum_list' %}" class="btn btn-secondary">Back to List</a>

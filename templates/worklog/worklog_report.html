@@ -1,7 +1,11 @@
 {% extends "base.html" %}
+{% load static %}
+{% load tutor_extras %}
 {% block title %}Completion Report · Steadfast Scholars{% endblock %}
 
 {% block extra_css %}
+{# The replayed pen work is inline SVG and needs its own sizing rules. #}
+<link href="{% static 'css/markup-replay.css' %}" rel="stylesheet">
 <style>
   @media print {
     .navbar, .no-print { display: none !important; }
@@ -9,9 +13,44 @@
     body { background: #fff !important; }
     main { margin: 0 !important; }
     a[href]:after { content: none !important; }
+    /* Keep one piece of work from being split across a page break where it
+       can be avoided; a very long essay may still have to break. */
+    .ss-entry { break-inside: avoid; }
+    .ss-qa { break-inside: avoid; }
   }
   .ss-report-meta { color: var(--ss-forest, #0F3D2E); }
   @page { margin: 1.5cm; }
+
+  .ss-entry {
+    padding: 0.75rem 0;
+    border-top: 1px solid var(--ss-border, #e7e1d3);
+  }
+  .ss-entry:first-child { border-top: 0; }
+  .ss-entry-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.5rem;
+    font-size: 0.9rem;
+  }
+  .ss-entry-date { font-weight: 700; color: var(--ss-navy, #16324F); }
+  .ss-entry-subject {
+    background: rgba(10, 92, 99, 0.1);
+    color: var(--ss-teal, #0A5C63);
+    border-radius: 6px;
+    padding: 0.05rem 0.45rem;
+    font-weight: 600;
+  }
+  .ss-entry-curric { color: #6b7a72; }
+  .ss-entry-title {
+    font-weight: 700;
+    margin-top: 0.2rem;
+    color: var(--ss-navy, #16324F);
+  }
+  .ss-qa { margin: 0.6rem 0 0; }
+  .ss-qa-prompt { font-weight: 600; margin-bottom: 0.25rem; }
+  .ss-qa-sentence { font-family: Georgia, serif; font-size: 1.08rem; margin: 0 0 0.35rem; }
+  .ss-work-img { max-width: 100%; height: auto; border-radius: 8px; }
 </style>
 {% endblock %}
 
@@ -75,29 +114,72 @@
           </h4>
           <small class="text-muted">{{ group.count }} entr{{ group.count|pluralize:"y,ies" }} · {{ group.day_count }} day{{ group.day_count|pluralize }}</small>
         </div>
-        <div class="table-responsive">
-          <table class="table table-striped mb-0 align-middle">
-            <thead>
-              <tr>
-                <th style="width: 7rem;">Date</th>
-                <th style="width: 10rem;">Subject</th>
-                <th>What was done</th>
-                <th style="width: 9rem;">Curriculum</th>
-                <th style="width: 5rem;">Work</th>
-              </tr>
-            </thead>
-            <tbody>
-              {% for entry in group.entries %}
-                <tr>
-                  <td>{{ entry.date|date:"M d, Y" }}</td>
-                  <td>{{ entry.subject }}</td>
-                  <td>{{ entry.description|default:"—"|linebreaksbr }}</td>
-                  <td>{{ entry.curriculum.name|default:"—" }}</td>
-                  <td>{% if entry.attachment %}<span title="Attachment on file">📎</span>{% else %}—{% endif %}</td>
-                </tr>
-              {% endfor %}
-            </tbody>
-          </table>
+        {% comment %}One block per entry, the work at FULL WIDTH.
+
+        This was a five-column table, and a table gives a long answer only the
+        width of its column: an essay came out as a thirty-character ribbon
+        running over fifty pages, next to four mostly-empty columns. The facts
+        that used to be columns are a single header line here, and everything
+        below it is the work.{% endcomment %}
+        <div class="card-body pt-2">
+          {% for it in group.items %}
+            <div class="ss-entry">
+              <div class="ss-entry-head">
+                <span class="ss-entry-date">{{ it.entry.date|date:"M j, Y" }}</span>
+                <span class="ss-entry-subject">{{ it.entry.subject }}</span>
+                {% if it.entry.curriculum %}<span class="ss-entry-curric">{{ it.entry.curriculum.name }}</span>{% endif %}
+                {% if it.entry.attachment %}<span class="ss-entry-clip" title="Attachment on file">📎</span>{% endif %}
+              </div>
+              {% if it.title and it.kind == 'portal' %}<div class="ss-entry-title">{{ it.title }}</div>{% endif %}
+
+              {% if it.kind == 'paper' %}
+                {% comment %}Done on paper and photographed. The scan IS the
+                work, so it prints at full width like any other piece.{% endcomment %}
+                <div class="ss-paper-label">Completed on paper · {{ it.sheet.project_filename }}</div>
+                {% if it.paper_is_image %}
+                  <img src="{{ it.paper_file.url }}" alt="{{ it.entry.subject }} work" class="ss-work-img">
+                {% else %}
+                  <div class="ss-answer-block">
+                    📎 <a href="{{ it.paper_file.url }}">{{ it.sheet.project_filename }}</a>
+                    — attached to this entry.
+                  </div>
+                {% endif %}
+              {% elif it.kind == 'portal' %}
+                {% for row in it.qa_rows %}
+                  <div class="ss-qa">
+                    {% if row.question.prompt %}
+                      <div class="ss-qa-prompt">{{ row.question.order }}. {{ row.question.prompt|markdownify_inline }}</div>
+                    {% endif %}
+                    {% if row.replay %}
+                      {% comment %}Her actual pen work. On a mark-the-sentence or
+                      handwriting exercise the marks ARE the answer, and a report
+                      that says "annotated: yes" has not shown the work.{% endcomment %}
+                      {% include "tutor/_markup_replay.html" with replay=row.replay %}
+                    {% else %}
+                      {% if row.question.is_markup %}
+                        <p class="ss-qa-sentence">“{{ row.question.passage }}”</p>
+                      {% endif %}
+                      {% if row.answered %}
+                        <div class="ss-answer-block">{{ row.answer }}</div>
+                      {% else %}
+                        <div class="text-muted fst-italic">No answer.</div>
+                      {% endif %}
+                    {% endif %}
+                  </div>
+                {% empty %}
+                  <div class="ss-answer-block">{{ it.entry.description|default:"—"|linebreaksbr }}</div>
+                {% endfor %}
+              {% elif it.show_image %}
+                <img src="{{ it.entry.attachment.url }}" alt="{{ it.entry.subject }} work" class="ss-work-img">
+                {% if it.entry.description %}<div class="ss-answer-block mt-2">{{ it.entry.description|linebreaksbr }}</div>{% endif %}
+              {% else %}
+                <div class="ss-answer-block">{{ it.entry.description|default:"—"|linebreaksbr }}</div>
+                {% if it.entry.attachment %}
+                  <div class="small text-muted mt-1">📎 {{ it.entry.attachment_filename }}</div>
+                {% endif %}
+              {% endif %}
+            </div>
+          {% endfor %}
         </div>
         {% if group.subjects %}
           <div class="card-footer bg-transparent">

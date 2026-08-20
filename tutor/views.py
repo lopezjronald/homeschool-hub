@@ -11,12 +11,12 @@ from itertools import groupby
 from core.permissions import (
     editable_queryset, user_can_edit, viewable_queryset, can_edit_family_or_global,
 )
-from curricula.models import Curriculum
+from curricula.models import Curriculum, CurriculumPlacement
 from worklog.models import WorkLogEntry
 
 from . import ai, grading, mastery, spend
 from .forms import AssessmentRequestForm, FinalizeForm
-from .models import MasteryAssessment, Material, QuestionSet
+from .models import MasteryAssessment, Material, QuestionSet, ResponseSheet
 
 
 def _entry_objectives(entry):
@@ -238,6 +238,111 @@ def _materials_for(user, editable=False):
     return Material.objects.filter(lesson__chapter__curriculum__in=curricula)
 
 
+
+@login_required
+def lexicon_guide(request, curriculum_pk):
+    """Parent guide for Operation Lexicon — the booklet's own front matter.
+
+    The printed guide opens with how to run the unit; the app swallowed that,
+    leaving the parent to infer the method from the child's pages. It also says
+    plainly which of the guide's materials this version still needs (the ten
+    books) and which it has taken over (the poster, the coloured pencils).
+    """
+    from students.models import Student
+    from tutor import lexicon
+
+    curriculum = get_object_or_404(
+        viewable_queryset(Curriculum.objects.all(), request.user), pk=curriculum_pk,
+    )
+    if curriculum.name != lexicon.CURRICULUM_NAME:
+        raise Http404
+
+    children = []
+    for placement in CurriculumPlacement.objects.filter(
+        curriculum=curriculum,
+        child__in=viewable_queryset(Student.objects.all(), request.user),
+    ).select_related("child"):
+        done = set(
+            ResponseSheet.objects.filter(
+                child=placement.child,
+                question_set__lesson__chapter__curriculum=curriculum,
+                status=ResponseSheet.SUBMITTED,
+            ).values_list("question_set__lesson__number", flat=True)
+        )
+        children.append({
+            "child": placement.child,
+            "weeks_done": len(done),
+            "words": len(done) * 10,
+            "next_week": next(
+                (w for w in lexicon.WEEKS if w["number"] not in done), None),
+        })
+
+    return render(request, "tutor/lexicon_guide.html", {
+        "curriculum": curriculum,
+        "epigraph": lexicon.EPIGRAPH,
+        "why": lexicon.WHY_IT_EXISTS,
+        "how_to_proceed": lexicon.HOW_TO_PROCEED,
+        "materials": lexicon.MATERIALS,
+        "weeks": lexicon.WEEKS,
+        "children": children,
+    })
+
+
+@login_required
+def dickinson_guide(request, curriculum_pk):
+    """Parent guide for Operation Lexicon: Emily Dickinson.
+
+    Same reason as the guide above: the booklet opens by explaining how a week
+    runs, and the app was swallowing that and leaving the parent to infer the
+    method from Kaylin's pages. This one also has to say which portions she
+    writes by hand and why, because that is the guide's actual pedagogy rather
+    than a preference of ours.
+    """
+    from students.models import Student
+    from tutor import dickinson
+    from tutor.management.commands.seed_lexicon_kaylin import WRITTEN_BY_HAND
+
+    curriculum = get_object_or_404(
+        viewable_queryset(Curriculum.objects.all(), request.user), pk=curriculum_pk,
+    )
+    if curriculum.name != dickinson.CURRICULUM_NAME:
+        raise Http404
+
+    children = []
+    for placement in CurriculumPlacement.objects.filter(
+        curriculum=curriculum,
+        child__in=viewable_queryset(Student.objects.all(), request.user),
+    ).select_related("child"):
+        # A week counts as done when all three of its days are turned in — one
+        # day in is progress, not a finished week.
+        by_week = {}
+        for number, set_pk in ResponseSheet.objects.filter(
+            child=placement.child,
+            question_set__lesson__chapter__curriculum=curriculum,
+            status=ResponseSheet.SUBMITTED,
+        ).values_list("question_set__lesson__number", "question_set_id"):
+            by_week.setdefault(number, set()).add(set_pk)
+        done = {n for n, sets in by_week.items() if len(sets) >= 3}
+        children.append({
+            "child": placement.child,
+            "weeks_done": len(done),
+            "days_done": sum(len(s) for s in by_week.values()),
+            "words": len(done) * 4,
+            "next_week": next(
+                (w for w in dickinson.WEEKS if w["number"] not in done), None),
+        })
+
+    return render(request, "tutor/dickinson_guide.html", {
+        "curriculum": curriculum,
+        "epigraph": dickinson.EPIGRAPH,
+        "why": dickinson.WHY_IT_EXISTS,
+        "how_a_day_runs": dickinson.HOW_A_DAY_RUNS,
+        "starters": dickinson.STORY_STARTERS,
+        "weeks": dickinson.WEEKS,
+        "by_hand": WRITTEN_BY_HAND,
+        "children": children,
+    })
+
 @login_required
 def discussion_guide(request, curriculum_pk):
     """Teacher-facing discussion guide: the oral, Socratic sets for a curriculum.
@@ -293,3 +398,101 @@ def material_approve(request, pk):
         material.save(update_fields=["status", "approved_at", "updated_at"])
         messages.success(request, f'"{material.title}" is approved and ready for the student.')
     return redirect("tutor:material_detail", pk=material.pk)
+
+
+@login_required
+def onetrue_guide(request, curriculum_pk):
+    """Parent guide for One True Sentence: Tools of Style.
+
+    The book's "For the Teacher" page plus its Sentence Construction Basics —
+    the reference the weekly lessons quietly assume you already know, and which
+    a parent otherwise has to reconstruct from Violet's answers.
+    """
+    from students.models import Student
+    from tutor import onetrue
+    from tutor.management.commands.seed_onetrue_violet import WRITTEN_BY_HAND
+
+    curriculum = get_object_or_404(
+        viewable_queryset(Curriculum.objects.all(), request.user), pk=curriculum_pk,
+    )
+    if curriculum.name != onetrue.CURRICULUM_NAME:
+        raise Http404
+
+    children = []
+    for placement in CurriculumPlacement.objects.filter(
+        curriculum=curriculum,
+        child__in=viewable_queryset(Student.objects.all(), request.user),
+    ).select_related("child"):
+        # A week is the lesson AND the practice — one of the two is half a week.
+        by_week = {}
+        for number, set_pk in ResponseSheet.objects.filter(
+            child=placement.child,
+            question_set__lesson__chapter__curriculum=curriculum,
+            status=ResponseSheet.SUBMITTED,
+        ).values_list("question_set__lesson__number", "question_set_id"):
+            by_week.setdefault(number, set()).add(set_pk)
+        done = {n for n, sets in by_week.items() if len(sets) >= 2}
+        children.append({
+            "child": placement.child,
+            "weeks_done": len(done),
+            "sets_done": sum(len(s) for s in by_week.values()),
+            "next_week": next(
+                (w for w in onetrue.WEEKS if w["number"] not in done), None),
+        })
+
+    return render(request, "tutor/onetrue_guide.html", {
+        "curriculum": curriculum,
+        "epigraph": onetrue.EPIGRAPH,
+        "for_the_teacher": onetrue.FOR_THE_TEACHER,
+        "how_it_teaches": onetrue.HOW_IT_TEACHES,
+        "basics": onetrue.BASICS,
+        "weeks": onetrue.WEEKS,
+        "by_hand": WRITTEN_BY_HAND,
+        "children": children,
+    })
+
+
+@login_required
+def poetry_guide(request, curriculum_pk):
+    """Parent guide for Poetry: Small Forms.
+
+    The one page that shows all twelve forms at a glance — pattern, totals,
+    progress — and says how the method runs and where the original pages live.
+    """
+    from students.models import Student
+    from tutor import poetry
+
+    curriculum = get_object_or_404(
+        viewable_queryset(Curriculum.objects.all(), request.user), pk=curriculum_pk,
+    )
+    if curriculum.name != poetry.CURRICULUM_NAME:
+        raise Http404
+
+    children = []
+    for placement in CurriculumPlacement.objects.filter(
+        curriculum=curriculum,
+        child__in=viewable_queryset(Student.objects.all(), request.user),
+    ).select_related("child"):
+        done = set(
+            ResponseSheet.objects.filter(
+                child=placement.child,
+                question_set__lesson__chapter__curriculum=curriculum,
+                status=ResponseSheet.SUBMITTED,
+            ).values_list("question_set__lesson__number", flat=True)
+        )
+        children.append({
+            "child": placement.child,
+            "sections_done": len(done),
+            "next_section": next(
+                (s for s in poetry.SECTIONS if s["number"] not in done), None),
+        })
+
+    sections = [dict(s, total=poetry.total_syllables(s)) for s in poetry.SECTIONS]
+    return render(request, "tutor/poetry_guide.html", {
+        "curriculum": curriculum,
+        "epigraph": poetry.EPIGRAPH,
+        "how_it_runs": poetry.HOW_IT_RUNS,
+        "poetic_slash": poetry.POETIC_SLASH,
+        "sections": sections,
+        "children": children,
+    })

@@ -1,0 +1,133 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}Operation Lexicon — parent guide{% endblock %}
+{% block extra_css %}<link href="{% static 'css/lexicon.css' %}" rel="stylesheet">{% endblock %}
+
+{% block content %}
+<div class="container py-4" style="max-width:860px;">
+
+  <div class="lxg-head">
+    <div class="lxg-kicker">Parent guide</div>
+    <h1 class="mb-1">Operation Lexicon: Traits of Character</h1>
+    <div class="text-muted">Blackbird &amp; Company · Grade 3 · 10 weeks</div>
+    <blockquote class="lxg-epigraph">
+      “{{ epigraph.0 }}”<cite>— {{ epigraph.1 }}</cite>
+    </blockquote>
+  </div>
+
+  {% if children %}
+    <div class="row g-3 mb-4">
+      {% for row in children %}
+        <div class="col-sm-6">
+          <div class="lxg-progress">
+            <div class="lxg-progress-name">{{ row.child.first_name }}</div>
+            <div class="lxg-progress-n">{{ row.words }}<span>/100 words</span></div>
+            {% if row.next_week %}
+              <div class="lxg-progress-next">
+                Next up: <strong>Week {{ row.next_week.number }}</strong> ·
+                {{ row.next_week.person }}<br>
+                <span class="text-muted">Read <em>{{ row.next_week.book }}</em></span>
+              </div>
+            {% else %}
+              <div class="lxg-progress-next">All ten weeks finished 🎉</div>
+            {% endif %}
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  {% endif %}
+
+  <div class="card mb-4">
+    <div class="card-body">
+      <h2 class="h5">What this is for</h2>
+      <p class="mb-0">{{ why }}</p>
+    </div>
+  </div>
+
+  <div class="card mb-4">
+    <div class="card-body">
+      <h2 class="h5">How to proceed</h2>
+      {% for para in how_to_proceed %}
+        <p{% if forloop.last %} class="mb-0"{% endif %}>{{ para }}</p>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="card mb-4">
+    <div class="card-body">
+      <h2 class="h5">What you'll need</h2>
+      <p class="text-muted small">
+        The printed guide asks for three things. Two of them this version has
+        taken over — said plainly so you don't buy what you don't need.
+      </p>
+      <ul class="lxg-materials">
+        {% for name, needed, note in materials %}
+          <li class="{% if needed %}is-needed{% else %}is-covered{% endif %}">
+            <span class="lxg-mark" aria-hidden="true">{% if needed %}📚{% else %}✓{% endif %}</span>
+            <div>
+              <strong>{{ name }}</strong>
+              {% if needed %}<span class="badge bg-warning text-dark ms-1">You provide</span>
+              {% else %}<span class="badge bg-success ms-1">Handled here</span>{% endif %}
+              <div class="text-muted small">{{ note }}</div>
+            </div>
+          </li>
+        {% endfor %}
+      </ul>
+    </div>
+  </div>
+
+  <div class="card mb-4">
+    <div class="card-body">
+      <h2 class="h5">The ten books</h2>
+      <p class="text-muted small">
+        One per week, in order. Every sentence she answers is about that week's
+        person, so the reading has to come first — this is the list to take to
+        the library.
+      </p>
+      <ol class="lxg-books">
+        {% for week in weeks %}
+          <li>
+            <div class="lxg-book-t">{{ week.book }}</div>
+            <div class="text-muted small">
+              {{ week.author }}{% if week.illustrator != week.author %}, illustrated by {{ week.illustrator }}{% endif %}
+              · <strong>{{ week.person }}</strong>, {{ week.role|lower }}
+            </div>
+          </li>
+        {% endfor %}
+      </ol>
+    </div>
+  </div>
+
+  <div class="card mb-4">
+    <div class="card-body">
+      <h2 class="h5">What a week looks like here</h2>
+      <ol class="mb-0">
+        <li><strong>You read the book aloud</strong> — twice, per the publisher.
+          The second listen is when the traits land.</li>
+        <li><strong>She opens the week</strong> — one page with the ten words and
+          what they mean at the top.</li>
+        <li><strong>She finishes ten sentences</strong> about that person, choosing
+          from those ten words.</li>
+        <li><strong>She writes three things that amazed her</strong> — by hand,
+          with her finger or the pen. Her handwriting shows up in your work
+          browser and prints in the charter report.</li>
+        <li><strong>Her poster fills in</strong> — those ten words colour in when
+          she turns the week in. No colouring pencils needed.</li>
+      </ol>
+    </div>
+  </div>
+
+  <div class="alert alert-light">
+    <strong>Worth knowing:</strong> weeks 5–10 were transcribed from a guide that
+    prints its definitions under decorative artwork, so parts came through
+    garbled and were reconstructed. Those are worth a glance against your printed
+    copy before she reaches them. Also, week 9 repeats the publisher's own error
+    that Grace Hopper was promoted to Admiral after her death — she was promoted
+    in 1985 and died in 1992.
+  </div>
+
+  <a href="{% url 'curricula:curriculum_detail' curriculum.pk %}" class="btn btn-secondary">
+    ← Back to the curriculum
+  </a>
+</div>
+{% endblock %}

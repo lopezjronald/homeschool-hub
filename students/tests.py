@@ -422,6 +422,41 @@ class StudentWorkBrowserTests(TestCase):
         self.assertNotContains(resp, "Section 1 · Discussion")   # teacher-led, no child answers
         self.assertContains(resp, "In progress")                 # 1 of 2 answered
 
+    def test_work_set_prints_the_drawn_marks_not_just_prose_about_them(self):
+        """A mark-the-sentence exercise IS the circles and underlines.
+
+        The page used to show the bare sentence plus a line of prose ("she
+        underlined 'It'"), which is a description of the work, not the work."""
+        import json
+        from tutor.models import Question
+        markup_q = Question.objects.create(
+            question_set=self.qset, order=3, category="editing",
+            response_type=Question.TYPE_MARKUP, passage="Jim sang a song. It was so pretty!",
+        )
+        answers = dict(self.sheet.answers)
+        answers[str(markup_q.pk)] = json.dumps({
+            "strokes": [{"c": "#2b6cb0", "w": 3, "p": [[0.34, 0.73], [0.37, 0.73]]}],
+            "marks": [{"word": "It", "kind": "underlined"}],
+            "unread": 0,
+            "surface": {"w": 702, "h": 74},
+        })
+        self.sheet.answers = answers
+        self.sheet.save(update_fields=["answers"])
+
+        self.client.login(username="wb", password="pw")
+        resp = self.client.get(reverse("students:student_work_set", kwargs={
+            "pk": self.violet.pk, "set_pk": self.qset.pk,
+        }))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "<polyline")                # the ink itself
+        self.assertContains(resp, "#2b6cb0")                  # in her pen colour
+        self.assertContains(resp, "--mr-w:702px")             # rebuilt at the width she drew on
+        self.assertContains(resp, "--mr-print-scale:")        # and print gets its own scale
+        # Sized by the shared sheet (name is hash-suffixed by manifest storage).
+        self.assertContains(resp, "css/markup-replay.")
+        self.assertContains(resp, "Read as:")                 # with the reading beside it
+        self.assertContains(resp, "underlined")
+
     def test_work_set_shows_the_childs_answer(self):
         self.client.login(username="wb", password="pw")
         resp = self.client.get(reverse("students:student_work_set", kwargs={

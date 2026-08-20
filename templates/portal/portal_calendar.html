@@ -1,0 +1,65 @@
+{% extends "portal/base_portal.html" %}
+{% load static %}
+{% block title %}My Calendar · Steadfast Scholars{% endblock %}
+
+{% block content %}
+<div class="container portal-narrow">
+
+  <div class="portal-hero mb-3">
+    <h1>📅 {{ student.first_name }}'s week 🌟</h1>
+    <p class="mb-0">What's happening today, this week, and beyond.</p>
+  </div>
+
+  {% if chips %}
+    <div class="portal-due-chips mb-3">
+      {% for chip in chips %}
+        <a href="{% url 'portal:portal_subject' token=token curriculum_id=chip.curriculum.id %}"
+           class="portal-due-chip {% if chip.days == 0 %}is-today{% endif %}">
+          🎯 {{ chip.lesson.title|default:chip.lesson.code }}
+          <span class="portal-due-when">{{ chip.when }}</span>
+        </a>
+      {% endfor %}
+    </div>
+  {% endif %}
+
+  {% if week %}
+    <div class="portal-agenda mb-4">
+      {% for entry in week %}
+        <div class="portal-agenda-day {% if entry.is_today %}is-today{% endif %}">
+          <div class="portal-agenda-date">
+            {% if entry.is_today %}⭐ Today{% else %}{{ entry.day|date:"l" }}{% endif %}
+            <span class="portal-agenda-sub">{{ entry.day|date:"M j" }}</span>
+          </div>
+          <ul class="portal-agenda-items">
+            {% for event in entry.items %}
+              <li>
+                {{ event.emoji }} {{ event.title }}
+                {% if event.start_time %}<span class="portal-agenda-time">{{ event.start_time|time:"g:i A" }}</span>{% endif %}
+                {% if event.location %}<span class="portal-agenda-loc">· {{ event.location }}</span>{% endif %}
+              </li>
+            {% endfor %}
+          </ul>
+        </div>
+      {% endfor %}
+    </div>
+  {% else %}
+    <div class="portal-agenda mb-4">
+      <div class="portal-agenda-day is-today">
+        <div class="portal-agenda-date">⭐ Today</div>
+        <ul class="portal-agenda-items"><li>Nothing scheduled this week — free sailing! ⛵</li></ul>
+      </div>
+    </div>
+  {% endif %}
+
+  <div id="portal-calendar"
+       data-feed-url="{% url 'portal:portal_calendar_feed' token=token %}"></div>
+
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.21/index.global.min.js"
+        integrity="sha384-WDvnzcla8X1CQM97EnYyl4OoTCvmMFp5lBiVNO3IjVdvLMOUjwt+iuYb/Mru5A9v"
+        crossorigin="anonymous"></script>
+<script src="{% static 'js/portal-calendar.js' %}"></script>
+{% endblock %}

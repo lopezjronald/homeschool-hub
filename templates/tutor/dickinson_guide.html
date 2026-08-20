@@ -1,0 +1,162 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}Operation Lexicon: Emily Dickinson — parent guide{% endblock %}
+{% block extra_css %}<link href="{% static 'css/lexicon.css' %}" rel="stylesheet">
+<link href="{% static 'css/dickinson.css' %}" rel="stylesheet">{% endblock %}
+
+{% block content %}
+<div class="container py-4" style="max-width:860px;">
+
+  <div class="lxg-head">
+    <div class="lxg-kicker">Parent guide</div>
+    <h1 class="mb-1">Operation Lexicon: Emily Dickinson</h1>
+    <div class="text-muted">Blackbird &amp; Company · Grade 7 · 23 weeks · 92 words</div>
+    <blockquote class="lxg-epigraph">
+      “{{ epigraph.0 }}”<cite>— {{ epigraph.1 }}</cite>
+    </blockquote>
+  </div>
+
+  {% if children %}
+    <div class="row g-3 mb-4">
+      {% for row in children %}
+        <div class="col-sm-6">
+          <div class="lxg-progress">
+            <div class="lxg-progress-name">{{ row.child.first_name }}</div>
+            <div class="lxg-progress-n">{{ row.words }}<span>/92 words</span></div>
+            <div class="lxg-progress-next">
+              {{ row.weeks_done }} of 23 weeks finished
+              <span class="text-muted">({{ row.days_done }} day{{ row.days_done|pluralize }} turned in)</span><br>
+              {% if row.next_week %}
+                Next up: <strong>Week {{ row.next_week.number }}</strong> ·
+                {% for w in row.next_week.words %}<em>{{ w.word }}</em>{% if not forloop.last %}, {% endif %}{% endfor %}
+              {% else %}
+                All twenty-three weeks finished 🎉
+              {% endif %}
+            </div>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  {% endif %}
+
+  <div class="card mb-4">
+    <div class="card-body">
+      <h2 class="h5">What this is for</h2>
+      <p class="mb-0">{{ why }}</p>
+    </div>
+  </div>
+
+  <div class="card mb-4">
+    <div class="card-body">
+      <h2 class="h5">How a week runs</h2>
+      <p>Each week is three days. <strong>Day 1</strong> and <strong>Day 2</strong>
+        take two words each; <strong>Day 3</strong> is where the week's words come
+        back together.</p>
+      <h3 class="h6 mt-3">Day 1 and Day 2 — for each of the two words</h3>
+      <ol class="mb-3">
+        {% for step in how_a_day_runs %}<li>{{ step }}</li>{% endfor %}
+      </ol>
+      <h3 class="h6">Day 3</h3>
+      <p class="mb-0">Choose the word she found most interesting and say why, then
+        write a micro-story of about 150 words using as many of the week's words
+        as it will carry. The guide also teaches a way of turning those sentences
+        into a Dickinson-style poem — worth trying once she is comfortable, but
+        the story is the assignment.</p>
+    </div>
+  </div>
+
+  <div class="card mb-4 border-primary">
+    <div class="card-body">
+      <h2 class="h5">Why the copying is done by hand</h2>
+      <p>The guide lists <em>handwriting practice</em> and <em>contemplative
+        attention to detail</em> among the skills it teaches, and the copying is
+        how it teaches them. A line copied at a keyboard practises neither — the
+        point is to slow down enough to notice where Dickinson put her dashes.</p>
+      <p>So on this site:</p>
+      <ul>
+        <li><strong>Copy the word and the definition</strong> —
+          {% if by_hand.copy_definition %}written by hand{% else %}typed{% endif %}</li>
+        <li><strong>Copy Dickinson's lines</strong> —
+          {% if by_hand.copy_example %}written by hand{% else %}typed{% endif %}</li>
+        <li><strong>Craft a sentence of your own</strong> —
+          {% if by_hand.own_sentence %}written by hand{% else %}typed{% endif %}</li>
+        <li><strong>Day 3, the word she chose</strong> —
+          {% if by_hand.favorite_word %}written by hand{% else %}typed{% endif %}</li>
+        <li><strong>Day 3, the micro-story</strong> —
+          {% if by_hand.micro_story %}written by hand{% else %}typed{% endif %},
+          because a 150-word story wants revising and the skill there is the
+          writing rather than the letters</li>
+      </ul>
+      <p class="mb-0 text-muted small">She writes with a finger or a stylus, and
+        her handwriting is kept exactly as she formed it — it appears in the work
+        browser and on the printed charter report. The AI grader is told plainly
+        that it cannot read handwriting and must leave those to you.</p>
+    </div>
+  </div>
+
+  <div class="card mb-4">
+    <div class="card-body">
+      <h2 class="h5">What to look for when you check it</h2>
+      <ul class="mb-0">
+        <li><strong>The copying:</strong> every word, every dash, every capital as
+          Dickinson wrote them. Her punctuation is not decoration — the em dashes
+          are the poem breathing.</li>
+        <li><strong>Her own sentence:</strong> does it use the word the way it
+          actually means? A sentence that would work just as well with any other
+          word in that slot has not used it.</li>
+        <li><strong>The micro-story:</strong> does it carry the week's words
+          without straining, and still read as a story?</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="card mb-4">
+    <div class="card-body">
+      <h2 class="h5">Story-poem starters</h2>
+      <p class="text-muted small">For Day 3, when nothing comes. Begin with a
+        sentence or two, then break it into lines. Rhyme if it arrives; never
+        force it.</p>
+      <ul class="mb-0" style="font-family:Georgia,serif;font-style:italic;">
+        {% for s in starters %}<li>{{ s }}</li>{% endfor %}
+      </ul>
+    </div>
+  </div>
+
+  <div class="card mb-4">
+    <div class="card-body">
+      <h2 class="h5">A note on the printed guide</h2>
+      <p class="mb-0">Week 16 prints its headword as <strong>perrenial</strong>.
+        The standard spelling is <strong>perennial</strong> — Dickinson's own
+        letter reads “perrennial”, which the guide marks [sic] in the example but
+        not in the headword. Her page says so, because she is copying it out by
+        hand and should not learn it wrong. Week 8 prints
+        <strong>Habiliment</strong> capitalised where every other headword is
+        lower case; that one is left as printed.</p>
+    </div>
+  </div>
+
+  <div class="card mb-4">
+    <div class="card-body">
+      <h2 class="h5">The twenty-three weeks</h2>
+      <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0">
+          <thead><tr><th style="width:5rem;">Week</th><th>Day 1</th><th>Day 2</th></tr></thead>
+          <tbody>
+            {% for week in weeks %}
+              <tr>
+                <td class="text-muted">{{ week.number }} · {{ week.letter }}</td>
+                <td>{% for w in week.words %}{% if w.day == 1 %}<strong>{{ w.word }}</strong> — {{ w.definition }}<br>{% endif %}{% endfor %}</td>
+                <td>{% for w in week.words %}{% if w.day == 2 %}<strong>{{ w.word }}</strong> — {{ w.definition }}<br>{% endif %}{% endfor %}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <a href="{% url 'curricula:curriculum_detail' curriculum.pk %}" class="btn btn-secondary">
+    ← Back to {{ curriculum.name }}
+  </a>
+</div>
+{% endblock %}

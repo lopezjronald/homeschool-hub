@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Remove Event · Steadfast Scholars{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+  <div class="row justify-content-center">
+    <div class="col-lg-6">
+      <div class="card">
+        <div class="card-header"><h4 class="mb-0">Remove event?</h4></div>
+        <div class="card-body">
+          <p>
+            Remove <strong>{{ event.emoji }} {{ event.title }}</strong>
+            {% if event.repeats_weekly %}<span class="text-danger">and its whole repeating series</span>{% else %}({{ event.date }}){% endif %}?
+            This can't be undone.
+          </p>
+          {% if event.repeats_weekly %}
+            <p class="text-muted small">To cancel just one date, use “Skip this date” on the edit page instead.</p>
+          {% endif %}
+          <form method="post">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-danger">Remove</button>
+            <a href="{% url 'family_calendar:event_update' event.pk %}" class="btn btn-outline-secondary">Cancel</a>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

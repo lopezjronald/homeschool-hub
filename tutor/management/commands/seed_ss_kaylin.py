@@ -426,7 +426,8 @@ class Command(BaseCommand):
 
         apply_blueprint(curriculum, WORLD_HISTORY_G7)
         CurriculumPlacement.objects.get_or_create(
-            child=child, curriculum=curriculum, defaults={"is_active": True})
+            child=child, curriculum=curriculum,
+            defaults={"is_active": True, "weekly_pace": 3})
 
         seeded = 0
         for m in MISSIONS:

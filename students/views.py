@@ -2,6 +2,7 @@ import logging
 
 from django.contrib.auth import logout
 from django.contrib.auth.decorators import login_required
+from django.db import transaction
 from django.db.models import Q, ProtectedError
 from django.http import Http404
 from django.shortcuts import render, redirect, get_object_or_404
@@ -120,11 +121,27 @@ def student_detail(request, pk):
             reverse("portal:portal_home", kwargs={"token": make_portal_token(student)})
         )
 
+    # Spelling is a separate programme; show its card only when a parent has
+    # actually placed her in it. Guarded so this page never breaks over a
+    # sibling app.
+    spelling_placement = spelling_week = None
+    try:
+        from spelling.models import SpellingPlacement, SpellingWeek
+
+        spelling_placement = SpellingPlacement.objects.filter(child=student).first()
+        if spelling_placement:
+            spelling_week = SpellingWeek.objects.filter(
+                number=spelling_placement.current_week).first()
+    except Exception:
+        spelling_placement = spelling_week = None
+
     return render(request, "students/student_detail.html", {
         "student": student,
         "can_edit": can_edit,
         "curricula": curricula,
         "portal_url": portal_url,
+        "spelling_placement": spelling_placement,
+        "spelling_week": spelling_week,
     })
 
 
@@ -209,6 +226,7 @@ def student_work_set(request, pk, set_pk):
             # Derive from the rendered display so an empty structured answer
             # (e.g. only-wrong matching attempts → "(no answer)") reads as unanswered.
             "answered": display not in ("", "(no answer)"),
+            "replay": sheet.answer_replay(q) if sheet else None,
             "coach": (sheet.draft_feedback or {}).get(str(q.pk)) if sheet else None,
         })
 
@@ -225,6 +243,103 @@ def student_work_set(request, pk, set_pk):
         "assessment": assessment,
         "can_edit": can_edit_family_or_global(request.user, student.family),
     })
+
+
+@login_required
+@require_POST
+def student_work_set_approve(request, pk, set_pk):
+    """Mark a section done from the paper copy — the parent's half of the rule.
+
+    Completion needs BOTH a file and this click. The upload alone leaves the
+    section waiting; this alone is refused, because a section marked done with
+    nothing attached is exactly the hole the work log exists to close.
+
+    The parent may also attach the file here — Joyce scans the paper herself
+    rather than handing the tablet to a child who has already finished.
+
+    On approval the sheet becomes SUBMITTED and gets a WorkLogEntry, the same
+    as an on-screen turn-in, so progress, the reports and the grade record all
+    treat it as the finished section it is. The file stays owned by the sheet.
+    """
+    import os
+
+    from django.utils import timezone
+
+    from tutor.models import QuestionSet, ResponseSheet
+    from worklog.models import WorkLogEntry
+
+    from curricula.models import Curriculum
+
+    student = get_object_or_404(
+        editable_queryset(Student.objects.all(), request.user), pk=pk)
+    if not can_edit_family_or_global(request.user, student.family):
+        raise Http404
+    # Scope the SET too, exactly as the read view above does. Scoping only the
+    # child leaves the set id a free parameter: posting another family's set_pk
+    # created a sheet against their set and a work-log row carrying their
+    # section title, curriculum and subject — readable back on /worklog/. The
+    # per-child pin matters for the same reason it does on the read side: a set
+    # pinned to a sibling is not this child's work.
+    viewable_curricula = viewable_queryset(Curriculum.objects.all(), request.user)
+    question_set = get_object_or_404(
+        QuestionSet.objects.filter(
+            lesson__chapter__curriculum__in=viewable_curricula,
+        ).filter(Q(child=student) | Q(child__isnull=True)),
+        pk=set_pk,
+    )
+    back = redirect("students:student_work_set", pk=pk, set_pk=set_pk)
+
+    upload = request.FILES.get("project")
+    with transaction.atomic():
+        sheet, _ = ResponseSheet.objects.select_for_update().get_or_create(
+            question_set=question_set, child=student,
+        )
+        if upload is not None:
+            ext = os.path.splitext(upload.name)[1].lower()
+            if ext not in ResponseSheet.PROJECT_EXTENSIONS:
+                messages.error(request, "Use a photo, a PDF or a Word document.")
+                return back
+            if upload.size > ResponseSheet.PROJECT_MAX_BYTES:
+                messages.error(request, "That file is over the %d MB limit."
+                               % (ResponseSheet.PROJECT_MAX_BYTES // (1024 * 1024)))
+                return back
+            sheet.attachment = upload
+            sheet.attachment_uploaded_at = timezone.now()
+            sheet.completion_mode = ResponseSheet.ON_PAPER
+            sheet.save(update_fields=["attachment", "attachment_uploaded_at",
+                                      "completion_mode"])
+
+        if sheet.is_submitted:
+            messages.info(request, "That section was already complete.")
+            return back
+        if not sheet.has_project_file:
+            messages.error(
+                request,
+                "Attach the paper copy first — a section can't be marked "
+                "complete with nothing to show for it.")
+            return back
+
+        curriculum = question_set.lesson.chapter.curriculum
+        sheet.work_entry = WorkLogEntry.objects.create(
+            parent=student.parent,
+            family=student.family,
+            child=student,
+            curriculum=curriculum,
+            subject=curriculum.subject or "Literature",
+            description="%s — completed on paper; %s attached."
+                        % (question_set.title, sheet.project_filename),
+            date=timezone.localdate(),
+        )
+        sheet.status = ResponseSheet.SUBMITTED
+        sheet.submitted_at = timezone.now()
+        sheet.completion_mode = ResponseSheet.ON_PAPER
+        sheet.approved_at = timezone.now()
+        sheet.approved_by = request.user
+        sheet.save()
+
+    messages.success(request, "Marked complete — %s is on the record."
+                     % sheet.project_filename)
+    return back
 
 
 @login_required

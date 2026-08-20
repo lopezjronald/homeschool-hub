@@ -1,0 +1,139 @@
+/* Family calendar — legend, FullCalendar accents, and print layout. */
+
+.cal-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-weight: 600;
+  font-size: 0.92rem;
+  margin-bottom: 0;
+}
+/* Only real controls invite a click — the "Whole family" key is just a key. */
+label.cal-legend-item { cursor: pointer; }
+.cal-dot {
+  display: inline-block;
+  width: 0.85rem;
+  height: 0.85rem;
+  border-radius: 50%;
+  background: var(--dot, #152A45);
+  flex: none;
+}
+.cal-legend-sep {
+  display: inline-block;
+  width: 1px;
+  height: 1.2rem;
+  background: rgba(21, 42, 69, 0.25);
+}
+
+/* The LRM-prep callout — amber, but calm. */
+.cal-lrm-alert {
+  background: #FFF4DC;
+  border: 1.5px solid #EBA83A;
+  color: #4a3a17;
+}
+
+/* Weekday checkboxes render as a tappable pill row, not a stacked list.
+   Django's CheckboxSelectMultiple emits <div><div><label><input>…</label></div></div>
+   (no form-check classes), so the pills are styled on the labels themselves. */
+.cal-weekday-picker > div { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.cal-weekday-picker > div > div { margin: 0; }
+.cal-weekday-picker label {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.3rem 0.85rem;
+  border: 1.5px solid rgba(10, 92, 99, 0.45);
+  border-radius: 999px;
+  font-weight: 700;
+  color: #0A5C63;
+  background: #fff;
+  cursor: pointer;
+  user-select: none;
+}
+.cal-weekday-picker input[type="checkbox"] {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+.cal-weekday-picker label:has(input:checked) {
+  background: #0A5C63;
+  border-color: #0A5C63;
+  color: #fff;
+}
+.cal-weekday-picker label:focus-within {
+  outline: 3px solid rgba(235, 168, 58, 0.6);
+  outline-offset: 1px;
+}
+
+/* FullCalendar accents on the Dawn Harbor palette. */
+#calendar { --fc-button-bg-color: #0A5C63; --fc-button-border-color: #0A5C63;
+            --fc-button-hover-bg-color: #073F44; --fc-button-hover-border-color: #073F44;
+            --fc-button-active-bg-color: #073F44; --fc-button-active-border-color: #073F44;
+            --fc-today-bg-color: rgba(235, 168, 58, 0.12); }
+#calendar .fc-event { border-radius: 6px; }
+#calendar .fc-daygrid-event { padding: 1px 4px; }
+
+/* Projected mission "due dates" (S3) read as outlines, real events as solids. */
+#calendar .cal-layer-missions {
+  background: #fff !important;
+  border: 1.5px solid currentColor;
+}
+
+/* Timed "dot" events: neutral ink for the title — the colored dot carries the
+   child, so an appointment can't read as the wrong kid's teal (UI review 4). */
+#calendar .fc-daygrid-dot-event { color: #172130; }
+
+/* The List view wears the theme too (default FC gray dropped it, UI review 9). */
+#calendar .fc-list-day-cushion { background: #EFEAE0; }
+#calendar .fc-list-day-text, #calendar .fc-list-day-side-text { color: #152A45; font-weight: 700; }
+
+@media (max-width: 576px) {
+  /* Phone-first screen: the calendar itself must be visible without a full
+     flick of scrolling (UI review 3 + 5). */
+  .cal-hero { padding: 0.9rem 1.1rem; }
+  .cal-hero h1 { font-size: 1.35rem; margin-bottom: 0; }
+  .cal-hero .lead, .cal-lrm-alert .cal-lrm-sub { display: none; }
+  #calendar .fc-header-toolbar { flex-wrap: wrap; gap: 0.35rem; }
+  #calendar .fc-toolbar-title { font-size: 1.05rem; }
+}
+
+@media print {
+  /* The month grid IS the wall printout: strip everything else. */
+  nav, .navbar, footer, .messages, .d-print-none { display: none !important; }
+  #calendar { width: 100%; }
+  #calendar .fc-header-toolbar .fc-button-group,
+  #calendar .fc-header-toolbar .fc-today-button { display: none; }
+  #calendar .fc-daygrid-day-frame { min-height: 5.2em; }
+  #calendar .fc-event { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}
+
+/* Right-click / long-press menu on a calendar event.
+   Fixed positioning: the menu is placed against the viewport where the pointer
+   is, so it must not scroll away from the chip it belongs to. */
+.cal-menu {
+  position: fixed;
+  z-index: 1080;
+  min-width: 190px;
+  background: #fff;
+  border: 1px solid rgba(20, 35, 43, .16);
+  border-radius: 12px;
+  box-shadow: 0 10px 30px rgba(20, 35, 43, .18);
+  padding: .35rem;
+  font: 400 .95rem/1.3 system-ui, sans-serif;
+}
+.cal-menu-title {
+  font-size: .78rem; color: #6b7280; font-weight: 600;
+  padding: .4rem .6rem .45rem;
+  border-bottom: 1px solid rgba(20, 35, 43, .08);
+  margin-bottom: .3rem;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.cal-menu-item {
+  display: block; width: 100%; text-align: left;
+  background: none; border: 0; border-radius: 8px;
+  /* 44px tall: this is used with a fingertip on the tablet too. */
+  padding: .6rem .7rem; min-height: 44px;
+  color: #14232b; cursor: pointer;
+}
+.cal-menu-item:hover, .cal-menu-item:focus {
+  background: #eef1f3; outline: none;
+}

@@ -1,0 +1,38 @@
+{% extends "spelling/base_spelling.html" %}
+{% load static %}
+
+{% block spelling %}
+<div class="sp-card" id="sort"
+     data-items="{{ items_json }}"
+     data-finish-url="{% url 'spelling:finish' token=token %}"
+     data-home-url="{% url 'spelling:home' token=token %}">
+  {% csrf_token %}
+  <div class="sp-week">Week {{ week.number }} · word sort</div>
+  <h1 class="sp-pattern">{{ week.pattern }}</h1>
+  <p class="sp-rule">{{ week.rule }}</p>
+  <div class="sp-sub">Tap a word, then tap the column it belongs in.</div>
+
+  <div class="sp-pool" id="pool"></div>
+
+  <div class="sp-buckets">
+    {% for b in buckets %}
+      <div class="sp-bucket" data-bucket="{{ forloop.counter0 }}">
+        <div class="sp-bucket-title">{{ b }}</div>
+        <div class="sp-bucket-body"></div>
+      </div>
+    {% endfor %}
+  </div>
+
+  <div id="sort-done" hidden class="text-center">
+    <div class="sp-done-emoji" aria-hidden="true">🎉</div>
+    <div class="sp-score" id="sort-score"></div>
+    <a class="sp-go" href="{% url 'spelling:home' token=token %}">Back to spelling</a>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'js/spelling-speak.js' %}"></script>
+<script src="{% static 'js/spelling-post.js' %}"></script>
+<script src="{% static 'js/spelling-sort.js' %}"></script>
+{% endblock %}

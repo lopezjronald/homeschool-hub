@@ -23,7 +23,10 @@ from curricula.services import apply_blueprint, get_blueprint
 from students.models import Student
 from tutor.models import Question, QuestionSet, ResponseSheet
 
-from ._eiw_content import EXERCISES, LESSON_TITLES
+from ._eiw_content import (
+    EXERCISES, LESSON_TITLES, TEACH_NOTES,
+    antecedent_model_html, pronoun_list_html,
+)
 
 # kind -> (category, response_type, kid-facing label)
 KIND_MAP = {
@@ -45,6 +48,33 @@ MARKUP_INTRO_HINT = (
     " ✏️ Use a pen and draw right on the sentence — underline, circle, or cross "
     "out. Pick a color, and use Undo or Erase all if you need to fix something!"
 )
+
+def build_intro(exercise, wants_pen_hint):
+    """Assemble what the child reads before she starts.
+
+    Order matters: the thing she has to DO goes first and in bold. The workbook
+    prints the definition and the worked example above every exercise, but when
+    all of it was concatenated into one paragraph the actual instruction
+    ("Underline the pronouns") ended up buried mid-blob and got missed.
+    """
+    parts = [f"**{exercise['instructions'].strip()}**"]
+
+    note = TEACH_NOTES.get(exercise.get("teach"))
+    if note:
+        parts.append(note)
+
+    model = exercise.get("model")
+    if model:
+        parts.append(antecedent_model_html(*model))
+
+    if exercise.get("visual") == "pronoun-list":
+        parts.append(pronoun_list_html())
+
+    if wants_pen_hint:
+        parts.append(MARKUP_INTRO_HINT.strip())
+
+    return "\n\n".join(parts)
+
 
 RUBRIC = """## Essentials in Writing — how this is checked
 
@@ -156,14 +186,17 @@ class Command(BaseCommand):
                     response_type == Question.TYPE_TEXT
                     and re.search(r"\b(circle|underline)\b", exercise["instructions"], re.I)
                 )
+                # An explicit label beats the generic kind label. Six exercises in
+                # one lesson all called "Mark the sentences (n)" tell the child
+                # nothing about whether to underline, circle, or rewrite — which is
+                # the one thing she needs to know before she starts.
+                label = exercise.get("label") or label
                 title = f"Lesson {lesson_num} · {title_base} — {label}"
                 used[title] = used.get(title, 0) + 1
                 if used[title] > 1:
                     title = f"{title} ({used[title]})"
                 produced.add(title)
-                intro = exercise["instructions"] + (
-                    MARKUP_INTRO_HINT if is_markup or wants_writemark else ""
-                )
+                intro = build_intro(exercise, is_markup or wants_writemark)
 
                 qset, _ = QuestionSet.objects.update_or_create(
                     lesson=lesson_row, title=title,

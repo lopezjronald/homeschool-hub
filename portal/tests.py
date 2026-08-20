@@ -1944,7 +1944,9 @@ class PortalOutlineAndDeactivateTests(TestCase):
         shown = self.client.get(reverse("curricula:curriculum_list") + "?show_deactivated=1")
         shown_names = [c.name for c in shown.context["curricula"]]
         self.assertIn("Beast Academy", shown_names)
-        self.assertContains(shown, "Deactivated")
+        # Switched off but never archived, so it reads as waiting rather than finished.
+        self.assertContains(shown, "Ready to start")
+        self.assertNotContains(shown, "Archived")
 
 
 class OnlineSubjectWithInAppLessonsTests(TestCase):
@@ -2035,3 +2037,142 @@ class OnlineSubjectWithInAppLessonsTests(TestCase):
         self.assertIn('type="application/json"', html)
         # And the plain-text fallback must NOT also render.
         self.assertNotIn("white-space: pre-wrap", html)
+
+
+class MaterialWorkflowTests(TestCase):
+    """The lesson's whole workflow lives on the material page (HH-166): manga math
+    gets a kid 'I finished this ✓' that moves the chapter counter, and a mission's
+    journal Start button renders INSIDE the mission page."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from curricula.models import LessonProgress  # noqa: F401  (used in tests)
+        from tutor.models import Material
+
+        cls.parent = User.objects.create_user(username="mw", email="mw@e.com", password="pw")
+        cls.family = Family.objects.create(name="Workflow Fam")
+        FamilyMembership.objects.create(user=cls.parent, family=cls.family, role="parent")
+        cls.violet = Student.objects.create(
+            parent=cls.parent, first_name="Violet", grade_level="G03", family=cls.family)
+        cls.token = make_portal_token(cls.violet)
+
+        # Math-shaped: a chapter of two manga-only lessons (no question sets).
+        cls.math = Curriculum.objects.create(
+            parent=cls.parent, family=cls.family, name="Dimensions Math Test", subject="Math")
+        ch = Chapter.objects.create(curriculum=cls.math, number=2, title="Addition")
+        cls.math_l1 = Lesson.objects.create(chapter=ch, order=1, number=1, title="Sums")
+        cls.math_l2 = Lesson.objects.create(chapter=ch, order=2, number=2, title="Differences")
+        cls.manga1 = Material.objects.create(
+            lesson=cls.math_l1, title="Chi adds it up", student_content="hi",
+            family=cls.family, child=cls.violet, status=Material.APPROVED)
+        cls.manga2 = Material.objects.create(
+            lesson=cls.math_l2, title="Chi takes away", student_content="hi",
+            family=cls.family, child=cls.violet, status=Material.APPROVED)
+        CurriculumPlacement.objects.create(child=cls.violet, curriculum=cls.math)
+
+        # Mission-shaped: one lesson carrying a material AND a journal set.
+        cls.sci = Curriculum.objects.create(
+            parent=cls.parent, family=cls.family, name="Science Test", subject="Science")
+        sch = Chapter.objects.create(curriculum=cls.sci, number=1, title="Forces")
+        cls.sci_l1 = Lesson.objects.create(chapter=sch, order=1, number=1, title="Push It")
+        cls.mission = Material.objects.create(
+            lesson=cls.sci_l1, title="Mission 1: Push It, Pull It", student_content="steps",
+            family=cls.family, child=cls.violet, status=Material.APPROVED)
+        cls.journal = QuestionSet.objects.create(
+            lesson=cls.sci_l1, title="Mission 1 · Science Log", family=cls.family,
+            child=cls.violet, status=QuestionSet.APPROVED)
+        Question.objects.create(
+            question_set=cls.journal, order=1, category="application", prompt="3 things")
+        CurriculumPlacement.objects.create(child=cls.violet, curriculum=cls.sci)
+
+    def _url(self, name, **kw):
+        return reverse(f"portal:{name}", kwargs={"token": self.token, **kw})
+
+    def _subject_html(self, curriculum):
+        return self.client.get(
+            self._url("portal_subject", curriculum_id=curriculum.pk)).content.decode()
+
+    def test_chapter_counter_counts_marked_manga_lessons(self):
+        from curricula.models import LessonProgress
+
+        html = self._subject_html(self.math)
+        self.assertIn("0/2", html)                            # nothing done yet
+        LessonProgress.objects.create(
+            child=self.violet, lesson=self.math_l1,
+            status=LessonProgress.COMPLETED, marked_by=self.parent)
+        html = self._subject_html(self.math)
+        self.assertIn("1/2", html)                            # the mark now counts
+        self.assertIn("Finished ✓", html)                     # and the row shows it
+
+    def test_kid_can_mark_a_manga_lesson_done_idempotently(self):
+        from curricula.models import LessonProgress
+
+        page = self.client.get(self._url("portal_material", pk=self.manga1.pk))
+        self.assertContains(page, "I finished this ✓")
+        resp = self.client.post(self._url("portal_material_done", pk=self.manga1.pk))
+        self.assertEqual(resp.status_code, 302)
+        row = LessonProgress.objects.get(child=self.violet, lesson=self.math_l1)
+        self.assertEqual(row.status, LessonProgress.COMPLETED)
+        self.assertIsNone(row.marked_by)                      # kid-marked, not parent
+        self.assertIn("Violet", row.note)
+        # Second tap: still exactly one row, status untouched.
+        self.client.post(self._url("portal_material_done", pk=self.manga1.pk))
+        self.assertEqual(LessonProgress.objects.filter(
+            child=self.violet, lesson=self.math_l1).count(), 1)
+        # The page now shows the finished state, not the button.
+        page = self.client.get(self._url("portal_material", pk=self.manga1.pk))
+        self.assertNotContains(page, "I finished this ✓")
+        self.assertContains(page, "Finished ✓")
+
+    def test_mark_done_refused_when_the_lesson_has_a_journal(self):
+        from curricula.models import LessonProgress
+
+        page = self.client.get(self._url("portal_material", pk=self.mission.pk))
+        self.assertNotContains(page, "I finished this ✓")     # journals are the turn-in
+        self.client.post(self._url("portal_material_done", pk=self.mission.pk))
+        self.assertFalse(LessonProgress.objects.filter(
+            child=self.violet, lesson=self.sci_l1).exists())
+
+    def test_journal_start_button_lives_inside_the_mission_page(self):
+        page = self.client.get(self._url("portal_material", pk=self.mission.pk))
+        self.assertContains(page, "Show what you know")
+        self.assertContains(page, "Start · Mission 1 · Science Log")
+        self.assertContains(page, self._url("portal_questions", set_pk=self.journal.pk))
+        # Turn it in → the button flips to turned-in. Post against the REAL question
+        # pk so the answer actually merges (a bogus key would still submit the sheet
+        # and the flip would pass for the wrong reason).
+        question = self.journal.questions.first()
+        self.client.post(
+            self._url("portal_questions", set_pk=self.journal.pk),
+            {f"answer_{question.pk}": "I learned about pushes"})
+        sheet = ResponseSheet.objects.get(question_set=self.journal, child=self.violet)
+        self.assertTrue(sheet.is_submitted)
+        self.assertEqual(sheet.answers[str(question.pk)], "I learned about pushes")
+        page = self.client.get(self._url("portal_material", pk=self.mission.pk))
+        self.assertContains(page, "turned in!")
+        self.assertNotContains(page, "Start · Mission 1 · Science Log")
+
+    def test_placement_floor_counts_toward_the_chapter_total(self):
+        """The floor (everything before current_lesson) is what makes a chapter jump
+        without any explicit mark — and it's how the parent's own checklist reads."""
+        placement = CurriculumPlacement.objects.get(child=self.violet, curriculum=self.math)
+        placement.current_lesson = self.math_l2
+        placement.save()
+        html = self._subject_html(self.math)
+        self.assertIn("1/2", html)                            # L1 is below the floor
+        self.assertIn("Finished ✓", html)
+
+    def test_journal_page_links_back_to_the_mission_instructions(self):
+        page = self.client.get(self._url("portal_questions", set_pk=self.journal.pk))
+        self.assertContains(page, "Open the mission instructions")
+        self.assertContains(page, self._url("portal_material", pk=self.mission.pk))
+
+    def test_continue_button_skips_finished_manga(self):
+        from curricula.models import LessonProgress
+
+        html = self._subject_html(self.math)
+        self.assertIn("Chi adds it up", html)
+        LessonProgress.objects.create(
+            child=self.violet, lesson=self.math_l1, status=LessonProgress.COMPLETED)
+        resp = self.client.get(self._url("portal_subject", curriculum_id=self.math.pk))
+        self.assertEqual(resp.context["next_material"].pk, self.manga2.pk)

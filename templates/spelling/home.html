@@ -1,0 +1,28 @@
+{% extends "spelling/base_spelling.html" %}
+
+{% block spelling %}
+<div class="sp-card text-center">
+  <div class="sp-week">Week {{ week.number }} · {{ week.unit }}</div>
+  <h1 class="sp-pattern">{{ week.pattern }}</h1>
+  <p class="sp-rule">{{ week.rule }}</p>
+
+  {% if kind %}
+    <a class="sp-go" href="{{ next_url }}">
+      {{ kind_label }} <span aria-hidden="true">➜</span>
+    </a>
+    {% if kind == 'quiz' and due_count %}
+      <div class="sp-sub">{{ due_count }} word{{ due_count|pluralize }} ready for you</div>
+    {% endif %}
+  {% else %}
+    <div class="sp-done">
+      <div class="sp-done-emoji" aria-hidden="true">🎉</div>
+      <div class="sp-done-text">All done this week!</div>
+      <div class="sp-sub">Come back tomorrow — new words are on the way.</div>
+    </div>
+  {% endif %}
+
+  {% if streak %}
+    <div class="sp-streak">🔥 {{ streak }} day{{ streak|pluralize }} in a row</div>
+  {% endif %}
+</div>
+{% endblock %}

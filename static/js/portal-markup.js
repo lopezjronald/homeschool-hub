@@ -220,10 +220,22 @@
         input.value = "";
       } else {
         var read = readMarks();
+        var srect = canvas.getBoundingClientRect();
         // Object form, with the strokes under a key. Older answers are a bare
         // array of strokes and are still parsed — see ResponseSheet._parse_markup.
+        //
+        // `surface` is the drawing box's CSS pixel size when she drew on it.
+        // Strokes are normalized to that box, but the TEXT inside it is sized in
+        // absolute pixels — so replaying at a different WIDTH re-wraps the
+        // sentence and slides the words out from under her marks. Matching the
+        // aspect ratio is not enough for the same reason. The parent's work
+        // browser and the printed charter report rebuild the box at exactly this
+        // size, then scale the whole thing to fit the column.
         input.value = JSON.stringify({
           strokes: strokes, marks: read.marks, unread: read.unread,
+          surface: srect.width
+            ? { w: Math.round(srect.width), h: Math.round(srect.height) }
+            : null,
         });
       }
       if (window.portalMarkDirty) window.portalMarkDirty();

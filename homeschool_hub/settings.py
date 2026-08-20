@@ -116,8 +116,10 @@ INSTALLED_APPS = [
     "tutor",  # AI tutor layer (mastery grader)
     "portal",  # Tokenless student portal (kids see only their own work)
     "activities",  # External activities (School of Rock, CodaKid) + check-in nudge
+    "family_calendar",  # Family calendar: events, mission due dates, history, birthdays
     "inbox",  # Parent action inbox (aggregates items needing the parent)
     "lingua",  # Spanish acquisition module (extractable; see lingua/SPEC.md)
+    "spelling",  # Spelling OS: pattern-based spelling with spaced review
     "storages",  # django-storages for R2/S3
     "django.contrib.admin",
     "django.contrib.auth",
@@ -611,11 +613,22 @@ if USE_R2:
         },
     }
     # PRIVATE child read-aloud recordings (LGA-73). CRITICAL: this MUST be a bucket
-    # with NO public r2.dev / custom domain — the default+public buckets share
-    # R2_BUCKET_NAME, and r2.dev exposes that whole bucket by key, so a recording
-    # placed there would be world-readable unsigned despite the signed URL. So the
+    # with NO public r2.dev / custom domain, because r2.dev exposes a bucket by KEY
+    # — a private file in a bucket that has a public domain attached is readable
+    # unsigned no matter that every URL this app hands out is signed. So the
     # recordings store is a SEPARATE bucket (R2_PRIVATE_RECORDINGS_BUCKET) and the
     # feature stays OFF until that bucket is configured (storage.recordings_enabled()).
+    #
+    # THE SAME APPLIES TO `default`, which now holds children's uploaded work
+    # (work-log attachments and Blackbird project scans). Note the fallback above:
+    # R2_PUBLIC_BUCKET_NAME defaults to R2_BUCKET_NAME, so leaving it UNSET points
+    # the public r2.dev domain at the bucket holding private uploads. It must be
+    # set. On prod (verified 2026-08-18 at runtime, not from env vars):
+    #   default            -> steadfast-scholars-private     signed, no custom domain
+    #   lingua_readalong   -> steadfast-scholars-media       public via r2.dev
+    #   lingua_recordings  -> steadfast-scholars-recordings  signed only
+    # Before adding any new upload feature, check that default_storage.bucket_name
+    # differs from the lingua_readalong bucket and has no custom_domain.
     _rec_bucket = os.getenv("R2_PRIVATE_RECORDINGS_BUCKET")
     if _rec_bucket:
         STORAGES["lingua_recordings"] = {

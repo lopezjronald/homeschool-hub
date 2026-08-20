@@ -850,3 +850,11 @@ a:focus-visible > .hub-tile {
 .wri-last > summary { cursor: pointer; color: var(--ss-green-700); }
 /* A single free-write must not render as one full-width slab. */
 .wri-bar { max-width: 72px; }
+
+/* A section completed on paper, in the printed reports. */
+.ss-paper-label {
+  font-size: 0.86rem;
+  font-weight: 700;
+  color: var(--ss-teal, #0A5C63);
+  margin: 0.35rem 0 0.4rem;
+}

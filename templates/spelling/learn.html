@@ -1,0 +1,43 @@
+{% extends "spelling/base_spelling.html" %}
+{% load static %}
+
+{% block spelling %}
+<div class="sp-card" id="learn"
+     data-finish-url="{% url 'spelling:finish' token=token %}"
+     data-home-url="{% url 'spelling:home' token=token %}">
+  {% csrf_token %}
+  <div class="sp-week">Week {{ week.number }} · {{ week.unit }}</div>
+  <h1 class="sp-pattern">{{ week.pattern }}</h1>
+  <p class="sp-rule sp-rule--big">{{ week.rule }}</p>
+  <div class="sp-sub">Tap every word to hear it. They light up as you go.</div>
+
+  <div class="sp-wordgrid">
+    {% for w in words %}
+      <button type="button" class="sp-word" data-word="{{ w.word }}"
+              data-audio="{{ w.audio_url }}">{{ w.word }}</button>
+    {% endfor %}
+  </div>
+
+  {% if heart_words %}
+    <div class="sp-hearts">
+      <div class="sp-hearts-title">💗 Heart words — these break the rule</div>
+      {% for w in heart_words %}
+        <button type="button" class="sp-word sp-word--heart" data-word="{{ w.word }}"
+                data-audio="{{ w.audio_url }}">
+          {{ w.word }}<small>{{ w.tricky_part }}</small>
+        </button>
+      {% endfor %}
+    </div>
+  {% endif %}
+
+  <button type="button" class="sp-go sp-go--wide" id="done-btn" disabled>
+    Tap every word first
+  </button>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{% static 'js/spelling-speak.js' %}"></script>
+<script src="{% static 'js/spelling-post.js' %}"></script>
+<script src="{% static 'js/spelling-learn.js' %}"></script>
+{% endblock %}

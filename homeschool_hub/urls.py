@@ -37,6 +37,15 @@ def home(request):
         # so evaluate in-process rather than in the DB.
         context["due_activities"] = [a for a in activities if a.is_due]
 
+        # Family-calendar tile: the next few upcoming events at a glance.
+        from family_calendar import feeds as calendar_feeds
+        from family_calendar.models import CalendarEvent
+
+        scoped_events = scoped_queryset(
+            CalendarEvent.objects.all(), request.user, family,
+        ).select_related("child", "activity")
+        context["upcoming_events"] = calendar_feeds.upcoming_occurrences(scoped_events)
+
         # Agent-drafted feedback awaiting the parent's review (HH-97): the
         # child already saw the encouragement; the parent confirms the level.
         from tutor.models import MasteryAssessment
@@ -70,8 +79,10 @@ urlpatterns = [
     path("tutor/", include(("tutor.urls", "tutor"), namespace="tutor")),
     path("portal/", include(("portal.urls", "portal"), namespace="portal")),
     path("activities/", include(("activities.urls", "activities"), namespace="activities")),
+    path("calendar/", include(("family_calendar.urls", "family_calendar"), namespace="family_calendar")),
     path("core/", include(("core.urls", "core"), namespace="core")),
     path("lingua/", include(("lingua.urls", "lingua"), namespace="lingua")),
+    path("spelling/", include(("spelling.urls", "spelling"), namespace="spelling")),
 ]
 
 # Serve static files in DEBUG mode (fallback if WhiteNoise isn't handling them)

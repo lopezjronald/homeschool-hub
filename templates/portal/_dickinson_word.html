@@ -1,0 +1,19 @@
+{% comment %}One word as the guide sets it: the headword and its definition in a
+banded strip, then Dickinson's own lines with the citation under them. This is
+what she copies from, so it is typeset to be read slowly and got exactly
+right — her dashes and capitals included.{% endcomment %}
+<div class="dk-word">
+  <div class="dk-band">
+    <span class="dk-headword">{{ w.word }}</span>
+    <span class="dk-dot" aria-hidden="true">•</span>
+    <span class="dk-def">{{ w.definition }}</span>
+  </div>
+  {% if w.note %}
+    <p class="dk-note">⚠️ {{ w.note }}</p>
+  {% endif %}
+  <div class="dk-example">
+    <div class="dk-example-label">Example</div>
+    <blockquote class="dk-quote{% if w.example_kind == 'poem' %} dk-quote--verse{% endif %}">{{ w.example }}</blockquote>
+    <cite class="dk-cite">({{ w.citation }})</cite>
+  </div>
+</div>

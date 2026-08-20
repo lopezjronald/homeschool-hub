@@ -1,5 +1,7 @@
 {% extends "base_print.html" %}
+{% load static %}
 {% load tutor_extras %}
+{% block extra_css %}<link href="{% static 'css/markup-replay.css' %}" rel="stylesheet">{% endblock %}
 {% block title %}Progress Report · Steadfast Scholars{% endblock %}
 
 {% block toolbar %}
@@ -33,7 +35,7 @@
 {% endblock %}
 
 {% block content %}
-<div class="container">
+<div class="container report-print-wide">
 
   <div class="report-letterhead">
     <div class="report-kicker">Homeschool Progress Report</div>
@@ -105,7 +107,20 @@
 
           {# ---- The sample work ---- #}
           <div class="ss-work-label">Work submitted{% if it.sheet.submitted_at %} · turned in {{ it.sheet.submitted_at|date:"M j, Y" }}{% endif %}</div>
-          {% if it.kind == 'portal' %}
+          {% if it.kind == 'paper' %}
+            {% comment %}A section done on paper. This is a work SAMPLE report,
+            so the scan is the sample — showing a filename would defeat it.
+            {% endcomment %}
+            <div class="ss-paper-label">Completed on paper · {{ it.sheet.project_filename }}</div>
+            {% if it.paper_is_image %}
+              <a href="{{ it.paper_file.url }}" target="_blank" rel="noopener">
+                <img src="{{ it.paper_file.url }}" alt="{{ it.entry.subject }} work" class="ss-work-img">
+              </a>
+            {% else %}
+              <a href="{{ it.paper_file.url }}" target="_blank" rel="noopener"
+                 class="btn btn-sm btn-outline-secondary">📎 {{ it.sheet.project_filename }}</a>
+            {% endif %}
+          {% elif it.kind == 'portal' %}
             <div class="ss-worksheet">
               {% for row in it.qa_rows %}
                 <div class="ss-qa">
@@ -114,11 +129,17 @@
                     <span class="text-muted small">Question {{ row.question.order }}</span>
                   </div>
                   {% if row.question.prompt %}<div class="ss-qa-prompt">{{ row.question.prompt|markdownify_inline }}</div>{% endif %}
-                  {% if row.question.is_markup %}<p class="mb-1" style="font-family:Georgia,serif;font-size:1.1rem;">“{{ row.question.passage }}”</p>{% endif %}
-                  {% if row.answered %}
-                    <div class="ss-answer-block">{{ row.answer }}</div>
+                  {% if row.replay %}
+                    {% comment %}The drawn work itself: this is the work sample the
+                    charter is shown, so the circles and underlines have to print.{% endcomment %}
+                    {% include "tutor/_markup_replay.html" with replay=row.replay %}
                   {% else %}
-                    <div class="text-muted fst-italic">No answer.</div>
+                    {% if row.question.is_markup %}<p class="mb-1" style="font-family:Georgia,serif;font-size:1.1rem;">“{{ row.question.passage }}”</p>{% endif %}
+                    {% if row.answered %}
+                      <div class="ss-answer-block">{{ row.answer }}</div>
+                    {% else %}
+                      <div class="text-muted fst-italic">No answer.</div>
+                    {% endif %}
                   {% endif %}
                 </div>
               {% empty %}

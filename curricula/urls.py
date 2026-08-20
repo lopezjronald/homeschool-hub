@@ -34,6 +34,11 @@ urlpatterns = [
         name="curriculum_toggle_active",
     ),
     path(
+        "<int:pk>/toggle-archived/",
+        views.curriculum_toggle_archived,
+        name="curriculum_toggle_archived",
+    ),
+    path(
         "<int:pk>/children/<int:child_pk>/toggle-active/",
         views.curriculum_toggle_placement_active,
         name="curriculum_toggle_placement_active",

@@ -155,19 +155,26 @@ class Command(BaseCommand):
 
     def _material(self, lesson, child, family, mod):
         """The issue itself, as its own pages, plus the vocabulary as blocks."""
+        title = "%s — the issue" % mod.TITLE
+        # A reseed must not un-approve a week a parent has already approved:
+        # the portal only shows APPROVED materials, so forcing DRAFT here would
+        # make the reading vanish from the child's page mid-week. New ones still
+        # start as drafts.
+        existing = Material.objects.filter(lesson=lesson, title=title).first()
         material, _ = Material.objects.update_or_create(
-            lesson=lesson, title="%s — the issue" % mod.TITLE,
+            lesson=lesson, title=title,
             defaults={
                 "child": child, "family": family,
                 "skill_type": Material.SKILL_LESSON,
                 "student_intro": (
-                    "This week's issue. Read %s, then answer the questions. %s"
+                    "This week's issue. Read %s below, then answer the "
+                    "questions. %s"
                     % ("both pages" if len(mod.PAGES) == 2
                        else "all %d pages" % len(mod.PAGES),
                        getattr(mod, "STUDENT_NOTE", "").strip())).strip(),
                 "student_content": "",
                 "parent_content": self._parent_guide(mod),
-                "status": Material.DRAFT,
+                "status": existing.status if existing else Material.DRAFT,
             },
         )
         blocks = [
@@ -176,6 +183,14 @@ class Command(BaseCommand):
                            % (mod.PUBLICATION, mod.UNIT, mod.LESSON),
                 "title": mod.SUBTITLE,
                 "thesis": "**Essential question:** " + mod.ESSENTIAL_QUESTION,
+            }),
+            # The pages come BEFORE the word list: the intro says "read the
+            # pages below", and until this block existed it said that about
+            # scans the app never put on screen.
+            (LessonBlock.KIND_PAGES, {
+                "title": "This week's issue",
+                "intro": "Tap a page to open it big enough to read.",
+                "images": list(mod.PAGES),
             }),
             (LessonBlock.KIND_TRANSLATION, {
                 "title": "Words this week",

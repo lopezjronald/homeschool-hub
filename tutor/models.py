@@ -254,6 +254,7 @@ class LessonBlock(models.Model):
     KIND_REVEAL = "reveal"              # <details> — predict, then check
     KIND_TOOL = "tool"                  # an interactive widget
     KIND_RECAP = "recap"                # the closing rule
+    KIND_PAGES = "pages"                # the printed source pages, as scans
 
     KIND_CHOICES = [
         (KIND_MASTHEAD, "Masthead"),
@@ -270,6 +271,7 @@ class LessonBlock(models.Model):
         (KIND_REVEAL, "Predict then check"),
         (KIND_TOOL, "Interactive tool"),
         (KIND_RECAP, "Recap"),
+        (KIND_PAGES, "Source pages"),
     ]
 
     material = models.ForeignKey(
@@ -1219,13 +1221,22 @@ class ResponseSheet(models.Model):
 
     @classmethod
     def _format_order(cls, raw, question):
-        """Render a sorted answer ({"order": ["step", …]}) with its verdict."""
+        """Render a sorted answer ({"order": ["step", …]}) with its verdict.
+
+        A slot she left empty arrives as "" or — from answers saved before the
+        widget stopped leaving its array sparse — as null. Both mean "she did
+        not place one here", and both must say so: str(None) is the truthy
+        string "None", which printed as "1. None" on the charter report.
+        """
         data = cls._parse_json_answer(raw)
         got = data.get("order") if isinstance(data, dict) else None
-        if not isinstance(got, list) or not [g for g in got if str(g).strip()]:
+        if not isinstance(got, list):
             return "(no answer)"
-        got = [str(g) for g in got]
-        lines = ["%d. %s" % (i + 1, g) for i, g in enumerate(got)]
+        got = ["" if g is None else str(g) for g in got]
+        if not [g for g in got if g.strip()]:
+            return "(no answer)"
+        lines = ["%d. %s" % (i + 1, g or "(left blank)")
+                 for i, g in enumerate(got)]
         right = question.order_correct
         if right:
             lines.append("[%s]" % ("correct" if got == right else

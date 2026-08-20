@@ -1,4 +1,4 @@
-{% load tutor_extras %}
+{% load static tutor_extras %}
 {% comment %} A taught lesson, rendered from LessonBlock rows.
 
    Everything here is escaped except the prose fields, which go through
@@ -197,6 +197,30 @@
       <ul class="lesson-recap">
         {% for item in b.data.items %}<li>{{ item|markdownify_inline }}</li>{% endfor %}
       </ul>
+    </section>
+
+  {% elif b.kind == "pages" %}
+    {% comment %} The real printed pages of a Studies Weekly issue. The layout
+       IS the lesson in a newspaper — the tinted boxes, the illustrated panels,
+       where the vocabulary sits — so she reads the page, not a retyping of it.
+       Tapping one opens it full size, which is the only way the small print is
+       readable on a tablet.
+
+       {% comment %}, not {# #}: the hash form is SINGLE-LINE ONLY, and a
+       multi-line one renders straight onto a nine-year-old's screen. This is
+       the fourth time that has shipped. {% endcomment %}
+    <section class="lesson-section lesson-section--pages">
+      <h2>{{ b.data.title|default:"This week's issue" }}</h2>
+      {% if b.data.intro %}<p>{{ b.data.intro|markdownify_inline }}</p>{% endif %}
+      <div class="lesson-pages">
+        {% for img in b.data.images %}
+          <a class="lesson-page" href="{% static img %}" target="_blank" rel="noopener">
+            <img src="{% static img %}" loading="lazy"
+                 alt="Page {{ forloop.counter }} of this week's issue">
+            <span class="lesson-page-n">Page {{ forloop.counter }}</span>
+          </a>
+        {% endfor %}
+      </div>
     </section>
 
   {% endif %}

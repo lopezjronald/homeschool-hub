@@ -1330,6 +1330,13 @@ class SaxonLessonToolTests(TestCase):
     def test_the_triangle_and_inequality_cores(self):
         self._run("portal-triangle.test.js")
 
+    def test_the_ordering_widget_core(self):
+        """It decides whether a question counts as answered, and that counter
+        sits above a submit button she cannot undo."""
+        out = self._run("portal-choice.test.js")
+        self.assertIn("one number in the last slot is not a finished answer", out,
+                      "the half-answered case was not actually checked")
+
 
 def saxon_lesson_numbers():
     """Every Saxon lesson that has a seed command, found by looking.
@@ -6516,6 +6523,57 @@ class StudiesWeeklyLevel3Tests(TestCase):
         for path in w.PAGES:
             self.assertIsNotNone(finders.find(path), path)
 
+    def test_she_can_actually_reach_the_pages_she_is_told_to_read(self):
+        """The intro says "read all 4 pages below". For a while nothing rendered
+        them: PAGES fed the sentence and the dry-run and nothing else, so every
+        question was a reading question about text that was never on screen.
+
+        Checking the files exist could not catch that — nothing passed them to
+        {% static %}, so a missing one could not have raised either. This
+        fetches the page a child actually opens.
+        """
+        from tutor import weekly_l3w1 as w
+        from tutor.models import Material
+
+        self._seed()
+        material = Material.objects.get(lesson__number=1)
+        material.status = Material.APPROVED       # a parent approves it first
+        material.save(update_fields=["status"])
+
+        from django.templatetags.static import static
+
+        html = self.client.get(reverse(
+            "portal:portal_material",
+            args=[self.token, material.pk])).content.decode()
+        self.assertIn("read all 4 pages below", html.lower())
+        for path in w.PAGES:
+            self.assertIn(static(path), html, path)
+        # Each one links out full size — a newspaper page is unreadable inline.
+        self.assertEqual(html.count('class="lesson-page"'), 4)
+        # {# #} is SINGLE-LINE ONLY. A multi-line one renders its own text onto
+        # her screen, and it has shipped that way four times — including once
+        # into this very block. Rendering the real page is the only way to see
+        # it, because the template compiles either way.
+        body = html.split("<body")[1]
+        for marker in ("{#", "#}", "{% comment %}", "{% endcomment %}"):
+            self.assertNotIn(marker, body, "a template comment leaked onto the page")
+
+    def test_a_reseed_does_not_un_approve_a_week_already_approved(self):
+        """The portal only shows APPROVED materials. Reseeding to fix a question
+        used to force the Material back to DRAFT, which would take the reading
+        off the child's page mid-week without anyone touching it."""
+        from tutor.models import Material
+
+        self._seed()
+        material = Material.objects.get(lesson__number=1)
+        self.assertEqual(material.status, Material.DRAFT)   # new ones are drafts
+        material.status = Material.APPROVED
+        material.save(update_fields=["status"])
+
+        self._seed()
+        material.refresh_from_db()
+        self.assertEqual(material.status, Material.APPROVED)
+
     # -- what gets built ---------------------------------------------------
 
     def test_the_page_renders_the_sorting_widget(self):
@@ -6545,13 +6603,23 @@ class StudiesWeeklyLevel3Tests(TestCase):
 
     def test_a_half_filled_order_is_not_called_correct(self):
         """She numbers one of five and walks away. Whatever the record says,
-        it must not say she got it right."""
+        it must not say she got it right — in either shape a partial can take.
+
+        The nulls are the shape the widget used to save when its array was left
+        sparse: JSON.stringify turns a hole into null, and str(None) is the
+        truthy string "None", so the parent's report printed "1. None". The
+        widget no longer writes it, but answers already stored do.
+        """
         self._seed()
         q = [x for x in self._set().questions.all() if x.is_order][0]
         sheet = ResponseSheet(question_set=self._set())
-        sheet.answers = {str(q.pk): json.dumps(
-            {"order": ["Ask a compelling question", "", "", "", ""]})}
-        self.assertNotIn("[correct]", sheet.answer_display(q))
+        for partial in (["Ask a compelling question", "", "", "", ""],
+                        [None, None, None, None, "Present your conclusions"]):
+            sheet.answers = {str(q.pk): json.dumps({"order": partial})}
+            shown = sheet.answer_display(q)
+            self.assertNotIn("[correct]", shown)
+            self.assertNotIn("None", shown,
+                             "a blank slot must not print as the word None")
 
     def test_the_written_task_offers_the_answer_mode_picker(self):
         """It is the only thing she writes this week, and she may want to write

@@ -96,9 +96,16 @@ def matching(prompt, pairs, *, word_order=None, hint="", standard=""):
     without reading either side.
     """
     pairs = list(pairs)
+    answers = [right for _left, right in pairs]
+    # The widget keys a match on the answer's TEXT, so two identical answers are
+    # one button she can only ever match to one of the two questions.
+    if len(set(answers)) != len(answers):
+        raise ValueError(
+            "matching(): two questions share an answer, and the widget matches "
+            "on the answer text — one of them could never be completed.")
     if word_order is not None:
         word_order = list(word_order)
-        if sorted(word_order) != sorted(r for _left, r in pairs):
+        if sorted(word_order) != sorted(answers):
             raise ValueError(
                 "matching(): word_order must be the same answers as the pairs, "
                 "reordered — a word only in one of them can never be matched.")
@@ -114,6 +121,12 @@ def order(prompt, steps, correct, *, hint="", standard=""):
     a step in one list and not the other is a question she cannot get right.
     """
     steps, correct = list(steps), list(correct)
+    # The widget keys each step on its TEXT, so two identical steps hydrate to
+    # the same number and there is no ordering she can enter that is right.
+    if len(set(steps)) != len(steps):
+        raise ValueError(
+            "order(): two steps read the same, and the widget keys a step on "
+            "its text — no ordering of them could be marked correct.")
     if sorted(steps) != sorted(correct):
         raise ValueError(
             "order(): the printed steps and the answer are not the same set — "

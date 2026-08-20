@@ -47,11 +47,18 @@ STUDENT_NOTE = ("Nearly every question is about the words this week — inquiry,
                 "start.")
 PARENT_NOTE = """**Where the answers come from.** All eight come out of the
 articles rather than off a picture or a chart, so a wrong answer here is a
-reading question, not a looking-at-the-picture one. The two worth talking about
-are 1 and 8: the process puts *make a claim* SECOND, before the research, and
-question 8 is why — a claim is a starting position she is allowed to change when
-the evidence says so. If she puts "make a claim" last, she has the sensible
-grown-up answer and not this curriculum's."""
+reading question, not a looking-at-the-picture one.
+
+**Three worth talking about.** Question 1: the process puts *make a claim*
+SECOND, before the research, and question 8 is why — a claim is a starting
+position she is allowed to change when the evidence says so. If she puts "make a
+claim" last, she has the sensible grown-up answer and not this curriculum's.
+Question 5 asks which lens researches *how people use natural resources*, and
+the key says **economist**; a child who answers **geographer** is not being
+silly — that article says geographers study "the interaction between people and
+the environment" and ask "How do we use or interact with it?". The key is the
+publisher's, so the app marks it their way; worth telling her she was close and
+why the two lenses differ."""
 GRADER_NOTE = ("The written task asks her to pick a lens and give a compelling "
                "question of her own. A compelling question is one that could "
                "not be answered in a sentence, so look for whether hers has "

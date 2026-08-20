@@ -384,3 +384,45 @@
   margin: 12px auto 4px;
   accent-color: var(--lesson-move, #C2571A);
 }
+
+/* The printed source pages of an issue (Studies Weekly), as scans.
+
+   One column, full width, tap to open full size. A newspaper page is only
+   readable if it is BIG, so a thumbnail grid would be decoration rather than
+   reading — on a tablet these are the lesson. */
+.lesson-section--pages { border-left-color: var(--lesson-start); }
+.lesson-pages {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  margin-top: 0.6rem;
+}
+.lesson-page {
+  display: block;
+  position: relative;
+  border: 1px solid rgba(30, 42, 36, 0.14);
+  border-radius: 8px;
+  overflow: hidden;
+  background: #fff;
+  box-shadow: 2px 2px 0 rgba(30, 42, 36, 0.06);
+}
+.lesson-page img { display: block; width: 100%; height: auto; }
+.lesson-page-n {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  padding: 0.2rem 0.6rem;
+  font-family: var(--lesson-mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #fff;
+  background: rgba(30, 42, 36, 0.78);
+  border-top-right-radius: 8px;
+}
+.lesson-page:focus-visible { outline: 3px solid var(--lesson-move, #C2571A); outline-offset: 2px; }
+
+@media print {
+  /* The pages are the child's reading, not part of a printed report. */
+  .lesson-section--pages { display: none; }
+}

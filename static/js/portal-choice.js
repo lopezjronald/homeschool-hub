@@ -1,4 +1,4 @@
-/* Two small widgets for the Studies Weekly pages.
+/* Three small widgets for the Studies Weekly pages.
 
    1. CHOICE — pick one, or pick several. Answers persist as
       {"picked": ["a"]} through the same hidden-input contract every other
@@ -8,9 +8,39 @@
       type it, or write it by hand. Both surfaces are rendered; the picker shows
       one and tells the other it is hidden. The handwriting canvas must be told
       when it becomes visible, because a canvas measured while hidden is zero
-      pixels wide and every stroke afterwards lands in the wrong place. */
+      pixels wide and every stroke afterwards lands in the wrong place.
+
+   3. ORDER — a scrambled list she numbers back into sequence. `placeSteps` is
+      the DOM-free core, exported so portal-choice.test.js can run it under
+      plain node; it decides both what gets STORED and whether the question
+      counts as answered, and getting that second part wrong put "10 of 10
+      answered" above a one-way submit button on a half-finished page. */
 (function () {
   "use strict";
+
+  /* Turn the numbers she typed into the ordered list, plus whether it is
+     finished. Pure: takes step names and the raw picker values, in row order. */
+  function placeSteps(steps, values) {
+    // Pre-filled with '' rather than left sparse. A bare [] with only slot 5
+    // set has length 5 and holes everywhere else, and every()/map()/some() all
+    // SKIP holes — so one number read as fully answered, and JSON.stringify
+    // wrote nulls that printed as "1. None" on the parent's report.
+    var order = steps.map(function () { return ''; });
+    steps.forEach(function (step, i) {
+      var n = parseInt(values[i], 10);
+      if (n >= 1 && n <= steps.length) order[n - 1] = step;
+    });
+    return {
+      order: order,
+      full: order.every(function (x) { return !!x; }),
+      started: order.some(Boolean),
+    };
+  }
+
+  if (typeof module !== "undefined" && module.exports) {
+    module.exports = { placeSteps: placeSteps };
+    return;
+  }
 
   /* ---- multiple choice ---- */
   Array.prototype.slice.call(
@@ -115,19 +145,13 @@
       });
     }
 
-    function sync() {
-      var placed = [];
-      steps.forEach(function (li, i) {
-        var n = parseInt(picks[i].value, 10);
-        if (n) placed[n - 1] = li.dataset.step;
-      });
-      var full = placed.length === steps.length &&
-                 placed.every(function (x) { return !!x; });
-      hidden.value = placed.some(Boolean)
-        ? JSON.stringify({ order: placed.map(function (x) { return x || ''; }) })
-        : '';
-      hidden.dataset.answered = full ? '1' : '0';
-      if (window.portalTouch) window.portalTouch('Saving…');
+    function sync(quiet) {
+      var placed = placeSteps(
+        steps.map(function (li) { return li.dataset.step; }),
+        picks.map(function (p) { return p.value; }));
+      hidden.value = placed.started ? JSON.stringify({ order: placed.order }) : '';
+      hidden.dataset.answered = placed.full ? '1' : '0';
+      if (!quiet && window.portalTouch) window.portalTouch('Saving…');
     }
 
     widget.addEventListener('change', function (e) {
@@ -145,5 +169,10 @@
       sync();
     });
     picks.forEach(function (p) { p.dataset.was = p.value; });
+    // Declare the answered state on load, the way every sibling widget does.
+    // Without it the autosave counter falls back to "the field is not empty",
+    // and a half-numbered question she came back to counted as done. Quietly —
+    // arriving on a page is not saving.
+    sync(true);
   });
 })();

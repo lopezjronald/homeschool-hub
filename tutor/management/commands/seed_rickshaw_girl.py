@@ -178,6 +178,12 @@ class Command(BaseCommand):
         s, q = self._final_project(curriculum, family)
         sets += s
         questions += q
+        # ...and the hands-on option, ALONGSIDE the printed six. Violet draws;
+        # she should not have to write her way through a final project to prove
+        # she read the book.
+        s, q = self._hands_on_project(curriculum, family)
+        sets += s
+        questions += q
         self.stdout.write("  Section 5: Final Project")
 
         first = self._lesson(curriculum, 1, 1)
@@ -412,6 +418,22 @@ class Command(BaseCommand):
                  "you are proudest of.",
                  None),
             ],
+        )
+
+    def _hands_on_project(self, curriculum, family):
+        """The drawing option, beside the guide's printed ones."""
+        from tutor import glean_handson
+
+        book = glean_handson.BOOKS["rickshaw_girl"]
+        return self._set(
+            self._lesson(curriculum, 5, 1),
+            family,
+            "Section 5 · Glean: %s (hands-on)" % book["title"],
+            intro=book["intro"],
+            rubric=book["rubric"],
+            questions=[(cat, prompt, hint, extra)
+                       for cat, prompt, hint, extra
+                       in glean_handson.questions("rickshaw_girl")],
         )
 
     @staticmethod

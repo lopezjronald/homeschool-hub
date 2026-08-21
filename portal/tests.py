@@ -81,9 +81,14 @@ class PortalCourseTests(TestCase):
         curriculum = Curriculum.objects.get(name__contains="I Am David")
         self.assertEqual(curriculum.grade_level, "G07")
         sets = QuestionSet.objects.filter(lesson__chapter__curriculum=curriculum)
-        self.assertEqual(sets.count(), 27)  # 6/section x 4 + Glean + seminar + toolbox
+        # 6/section x 4 + Glean + the hands-on Glean + seminar + toolbox
+        self.assertEqual(sets.count(), 28)
+        gleans = sets.filter(title__contains="Glean")
+        self.assertEqual(gleans.count(), 2)
+        self.assertTrue(gleans.filter(title__endswith="Final Project").exists(),
+                        "the guide's own options must still be offered")
         self.assertEqual(
-            Question.objects.filter(question_set__in=sets).count(), 232,
+            Question.objects.filter(question_set__in=sets).count(), 239,
         )
         # Acquire keeps the Level 7 guide's own format (look it up and write it),
         # with the official Blackbird definitions attached as a TEACHER key.
@@ -117,8 +122,8 @@ class PortalCourseTests(TestCase):
 
     def test_seed_is_idempotent(self):
         call_command("seed_i_am_david", "--for-user", "dad", stdout=StringIO())
-        self.assertEqual(QuestionSet.objects.count(), 27)
-        self.assertEqual(Question.objects.count(), 232)
+        self.assertEqual(QuestionSet.objects.count(), 28)
+        self.assertEqual(Question.objects.count(), 239)
 
     def test_portal_home_shows_one_calm_subject_card(self):
         # The "What's Next" home shows a subject CARD (curriculum name), not the

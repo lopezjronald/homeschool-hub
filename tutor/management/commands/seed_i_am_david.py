@@ -744,6 +744,22 @@ class Command(BaseCommand):
         )
         set_count += s; q_count += q
 
+        # ...and the hands-on option, ALONGSIDE the printed six rather than in
+        # place of them. Every one of the guide's own options ends in writing;
+        # Kaylin draws, and she read the book.
+        from tutor import glean_handson
+
+        book = glean_handson.BOOKS["i_am_david"]
+        s, q = self._seed_set(
+            glean, family,
+            title="Section 5 · Glean: %s (hands-on)" % book["title"],
+            reading="",
+            intro=book["intro"],
+            rubric=book["rubric"],
+            questions=glean_handson.questions("i_am_david"),
+        )
+        set_count += s; q_count += q
+
         # Teacher-reference answer-key link (never shown to the student).
         CurriculumResource.objects.get_or_create(
             curriculum=curriculum,

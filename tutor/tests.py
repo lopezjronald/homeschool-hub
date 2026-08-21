@@ -2483,7 +2483,8 @@ class FolkKeeperSeedTests(TestCase):
         self._seed()
         curr = Curriculum.objects.get(name__startswith="The Folk Keeper")
         sets = QuestionSet.objects.filter(lesson__chapter__curriculum=curr)
-        self.assertEqual(sets.count(), 25)                    # 4 x 6 + Glean
+        # 4 x 6 + Glean + the hands-on Glean beside it.
+        self.assertEqual(sets.count(), 26)
         for n in (1, 2, 3, 4):
             titles = set(sets.filter(lesson__chapter__number=n).values_list("title", flat=True))
             for kind in ("Journal", "Vocabulary", "Comprehension",
@@ -2518,8 +2519,9 @@ class FolkKeeperSeedTests(TestCase):
         for s in oral:
             self.assertTrue(
                 s.title.endswith("Discussion") or s.title.endswith("Socratic Seminar"), s.title)
-        # Everything else is the child's own written work.
-        self.assertEqual(sets.filter(mode=QuestionSet.MODE_STUDENT).count(), 17)
+        # Everything else is the child's own work — 17, plus the hands-on final
+        # project, which is hers to do alone and so is a student set too.
+        self.assertEqual(sets.filter(mode=QuestionSet.MODE_STUDENT).count(), 18)
 
     def test_answer_key_content_matches_the_publishers_key(self):
         from tutor.models import QuestionSet
@@ -2552,8 +2554,13 @@ class FolkKeeperSeedTests(TestCase):
         self._seed()
         curr = Curriculum.objects.get(name__startswith="The Folk Keeper")
         sets = QuestionSet.objects.filter(lesson__chapter__curriculum=curr)
-        self.assertEqual(sets.count(), 25)
-        self.assertEqual(sum(s.questions.count() for s in sets), 187)
+        # 25, plus the hands-on final project beside the guide's own.
+        self.assertEqual(sets.count(), 26)
+        self.assertEqual(sum(s.questions.count() for s in sets), 194)
+        gleans = sets.filter(title__contains="Glean")
+        self.assertEqual(gleans.count(), 2)
+        self.assertTrue(gleans.filter(title__endswith="Final Project").exists(),
+                        "the guide's own options must still be offered")
 
 
 class EIWLessonTenTests(SimpleTestCase):
@@ -4471,11 +4478,17 @@ class RickshawGirlTests(TestCase):
                                    curriculum__parent=self.parent).count(), 5)
         self.assertEqual(lessons.count(), 21)
         sets = QuestionSet.objects.filter(lesson__in=lessons)
-        self.assertEqual(sets.count(), 21)            # 4 x 5 + the final project
+        # 4 x 5 + the final project + the hands-on final project beside it.
+        self.assertEqual(sets.count(), 22)
+        gleans = sets.filter(title__contains="Glean")
+        self.assertEqual(gleans.count(), 2)
+        self.assertTrue(gleans.filter(title__endswith="Final Project").exists(),
+                        "the guide's own options must still be offered")
+        self.assertTrue(gleans.filter(title__contains="hands-on").exists())
         # 82 for the four sections, plus the final project's three scaffolded
-        # questions (pick → plan → reflect) in place of the single 233-word one.
+        # questions (pick → plan → reflect), plus the hands-on project's six.
         self.assertEqual(
-            Question.objects.filter(question_set__in=sets).count(), 84)
+            Question.objects.filter(question_set__in=sets).count(), 90)
 
     def test_vocabulary_keeps_the_guides_own_two_exercises(self):
         """Level 3 matches words to numbered definitions and fills blanks. Both
@@ -5041,9 +5054,14 @@ class MissAgnesTests(TestCase):
             chapter__curriculum__parent=self.parent)
         self.assertEqual(lessons.count(), 21)
         sets = QuestionSet.objects.filter(lesson__in=lessons)
-        self.assertEqual(sets.count(), 21)
+        # 4 x 5 + the final project + the hands-on one beside it.
+        self.assertEqual(sets.count(), 22)
+        gleans = sets.filter(title__contains="Glean")
+        self.assertEqual(gleans.count(), 2)
+        self.assertTrue(gleans.filter(title__endswith="Final Project").exists(),
+                        "the guide's own options must still be offered")
         self.assertEqual(
-            Question.objects.filter(question_set__in=sets).count(), 83)
+            Question.objects.filter(question_set__in=sets).count(), 89)
 
     def test_journals_name_this_books_pairs_not_rickshaws_four(self):
         from tutor.models import Question
@@ -7540,3 +7558,201 @@ class AssessedWorkTests(TestCase):
             ai_level="proficient", status=MasteryAssessment.DRAFT)
         html = self._page(assessment).content.decode()
         self.assertIn("98 + 2 = 100, shown with a number bond.", html)
+
+
+class HandsOnGleanEveryBookTests(TestCase):
+    """Every Blackbird book gets a final project she can draw.
+
+    Every one of I Am David's six printed options ends in writing, and four of
+    The Folk Keeper's do. She read both books; she did not want to write about
+    them a seventh time.
+
+    What these guard is that the alternative is a real Grade 7 project and not a
+    lighter one — each drawing carries an argument that needs the book.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        from portal.tokens import make_portal_token
+
+        cls.parent = User.objects.create_user(
+            username="kg", email="kg@e.com", password="pw")
+        cls.fam = Family.objects.create(name="KG Fam")
+        FamilyMembership.objects.create(user=cls.parent, family=cls.fam,
+                                        role="parent")
+        cls.kaylin = Student.objects.create(
+            parent=cls.parent, first_name="Kaylin", grade_level="G07",
+            family=cls.fam)
+        cls.token = make_portal_token(cls.kaylin)
+        call_command("seed_i_am_david", "--for-user", "kg", stdout=StringIO())
+        call_command("seed_the_folk_keeper", "--for-user", "kg", stdout=StringIO())
+
+    def _set(self, contains):
+        return QuestionSet.objects.get(title__contains=contains)
+
+    BOOKS = ["What David Saw", "The Cellar and the Sea"]
+
+    # -- it is an EXTRA option, not a replacement ---------------------------
+
+    def test_the_guide_s_own_options_are_untouched(self):
+        """The record has to show the purchased guide followed. She picks."""
+        for book, marker in (("I Am David", "Epilogue"),
+                             ("Folk Keeper", "Sealfolk research")):
+            printed = QuestionSet.objects.get(
+                lesson__chapter__curriculum__name__contains=book,
+                title__endswith="Glean: Final Project")
+            self.assertIn(marker, printed.intro)
+            self.assertEqual(printed.questions.count(), 3)
+
+    def test_each_book_now_offers_both(self):
+        for book in ("I Am David", "Folk Keeper"):
+            gleans = QuestionSet.objects.filter(
+                lesson__chapter__curriculum__name__contains=book,
+                title__contains="Glean")
+            self.assertEqual(gleans.count(), 2, book)
+
+    # -- and it is genuinely hands-on ---------------------------------------
+
+    def test_it_is_drawing_with_exactly_one_thing_to_write(self):
+        """The complaint was that ALL of it was writing, not that any of it
+        was. One paragraph is right for a twelve-year-old; six is not."""
+        for title in self.BOOKS:
+            questions = list(self._set(title).questions.order_by("order"))
+            drawings = [q for q in questions if q.is_drawing]
+            written = [q for q in questions
+                       if q.response_type == Question.TYPE_TEXT]
+            self.assertEqual(len(drawings), 5, title)
+            self.assertEqual(len(written), 1, title)
+            self.assertTrue(written[0].offers_answer_mode,
+                            "she can type it or write it by hand")
+            self.assertTrue(questions[-1].is_self_eval)
+
+    def test_the_big_pieces_get_more_paper(self):
+        """A cover and a map need more room than an inventory sketch."""
+        for title in self.BOOKS:
+            heights = [q.drawing_height
+                       for q in self._set(title).questions.all() if q.is_drawing]
+            self.assertGreater(max(heights), min(heights), title)
+            self.assertGreaterEqual(min(heights), 480, title)
+
+    def test_the_self_check_asks_for_no_writing(self):
+        for title in self.BOOKS:
+            check = [q for q in self._set(title).questions.all() if q.is_self_eval][0]
+            self.assertFalse(check.self_eval_wants_notes)
+            self.assertEqual(check.self_eval_scale, ["Not yet", "Nearly", "Yes!"])
+
+    # -- it is Grade 7, not Grade 3 -----------------------------------------
+
+    def test_the_drawings_send_her_back_to_the_book(self):
+        """This is what makes it a comprehension check rather than an art
+        period: several of these cannot be done without re-reading."""
+        david = " ".join(q.prompt + q.hint
+                         for q in self._set("What David Saw").questions.all())
+        self.assertIn("go back to the book", david.lower())
+        self.assertIn("the same face, twice", david.lower())
+
+        folk = " ".join(q.prompt + q.hint
+                        for q in self._set("The Cellar and the Sea").questions.all())
+        self.assertIn("defensible from the text", folk.lower())
+
+    def test_no_prompt_asserts_a_plot_detail_i_could_have_got_wrong(self):
+        """The prompts ask HER to find the details rather than supplying them —
+        a list I invented would be wrong in a way she would trust."""
+        david = self._set("What David Saw")
+        bundle = david.questions.get(order=1)
+        self.assertIn("get the list right", bundle.prompt)
+        self.assertNotIn("soap", bundle.prompt.lower())
+        journey = david.questions.get(order=3)
+        self.assertIn("against the book", journey.hint)
+
+    def test_the_teacher_note_says_it_is_not_the_easier_option(self):
+        for title in self.BOOKS:
+            rubric = self._set(title).rubric
+            self.assertIn("20 points", rubric)
+            self.assertIn("not the easier option", rubric)
+            self.assertIn("on paper", rubric.lower())
+
+    # -- the page she opens --------------------------------------------------
+
+    def test_the_page_gives_her_paper_and_no_typing_box_but_one(self):
+        for title in self.BOOKS:
+            html = self.client.get(reverse(
+                "portal:portal_questions",
+                args=[self.token, self._set(title).pk])).content.decode()
+            self.assertIn("drawing-widget", html)
+            self.assertIn("Draw here", html)
+            # The single written answer offers the pen as well as the keyboard.
+            self.assertIn('data-mode="write"', html)
+            self.assertIn("handwriting-canvas", html)
+
+    def test_reseeding_changes_nothing(self):
+        before = (QuestionSet.objects.count(), Question.objects.count())
+        call_command("seed_i_am_david", "--for-user", "kg", stdout=StringIO())
+        call_command("seed_the_folk_keeper", "--for-user", "kg", stdout=StringIO())
+        self.assertEqual(
+            (QuestionSet.objects.count(), Question.objects.count()), before)
+
+
+class HandsOnGleanContentTests(SimpleTestCase):
+    """The same promise, checked for EVERY book at once.
+
+    Six books now carry one of these. A per-book test that only covered two of
+    them would let the next one ship with five paragraphs and a drawing.
+    """
+
+    def _books(self):
+        from tutor import glean_handson
+
+        return glean_handson.BOOKS
+
+    def test_every_book_has_one(self):
+        """Six Blackbird guides, six hands-on options."""
+        self.assertEqual(len(self._books()), 5)   # Wolf's lives in glean_wolf
+        for key, book in self._books().items():
+            self.assertTrue(book["title"], key)
+            self.assertTrue(book["steps"], key)
+
+    def test_every_one_of_them_is_drawing_with_one_thing_to_write(self):
+        """The complaint was never that there was ANY writing — it was that
+        there was nothing else. One short piece is right; six is not."""
+        from tutor.models import Question
+
+        for key, book in self._books().items():
+            types = [extra["response_type"] for _c, _p, _h, extra in book["steps"]]
+            self.assertGreaterEqual(types.count(Question.TYPE_DRAWING), 4, key)
+            self.assertEqual(types.count(Question.TYPE_TEXT), 1, key)
+            self.assertEqual(types[-1], Question.TYPE_SELF_EVAL, key)
+
+    def test_the_one_written_step_lets_her_use_a_pen(self):
+        for key, book in self._books().items():
+            written = [extra for _c, _p, _h, extra in book["steps"]
+                       if extra["response_type"] == "text"]
+            self.assertTrue(written[0]["passage"].get("answer_mode"), key)
+
+    def test_every_teacher_note_says_it_is_not_the_lighter_option(self):
+        """A parent glancing at five drawings and one paragraph could
+        reasonably assume it is the soft choice. It is not, and the note says
+        so — along with the fact that paper is fine."""
+        for key, book in self._books().items():
+            rubric = book["rubric"]
+            self.assertIn("20 points", rubric, key)
+            self.assertIn("not the easier option", rubric.lower(), key)
+            self.assertIn("on paper", rubric.lower(), key)
+
+    def test_every_book_sends_her_back_to_its_own_text(self):
+        """These are comprehension checks wearing different clothes. A project
+        that could be done without opening the book is just an art period."""
+        for key, book in self._books().items():
+            words = " ".join(p + h for _c, p, h, _e in book["steps"]).lower()
+            self.assertTrue(
+                any(phrase in words for phrase in
+                    ("go back to the book", "back to the book", "in the book",
+                     "from the text", "against the book", "find the moment",
+                     "find where", "look at the")),
+                f"{key}: nothing sends her to the text")
+
+    def test_the_self_check_never_asks_for_writing(self):
+        for key, book in self._books().items():
+            check = book["steps"][-1][3]["passage"]
+            self.assertFalse(check.get("notes", True), key)
+            self.assertGreaterEqual(len(check["items"]), 4, key)

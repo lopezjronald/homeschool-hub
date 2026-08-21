@@ -345,6 +345,22 @@ class Command(BaseCommand):
         )
         set_count += s; q_count += q
 
+        # ...and the hands-on option, ALONGSIDE the printed six. This guide's
+        # own option 3 is ten dress designs on a photocopier; this is that, in
+        # the app, with three more pieces around it.
+        from tutor import glean_handson
+
+        book = glean_handson.BOOKS["hundred_dresses"]
+        s, q = self._seed_set(
+            glean, family,
+            title="Section 5 · Glean: %s (hands-on)" % book["title"],
+            reading="",
+            intro=book["intro"],
+            rubric=book["rubric"],
+            questions=glean_handson.questions("hundred_dresses"),
+        )
+        set_count += s; q_count += q
+
         CurriculumResource.objects.get_or_create(
             curriculum=curriculum,
             url="https://blackbirdandcompany.com/information-for-parents-and-teachers/answer-keys/the-hundred-dresses/",

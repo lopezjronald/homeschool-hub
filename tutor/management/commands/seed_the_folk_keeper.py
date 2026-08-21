@@ -930,6 +930,22 @@ class Command(BaseCommand):
         )
         set_count += s; q_count += q
 
+        # ...and the hands-on option, ALONGSIDE the printed six rather than in
+        # place of them. Four of the guide's own options end in writing; Kaylin
+        # draws, and she read the book.
+        from tutor import glean_handson
+
+        book = glean_handson.BOOKS["folk_keeper"]
+        s, q = self._seed_set(
+            glean, family,
+            title="Section 5 · Glean: %s (hands-on)" % book["title"],
+            reading="",
+            intro=book["intro"],
+            rubric=book["rubric"],
+            questions=glean_handson.questions("folk_keeper"),
+        )
+        set_count += s; q_count += q
+
         CurriculumResource.objects.get_or_create(
             curriculum=curriculum,
             url="https://blackbirdandcompany.com/information-for-parents-and-teachers/answer-keys/the-folk-keeper/",

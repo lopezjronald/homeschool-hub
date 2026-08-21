@@ -3,7 +3,7 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
 
-from core.models import Family, Invitation
+from core.models import Family, HandoffRecipient, Invitation
 
 User = get_user_model()
 
@@ -113,3 +113,38 @@ class InviteSignupForm(forms.ModelForm):
         if commit:
             user.save()
         return user
+
+
+class HandoffRecipientForm(forms.ModelForm):
+    """Somebody a handoff can be sent to, saved once instead of typed each time.
+
+    Saved rather than retyped because a child's school record reaching a
+    stranger through one mistyped character is a failure with no undo. A short
+    list you pick from removes that class of mistake entirely.
+    """
+
+    class Meta:
+        model = HandoffRecipient
+        fields = ["name", "email", "phone"]
+        labels = {
+            "name": "Their name",
+            "email": "Email — where a handoff is sent",
+            "phone": "Phone — for your own reference when texting",
+        }
+        widgets = {
+            "name": forms.TextInput(attrs={"class": "form-control",
+                                           "placeholder": "Joyce"}),
+            "email": forms.EmailInput(attrs={"class": "form-control",
+                                             "placeholder": "name@example.com"}),
+            "phone": forms.TextInput(attrs={"class": "form-control",
+                                            "placeholder": "optional"}),
+        }
+
+    def clean(self):
+        cleaned = super().clean()
+        if not (cleaned.get("email") or cleaned.get("phone")):
+            raise forms.ValidationError(
+                "Add an email or a phone number — otherwise there is no way to "
+                "reach them."
+            )
+        return cleaned

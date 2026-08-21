@@ -19,7 +19,11 @@
         log to a report your teacher can trust.
       </p>
       <div class="d-flex flex-wrap gap-2 justify-content-center">
-        <a href="{% url 'accounts:register' %}" class="btn btn-amber btn-lg">Create account</a>
+        {% if public_signup_enabled %}
+          <a href="{% url 'accounts:register' %}" class="btn btn-amber btn-lg">Create account</a>
+        {% else %}
+          <a href="{% url 'accounts:login' %}" class="btn btn-amber btn-lg">Sign in</a>
+        {% endif %}
         <a href="{% url 'accounts:login' %}" class="btn btn-outline-light btn-lg">Log in</a>
       </div>
     {% endif %}
@@ -188,7 +192,7 @@
       <div class="col"><div class="card h-100"><div class="card-body">
         <div class="ss-feature-emoji mb-2">👪</div>
         <h5 class="card-title">Co-parents &amp; Teachers</h5>
-        <p class="card-text text-muted mb-0">Send one link. A co-parent, guardian, grandparent, or teacher creates their own account and joins — with exactly the access you choose.</p>
+        <p class="card-text text-muted mb-0">Send one link. The other parent joins with full access; a teacher or guardian joins able to look and nothing else.</p>
       </div></div></div>
     </div>
   {% endif %}

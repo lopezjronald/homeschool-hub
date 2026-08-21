@@ -75,7 +75,11 @@
       <a href="{% url 'home' %}" class="btn btn-amber">Set up my homeschool →</a>
       <a href="{% url 'core:how_it_works' %}" class="btn btn-outline-secondary">How it works</a>
     {% else %}
-      <a href="{% url 'accounts:register' %}" class="btn btn-amber">Create an account →</a>
+      {% if public_signup_enabled %}
+        <a href="{% url 'accounts:register' %}" class="btn btn-amber">Create an account →</a>
+      {% else %}
+        <a href="{% url 'accounts:login' %}" class="btn btn-amber">Sign in →</a>
+      {% endif %}
       <a href="{% url 'core:how_it_works' %}" class="btn btn-outline-secondary">How it works</a>
     {% endif %}
   </div>

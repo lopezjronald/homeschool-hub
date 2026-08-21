@@ -82,12 +82,21 @@ def default_since(family, *, days=7):
     Falling back to a week rather than to "everything" — a first handoff that
     dumps the entire school year is not a handoff, it is an archive.
     """
+    from django.db.models import Q
+
     from core.models import Handoff
 
-    last = (Handoff.objects.filter(family=family, sent_at__isnull=False)
-            .order_by("-sent_at").first())
+    # EITHER kind of delivery. Copying for a text is how this is mostly used,
+    # and filtering on `sent_at` alone meant a copied handoff never moved the
+    # window: every one re-reported the same seven days, and anything finished
+    # longer ago than that was silently dropped — the "skipped a week" failure
+    # this whole feature exists to prevent.
+    last = (Handoff.objects
+            .filter(Q(sent_at__isnull=False) | Q(copied_at__isnull=False),
+                    family=family)
+            .order_by("-created_at").first())
     if last is not None:
-        return last.covers_since
+        return last.covers_until
     return timezone.now() - timedelta(days=days)
 
 

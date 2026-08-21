@@ -1403,7 +1403,14 @@ class HubNavTests(TestCase):
         resp = self.client.get(reverse("home"))
         self.assertEqual(resp.status_code, 200)
         self.assertNotContains(resp, "hub-tile")
-        self.assertContains(resp, "Create account")
+        self.assertContains(resp, "Steadfast Scholars")
+        # Invitation-only now, so the hero offers the door that opens.
+        self.assertContains(resp, "Sign in")
+        self.assertNotContains(resp, "Create account")
+
+    @override_settings(PUBLIC_SIGNUP_ENABLED=True)
+    def test_the_home_page_sells_signup_again_when_it_opens(self):
+        self.assertContains(self.client.get(reverse("home")), "Create account")
 
 
 # ===========================================================================
@@ -2200,9 +2207,14 @@ class HandoffTests(TestCase):
         self.assertEqual(draft.sent_to, "copied for texting")
 
     def test_the_next_handoff_starts_where_the_last_one_stopped(self):
-        """So nobody has to remember a date, and nothing is reported twice."""
-        from django.utils import timezone
+        """So nobody has to remember a date, and nothing is reported twice.
 
+        This test used to set `sent_at` by hand — the exact field the copy path
+        does not set — and then assert on it. It passed while the code it was
+        guarding was broken: a copied handoff never moved the window, so every
+        one re-reported the same seven days and anything older was dropped.
+        Nothing is touched by hand now; the window has to move on its own.
+        """
         from core.handoff import default_since
 
         self._submit()
@@ -2212,10 +2224,22 @@ class HandoffTests(TestCase):
         self.client.post(reverse("core:handoff_send", args=[draft.pk]),
                          {"how": "copied"})
         draft.refresh_from_db()
-        draft.sent_at = timezone.now()
-        draft.save(update_fields=["sent_at"])
 
-        self.assertEqual(default_since(self.family), draft.covers_since)
+        self.assertIsNone(draft.sent_at, "copying is not sending")
+        self.assertEqual(default_since(self.family), draft.covers_until)
+
+    def test_an_unsent_draft_does_not_move_the_window(self):
+        """Previewing is not handing over. A draft you looked at and abandoned
+        must not make the next handoff skip the work it covered."""
+        from core.handoff import default_since
+
+        self._submit()
+        self._login()
+        before = default_since(self.family)
+        self.client.post(reverse("core:handoff_preview"), {"include": []})
+        self.assertEqual(Handoff.objects.count(), 1)
+        self.assertAlmostEqual(
+            default_since(self.family).timestamp(), before.timestamp(), delta=5)
 
     # -- who may do it -------------------------------------------------------
 
@@ -2246,3 +2270,107 @@ class HandoffTests(TestCase):
         self.assertEqual(resp.status_code, 404)
         draft.refresh_from_db()
         self.assertIsNone(draft.copied_at)
+
+
+class HandoffRecipientTests(TestCase):
+    """Who a handoff can be sent to.
+
+    This was the gap that made the email half unusable: the preview page told
+    parents to add someone "under Family settings" and no such control existed
+    anywhere — not a form, not a view, not even the admin.
+    """
+
+    def setUp(self):
+        self.parent = CustomUser.objects.create_user(
+            username="hr", email="hr@e.com", password="pw")
+        self.family = Family.objects.create(name="HR Fam")
+        FamilyMembership.objects.create(user=self.parent, family=self.family,
+                                        role="parent")
+
+    def _login(self):
+        self.client.login(username="hr", password="pw")
+
+    def test_a_parent_can_add_somebody_and_then_send_to_them(self):
+        """The whole point: from nobody saved, to a name the send page offers."""
+        from core.models import HandoffRecipient
+
+        self._login()
+        resp = self.client.post(reverse("core:handoff_recipients"), {
+            "name": "Joyce", "email": "joyce@e.com", "phone": "555-0100"})
+        self.assertRedirects(resp, reverse("core:handoff_recipients"))
+
+        joyce = HandoffRecipient.objects.get()
+        self.assertEqual(joyce.family, self.family)
+        self.assertTrue(joyce.is_active)
+        self.assertContains(self.client.get(reverse("core:handoff_recipients")),
+                            "joyce@e.com")
+
+    def test_somebody_with_no_way_to_reach_them_is_refused(self):
+        """A recipient with neither an email nor a phone is a row that can
+        never do anything, offered on the send page as though it could."""
+        from core.models import HandoffRecipient
+
+        self._login()
+        resp = self.client.post(reverse("core:handoff_recipients"),
+                                {"name": "Nobody", "email": "", "phone": ""})
+        self.assertEqual(resp.status_code, 200)
+        self.assertFalse(HandoffRecipient.objects.exists())
+
+    def test_removing_somebody_keeps_the_record_of_what_was_already_sent(self):
+        """Deactivated, not deleted. A handoff that already went to them should
+        keep saying so — the log is the point."""
+        from core.models import HandoffRecipient
+
+        joyce = HandoffRecipient.objects.create(
+            family=self.family, name="Joyce", email="joyce@e.com")
+        self._login()
+        self.client.post(reverse("core:handoff_recipient_remove", args=[joyce.pk]))
+
+        joyce.refresh_from_db()
+        self.assertFalse(joyce.is_active)
+        self.assertTrue(HandoffRecipient.objects.filter(pk=joyce.pk).exists())
+
+    def test_a_view_only_member_cannot_add_a_recipient(self):
+        """Choosing who the children's records go to is the household's."""
+        viewer = CustomUser.objects.create_user(
+            username="v", email="v@e.com", password="pw")
+        FamilyMembership.objects.create(user=viewer, family=self.family,
+                                        role="teacher")
+        self.client.login(username="v", password="pw")
+        self.assertEqual(
+            self.client.get(reverse("core:handoff_recipients")).status_code, 404)
+
+    def test_one_family_cannot_remove_another_family_s_recipient(self):
+        from core.models import HandoffRecipient
+
+        other_family = Family.objects.create(name="Other")
+        theirs = HandoffRecipient.objects.create(
+            family=other_family, name="Theirs", email="t@e.com")
+        self._login()
+        resp = self.client.post(
+            reverse("core:handoff_recipient_remove", args=[theirs.pk]))
+        self.assertEqual(resp.status_code, 404)
+        theirs.refresh_from_db()
+        self.assertTrue(theirs.is_active)
+
+    def test_a_broken_date_does_not_take_the_page_down(self):
+        """`parse_datetime` RAISES on a well-formed impossible date and merely
+        returns None for garbage. Both arrive from the browser."""
+        from curricula.models import Chapter, Curriculum, Lesson
+        from students.models import Student
+
+        child = Student.objects.create(
+            parent=self.parent, first_name="V", grade_level="G03",
+            family=self.family)
+        curriculum = Curriculum.objects.create(
+            parent=self.parent, name="C", subject="S", grade_level="G03",
+            family=self.family)
+        chapter = Chapter.objects.create(curriculum=curriculum, number=1, title="U")
+        Lesson.objects.create(chapter=chapter, number=1, order=1, title="L")
+
+        self._login()
+        for hostile in ("2026-02-30T00:00:00Z", "2026-13-01T00:00:00Z",
+                        "not-a-date", ""):
+            resp = self.client.post(reverse("core:handoff_preview"),
+                                    {"include": [], "since": hostile})
+            self.assertEqual(resp.status_code, 200, hostile)

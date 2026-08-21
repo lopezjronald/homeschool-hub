@@ -307,8 +307,17 @@ def handoff_preview(request):
     if family is None or not can_edit_family(request.user, family):
         raise Http404
 
-    since = parse_datetime(request.POST.get("since", "")) or handoff_lib.default_since(family)
-    until = parse_datetime(request.POST.get("until", "")) or timezone.now()
+    # parse_datetime RAISES on well-formed-but-impossible dates ("2026-02-30"),
+    # where it merely returns None for garbage. Both are user-controlled, and
+    # neither should be a 500 on the page a parent is mid-handover on.
+    def _when(field, fallback):
+        try:
+            return parse_datetime(request.POST.get(field, "")) or fallback
+        except ValueError:
+            return fallback
+
+    since = _when("since", handoff_lib.default_since(family))
+    until = _when("until", timezone.now())
     keep = set(request.POST.getlist("include"))
     note = request.POST.get("note", "")
 
@@ -379,3 +388,49 @@ def handoff_send(request, pk):
     draft.save(update_fields=["sent_at", "status", "sent_to"])
     messages.success(request, "Sent to %s." % ", ".join(r.name for r in chosen))
     return redirect("core:handoff_new")
+
+
+@login_required
+def handoff_recipients(request):
+    """Who a handoff can go to. Managed here so the preview can promise it.
+
+    The preview page told parents to "add the other parent under Family
+    settings" — a control that did not exist, which made the email half of the
+    feature impossible to use rather than merely awkward.
+    """
+    from core.forms import HandoffRecipientForm
+    from core.models import HandoffRecipient
+
+    family = get_selected_family(request) or get_active_family(request.user)
+    if family is None or not can_edit_family(request.user, family):
+        raise Http404
+
+    form = HandoffRecipientForm(request.POST or None)
+    if request.method == "POST" and form.is_valid():
+        recipient = form.save(commit=False)
+        recipient.family = family
+        recipient.save()
+        messages.success(request, f"{recipient.name} can now be sent handoffs.")
+        return redirect("core:handoff_recipients")
+
+    return render(request, "core/handoff_recipients.html", {
+        "family": family,
+        "form": form,
+        "recipients": HandoffRecipient.objects.filter(family=family),
+    })
+
+
+@login_required
+@require_POST
+def handoff_recipient_remove(request, pk):
+    """Stop sending to someone. Deactivated, not deleted — a handoff already
+    sent should keep saying who it went to."""
+    from core.models import HandoffRecipient
+
+    recipient = get_object_or_404(HandoffRecipient, pk=pk)
+    if not can_edit_family(request.user, recipient.family):
+        raise Http404
+    recipient.is_active = False
+    recipient.save(update_fields=["is_active"])
+    messages.success(request, f"{recipient.name} won't be offered any more.")
+    return redirect("core:handoff_recipients")

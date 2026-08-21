@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% load crispy_forms_tags %}
+
+{% block title %}Who gets handoffs · Steadfast Scholars{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+  <div class="row justify-content-center">
+    <div class="col-lg-7">
+
+      <h2>Who gets handoffs</h2>
+      <p class="text-muted">
+        Saved once, then picked from a list — so a mistyped character can't send
+        the girls' school records to a stranger.
+      </p>
+
+      {% if recipients %}
+        <div class="card mb-4">
+          <ul class="list-group list-group-flush">
+            {% for r in recipients %}
+              <li class="list-group-item d-flex justify-content-between align-items-center{% if not r.is_active %} text-muted{% endif %}">
+                <span>
+                  <strong>{{ r.name }}</strong>
+                  {% if r.email %}<br><span class="small">{{ r.email }}</span>{% endif %}
+                  {% if r.phone %}<br><span class="small text-muted">{{ r.phone }} — for texting yourself</span>{% endif %}
+                  {% if not r.is_active %}<span class="badge bg-secondary ms-1">not offered</span>{% endif %}
+                </span>
+                {% if r.is_active %}
+                  <form method="post" action="{% url 'core:handoff_recipient_remove' r.pk %}">
+                    {% csrf_token %}
+                    <button class="btn btn-outline-secondary btn-sm" type="submit">Stop sending</button>
+                  </form>
+                {% endif %}
+              </li>
+            {% endfor %}
+          </ul>
+        </div>
+      {% else %}
+        <div class="alert alert-secondary">
+          Nobody yet. Add the other parent below and they'll be offered whenever
+          you send a handoff.
+        </div>
+      {% endif %}
+
+      <div class="card">
+        <div class="card-header"><h6 class="mb-0">Add someone</h6></div>
+        <div class="card-body">
+          <form method="post">
+            {% csrf_token %}
+            {{ form|crispy }}
+            <button type="submit" class="btn btn-primary">Save them</button>
+          </form>
+        </div>
+      </div>
+
+      <p class="mt-3"><a href="{% url 'core:handoff_new' %}">← Back to the handoff</a></p>
+
+    </div>
+  </div>
+</div>
+{% endblock %}

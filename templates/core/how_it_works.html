@@ -144,9 +144,9 @@
       <div class="card mb-4">
         <div class="card-body">
           <h2 id="invite" class="h4" style="color:var(--ss-forest);">Sharing with a co-parent or teacher</h2>
-          <p class="mb-0">From the account menu, choose <strong>Invite people</strong> to bring in a co-parent,
-            guardian, grandparent, or reviewing teacher — with exactly the access you choose. Co-parents and guardians
-            can add and edit; grandparents and teachers get read-only oversight, including the charter report.</p>
+          <p class="mb-0">From the account menu, choose <strong>Invite people</strong> to bring in the other
+            parent, or a teacher or guardian. A parent can add, edit and grade; a teacher or guardian can
+            look — including the charter report — and nothing else.</p>
         </div>
       </div>
 
@@ -157,7 +157,11 @@
         </div>
       {% else %}
         <div class="d-flex flex-wrap gap-2">
-          <a href="{% url 'accounts:register' %}" class="btn btn-amber btn-lg">Create an account</a>
+          {% if public_signup_enabled %}
+            <a href="{% url 'accounts:register' %}" class="btn btn-amber btn-lg">Create an account</a>
+          {% else %}
+            <a href="{% url 'accounts:login' %}" class="btn btn-amber btn-lg">Sign in</a>
+          {% endif %}
           <a href="{% url 'accounts:login' %}" class="btn btn-outline-secondary btn-lg">Log in</a>
         </div>
       {% endif %}

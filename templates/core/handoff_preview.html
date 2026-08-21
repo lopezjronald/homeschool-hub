@@ -65,11 +65,11 @@
                   <button type="submit" class="btn btn-primary w-100 mt-auto">Send it</button>
                 {% else %}
                   <p class="small text-muted">
-                    Nobody's saved yet. Add the other parent under
-                    Family settings and they'll appear here — saved rather than
-                    typed each time, so a wrong character can't send the girls'
-                    records to a stranger.
+                    Nobody's saved yet — saved rather than typed each time, so a
+                    wrong character can't send the girls' records to a stranger.
                   </p>
+                  <a class="btn btn-outline-secondary w-100 mt-auto"
+                     href="{% url 'core:handoff_recipients' %}">Add someone</a>
                 {% endif %}
               </form>
             </div>

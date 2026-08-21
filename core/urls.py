@@ -25,5 +25,8 @@ urlpatterns = [
     ),
     path("handoff/", views.handoff_new, name="handoff_new"),
     path("handoff/preview/", views.handoff_preview, name="handoff_preview"),
+    path("handoff/people/", views.handoff_recipients, name="handoff_recipients"),
+    path("handoff/people/<int:pk>/remove/", views.handoff_recipient_remove,
+         name="handoff_recipient_remove"),
     path("handoff/<int:pk>/send/", views.handoff_send, name="handoff_send"),
 ]

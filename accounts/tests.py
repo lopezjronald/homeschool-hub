@@ -1,5 +1,5 @@
 from django.test import TestCase, override_settings
-from django.urls import reverse
+from django.urls import NoReverseMatch, reverse
 from django.core import mail
 from django.contrib.auth import get_user_model
 from django.contrib.auth.tokens import default_token_generator
@@ -751,13 +751,35 @@ class InvitationOnlyTests(TestCase):
         self.assertEqual(
             self.client.get(reverse("accounts:register")).status_code, 200)
 
-    def test_the_nav_does_not_offer_a_register_link_that_leads_nowhere(self):
-        """A "Register" link that lands on "invitation only" is a small lie the
-        nav tells every visitor. One flag drives both, so they cannot disagree."""
-        page = self.client.get(reverse("accounts:login")).content.decode()
-        self.assertNotIn(reverse("accounts:register"), page)
+    # Every page a stranger can reach that offers to sign them up. The first
+    # version of this test fetched only the login page — which extends base.html
+    # — so it passed while the landing page's own hero button still sent people
+    # to a 403. A guard that checks one page proves one page.
+    PUBLIC_PAGES = ["home", "core:how_it_works", "worklog:sample_report"]
+
+    def _public_pages(self):
+        pages = [self.client.get(reverse("accounts:login"))]
+        for name in self.PUBLIC_PAGES:
+            try:
+                pages.append(self.client.get(reverse(name)))
+            except NoReverseMatch:                       # pragma: no cover
+                continue
+        return [(p, r.content.decode()) for p, r in
+                zip([reverse("accounts:login")] + self.PUBLIC_PAGES, pages)
+                if r.status_code == 200]
+
+    def test_no_public_page_offers_a_signup_that_leads_nowhere(self):
+        """A "Create account" button that lands on "invitation only" is a small
+        lie the site tells every visitor."""
+        seen = self._public_pages()
+        self.assertGreaterEqual(len(seen), 2, "expected more than one public page")
+        for name, html in seen:
+            self.assertNotIn(reverse("accounts:register"), html, name)
 
     @override_settings(PUBLIC_SIGNUP_ENABLED=True)
-    def test_the_register_link_comes_back_when_signup_opens(self):
-        page = self.client.get(reverse("accounts:login")).content.decode()
-        self.assertIn(reverse("accounts:register"), page)
+    def test_the_signup_links_come_back_when_signup_opens(self):
+        """They are guarded, not deleted — the public build turns them on."""
+        offered = [name for name, html in self._public_pages()
+                   if reverse("accounts:register") in html]
+        self.assertIn(reverse("accounts:login"), offered)      # the nav
+        self.assertGreaterEqual(len(offered), 2)

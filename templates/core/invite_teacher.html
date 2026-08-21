@@ -8,7 +8,7 @@
       {% if no_family %}
         <div class="alert alert-info">
           <h4 class="alert-heading">No family yet</h4>
-          <p class="mb-0">Add a child first to create your family — then you can invite a co-parent, guardian, grandparent, or teacher.</p>
+          <p class="mb-0">Add a child first to create your family — then you can invite the other parent, or a teacher or guardian who may look.</p>
         </div>
       {% else %}
         <div class="card">
@@ -22,7 +22,7 @@
               <div class="mb-3">
                 <label for="id_role" class="form-label">{{ form.role.label }}</label>
                 {{ form.role }}
-                <div class="form-text">Co-parents and guardians can add and edit everything. Grandparents and teachers get read-only oversight.</div>
+                <div class="form-text">A parent can add, edit and grade. A teacher or guardian can look — including the charter report — and nothing else.</div>
               </div>
               <div class="mb-3">
                 <label for="id_email" class="form-label">{{ form.email.label }}</label>

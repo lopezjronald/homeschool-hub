@@ -37,6 +37,11 @@ questions say "study the map", and only that map will do.
 # Where the cropped figures live, per week.
 FIGURE_ROOT = "weekly"
 
+# Where a step of the routine happens. No third value on purpose: the useful
+# distinction is "this needs me" versus "this runs without me".
+VOICE = "out loud"
+SCREEN = "her screen"
+
 
 def figure(level, week, name):
     """Static path for one of a week's cropped figures."""
@@ -139,6 +144,28 @@ def written(prompt, *, hint="", standard="", answer_mode=True):
     """An open answer. `answer_mode` offers her the type-it/write-it picker."""
     return {"kind": "written", "prompt": prompt, "hint": hint,
             "standard": standard, "answer_mode": answer_mode}
+
+
+def step(do, where=VOICE):
+    """One step of the week's routine, and where it happens.
+
+    `where` is the whole point of the table. Half of what the teacher edition
+    prescribes is spoken, away from any screen, and half runs on the child's
+    page without you. Marking which is which is what lets a parent see, at a
+    glance, the part that needs them.
+    """
+    return {"do": do, "where": where}
+
+
+def routine(steps, short=()):
+    """The week's teaching sequence, plus the version for a bad day.
+
+    `short` is not an afterthought. Rigid schedules fail on the first disrupted
+    day, and a parent who has run out of afternoon will drop something whether
+    the guide says so or not — so the guide says which, in advance, instead of
+    leaving it to be decided at 4pm.
+    """
+    return {"steps": list(steps), "short": list(short)}
 
 
 def week_module(level, week):

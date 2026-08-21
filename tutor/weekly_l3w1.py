@@ -25,7 +25,8 @@ position you then test and may change, which is exactly what question 8 checks.
 Digitized from the family's purchased Studies Weekly issue for private use.
 """
 
-from .weekly import choice, fill_two, matching, order, written, figure, page_images
+from .weekly import (SCREEN, VOICE, choice, fill_two, figure, matching, order,
+                     page_images, routine, step, written)
 
 LEVEL = 3
 WEEK = 1
@@ -59,6 +60,35 @@ silly — that article says geographers study "the interaction between people an
 the environment" and ask "How do we use or interact with it?". The key is the
 publisher's, so the app marks it their way; worth telling her she was close and
 why the two lenses differ."""
+# The teacher edition's own weekly sequence (1.7-1.8), which until now lived
+# only in a PDF nobody opens mid-week. Its wording where it prescribes wording:
+# the Question Formulation Technique stimulus and both discussion questions are
+# the publisher's, verbatim.
+ROUTINE = routine(
+    [
+        step('Ask her: "The question is just as important as the answer." She '
+             'lists as many questions about it as she can — as many as she '
+             'wants. Do not answer any of them, and do not let her answer them '
+             'either. The whole unit is about asking.'),
+        step('Say what she is learning: "I am learning the parts of the inquiry '
+             'process, so I can start using it."'),
+        step("Read the issue — all four pages.", SCREEN),
+        step("Show her a photograph from history and ask her to build one "
+             "compelling question from it. Out loud; nothing to write."),
+        step("The eight-question check.", SCREEN),
+        step('Ask: "What new insights can come from looking at a problem with '
+             'different lenses?"'),
+        step('Ask: "How does looking through different lenses help you '
+             'understand others?"'),
+        step("Let's write — the lens paragraph.", SCREEN),
+    ],
+    short=[
+        "The opening question — it is what the whole unit is teaching.",
+        "Read the issue.",
+        "The check.",
+    ],
+)
+
 GRADER_NOTE = ("The written task asks her to pick a lens and give a compelling "
                "question of her own. A compelling question is one that could "
                "not be answered in a sentence, so look for whether hers has "

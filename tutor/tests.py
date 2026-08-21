@@ -7270,3 +7270,88 @@ class WorklogTranscriptTests(TestCase):
             self.assertEqual(ResponseSheet._plain(prompt), prompt)
         self.assertEqual(ResponseSheet._plain(""), "")
         self.assertEqual(ResponseSheet._plain(None), "")
+
+
+class WeeklyRoutineTests(StudiesWeeklyLevel3Tests):
+    """The teaching sequence, on the page a parent already opens.
+
+    The publisher prescribes a real weekly routine — a question stimulus before
+    anything else, a learning intention said out loud, two discussion questions
+    — and prints it in a teacher edition. That is to say: somewhere other than
+    where the teaching happens. Splitting attention between a PDF and the app is
+    the reliable way for the spoken half of a lesson to stop happening.
+    """
+
+    def _guide(self):
+        self._seed()
+        return Material.objects.get(lesson__number=1).parent_content
+
+    def test_the_spoken_steps_are_in_the_guide_at_all(self):
+        """None of these existed anywhere in the app before. They are the half
+        of the week that needs a grown-up, and they were invisible."""
+        guide = self._guide()
+        self.assertIn("This week, in order", guide)
+        self.assertIn("The question is just as important as the answer", guide)
+        self.assertIn("I am learning the parts of the inquiry process", guide)
+        self.assertIn("looking at a problem with different lenses", guide)
+        self.assertIn("help you understand others", guide)
+
+    def test_every_step_says_where_it_happens(self):
+        """The distinction the table exists for: what needs you, and what runs
+        on her screen without you."""
+        from tutor import weekly_l3w1 as w
+
+        wheres = {s["where"] for s in w.ROUTINE["steps"]}
+        self.assertEqual(wheres, {"out loud", "her screen"})
+        guide = self._guide()
+        rows = [line for line in guide.splitlines()
+                if line.startswith("| ") and ("out loud" in line or "her screen" in line)]
+        self.assertEqual(len(rows), len(w.ROUTINE["steps"]))
+
+    def test_the_publisher_s_own_sequence_is_kept_in_order(self):
+        """The pre-assessment comes FIRST — a question-generating exercise is
+        worthless once she has read the answers. Reordering it to sit with the
+        other discussion questions would quietly destroy it."""
+        from tutor import weekly_l3w1 as w
+
+        steps = [s["do"] for s in w.ROUTINE["steps"]]
+        self.assertIn("just as important as the answer", steps[0])
+        self.assertLess([i for i, s in enumerate(steps) if "Read the issue" in s][0],
+                        [i for i, s in enumerate(steps) if "check" in s][0])
+        self.assertIn("lens paragraph", steps[-1])
+
+    def test_the_bad_day_version_is_there_and_is_shorter(self):
+        """Rigid schedules fail on the first disrupted day, and a parent who has
+        run out of afternoon drops something whether the guide says so or not.
+        Saying WHICH, in advance, is the whole value."""
+        from tutor import weekly_l3w1 as w
+
+        self.assertTrue(w.ROUTINE["short"])
+        self.assertLess(len(w.ROUTINE["short"]), len(w.ROUTINE["steps"]))
+        guide = self._guide()
+        self.assertIn("If today is a write-off", guide)
+        # It keeps the opening question — dropping that keeps the week's shape
+        # while losing the thing the unit is actually teaching.
+        self.assertIn("The opening question", guide)
+
+    def test_no_invented_timings_anywhere(self):
+        """The publisher gives pacing for some weeks and marks others N/A. A
+        number I made up would read as theirs."""
+        guide = self._guide()
+        table = guide[guide.find("This week, in order"):
+                      guide.find("What this week assesses")]
+        for invented in ("min", "minutes", "mins"):
+            self.assertNotIn(invented, table.lower())
+
+    def test_a_week_without_a_routine_simply_has_no_table(self):
+        """Kaylin's week carries no ROUTINE yet. The guide must come out whole
+        and unremarkable, not with an empty heading over an empty table."""
+        call_command("seed_weekly", "--level", "7", "--week", "1",
+                     "--for-user", "sw3", "--child-name", "Kaylin",
+                     stdout=StringIO())
+        guide = Material.objects.get(
+            lesson__chapter__curriculum__name__startswith="Studies Weekly 7"
+        ).parent_content
+        self.assertNotIn("This week, in order", guide)
+        self.assertNotIn("If today is a write-off", guide)
+        self.assertIn("What this week assesses", guide)

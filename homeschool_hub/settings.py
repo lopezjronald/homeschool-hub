@@ -300,6 +300,21 @@ if _google_client_id:
         "AUTH_PARAMS": {"access_type": "online"},
     }
 
+# Can a stranger create an account? No.
+#
+# This app is one family's. Every account that should exist already does, and
+# the only way a new one should appear is an invitation from someone already in
+# a family. Closed by DEFAULT rather than by config, so a fresh deploy — or a
+# forgotten env var — is shut rather than open.
+#
+# It gates BOTH doors. /accounts/register/ is the visible one; the Google button
+# is the one that is easy to forget, and it was minting accounts for any Google
+# identity on earth until this flag existed. Signing IN with Google still works
+# for an account that already exists — see accounts.adapters.
+#
+# A public build is planned. This flag is where it turns on.
+PUBLIC_SIGNUP_ENABLED = _env_bool("PUBLIC_SIGNUP_ENABLED", False)
+
 # Email: real SMTP (e.g. Amazon SES) when EMAIL_HOST is configured, else the
 # console backend for local dev. Set EMAIL_HOST / EMAIL_HOST_USER /
 # EMAIL_HOST_PASSWORD / DEFAULT_FROM_EMAIL in Heroku config to enable delivery

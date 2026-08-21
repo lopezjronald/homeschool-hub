@@ -1285,9 +1285,13 @@ class CoParentInviteTests(TestCase):
         self.client.post(reverse("core:invite_teacher"), {"email": "cp@e.com", "role": "parent"})
         inv = Invitation.objects.get(email="cp@e.com")
         self.assertEqual(inv.role, "parent")
-        self.assertEqual(inv.role_display, "Co-parent")
-        self.client.post(reverse("core:invite_teacher"), {"email": "gma@e.com", "role": "grandparent"})
-        self.assertEqual(Invitation.objects.get(email="gma@e.com").role, "grandparent")
+        self.assertEqual(inv.role_display, "Parent")
+        # A retired role cannot be asked for at all. The field refuses the
+        # value outright rather than quietly downgrading it — a request for
+        # access that no longer exists should fail loudly, not half-succeed.
+        self.client.post(reverse("core:invite_teacher"),
+                         {"email": "gma@e.com", "role": "grandparent"})
+        self.assertFalse(Invitation.objects.filter(email="gma@e.com").exists())
 
     def test_new_user_signs_up_via_link_and_joins(self):
         inv = Invitation.objects.create(
@@ -1321,15 +1325,44 @@ class CoParentInviteTests(TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertFalse(CustomUser.objects.filter(username="xx").exists())
 
-    def test_guardian_edits_grandparent_views_only(self):
-        from core.permissions import user_can_edit
+    def test_only_a_parent_can_edit(self):
+        """Two tiers now: the household edits, everyone else looks.
 
-        guardian = CustomUser.objects.create_user(username="guard", email="g@e.com", password="pw")
-        grandparent = CustomUser.objects.create_user(username="gp", email="gp@e.com", password="pw")
-        FamilyMembership.objects.create(user=guardian, family=self.family, role="guardian")
-        FamilyMembership.objects.create(user=grandparent, family=self.family, role="grandparent")
-        self.assertTrue(user_can_edit(guardian))
-        self.assertFalse(user_can_edit(grandparent))
+        `guardian` used to be a FULL-access role, which is the opposite of what
+        a household means by the word — a guardian a parent lets look at the
+        children's work should not be able to re-grade it. It is view-only, and
+        so is anything left over from the retired roles.
+        """
+        from core.permissions import can_view_family, user_can_edit
+
+        def member(name, role):
+            user = CustomUser.objects.create_user(
+                username=name, email=f"{name}@e.com", password="pw")
+            FamilyMembership.objects.create(user=user, family=self.family, role=role)
+            return user
+
+        parent = member("par", "parent")
+        teacher = member("tea", "teacher")
+        # Rows that predate the change: still readable, never editable again.
+        guardian = member("guard", "guardian")
+        grandparent = member("gp", "grandparent")
+
+        self.assertTrue(user_can_edit(parent))
+        for viewer in (teacher, guardian, grandparent):
+            self.assertFalse(user_can_edit(viewer), viewer.username)
+            self.assertTrue(can_view_family(viewer, self.family), viewer.username)
+
+    def test_a_household_can_only_grant_two_roles(self):
+        """The invite form is the whole surface for handing out access, so what
+        it offers IS the policy. Anything not on it cannot be granted."""
+        from core.forms import TeacherInviteForm
+        from core.permissions import EDIT_ROLES
+
+        offered = {value for value, _label in TeacherInviteForm.ROLE_CHOICES}
+        self.assertEqual(offered, {"parent", "teacher"})
+        # Exactly one of them can edit, and "admin" is not on offer at all.
+        self.assertEqual(offered & set(EDIT_ROLES), {"parent"})
+        self.assertNotIn("admin", offered)
 
 
 class HubNavTests(TestCase):

@@ -34,7 +34,18 @@ class SocialSignupAdapter(DefaultSocialAccountAdapter):
     """
 
     def is_open_for_signup(self, request, sociallogin):
-        return True
+        # Closed unless the deploy says otherwise. This returned a flat True,
+        # which meant anybody with a Google account could create one here — the
+        # register page was closed and this door was standing open beside it.
+        #
+        # Note what this does NOT block: an existing user signing in. allauth
+        # only consults this when the social identity is unknown AND cannot be
+        # connected to an account, so the button on the login page keeps working
+        # for the people who are already here. `pre_social_login` below runs
+        # first and links a provider-verified email to its existing account.
+        from django.conf import settings
+
+        return bool(getattr(settings, "PUBLIC_SIGNUP_ENABLED", False))
 
     def pre_social_login(self, request, sociallogin):
         if sociallogin.is_existing:

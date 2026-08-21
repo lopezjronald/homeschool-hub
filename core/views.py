@@ -14,13 +14,14 @@ from core.models import FamilyMembership, Invitation
 from core.permissions import can_edit_family
 from core.utils import get_active_family, get_selected_family
 
-# Friendly label for an invitation role (co-parent stores as "parent").
+# Friendly label for an invitation role. Two grantable roles; the retired ones
+# keep an entry so an invitation sent before the change still reads sensibly.
 _ROLE_LABELS = {
-    "parent": "co-parent",
-    "guardian": "guardian",
-    "grandparent": "grandparent",
-    "teacher": "teacher",
+    "parent": "parent",
+    "teacher": "teacher or guardian",
     "admin": "admin",
+    "guardian": "teacher or guardian",
+    "grandparent": "teacher or guardian",
 }
 
 

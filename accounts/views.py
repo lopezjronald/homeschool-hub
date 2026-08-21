@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth import logout, get_user_model
 from django.contrib.auth.decorators import login_required
@@ -28,7 +29,15 @@ User = get_user_model()
 
 @csrf_protect
 def register(request):
-    """Register a new user and send a verification email."""
+    """Register a new user and send a verification email.
+
+    Invitation-only unless PUBLIC_SIGNUP_ENABLED. Answered with a page that says
+    so rather than a 404: this route exists, and a 404 on a route that exists
+    reads as a bug to whoever finds it next. Invitations are a different view
+    and are unaffected — that is how anyone new is meant to arrive.
+    """
+    if not getattr(settings, "PUBLIC_SIGNUP_ENABLED", False):
+        return render(request, "accounts/signup_closed.html", status=403)
     if request.method == "POST":
         form = RegisterForm(request.POST)
         if form.is_valid():

@@ -44,6 +44,47 @@ _DEFAULT_GRADER_NOTE = (
 )
 
 
+def _routine_section(mod):
+    """The week's teaching sequence, for the guide the parent already opens.
+
+    The publisher prescribes a real weekly routine and prints it in a teacher
+    edition — which is to say, somewhere other than where the teaching happens.
+    Splitting a parent's attention between a PDF and the app is the reliable way
+    to make the spoken half of a lesson quietly stop happening around week four.
+
+    Ordered, and marked by WHERE each step happens, so the parts that need a
+    grown-up separate at a glance from the parts that run on her screen. No
+    timings: the publisher gives pacing for some weeks and marks others N/A, and
+    a number I invented would read as theirs.
+    """
+    spec = getattr(mod, "ROUTINE", None)
+    if not spec or not spec.get("steps"):
+        return ""
+    rows = "\n".join(
+        "| %d | %s | %s |" % (i, s["do"], s["where"])
+        for i, s in enumerate(spec["steps"], start=1))
+    out = [
+        "",
+        "### This week, in order",
+        "",
+        "| # | Do this | Where |",
+        "|---|---|---|",
+        rows,
+        "",
+    ]
+    if spec.get("short"):
+        out += [
+            "**If today is a write-off, do these three.** Not a lesser week — "
+            "the rest is worth doing and this is what carries it when the "
+            "afternoon has gone.",
+            "",
+            "\n".join("%d. %s" % (i, line)
+                      for i, line in enumerate(spec["short"], start=1)),
+            "",
+        ]
+    return "\n".join(out)
+
+
 def _rubric(mod):
     """What the grader is told, in the issue's own terms."""
     standards = sorted({q.get("standard", "") for q in mod.QUESTIONS if q.get("standard")})
@@ -231,7 +272,7 @@ automatically, so the only thing needing your eye is the written question at the
 end — and whether she actually read the issue.
 
 {note}
-
+{routine}
 ### What this week assesses
 | Framework | Questions |
 |---|---|
@@ -241,6 +282,7 @@ Source: {pub}, Unit {unit}, Lesson {lesson}. Digitized from the family's
 purchased issue for private use.
 """.format(week=mod.WEEK, title=mod.TITLE, eq=mod.ESSENTIAL_QUESTION,
            note=getattr(mod, "PARENT_NOTE", "").strip(),
+           routine=_routine_section(mod),
            rows=rows, pub=mod.PUBLICATION, unit=mod.UNIT, lesson=mod.LESSON)
 
     # -- the check ----------------------------------------------------------

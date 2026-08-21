@@ -12,10 +12,18 @@ from django.db.models import Q
 
 from core.models import FamilyMembership
 
-# Full add/edit access: parents, co-parents (also "parent"), legal guardians, admins.
-EDIT_ROLES = ("parent", "guardian", "admin")
-# View / oversight (read-only) additionally includes teachers and grandparents.
-VIEW_ROLES = ("parent", "guardian", "admin", "teacher", "grandparent")
+# Two grantable roles, and one internal one.
+#
+# EDIT is the household: a parent and a co-parent, both stored as "parent"
+# because the app has never needed to tell them apart. VIEW is everyone the
+# household lets look — a charter teacher, a guardian — all stored as "teacher".
+#
+# "guardian" and "grandparent" were retired: guardian was an EDIT role, which is
+# the opposite of what a household means by it, and neither was ever granted.
+# They stay listed here only so a row written before the change keeps working.
+EDIT_ROLES = ("parent", "admin")
+VIEW_ROLES = ("parent", "admin", "teacher",
+              "guardian", "grandparent")   # retired; read-only if any survive
 
 
 def viewable_family_ids(user):

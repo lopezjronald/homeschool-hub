@@ -9,6 +9,7 @@ from django.utils.encoding import force_bytes
 User = get_user_model()
 
 
+@override_settings(PUBLIC_SIGNUP_ENABLED=True)
 class RegistrationTests(TestCase):
     """Tests for user registration and email verification."""
 
@@ -571,9 +572,23 @@ class SocialAuthTests(TestCase):
         self.assertEqual(User.objects.count(), before)
         self.assertFalse(User.objects.filter(email="sneaky@e.com").exists())
 
-    def test_social_signup_stays_open(self):
-        # Closing LOCAL signup must not close social signup (new Google users).
+    def test_social_signup_is_closed_by_default(self):
+        """The door nobody looks at.
+
+        This returned a flat True: the register page was shut and any Google
+        account on earth could still create one here. Closed unless the deploy
+        opens it — and closed by DEFAULT, so a forgotten env var is shut rather
+        than open.
+        """
         from accounts.adapters import SocialSignupAdapter
+
+        self.assertFalse(SocialSignupAdapter().is_open_for_signup(None, None))
+
+    @override_settings(PUBLIC_SIGNUP_ENABLED=True)
+    def test_social_signup_opens_with_the_rest_of_signup(self):
+        """One flag governs both doors, so the public build turns on together."""
+        from accounts.adapters import SocialSignupAdapter
+
         self.assertTrue(SocialSignupAdapter().is_open_for_signup(None, None))
 
     def test_social_login_links_existing_account_by_verified_email(self):
@@ -671,3 +686,67 @@ class PreferencesTests(TestCase):
         resp = self.client.get(reverse("accounts:settings"))
         self.assertContains(resp, "Connected accounts")
         self.assertContains(resp, "Connect Google")
+
+
+class InvitationOnlyTests(TestCase):
+    """This app is one family's, and every account that should exist already does.
+
+    Two doors, not one. `/accounts/register/` is the visible one; the Google
+    button is the one that is easy to forget, and it was minting accounts for
+    any Google identity on earth. Both close together, and the pair below is
+    what makes the guard meaningful — a stranger turned away is only half of it
+    if the people already here are turned away too.
+    """
+
+    def test_a_stranger_cannot_reach_the_register_page(self):
+        resp = self.client.get(reverse("accounts:register"))
+        self.assertEqual(resp.status_code, 403)
+        self.assertContains(resp, "Invitation only", status_code=403)
+        # A page that explains itself, not a 404 on a route that exists.
+        self.assertTemplateUsed(resp, "accounts/signup_closed.html")
+
+    def test_a_stranger_cannot_post_their_way_past_it(self):
+        """The GET being closed is cosmetic if the POST still creates a user."""
+        before = User.objects.count()
+        resp = self.client.post(reverse("accounts:register"), data={
+            "username": "sneak", "email": "sneak@e.com",
+            "password1": "correct-horse-battery-1", "password2": "correct-horse-battery-1",
+        })
+        self.assertEqual(resp.status_code, 403)
+        self.assertEqual(User.objects.count(), before)
+        self.assertFalse(User.objects.filter(username="sneak").exists())
+
+    def test_signing_in_still_works_for_somebody_who_is_already_here(self):
+        """The point of the whole feature is to keep the household out of its
+        own way. A lock that also locks out the two people who live here would
+        be a worse bug than the one it fixes."""
+        User.objects.create_user(username="ron", email="ron@e.com",
+                                 password="letmein-please-42", is_active=True)
+        resp = self.client.post(reverse("accounts:login"), data={
+            "username": "ron", "password": "letmein-please-42"}, follow=True)
+        self.assertTrue(resp.context["user"].is_authenticated)
+
+    def test_an_invitation_still_lets_somebody_new_in(self):
+        """Invitations are the ONLY way a new account should appear, so closing
+        signup must not close them — that is how Joyce got in."""
+        from core.models import Family, FamilyMembership, Invitation
+
+        inviter = User.objects.create_user(username="inv", email="inv@e.com",
+                                           password="pw", is_active=True)
+        family = Family.objects.create(name="Fam")
+        FamilyMembership.objects.create(user=inviter, family=family, role="parent")
+        invite = Invitation.objects.create(
+            email="new@e.com", family=family, invited_by=inviter,
+            role="teacher", status=Invitation.PENDING)
+
+        resp = self.client.get(
+            reverse("core:accept_invite", args=[invite.pk]))
+        self.assertEqual(resp.status_code, 200)
+        self.assertNotContains(resp, "Invitation only")
+
+    @override_settings(PUBLIC_SIGNUP_ENABLED=True)
+    def test_the_flag_is_what_opens_it(self):
+        """A public build is planned; this is the switch. Pinning it here means
+        the closed state is a decision rather than an accident."""
+        self.assertEqual(
+            self.client.get(reverse("accounts:register")).status_code, 200)

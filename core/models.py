@@ -55,11 +55,13 @@ class Family(models.Model):
 class FamilyMembership(models.Model):
     """Links a user to a family with a specific role."""
 
+    # Two roles a household can grant, plus an internal one. A co-parent is a
+    # "parent"; a guardian who may only look is a "teacher". The labels people
+    # read live on the invite form — see core.forms.TeacherInviteForm — because
+    # what someone is CALLED and what they may DO are different questions.
     ROLE_CHOICES = [
-        ("parent", "Parent"),
-        ("guardian", "Guardian"),
-        ("grandparent", "Grandparent"),
-        ("teacher", "Teacher"),
+        ("parent", "Parent — full access"),
+        ("teacher", "Teacher or guardian — view only"),
         ("admin", "Admin"),
     ]
 
@@ -133,12 +135,14 @@ class Invitation(models.Model):
         ]
         ordering = ["-created_at"]
 
+    # Retired roles keep an entry so an old invitation still reads as something
+    # rather than as a blank in the pending list.
     ROLE_LABELS = {
-        "parent": "Co-parent",
-        "guardian": "Guardian",
-        "grandparent": "Grandparent",
-        "teacher": "Teacher",
+        "parent": "Parent",
+        "teacher": "Teacher or guardian",
         "admin": "Admin",
+        "guardian": "Teacher or guardian",
+        "grandparent": "Teacher or guardian",
     }
 
     def __str__(self):

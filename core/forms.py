@@ -20,12 +20,14 @@ class FamilyForm(forms.ModelForm):
 class TeacherInviteForm(forms.Form):
     """Invite someone to a family by email, choosing the access role."""
 
-    # UI label -> stored FamilyMembership role. Co-parent stores as "parent".
+    # UI label -> stored FamilyMembership role. Two choices, worded as what the
+    # person may DO rather than what they are called: "guardian" used to be a
+    # separate FULL-access role, which is not what a household means by the
+    # word, and a grandparent who may look is the same thing as a teacher who
+    # may look. One view-only tier, one edit tier.
     ROLE_CHOICES = [
-        ("parent", "Co-parent — full access"),
-        ("guardian", "Guardian — full access"),
-        ("grandparent", "Grandparent — view only"),
-        ("teacher", "Teacher — view only"),
+        ("parent", "Parent — can add, edit and grade"),
+        ("teacher", "Teacher or guardian — can look, and nothing else"),
     ]
 
     email = forms.EmailField(

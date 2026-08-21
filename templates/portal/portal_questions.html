@@ -88,6 +88,8 @@
             </div>
           {% endif %}
 
+          {% include "portal/_booklet.html" %}
+
           <form method="post" id="response-form"
                 data-autosave-url="{% url 'portal:portal_autosave' token=token set_pk=question_set.pk %}"
                 {% if wordhelp_on and not sheet.is_submitted %}data-wordhelp-url="{% url 'portal:portal_word_help' token=token set_pk=question_set.pk %}"{% endif %}

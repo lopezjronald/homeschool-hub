@@ -7099,3 +7099,117 @@ class HandsOnGleanTests(TestCase):
         self._seed()
         drawing = [q for q in self._set().questions.all() if q.is_drawing][0]
         self.assertEqual(drawing.drawing_colours[0]["hex"], "#222222")
+
+
+class RubricReadabilityTests(TestCase):
+    """The page a parent is on when they decide a mastery level.
+
+    Rubrics are authored in Markdown — headings, bold, the standards table —
+    because every other surface renders them. This one dumped the source, so a
+    parent finalising an assessment read "### What she was asked to do" and
+    "**Essential question:**" as literal text.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.parent = User.objects.create_user(
+            username="rr", email="rr@e.com", password="pw")
+        cls.family = Family.objects.create(name="RR Fam")
+        FamilyMembership.objects.create(user=cls.parent, family=cls.family,
+                                        role="parent")
+        cls.child = Student.objects.create(
+            parent=cls.parent, first_name="Violet", grade_level="G03",
+            family=cls.family)
+        cls.entry = WorkLogEntry.objects.create(
+            parent=cls.parent, child=cls.child, subject="Social Studies",
+            family=cls.family, description="Studies Weekly Week 1")
+
+    def _assessment(self, rubric, answers="Q1 [reading]: Blank B\nA: b) compelling"):
+        return MasteryAssessment.objects.create(
+            work_entry=self.entry, rubric=rubric, answers=answers,
+            ai_level="developing", status=MasteryAssessment.DRAFT)
+
+    def _page(self, assessment):
+        self.client.login(username="rr", password="pw")
+        return self.client.get(
+            reverse("tutor:assess_detail", kwargs={"pk": assessment.pk})
+        ).content.decode()
+
+    def test_the_rubric_is_rendered_not_dumped(self):
+        a = self._assessment(
+            "## Week 1: Developing Inquiries\n\n"
+            "**Essential question:** What is inquiry?\n\n"
+            "### What this week assesses\n"
+            "| Framework | Questions |\n|---|---|\n| RI.3.1 | 1, 2, 3 |\n")
+        html = self._page(a)
+
+        body = html.split('class="assess-rubric"')[1].split("</div>")[0]
+        self.assertIn("<h2>", body)
+        self.assertIn("<h3>", body)
+        self.assertIn("<strong>Essential question:</strong>", body)
+        self.assertIn("<table>", body)
+        # ...and none of the source markers survive as text.
+        for marker in ("## Week 1", "### What this week", "**Essential",
+                       "|---|"):
+            self.assertNotIn(marker, body, "the Markdown source leaked through")
+
+    def test_a_rubric_with_no_markdown_still_reads_normally(self):
+        """Most rubrics are a plain sentence. Rendering must not mangle them."""
+        a = self._assessment("Bonds to 100. Reward showing the working.")
+        body = self._page(a).split('class="assess-rubric"')[1].split("</div>")[0]
+        self.assertIn("Bonds to 100. Reward showing the working.", body)
+
+    def test_the_child_s_own_words_are_never_rendered_as_markup(self):
+        """The rubric is ours; her answers are hers. Rendering her text as
+        Markdown would let anything she typed become markup on a parent's
+        page — and would run her Q/A lines together into paragraphs."""
+        a = self._assessment(
+            "Plain rubric.",
+            answers="Q1: Name a lens\nA: <script>alert(1)</script> **not bold**")
+        html = self._page(a)
+        self.assertNotIn("<script>alert(1)</script>", html)
+        self.assertIn("&lt;script&gt;", html)
+        self.assertIn("**not bold**", html, "her asterisks are hers, kept as-is")
+
+
+class WorklogTranscriptTests(TestCase):
+    """The plain-text Q&A that reaches the work log, the grader and the
+    parent's mastery page."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.parent = User.objects.create_user(
+            username="wt", email="wt@e.com", password="pw")
+        cls.family = Family.objects.create(name="WT Fam")
+        FamilyMembership.objects.create(user=cls.parent, family=cls.family,
+                                        role="parent")
+
+    def test_a_prompt_s_markdown_does_not_leak_into_the_transcript(self):
+        """Prompts are Markdown because the child's page renders them. This
+        transcript is plain text, so "**Blank A**" arrived at the grader — and
+        at a parent deciding a mastery level — with its asterisks on."""
+        self.assertEqual(ResponseSheet._plain("**Blank B**"), "Blank B")
+        self.assertEqual(ResponseSheet._plain("## Let's write. Pick a lens."),
+                         "Let's write. Pick a lens.")
+        self.assertEqual(
+            ResponseSheet._plain("**Listen and draw.** Play **Eine kleine "
+                                 "Nachtmusik**."),
+            "Listen and draw. Play Eine kleine Nachtmusik.")
+
+    def test_a_printed_blank_is_not_mistaken_for_emphasis(self):
+        """`___A___` is the blank the child fills in, not underscore-bold.
+        Stripping it gives "A _A_ question guides inquiry" — a different
+        question from the one she was asked."""
+        self.assertEqual(
+            ResponseSheet._plain("A ___A___ question guides inquiry. "
+                                 "___B___ questions look at smaller parts."),
+            "A ___A___ question guides inquiry. ___B___ questions look at "
+            "smaller parts.")
+
+    def test_it_never_drops_the_words_themselves(self):
+        """A stripper that eats content is worse than the markers it removes."""
+        for prompt in ("What is 3 * 4?", "See #3 on the list.",
+                       "Rate this 5 * out of 5", "a_b_c", "plain question"):
+            self.assertEqual(ResponseSheet._plain(prompt), prompt)
+        self.assertEqual(ResponseSheet._plain(""), "")
+        self.assertEqual(ResponseSheet._plain(None), "")

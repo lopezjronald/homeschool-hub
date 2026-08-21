@@ -1150,11 +1150,38 @@ class ResponseSheet(models.Model):
         types = {q.response_type for q in self.question_set.questions.all()}
         return bool(types) and types == {Question.TYPE_HANDWRITING}
 
+    @staticmethod
+    def _plain(text):
+        """A prompt's words, without its Markdown.
+
+        Prompts are authored in Markdown because the child's page renders them.
+        This transcript is PLAIN TEXT — it goes to the work log, to the grader,
+        and onto the parent's mastery page — so the markers leak: "**Blank A**"
+        and "## Let's write" appear as themselves in the middle of a
+        question a parent is reading to decide a mastery level.
+
+        Deliberately literal rather than a Markdown round-trip: it must never
+        drop a word, and a question that genuinely contains an asterisk should
+        keep it.
+        """
+        out = str(text or "")
+        # Asterisks only. Underscores are NOT emphasis in these prompts — they
+        # are the printed blank: "A ___A___ question guides inquiry" would come
+        # out as "A _A_ question", which is a different question.
+        for marker in ("***", "**"):
+            out = out.replace(marker, "")
+        # Leading heading hashes only — a mid-sentence "#3" is not a heading.
+        lines = [line.lstrip("#").lstrip() if line.lstrip().startswith("#")
+                 else line for line in out.split("\n")]
+        return "\n".join(lines).strip()
+
     def as_worklog_text(self):
         """Format the Q&A as readable text for the work log / grader."""
         lines = []
         for q in self.question_set.questions.all():
-            lines.append(f"Q{q.order} [{q.get_category_display()}]: {q.prompt}")
+            lines.append("Q%d [%s]: %s"
+                         % (q.order, q.get_category_display(),
+                            self._plain(q.prompt)))
             lines.append(f"A: {self.answer_display(q)}")
             lines.append("")
         text = "\n".join(lines).strip()

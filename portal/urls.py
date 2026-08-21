@@ -33,6 +33,7 @@ urlpatterns = [
     path("<str:token>/lingua/read/<int:story_id>/record/", views.lingua_record, name="lingua_record"),
     path("<str:token>/parents/", views.portal_parent_gate, name="portal_parent_gate"),
     path("<str:token>/subject/<int:curriculum_id>/", views.portal_subject, name="portal_subject"),
+    path("<str:token>/booklets/<int:pk>/", views.portal_booklet, name="portal_booklet"),
     path("<str:token>/materials/<int:pk>/", views.portal_material, name="portal_material"),
     path("<str:token>/questions/<int:set_pk>/", views.portal_questions, name="portal_questions"),
     path("<str:token>/questions/<int:set_pk>/autosave/", views.portal_autosave, name="portal_autosave"),

@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load tutor_extras %}
 {% block title %}Mastery Assessment · Steadfast Scholars{% endblock %}
 
 {% block content %}
@@ -105,9 +106,19 @@
       <div class="card">
         <div class="card-header"><h6 class="mb-0">What was assessed</h6></div>
         <div class="card-body">
+          {% comment %}The rubric is authored Markdown — headings, bold, the
+          standards table. Dumped raw it read as "### What she was asked to do"
+          and "**Essential question:**", which is the page a parent is on when
+          they decide a mastery level. Rendered, same as every other place a
+          rubric is shown.
+
+          The child's work is NOT rendered as Markdown: it is her own text, so
+          it stays escaped, and its line structure (one Q, one A, per line) is
+          the thing that makes it readable — Markdown would run the pairs
+          together into paragraphs.{% endcomment %}
           <p><strong>Rubric</strong></p>
-          <p class="text-muted" style="white-space: pre-wrap;">{{ assessment.rubric }}</p>
-          <p><strong>The child's work</strong></p>
+          <div class="assess-rubric">{{ assessment.rubric|markdownify }}</div>
+          <p class="mt-4"><strong>The child's work</strong></p>
           <p class="text-muted" style="white-space: pre-wrap;">{{ assessment.answers }}</p>
         </div>
         <div class="card-footer">

@@ -273,6 +273,27 @@ class CurriculumDocument(models.Model):
         blank=True,
         related_name="uploaded_curriculum_documents",
     )
+    # ---- the child-facing booklet -----------------------------------------
+    # A source PDF is usually a TEACHER edition: Violet's Studies Weekly issue
+    # carries the marked answer key on pages 8-9 and the teacher's lesson plans,
+    # with their answers, on 11-19. So a child never gets `file`. She gets
+    # `student_file`, which is a NEW pdf holding only the whitelisted pages,
+    # built at ingest time. Fail-closed: no whitelist, no booklet.
+    student_pages = models.CharField(
+        max_length=100, blank=True,
+        help_text="Pages of the source PDF a child may see, 1-based — e.g. "
+                  "'23-26' or '1-4,9'. Blank means she sees nothing.",
+    )
+    student_file = models.FileField(
+        upload_to="booklets/%Y/%m/", blank=True,
+        help_text="Generated: just the student_pages, extracted. Never the "
+                  "source file — that is the teacher edition.",
+    )
+    student_label = models.CharField(
+        max_length=200, blank=True,
+        help_text="What the child sees it called, e.g. \"This week's issue\".",
+    )
+
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -280,6 +301,55 @@ class CurriculumDocument(models.Model):
 
     def __str__(self):
         return self.title
+
+    @property
+    def child_visible(self):
+        """Only a document with an extracted file AND a whitelist is offered."""
+        return bool(self.student_pages.strip() and self.student_file)
+
+    @property
+    def child_label(self):
+        return self.student_label or self.title
+
+    @staticmethod
+    def parse_pages(spec, page_count=None):
+        """'23-26,9' -> [23, 24, 25, 26, 9], 1-based, de-duplicated in order.
+
+        Raises ValueError on anything it cannot read rather than guessing: a
+        misread spec here is the difference between four article pages and the
+        answer key.
+        """
+        pages, seen = [], set()
+        for part in str(spec or "").split(","):
+            part = part.strip()
+            if not part:
+                continue
+            if "-" in part.lstrip("-"):
+                lo, _, hi = part.partition("-")
+                try:
+                    lo, hi = int(lo), int(hi)
+                except ValueError:
+                    raise ValueError(f"{part!r} is not a page range")
+                if lo > hi:
+                    raise ValueError(f"{part!r} counts backwards")
+                span = range(lo, hi + 1)
+            else:
+                try:
+                    span = [int(part)]
+                except ValueError:
+                    raise ValueError(f"{part!r} is not a page number")
+            for n in span:
+                if n < 1:
+                    raise ValueError(f"page {n} — pages are numbered from 1")
+                if page_count is not None and n > page_count:
+                    raise ValueError(
+                        f"page {n}, but the file has only {page_count}")
+                if n not in seen:
+                    seen.add(n)
+                    pages.append(n)
+        if not pages:
+            raise ValueError("no pages given — a child would see nothing")
+        return pages
 
 
 class CurriculumPlacement(models.Model):

@@ -1,0 +1,40 @@
+{% comment %}The booklet, next to the work.
+
+Closed by default and opened with one tap: on a tablet an always-open PDF would
+push the questions off the screen, and the point of this panel is that she can
+look something up WITHOUT losing her place. The iframe is the browser's own PDF
+reader, so pinch-zoom, page jump and search all come for free — and "open it
+properly" hands the same file to a full tab for when she wants the whole page.
+
+Only ever the child's copy: {% url 'portal:portal_booklet' %} serves
+`student_file`, which holds the whitelisted pages and nothing else.{% endcomment %}
+{% if booklets %}
+  <div class="portal-booklets mb-4">
+    {% for doc in booklets %}
+      <details class="booklet" {% if forloop.first and booklets|length == 1 %}data-primary="1"{% endif %}>
+        <summary class="booklet-summary">
+          <span class="booklet-icon" aria-hidden="true">📖</span>
+          <span class="booklet-name">{{ doc.child_label }}</span>
+          <span class="booklet-hint">tap to read it</span>
+        </summary>
+        <div class="booklet-body">
+          {% comment %}The link sits ABOVE the frame on purpose. Reading a PDF
+          inline needs the browser's own PDF reader, and not every browser has
+          one — where it is missing the frame comes up blank with no
+          explanation. A child who cannot see her issue needs the way out to be
+          the first thing she reads, not a line under an empty box.{% endcomment %}
+          <p class="booklet-open-line">
+            <a class="booklet-open" target="_blank" rel="noopener"
+               href="{% url 'portal:portal_booklet' token=token pk=doc.pk %}">
+              Open it big ↗
+            </a>
+            <span class="booklet-open-note">— use this if the page below stays empty.</span>
+          </p>
+          <iframe class="booklet-frame"
+                  src="{% url 'portal:portal_booklet' token=token pk=doc.pk %}"
+                  title="{{ doc.child_label }}" loading="lazy"></iframe>
+        </div>
+      </details>
+    {% endfor %}
+  </div>
+{% endif %}

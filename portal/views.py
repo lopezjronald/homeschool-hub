@@ -19,6 +19,7 @@ from django.db import transaction
 from django.urls import NoReverseMatch, reverse
 from django.contrib import messages
 from django.utils import timezone
+from django.views.decorators.clickjacking import xframe_options_sameorigin
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_POST
 
@@ -1019,6 +1020,60 @@ def portal_subject(request, token, curriculum_id):
     })
 
 
+def _booklets_for(student, curriculum_id):
+    """The booklets this child may open for one curriculum.
+
+    Scoped twice over: to a curriculum she is actively placed on, and to
+    documents that carry an extracted child copy. A document with no whitelist
+    has no child copy and so is not offered — fail-closed, because the source
+    file is a teacher edition with the answer key in it.
+    """
+    from curricula.models import CurriculumDocument
+
+    placed = CurriculumPlacement.objects.filter(
+        child=student, curriculum_id=curriculum_id, is_active=True,
+        curriculum__is_active=True,
+    ).exists()
+    if not placed:
+        return CurriculumDocument.objects.none()
+    return (CurriculumDocument.objects
+            .filter(curriculum_id=curriculum_id)
+            .exclude(student_file="")
+            .exclude(student_pages="")
+            .order_by("title"))
+
+
+@xframe_options_sameorigin
+def portal_booklet(request, token, pk):
+    """Stream the child's copy of a booklet — never the source.
+
+    Streamed through this view rather than handed out as a signed storage URL
+    so the only address that reaches her is token-scoped and expires with the
+    token. `student_file` holds the whitelisted pages ONLY, so even if the
+    bytes leaked, the answer key is not among them.
+    """
+    from django.http import FileResponse
+    from curricula.models import CurriculumDocument
+
+    student = _resolve_student(token)
+    doc = get_object_or_404(
+        CurriculumDocument.objects.exclude(student_file="")
+                                  .exclude(student_pages=""),
+        pk=pk)
+    if not _booklets_for(student, doc.curriculum_id).filter(pk=doc.pk).exists():
+        raise Http404
+    # SAMEORIGIN, not the site-wide DENY: the booklet is read inside an iframe
+    # on her own lesson page, and DENY blocks Django's own response from being
+    # framed by Django's own page (net::ERR_BLOCKED_BY_RESPONSE, silently — the
+    # panel just opens empty). Same-origin only, so nobody else can frame it.
+    response = FileResponse(doc.student_file.open("rb"),
+                            content_type="application/pdf")
+    # inline: the browser's own PDF reader, which is the part that makes this
+    # usable on a tablet — pinch zoom, page jump, search.
+    response["Content-Disposition"] = 'inline; filename="booklet.pdf"'
+    return response
+
+
 def portal_material(request, token, pk):
     """Kid view of an approved material — student layers only, never the teaching
     guide. The lesson's whole workflow lives HERE: its journal/quiz sets render as
@@ -1063,6 +1118,7 @@ def portal_material(request, token, pk):
         "student": student,
         "token": token,
         "material": material,
+        "booklets": _booklets_for(student, curriculum_id),
         "lexicon_week": lexicon_week,
         "lesson_sets": lesson_sets,
         "is_resolved": is_resolved,
@@ -1478,6 +1534,11 @@ def portal_questions(request, token, set_pk):
         "student": student,
         "token": token,
         "question_set": question_set,
+        # The booklet, right beside the work — several of these questions say
+        # "read the issue first", and she should not have to leave the page she
+        # is answering on to do it.
+        "booklets": _booklets_for(
+            student, question_set.lesson.chapter.curriculum_id),
         "lexicon_week": lexicon_week,
         "dickinson_day": dickinson_day,
         "onetrue_week": onetrue_week,

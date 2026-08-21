@@ -2181,3 +2181,235 @@ class MaterialWorkflowTests(TestCase):
             child=self.violet, lesson=self.math_l1, status=LessonProgress.COMPLETED)
         resp = self.client.get(self._url("portal_subject", curriculum_id=self.math.pk))
         self.assertEqual(resp.context["next_material"].pk, self.manga2.pk)
+
+
+class BookletViewerTests(TestCase):
+    """The girls can open their own booklet beside their work.
+
+    The whole design turns on one thing: these PDFs are TEACHER editions.
+    Violet's Studies Weekly issue carries the marked answer key on pages 8-9
+    and the teacher's lesson plans, answers printed inline, on 11-19. So she is
+    never served the file — she is served a NEW pdf built from a whitelist. The
+    answer key is not withheld by a permission check that could be got around;
+    it is not in her file at all.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        from core.models import Family, FamilyMembership
+        from portal.tokens import make_portal_token
+
+        cls.parent = User.objects.create_user(
+            username="bk", email="bk@e.com", password="pw")
+        cls.family = Family.objects.create(name="BK Fam")
+        FamilyMembership.objects.create(user=cls.parent, family=cls.family,
+                                        role="parent")
+        cls.violet = Student.objects.create(
+            parent=cls.parent, first_name="Violet", grade_level="G03",
+            family=cls.family)
+        cls.kaylin = Student.objects.create(
+            parent=cls.parent, first_name="Kaylin", grade_level="G07",
+            family=cls.family)
+        cls.vtoken = make_portal_token(cls.violet)
+        cls.ktoken = make_portal_token(cls.kaylin)
+
+    # -- a source PDF we control, with a fake "answer key" page --------------
+
+    def _source_pdf(self, pages=6):
+        """Six pages. Page 3 is the answer key; 5 and 6 are her articles."""
+        import io as _io
+
+        try:
+            import pymupdf as fitz
+        except ImportError:                                   # pragma: no cover
+            import fitz
+
+        doc = fitz.open()
+        for n in range(1, pages + 1):
+            page = doc.new_page()
+            if n == 3:
+                page.insert_text((72, 100), "ANSWER KEY the answer is b")
+            elif n >= 5:
+                page.insert_text((72, 100), "Article page for the child %d" % n)
+            else:
+                page.insert_text((72, 100), "Teacher pacing notes page %d" % n)
+        buf = _io.BytesIO()
+        doc.save(buf)
+        return buf.getvalue()
+
+    def _ingest(self, child, name, student_pages="5-6", curriculum=None):
+        import os
+        import tempfile
+
+        from curricula.models import Chapter, Curriculum, CurriculumPlacement, Lesson
+
+        if curriculum is None:
+            curriculum = Curriculum.objects.create(
+                parent=self.parent, name=name, subject="Social Studies",
+                grade_level=child.grade_level, family=self.family)
+            chapter = Chapter.objects.create(curriculum=curriculum, number=1,
+                                             title="Unit 1")
+            lesson = Lesson.objects.create(chapter=chapter, number=1, order=1,
+                                           title="Week 1")
+            CurriculumPlacement.objects.create(
+                child=child, curriculum=curriculum, current_lesson=lesson)
+
+        fd, path = tempfile.mkstemp(suffix=".pdf")
+        with os.fdopen(fd, "wb") as fh:
+            fh.write(self._source_pdf())
+        try:
+            call_command("ingest_booklet", "--curriculum", str(curriculum.pk),
+                         "--pdf", path, "--title", name + " (teacher edition)",
+                         "--student-pages", student_pages,
+                         "--student-label", "This week's issue",
+                         stdout=StringIO())
+        finally:
+            os.unlink(path)
+        from curricula.models import CurriculumDocument
+        return CurriculumDocument.objects.get(curriculum=curriculum)
+
+    def _fetch(self, token, doc):
+        return self.client.get(reverse("portal:portal_booklet",
+                                       kwargs={"token": token, "pk": doc.pk}))
+
+    @staticmethod
+    def _text_of(response):
+        try:
+            import pymupdf as fitz
+        except ImportError:                                   # pragma: no cover
+            import fitz
+
+        data = b"".join(response.streaming_content)
+        doc = fitz.open(stream=data, filetype="pdf")
+        return doc.page_count, " ".join(doc[i].get_text()
+                                        for i in range(doc.page_count))
+
+    # -- the point of the whole thing ---------------------------------------
+
+    def test_the_answer_key_is_not_in_the_file_she_is_served(self):
+        doc = self._ingest(self.violet, "Violet Weekly")
+        pages, text = self._text_of(self._fetch(self.vtoken, doc))
+
+        self.assertEqual(pages, 2)
+        self.assertIn("Article page for the child", text)
+        self.assertNotIn("ANSWER KEY", text)
+        self.assertNotIn("the answer is b", text)
+        self.assertNotIn("Teacher pacing notes", text)
+
+    def test_the_teacher_edition_itself_is_kept_and_kept_separate(self):
+        """The parent still needs the whole thing — it just is not what any
+        portal URL serves."""
+        doc = self._ingest(self.violet, "Violet Weekly")
+        self.assertTrue(doc.file)
+        self.assertNotEqual(doc.file.name, doc.student_file.name)
+        with doc.file.open("rb") as fh:
+            try:
+                import pymupdf as fitz
+            except ImportError:                               # pragma: no cover
+                import fitz
+            full = fitz.open(stream=fh.read(), filetype="pdf")
+        self.assertEqual(full.page_count, 6)
+        self.assertIn("ANSWER KEY",
+                      " ".join(full[i].get_text() for i in range(6)))
+
+    def test_a_document_with_no_whitelist_is_offered_to_nobody(self):
+        """Fail-closed. A document nobody has vetted must not become readable
+        just because it exists."""
+        doc = self._ingest(self.violet, "Violet Weekly")
+        doc.student_pages = ""
+        doc.save(update_fields=["student_pages"])
+        self.assertFalse(doc.child_visible)
+        self.assertEqual(self._fetch(self.vtoken, doc).status_code, 404)
+
+        doc.student_pages = "5-6"
+        doc.student_file = ""
+        doc.save(update_fields=["student_pages", "student_file"])
+        self.assertFalse(doc.child_visible)
+        self.assertEqual(self._fetch(self.vtoken, doc).status_code, 404)
+
+    def test_one_child_cannot_open_another_child_s_booklet(self):
+        vdoc = self._ingest(self.violet, "Violet Weekly")
+        kdoc = self._ingest(self.kaylin, "Kaylin Weekly")
+
+        self.assertEqual(self._fetch(self.vtoken, vdoc).status_code, 200)
+        self.assertEqual(self._fetch(self.ktoken, kdoc).status_code, 200)
+        self.assertEqual(self._fetch(self.ktoken, vdoc).status_code, 404)
+        self.assertEqual(self._fetch(self.vtoken, kdoc).status_code, 404)
+
+    def test_a_shelved_curriculum_takes_its_booklet_with_it(self):
+        """Access follows the ACTIVE placement, not a link she once had."""
+        from curricula.models import CurriculumPlacement
+
+        doc = self._ingest(self.violet, "Violet Weekly")
+        self.assertEqual(self._fetch(self.vtoken, doc).status_code, 200)
+        CurriculumPlacement.objects.filter(
+            child=self.violet, curriculum=doc.curriculum).update(is_active=False)
+        self.assertEqual(self._fetch(self.vtoken, doc).status_code, 404)
+
+    def test_a_bad_token_gets_nothing(self):
+        doc = self._ingest(self.violet, "Violet Weekly")
+        self.assertEqual(
+            self.client.get(reverse("portal:portal_booklet",
+                                    kwargs={"token": "not-a-token",
+                                            "pk": doc.pk})).status_code, 404)
+
+    # -- how a browser is told to show it ------------------------------------
+
+    def test_it_is_served_so_a_browser_will_show_it_in_the_page(self):
+        """Three headers decide whether the panel works at all. The site sends
+        X-Frame-Options: DENY by default, which blocks Django's own response
+        from being framed by Django's own page — the panel just opens blank,
+        with nothing in the console to say why."""
+        doc = self._ingest(self.violet, "Violet Weekly")
+        r = self._fetch(self.vtoken, doc)
+        self.assertEqual(r["Content-Type"], "application/pdf")
+        self.assertEqual(r["X-Frame-Options"], "SAMEORIGIN")
+        self.assertIn("inline", r["Content-Disposition"])
+        self.assertTrue(b"".join(r.streaming_content).startswith(b"%PDF-"))
+
+    # -- the panel on her page ----------------------------------------------
+
+    def test_the_panel_appears_beside_the_work_with_a_way_out(self):
+        from tutor.models import QuestionSet
+
+        doc = self._ingest(self.violet, "Violet Weekly")
+        lesson = doc.curriculum.chapters.first().lessons.first()
+        qset = QuestionSet.objects.create(
+            lesson=lesson, title="Week 1 check", family=self.family,
+            status=QuestionSet.APPROVED, mode=QuestionSet.MODE_STUDENT)
+
+        html = self.client.get(reverse(
+            "portal:portal_questions",
+            kwargs={"token": self.vtoken, "set_pk": qset.pk})).content.decode()
+        self.assertIn("booklet-frame", html)
+        self.assertIn("This week&#x27;s issue", html)
+        self.assertIn(reverse("portal:portal_booklet",
+                              kwargs={"token": self.vtoken, "pk": doc.pk}), html)
+        # Closed until she asks for it — an open PDF would push the questions
+        # off a tablet screen.
+        self.assertNotIn("<details class=\"booklet\" open", html)
+        # And the way out is present for a browser with no PDF reader.
+        self.assertIn("if the page below stays empty", html)
+
+    # -- the whitelist parser ------------------------------------------------
+
+    def test_a_page_spec_that_cannot_be_read_is_refused_not_guessed(self):
+        """A misread spec is the difference between four article pages and the
+        answer key, so it must never fall back to a default."""
+        from curricula.models import CurriculumDocument as D
+
+        self.assertEqual(D.parse_pages("23-26"), [23, 24, 25, 26])
+        self.assertEqual(D.parse_pages("5, 3, 5"), [5, 3])   # order kept, deduped
+        self.assertEqual(D.parse_pages("1-2,9"), [1, 2, 9])
+        for bad in ("", "   ", "abc", "3-", "-", "9-2", "0", "-4", "2-x", ","):
+            with self.assertRaises(ValueError, msg=bad):
+                D.parse_pages(bad)
+        with self.assertRaises(ValueError):
+            D.parse_pages("1-9", page_count=4)               # past the end
+
+    def test_the_command_refuses_a_spec_past_the_end_of_the_file(self):
+        from django.core.management.base import CommandError
+
+        with self.assertRaises(CommandError) as caught:
+            self._ingest(self.violet, "Violet Weekly", student_pages="5-99")
+        self.assertIn("only 6", str(caught.exception))

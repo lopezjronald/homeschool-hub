@@ -26,6 +26,8 @@
             </div>
           {% endif %}
 
+          {% include "portal/_booklet.html" %}
+
           {% if lexicon_week %}
             {% include "portal/_lexicon_week.html" %}
           {% elif material.has_blocks %}

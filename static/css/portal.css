@@ -1645,3 +1645,47 @@ button.portal-subject-card {
   top: 14px;
   left: 16px;
 }
+
+/* ---- The booklet, beside the work ----
+   Closed by default: an always-open PDF pushes the questions off a tablet, and
+   the whole point is that she can look something up without losing her place. */
+.portal-booklets { display: flex; flex-direction: column; gap: 0.6rem; }
+.booklet {
+  border: 1.5px solid rgba(15, 61, 46, 0.2);
+  border-radius: 10px;
+  background: #fffdf7;
+  overflow: hidden;
+}
+.booklet-summary {
+  display: flex; align-items: center; gap: 0.55rem;
+  padding: 0.7rem 0.9rem;
+  cursor: pointer;
+  font-weight: 600;
+  list-style: none;
+}
+.booklet-summary::-webkit-details-marker { display: none; }
+.booklet-summary::after {
+  content: "▸"; margin-left: auto; font-size: 1.1rem; opacity: 0.55;
+  transition: transform 0.15s ease;
+}
+.booklet[open] .booklet-summary::after { transform: rotate(90deg); }
+.booklet-summary:focus-visible { outline: 3px solid var(--lesson-move, #C2571A); outline-offset: -3px; }
+.booklet-icon { font-size: 1.2rem; }
+.booklet-hint { font-weight: 400; font-size: 0.82rem; color: #6b7280; }
+.booklet-body { padding: 0 0.7rem 0.7rem; }
+.booklet-frame {
+  width: 100%;
+  height: 70vh;            /* tall enough to read a newspaper page */
+  min-height: 380px;
+  border: 1px solid rgba(15, 61, 46, 0.16);
+  border-radius: 8px;
+  background: #fff;
+}
+.booklet-open-line { margin: 0.5rem 0 0.6rem; font-size: 0.9rem; }
+.booklet-open { font-weight: 700; }
+.booklet-open-note { color: #6b7280; }
+
+@media print {
+  /* Her reference copy, not part of anything printed. */
+  .portal-booklets { display: none; }
+}

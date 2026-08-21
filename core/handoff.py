@@ -82,6 +82,7 @@ def default_since(family, *, days=7):
     Falling back to a week rather than to "everything" — a first handoff that
     dumps the entire school year is not a handoff, it is an archive.
     """
+    from django.db import models
     from django.db.models import Q
 
     from core.models import Handoff
@@ -91,12 +92,16 @@ def default_since(family, *, days=7):
     # window: every one re-reported the same seven days, and anything finished
     # longer ago than that was silently dropped — the "skipped a week" failure
     # this whole feature exists to prevent.
-    last = (Handoff.objects
-            .filter(Q(sent_at__isnull=False) | Q(copied_at__isnull=False),
-                    family=family)
-            .order_by("-created_at").first())
-    if last is not None:
-        return last.covers_until
+    furthest = (Handoff.objects
+                .filter(Q(sent_at__isnull=False) | Q(copied_at__isnull=False),
+                        family=family)
+                .aggregate(models.Max("covers_until"))["covers_until__max"])
+    # The FURTHEST point already handed over, not the most recent row. Filling
+    # in a stretch from June — which is what the date picker is for — would
+    # otherwise drag the default back to June, and the next handoff would
+    # re-report every week since, under a banner promising it would not.
+    if furthest is not None:
+        return furthest
     return timezone.now() - timedelta(days=days)
 
 

@@ -157,7 +157,7 @@
               </div>
             {% endfor %}
 
-            {% if work.sheet.attachment %}
+            {% if work.sheet.is_on_paper and work.sheet.attachment %}
               <div class="border-top pt-3 mt-3">
                 <p class="text-muted small mb-1">Turned in on paper:</p>
                 {% if work.sheet.project_is_image %}

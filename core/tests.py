@@ -2411,14 +2411,24 @@ class HandoffWindowTests(TestCase):
                                 prompt="Q1", category="reading")
         self.client.login(username="hw", password="pw")
 
-    def _submit_days_ago(self, days):
+    def _submit_days_ago(self, days, title=None):
+        """One sheet per (question_set, child), so work on two different days
+        needs two different sets — same as it would in real life."""
         from datetime import timedelta
 
         from django.utils import timezone
-        from tutor.models import ResponseSheet
+        from tutor.models import Question, QuestionSet, ResponseSheet
 
+        if title is None:
+            qset = self.qset
+        else:
+            qset = QuestionSet.objects.create(
+                lesson=self.qset.lesson, title=title, family=self.family,
+                status=QuestionSet.APPROVED)
+            Question.objects.create(question_set=qset, order=1, prompt="Q",
+                                    category="reading")
         return ResponseSheet.objects.create(
-            question_set=self.qset, child=self.child,
+            question_set=qset, child=self.child,
             submitted_at=timezone.now() - timedelta(days=days),
             answers={"1": "an answer"})
 
@@ -2450,16 +2460,34 @@ class HandoffWindowTests(TestCase):
         today = timezone.localtime(timezone.now()).date().isoformat()
         self.assertContains(self._page(since=today, until=today), "Week 1 check")
 
-    def test_dates_typed_backwards_are_read_the_way_they_were_meant(self):
+    def test_dates_typed_backwards_still_include_both_end_days(self):
+        """The From box is the prefilled one, so typing latest-first is easy.
+
+        Swapping the two MOMENTS rather than the two dates turned the window
+        into (end-of-day, start-of-day) — losing the whole of both days the
+        parent had named, while the page printed those dates above it. Work
+        placed 10 days inside the range cannot see that; work ON the endpoints
+        can.
+        """
         from datetime import timedelta
 
         from django.utils import timezone
 
-        self._submit_days_ago(10)
-        now = timezone.localtime(timezone.now()).date()
-        resp = self._page(since=now.isoformat(),
-                          until=(now - timedelta(days=20)).isoformat())
-        self.assertContains(resp, "Week 1 check")
+        today = timezone.localtime(timezone.now()).date()
+        start = today - timedelta(days=6)
+        self._submit_days_ago(6, title="Work on the first day")
+        self._submit_days_ago(0, title="Work on the last day")
+
+        forwards = self._page(since=start.isoformat(), until=today.isoformat())
+        backwards = self._page(since=today.isoformat(), until=start.isoformat())
+
+        import re
+        pattern = r'name="include"\s+value="([^"]+)"'
+        self.assertEqual(
+            sorted(re.findall(pattern, forwards.content.decode())),
+            sorted(re.findall(pattern, backwards.content.decode())),
+            "typing the dates the other way round changed what she gets credit for")
+        self.assertEqual(len(re.findall(pattern, backwards.content.decode())), 2)
 
     def test_a_nonsense_date_falls_back_instead_of_crashing(self):
         """It arrives from a querystring anyone can edit."""
@@ -2479,9 +2507,19 @@ class HandoffWindowTests(TestCase):
 
         import re
         keys = re.findall(r'name="include"\s+value="([^"]+)"', page)
-        since = re.search(r'name="since" value="([^"]+)"', page).group(1)
-        until = re.search(r'name="until" value="([^"]+)"', page).group(1)
+        # The HIDDEN inputs — the ones a browser actually posts. The page also
+        # carries a date picker named "since"/"until" in a separate GET form,
+        # and matching that one made this test pass with the whole POST-side
+        # window mechanism deleted.
+        since = re.search(
+            r'type="hidden" name="since" value="([^"]+)"', page).group(1)
+        until = re.search(
+            r'type="hidden" name="until" value="([^"]+)"', page).group(1)
         self.assertTrue(keys)
+        # A full moment, not a bare date: a bare date parses to midnight and
+        # would silently drop the last day's work on the way to the preview.
+        self.assertIn("T", since)
+        self.assertIn("T", until)
 
         self.client.post(reverse("core:handoff_preview"),
                          {"include": keys, "since": since, "until": until})
@@ -2492,3 +2530,37 @@ class HandoffWindowTests(TestCase):
         """Adding the picker must not break the thing it defaults to."""
         page = self._page().content.decode()
         self.assertIn("Starts where your last handoff finished", page)
+
+    def test_a_back_fill_does_not_drag_the_default_backwards(self):
+        """The picker exists to fill in a stretch that was missed — which means
+        creating a handoff whose `covers_until` is months old. Taking the NEWEST
+        row as the watermark let that back-fill drag the default back to June,
+        so the next handoff re-reported every week since, everything pre-ticked,
+        under a banner promising nothing is reported twice.
+        """
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        from core.handoff import default_since
+        from core.models import Handoff
+
+        now = timezone.now()
+        # The normal weekly handoff, already sent.
+        Handoff.objects.create(
+            family=self.family, created_by=self.parent,
+            covers_since=now - timedelta(days=7), covers_until=now,
+            body="weekly", copied_at=now, status=Handoff.SENT)
+        self.assertAlmostEqual(default_since(self.family).timestamp(),
+                               now.timestamp(), delta=2)
+
+        # Then a back-fill for a stretch back in June, sent afterwards.
+        june = now - timedelta(days=70)
+        Handoff.objects.create(
+            family=self.family, created_by=self.parent,
+            covers_since=june - timedelta(days=3), covers_until=june,
+            body="back-fill", copied_at=timezone.now(), status=Handoff.SENT)
+
+        self.assertAlmostEqual(
+            default_since(self.family).timestamp(), now.timestamp(), delta=2,
+            msg="a back-fill moved the watermark backwards")

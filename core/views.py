@@ -278,12 +278,18 @@ def _handoff_window(request, family):
             return None
 
     start, end = _day("since"), _day("until")
+    # Swap the DATES, not the moments. Swapping after the times are applied
+    # turns the pair into (end-of-day, start-of-day) — a window that excludes
+    # the whole of both days the parent named, while the page cheerfully prints
+    # those two dates above it.
+    if start and end and start > end:
+        start, end = end, start
     since = (timezone.make_aware(datetime.combine(start, time.min))
              if start else handoff_lib.default_since(family))
     until = (timezone.make_aware(datetime.combine(end, time.max))
              if end else timezone.now())
     if since > until:
-        since, until = until, since       # typed backwards; read it their way
+        since, until = until, since       # one side defaulted; read it their way
     return since, until
 
 

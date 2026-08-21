@@ -222,7 +222,12 @@ def _assessed_work(assessment):
     stored snapshot is then all there is.
     """
     entry = assessment.work_entry
+    # Scoped to the entry's own child as well as the entry. Nothing today can
+    # attach two sheets to one entry, but `.first()` orders by -updated_at, so
+    # if anything ever could, this page would render one child's answers under
+    # another child's name.
     sheet = (entry.response_sheets
+             .filter(child_id=entry.child_id)
              .select_related("question_set")
              .prefetch_related("question_set__questions")
              .first()) if entry else None

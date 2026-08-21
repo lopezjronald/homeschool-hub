@@ -7476,6 +7476,8 @@ class AssessedWorkTests(TestCase):
 
     def test_paper_work_is_shown_not_just_mentioned(self):
         """She did it on paper and photographed it in. The photo is the work."""
+        from django.utils import timezone
+
         from tutor.models import MasteryAssessment, Question, QuestionSet, ResponseSheet
 
         qset = QuestionSet.objects.create(
@@ -7486,8 +7488,12 @@ class AssessedWorkTests(TestCase):
         sheet = ResponseSheet.objects.create(
             question_set=qset, child=self.child, work_entry=self.entry,
             answers={})
+        # As a real paper submission looks: uploaded AND marked on paper.
         sheet.attachment = "uploads/poster.jpg"
-        sheet.save(update_fields=["attachment"])
+        sheet.completion_mode = ResponseSheet.ON_PAPER
+        sheet.approved_at = timezone.now()
+        sheet.approved_by = self.parent
+        sheet.save()
 
         assessment = MasteryAssessment.objects.create(
             work_entry=self.entry, rubric="r", answers="(on paper)",
@@ -7495,6 +7501,33 @@ class AssessedWorkTests(TestCase):
         html = self._page(assessment).content.decode()
         self.assertIn("Turned in on paper", html)
         self.assertIn("poster.jpg", html)
+
+    def test_on_screen_work_carrying_an_old_upload_is_not_called_paper_work(self):
+        """Submitting on screen deliberately KEEPS an earlier upload attached,
+        so gating the label on the attachment alone told a parent she had
+        turned in on paper when she had typed her answers."""
+        from django.utils import timezone
+
+        from tutor.models import MasteryAssessment, Question, QuestionSet, ResponseSheet
+
+        qset = QuestionSet.objects.create(
+            lesson=self.lesson, title="Typed", family=self.family,
+            status=QuestionSet.APPROVED)
+        q = Question.objects.create(question_set=qset, order=1,
+                                    category="writing", prompt="Write it.")
+        sheet = ResponseSheet.objects.create(
+            question_set=qset, child=self.child, work_entry=self.entry,
+            answers={str(q.pk): "She typed this."})
+        sheet.attachment = "uploads/earlier.jpg"          # still attached
+        sheet.completion_mode = ResponseSheet.ON_SCREEN   # but typed
+        sheet.save()
+
+        assessment = MasteryAssessment.objects.create(
+            work_entry=self.entry, rubric="r", answers="x",
+            ai_level="proficient", status=MasteryAssessment.DRAFT)
+        html = self._page(assessment).content.decode()
+        self.assertIn("She typed this.", html)
+        self.assertNotIn("Turned in on paper", html)
 
     def test_a_typed_rubric_with_no_sheet_still_shows_its_snapshot(self):
         """A rubric typed straight into the manual grading form has no questions

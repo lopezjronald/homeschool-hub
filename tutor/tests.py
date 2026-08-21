@@ -7355,3 +7355,155 @@ class WeeklyRoutineTests(StudiesWeeklyLevel3Tests):
         self.assertNotIn("This week, in order", guide)
         self.assertNotIn("If today is a write-off", guide)
         self.assertIn("What this week assesses", guide)
+
+
+class AssessedWorkTests(TestCase):
+    """The parent judging a mastery level should be looking at the work.
+
+    `MasteryAssessment.answers` is a plain-text snapshot taken at grading time —
+    the right thing to send a model, the wrong thing to show a person. A drawing
+    arrives in it as "[a drawing - 4 pen stroke(s)]" and a marked-up sentence as
+    a sentence about marks, so the page asked a parent to grade work they could
+    not see.
+    """
+
+    def setUp(self):
+        from core.models import Family, FamilyMembership
+        from curricula.models import Chapter, Curriculum, Lesson
+        from students.models import Student
+        from worklog.models import WorkLogEntry
+
+        self.parent = User.objects.create_user(
+            username="aw", email="aw@e.com", password="pw")
+        self.family = Family.objects.create(name="AW Fam")
+        FamilyMembership.objects.create(user=self.parent, family=self.family,
+                                        role="parent")
+        self.child = Student.objects.create(
+            parent=self.parent, first_name="Violet", grade_level="G03",
+            family=self.family)
+        curriculum = Curriculum.objects.create(
+            parent=self.parent, name="Wolf", subject="Reading",
+            grade_level="G03", family=self.family)
+        chapter = Chapter.objects.create(curriculum=curriculum, number=1, title="U")
+        self.lesson = Lesson.objects.create(chapter=chapter, number=1, order=1,
+                                            title="L")
+        self.entry = WorkLogEntry.objects.create(
+            parent=self.parent, child=self.child, family=self.family,
+            subject="Reading", description="a text snapshot")
+
+    def _assessment_with_work(self):
+        import json
+
+        from tutor.models import (MasteryAssessment, Question, QuestionSet,
+                                  ResponseSheet)
+
+        qset = QuestionSet.objects.create(
+            lesson=self.lesson, title="Wolf's Big Concert", family=self.family,
+            status=QuestionSet.APPROVED)
+        drawing = Question.objects.create(
+            question_set=qset, order=1, category="application",
+            prompt="Draw a grand piano.",
+            response_type=Question.TYPE_DRAWING,
+            passage=json.dumps({"height": 480}))
+        typed = Question.objects.create(
+            question_set=qset, order=2, category="writing",
+            prompt="Which composer would Wolf sing?",
+            response_type=Question.TYPE_TEXT)
+
+        sheet = ResponseSheet.objects.create(
+            question_set=qset, child=self.child, work_entry=self.entry,
+            answers={
+                str(drawing.pk): json.dumps({
+                    "strokes": [{"c": "#D64545", "w": 3,
+                                 "p": [[0.1, 0.2], [0.7, 0.6]]}],
+                    "surface": {"w": 662, "h": 480}}),
+                str(typed.pk): "Mozart, because Wolf is named after him.",
+            })
+        assessment = MasteryAssessment.objects.create(
+            work_entry=self.entry, rubric="Grade the pictures, not the spelling.",
+            answers=sheet.as_worklog_text(), ai_level="proficient",
+            status=MasteryAssessment.DRAFT)
+        return assessment, sheet, drawing, typed
+
+    def _page(self, assessment):
+        self.client.login(username="aw", password="pw")
+        return self.client.get(
+            reverse("tutor:assess_detail", kwargs={"pk": assessment.pk}))
+
+    def test_a_drawing_is_shown_as_the_drawing(self):
+        """The picture IS the answer. Describing it in words and asking for a
+        mastery level is asking somebody to grade what they cannot see."""
+        assessment, _sheet, _drawing, _typed = self._assessment_with_work()
+        html = self._page(assessment).content.decode()
+
+        # The strokes, replayed — the same rendering the work browser uses.
+        self.assertIn("markup-replay", html)
+        self.assertIn("Violet drew this", html)
+        # ...and not the prose stand-in that the stored snapshot carries.
+        self.assertNotIn("pen stroke(s)", html)
+
+    def test_her_typed_answer_is_shown_next_to_its_question(self):
+        assessment, _sheet, _drawing, _typed = self._assessment_with_work()
+        html = self._page(assessment).content.decode()
+        self.assertIn("Which composer would Wolf sing?", html)
+        self.assertIn("Mozart, because Wolf is named after him.", html)
+
+    def test_no_prompt_markdown_reaches_the_page_as_asterisks(self):
+        """The snapshot was taken before prompts were cleaned, so old rows still
+        carry "**Blank A**". Rendering the LIVE questions sidesteps that
+        entirely — the page reads the work, not the transcript of it."""
+        import json
+
+        from tutor.models import MasteryAssessment, Question, QuestionSet, ResponseSheet
+
+        qset = QuestionSet.objects.create(
+            lesson=self.lesson, title="Check", family=self.family,
+            status=QuestionSet.APPROVED)
+        q = Question.objects.create(
+            question_set=qset, order=1, category="reading",
+            prompt="**Blank A**", response_type=Question.TYPE_TEXT)
+        ResponseSheet.objects.create(
+            question_set=qset, child=self.child, work_entry=self.entry,
+            answers={str(q.pk): "compelling"})
+        assessment = MasteryAssessment.objects.create(
+            work_entry=self.entry, rubric="r",
+            answers="Q1 [reading]: **Blank A**\nA: compelling",   # the old snapshot
+            ai_level="proficient", status=MasteryAssessment.DRAFT)
+
+        html = self._page(assessment).content.decode()
+        self.assertIn("Blank A", html)
+        self.assertNotIn("**Blank A**", html)
+
+    def test_paper_work_is_shown_not_just_mentioned(self):
+        """She did it on paper and photographed it in. The photo is the work."""
+        from tutor.models import MasteryAssessment, Question, QuestionSet, ResponseSheet
+
+        qset = QuestionSet.objects.create(
+            lesson=self.lesson, title="Project", family=self.family,
+            status=QuestionSet.APPROVED)
+        Question.objects.create(question_set=qset, order=1, category="application",
+                                prompt="Make the poster.")
+        sheet = ResponseSheet.objects.create(
+            question_set=qset, child=self.child, work_entry=self.entry,
+            answers={})
+        sheet.attachment = "uploads/poster.jpg"
+        sheet.save(update_fields=["attachment"])
+
+        assessment = MasteryAssessment.objects.create(
+            work_entry=self.entry, rubric="r", answers="(on paper)",
+            ai_level="proficient", status=MasteryAssessment.DRAFT)
+        html = self._page(assessment).content.decode()
+        self.assertIn("Turned in on paper", html)
+        self.assertIn("poster.jpg", html)
+
+    def test_a_typed_rubric_with_no_sheet_still_shows_its_snapshot(self):
+        """A rubric typed straight into the manual grading form has no questions
+        behind it. The snapshot is all there is, and it must not vanish."""
+        from tutor.models import MasteryAssessment
+
+        assessment = MasteryAssessment.objects.create(
+            work_entry=self.entry, rubric="Bonds to 100.",
+            answers="98 + 2 = 100, shown with a number bond.",
+            ai_level="proficient", status=MasteryAssessment.DRAFT)
+        html = self._page(assessment).content.decode()
+        self.assertIn("98 + 2 = 100, shown with a number bond.", html)

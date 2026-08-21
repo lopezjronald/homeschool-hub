@@ -2374,3 +2374,121 @@ class HandoffRecipientTests(TestCase):
             resp = self.client.post(reverse("core:handoff_preview"),
                                     {"include": [], "since": hostile})
             self.assertEqual(resp.status_code, 200, hostile)
+
+
+class HandoffWindowTests(TestCase):
+    """Choosing the stretch a handoff covers.
+
+    Defaulting to "since the last one" is right most weeks. A handover that
+    slipped, or a first one covering a whole term, needs a different range and
+    should not need somebody to go into the database to get one.
+    """
+
+    def setUp(self):
+        from curricula.models import Chapter, Curriculum, CurriculumPlacement, Lesson
+        from tutor.models import Question, QuestionSet
+
+        self.parent = CustomUser.objects.create_user(
+            username="hw", email="hw@e.com", password="pw")
+        self.family = Family.objects.create(name="HW Fam")
+        FamilyMembership.objects.create(user=self.parent, family=self.family,
+                                        role="parent")
+        self.child = Student.objects.create(
+            parent=self.parent, first_name="Violet", grade_level="G03",
+            family=self.family)
+        curriculum = Curriculum.objects.create(
+            parent=self.parent, name="Studies Weekly 3", subject="Social Studies",
+            grade_level="G03", family=self.family)
+        chapter = Chapter.objects.create(curriculum=curriculum, number=1, title="U1")
+        lesson = Lesson.objects.create(chapter=chapter, number=1, order=1, title="W1")
+        Lesson.objects.create(chapter=chapter, number=2, order=2, title="W2")
+        CurriculumPlacement.objects.create(
+            child=self.child, curriculum=curriculum, current_lesson=lesson)
+        self.qset = QuestionSet.objects.create(
+            lesson=lesson, title="Week 1 check", family=self.family,
+            status=QuestionSet.APPROVED)
+        Question.objects.create(question_set=self.qset, order=1,
+                                prompt="Q1", category="reading")
+        self.client.login(username="hw", password="pw")
+
+    def _submit_days_ago(self, days):
+        from datetime import timedelta
+
+        from django.utils import timezone
+        from tutor.models import ResponseSheet
+
+        return ResponseSheet.objects.create(
+            question_set=self.qset, child=self.child,
+            submitted_at=timezone.now() - timedelta(days=days),
+            answers={"1": "an answer"})
+
+    def _page(self, **params):
+        return self.client.get(reverse("core:handoff_new"), params)
+
+    def test_old_work_is_out_of_the_default_window_but_reachable_by_asking(self):
+        """The whole reason this control exists: a handover that slipped means
+        the work is older than the default week, and without a picker it is
+        simply unreachable."""
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        self._submit_days_ago(30)
+        self.assertContains(self._page(), "Nothing was turned in")
+
+        long_ago = (timezone.localtime(timezone.now()) - timedelta(days=60)).date()
+        resp = self._page(since=long_ago.isoformat())
+        self.assertContains(resp, "Week 1 check")
+        self.assertNotContains(resp, "Nothing was turned in")
+
+    def test_a_chosen_day_includes_the_whole_of_that_day(self):
+        """Picking today and being told today's work is missing would be a
+        small lie the page tells every afternoon."""
+        from django.utils import timezone
+
+        self._submit_days_ago(0)
+        today = timezone.localtime(timezone.now()).date().isoformat()
+        self.assertContains(self._page(since=today, until=today), "Week 1 check")
+
+    def test_dates_typed_backwards_are_read_the_way_they_were_meant(self):
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        self._submit_days_ago(10)
+        now = timezone.localtime(timezone.now()).date()
+        resp = self._page(since=now.isoformat(),
+                          until=(now - timedelta(days=20)).isoformat())
+        self.assertContains(resp, "Week 1 check")
+
+    def test_a_nonsense_date_falls_back_instead_of_crashing(self):
+        """It arrives from a querystring anyone can edit."""
+        for bad in ("not-a-date", "2026-02-30", "2026-13-01", "", "0000"):
+            self.assertEqual(self._page(since=bad).status_code, 200, bad)
+
+    def test_the_chosen_window_is_what_gets_sent(self):
+        """A picker that changes the list but not the message would report work
+        the parent never chose to include."""
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        self._submit_days_ago(30)
+        long_ago = (timezone.localtime(timezone.now()) - timedelta(days=60)).date()
+        page = self._page(since=long_ago.isoformat()).content.decode()
+
+        import re
+        keys = re.findall(r'name="include"\s+value="([^"]+)"', page)
+        since = re.search(r'name="since" value="([^"]+)"', page).group(1)
+        until = re.search(r'name="until" value="([^"]+)"', page).group(1)
+        self.assertTrue(keys)
+
+        self.client.post(reverse("core:handoff_preview"),
+                         {"include": keys, "since": since, "until": until})
+        draft = Handoff.objects.get()
+        self.assertIn("Week 1 check", draft.body)
+
+    def test_the_default_still_starts_where_the_last_handoff_stopped(self):
+        """Adding the picker must not break the thing it defaults to."""
+        page = self._page().content.decode()
+        self.assertIn("Starts where your last handoff finished", page)

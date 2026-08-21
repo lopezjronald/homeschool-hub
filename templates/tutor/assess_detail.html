@@ -1,5 +1,7 @@
 {% extends "base.html" %}
-{% load tutor_extras %}
+{% load static tutor_extras %}
+{% block extra_css %}<link href="{% static 'css/portal.css' %}" rel="stylesheet">
+<link href="{% static 'css/markup-replay.css' %}" rel="stylesheet">{% endblock %}
 {% block title %}Mastery Assessment · Steadfast Scholars{% endblock %}
 
 {% block content %}
@@ -118,8 +120,59 @@
           together into paragraphs.{% endcomment %}
           <p><strong>Rubric</strong></p>
           <div class="assess-rubric">{{ assessment.rubric|markdownify_typed }}</div>
-          <p class="mt-4"><strong>The child's work</strong></p>
-          <p class="text-muted" style="white-space: pre-wrap;">{{ assessment.answers }}</p>
+
+          <p class="mt-4"><strong>{% if child %}{{ child.first_name }}'s{% else %}The child's{% endif %} work</strong></p>
+          {% if work %}
+            {% comment %} The work itself, question by question — her drawings
+            replayed, her marks over the sentence she marked. `assessment.answers`
+            is a plain-text snapshot for the grader; showing it to a parent turns
+            a picture into "[a drawing — 4 pen stroke(s)]" and asks them to judge
+            work they cannot see. {% endcomment %}
+            {% for row in work.rows %}
+              <div class="border-top pt-3 mt-3">
+                <div class="text-muted small mb-1">Question {{ row.question.order }}</div>
+                {% if row.question.prompt %}
+                  <div class="fw-semibold mb-2">{{ row.question.prompt|markdownify_inline }}</div>
+                {% endif %}
+
+                {% if row.replay %}
+                  <p class="text-muted small mb-1">
+                    {% if row.question.is_drawing %}{{ child.first_name }} drew this:
+                    {% elif row.question.is_handwriting %}{{ child.first_name }}'s handwriting:
+                    {% else %}{{ child.first_name }}'s marked-up work:{% endif %}
+                  </p>
+                  {% include "tutor/_markup_replay.html" with replay=row.replay %}
+                {% elif row.question.is_markup %}
+                  <p class="text-muted small mb-1">Sentence to mark up:</p>
+                  <p class="mb-2" style="font-family:Georgia,serif;font-size:1.1rem;">{{ row.question.passage }}</p>
+                {% endif %}
+
+                {% if row.replay %}
+                  {# The drawing above IS the answer. #}
+                {% elif row.answered %}
+                  <div class="ss-answer-block">{{ row.answer }}</div>
+                {% else %}
+                  <div class="text-muted fst-italic">No answer.</div>
+                {% endif %}
+              </div>
+            {% endfor %}
+
+            {% if work.sheet.attachment %}
+              <div class="border-top pt-3 mt-3">
+                <p class="text-muted small mb-1">Turned in on paper:</p>
+                {% if work.sheet.project_is_image %}
+                  <img src="{{ work.sheet.attachment.url }}" alt="{{ child.first_name }}'s work"
+                       class="img-fluid rounded border" style="max-height:70vh;">
+                {% else %}
+                  <a href="{{ work.sheet.attachment.url }}" target="_blank" rel="noopener">Open the file she turned in ↗</a>
+                {% endif %}
+              </div>
+            {% endif %}
+          {% else %}
+            {% comment %} No sheet behind it — a rubric typed straight into the
+            manual grading form. The snapshot is all there is. {% endcomment %}
+            <p class="text-muted" style="white-space: pre-wrap;">{{ assessment.answers }}</p>
+          {% endif %}
         </div>
         <div class="card-footer">
           <a href="{% url 'worklog:worklog_detail' assessment.work_entry.pk %}" class="btn btn-secondary">Back to Work Log entry</a>

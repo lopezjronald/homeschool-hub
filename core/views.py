@@ -257,6 +257,36 @@ def accept_invite(request, invite_id):
 # Handoff — telling the other household what the girls finished.
 # ---------------------------------------------------------------------------
 
+def _handoff_window(request, family):
+    """The stretch a handoff covers, from the querystring or the default.
+
+    A date the parent typed means the WHOLE of that day, so `until` runs to the
+    end of it — picking today and being told today's work is missing would be a
+    small daily lie.
+    """
+    from datetime import datetime, time
+
+    from core import handoff as handoff_lib
+
+    def _day(name):
+        raw = (request.GET.get(name) or "").strip()
+        if not raw:
+            return None
+        try:
+            return datetime.strptime(raw, "%Y-%m-%d").date()
+        except ValueError:
+            return None
+
+    start, end = _day("since"), _day("until")
+    since = (timezone.make_aware(datetime.combine(start, time.min))
+             if start else handoff_lib.default_since(family))
+    until = (timezone.make_aware(datetime.combine(end, time.max))
+             if end else timezone.now())
+    if since > until:
+        since, until = until, since       # typed backwards; read it their way
+    return since, until
+
+
 @login_required
 def handoff_new(request):
     """Compose a handoff. Nothing leaves until a person presses send.
@@ -273,8 +303,11 @@ def handoff_new(request):
     if family is None or not can_edit_family(request.user, family):
         raise Http404
 
-    since = handoff_lib.default_since(family)
-    until = timezone.now()
+    # The window is pickable. It defaults to "since the last handoff", which is
+    # right most weeks — but a handover that slipped, or a first one covering a
+    # whole term, needs a different range and should not need a database to get
+    # one. Dates, not datetimes: nobody hands over at 14:32.
+    since, until = _handoff_window(request, family)
     children = list(Student.objects.filter(family=family).order_by("first_name"))
     summaries = [handoff_lib.summarise(child, since, until) for child in children]
 
@@ -282,6 +315,9 @@ def handoff_new(request):
         "family": family,
         "since": since,
         "until": until,
+        "since_date": timezone.localtime(since).date().isoformat(),
+        "until_date": timezone.localtime(until).date().isoformat(),
+        "window_is_default": not (request.GET.get("since") or request.GET.get("until")),
         "summaries": [s for s in summaries if s.has_anything],
         "nothing_found": not any(s.has_anything for s in summaries),
         "recipients": HandoffRecipient.objects.filter(family=family, is_active=True),

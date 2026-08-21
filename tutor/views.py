@@ -203,7 +203,42 @@ def assess_detail(request, pk):
         "can_edit": can_edit,
         "finalize_form": finalize_form,
         "levels": mastery.CHOICES,
+        "work": _assessed_work(assessment),
+        "child": getattr(assessment.work_entry, "child", None),
     })
+
+
+def _assessed_work(assessment):
+    """The child's ACTUAL work, question by question — not a transcript of it.
+
+    `assessment.answers` is a plain-text snapshot taken at grading time. It is
+    the right thing to send a model and the wrong thing to show a parent: a
+    drawing arrives as "[a drawing — 4 pen stroke(s)]" and a marked-up sentence
+    as a sentence about marks. The parent is being asked to judge the work, so
+    they should be looking at the work.
+
+    Returns None when the assessment has no sheet behind it — a rubric typed
+    straight into the manual grading form has no questions to show, and the
+    stored snapshot is then all there is.
+    """
+    entry = assessment.work_entry
+    sheet = (entry.response_sheets
+             .select_related("question_set")
+             .prefetch_related("question_set__questions")
+             .first()) if entry else None
+    if sheet is None:
+        return None
+    rows = []
+    for question in sheet.question_set.questions.all():
+        shown = sheet.answer_display(question)
+        rows.append({
+            "question": question,
+            "answer": shown,
+            "answered": shown not in ("", "(no answer)", "(nothing drawn yet)",
+                                      "(nothing written yet)"),
+            "replay": sheet.answer_replay(question),
+        })
+    return {"sheet": sheet, "rows": rows}
 
 
 @login_required

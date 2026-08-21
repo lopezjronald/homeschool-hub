@@ -7,22 +7,47 @@
   <div class="row justify-content-center">
     <div class="col-lg-8">
 
-      <div class="d-flex align-items-baseline justify-content-between mb-3">
-        <h2 class="mb-0">Handoff</h2>
-        <span class="text-muted small">
-          since {{ since|date:"D j M" }}
-        </span>
-      </div>
+      <h2 class="mb-2">Handoff</h2>
       <p class="text-muted">
         What the girls finished, and where they're up to — so whoever has them
         next starts in the right place instead of asking.
       </p>
 
+      {% comment %} The window, pickable. It defaults to "since the last
+      handoff", which is right most weeks — but a handover that slipped, or a
+      first one covering a whole term, needs a different range. {% endcomment %}
+      <form method="get" class="card mb-4">
+        <div class="card-body">
+          <div class="row g-2 align-items-end">
+            <div class="col-sm-4">
+              <label for="since" class="form-label small mb-1">From</label>
+              <input type="date" class="form-control" id="since" name="since" value="{{ since_date }}">
+            </div>
+            <div class="col-sm-4">
+              <label for="until" class="form-label small mb-1">To</label>
+              <input type="date" class="form-control" id="until" name="until" value="{{ until_date }}">
+            </div>
+            <div class="col-sm-4 d-grid">
+              <button type="submit" class="btn btn-outline-secondary">Show this stretch</button>
+            </div>
+          </div>
+          <p class="form-text mb-0">
+            {% if window_is_default %}
+              Starts where your last handoff finished, so nothing is reported twice.
+            {% else %}
+              Showing {{ since|date:"D j M" }} to {{ until|date:"D j M" }}.
+              <a href="{% url 'core:handoff_new' %}">Back to since the last handoff</a>
+            {% endif %}
+          </p>
+        </div>
+      </form>
+
       {% if nothing_found %}
         <div class="card">
           <div class="card-body">
-            <p class="mb-0">Nothing has been turned in since
-              {{ since|date:"j M" }}. There's nothing to hand over yet.</p>
+            <p class="mb-0">Nothing was turned in between
+              {{ since|date:"j M" }} and {{ until|date:"j M" }}. Widen the dates
+              above if you're looking further back.</p>
           </div>
         </div>
       {% else %}

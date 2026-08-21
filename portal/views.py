@@ -1066,8 +1066,14 @@ def portal_booklet(request, token, pk):
     # on her own lesson page, and DENY blocks Django's own response from being
     # framed by Django's own page (net::ERR_BLOCKED_BY_RESPONSE, silently — the
     # panel just opens empty). Same-origin only, so nobody else can frame it.
-    response = FileResponse(doc.student_file.open("rb"),
-                            content_type="application/pdf")
+    try:
+        handle = doc.student_file.open("rb")
+    except (FileNotFoundError, OSError):
+        # The row outlived its file — a cleared bucket, a half-finished ingest.
+        # A missing booklet is a booklet she does not have, not a 500 on the
+        # page she is trying to do her work on.
+        raise Http404
+    response = FileResponse(handle, content_type="application/pdf")
     # inline: the browser's own PDF reader, which is the part that makes this
     # usable on a tablet — pinch zoom, page jump, search.
     response["Content-Disposition"] = 'inline; filename="booklet.pdf"'

@@ -105,6 +105,27 @@ class Command(BaseCommand):
                 "student_label": options["student_label"],
             },
         )
+
+        # A correction filed under a slightly different title does not replace
+        # the booklet it was correcting — it ADDS one, and the child is offered
+        # both. That is the only realistic way the wide extract of a teacher
+        # edition stays reachable after someone has already noticed and fixed
+        # it, so say so loudly rather than leaving it to be discovered.
+        siblings = (CurriculumDocument.objects
+                    .filter(curriculum=curriculum)
+                    .exclude(pk=doc.pk)
+                    .exclude(student_file="").exclude(student_pages=""))
+        if siblings.exists():
+            self.stdout.write(self.style.ERROR(
+                "WARNING: %s already offers %d other booklet(s) to the child:"
+                % (curriculum.name, siblings.count())))
+            for other in siblings:
+                self.stdout.write(self.style.ERROR(
+                    "  #%d %r — pages %s" % (other.pk, other.title,
+                                             other.student_pages)))
+            self.stdout.write(self.style.ERROR(
+                "  She will see ALL of them. If one of these was meant to be "
+                "replaced, re-run with its exact --title, or delete it."))
         with open(path, "rb") as fh:
             doc.file.save(os.path.basename(path), ContentFile(fh.read()), save=False)
         stem = os.path.splitext(os.path.basename(path))[0]

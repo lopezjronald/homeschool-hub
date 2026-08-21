@@ -4,6 +4,7 @@ import re
 
 import markdown as md
 from django import template
+from django.utils.html import escape
 from django.utils.safestring import mark_safe
 
 register = template.Library()
@@ -21,6 +22,32 @@ def _external_links_new_tab(html):
     return _EXTERNAL_LINK_RE.sub(
         '<a target="_blank" rel="noopener noreferrer" ', html,
     )
+
+
+@register.filter(name="markdownify_typed")
+def markdownify_typed(text):
+    """Markdown from a field a HUMAN TYPED INTO. Formatting renders; HTML does not.
+
+    ``markdownify`` deliberately passes raw HTML through, which is right for
+    content that only ever comes from a seeder or an admin. A rubric is not
+    that: `tutor.forms.AssessmentRequestForm.rubric` is a plain textarea any
+    editor can post to, and the finished assessment is read by every VIEW role —
+    including `teacher`, the charter-oversight account, which can hold
+    memberships across several families. Rendering that unescaped would let an
+    editor in one family run script in an overseer's session.
+
+    Escaping FIRST and rendering after keeps everything a rubric actually needs
+    — headings, bold, the standards table — while `<script>` arrives as the four
+    visible characters someone typed.
+    """
+    if not text:
+        return ""
+    html = md.markdown(
+        escape(text),
+        extensions=["extra", "sane_lists", "nl2br"],
+        output_format="html5",
+    )
+    return mark_safe(_external_links_new_tab(html))
 
 
 @register.filter(name="markdownify")

@@ -2386,10 +2386,75 @@ class BookletViewerTests(TestCase):
         self.assertIn(reverse("portal:portal_booklet",
                               kwargs={"token": self.vtoken, "pk": doc.pk}), html)
         # Closed until she asks for it — an open PDF would push the questions
-        # off a tablet screen.
-        self.assertNotIn("<details class=\"booklet\" open", html)
+        # off a tablet screen. Asserted on the tag the template really renders:
+        # matching a literal '<details class="booklet" open' could not appear
+        # whatever the state, because the tag carries other attributes.
+        panel = html.split("<details", 1)[1].split(">", 1)[0]
+        self.assertIn('class="booklet"', panel)
+        self.assertNotIn("open", panel)
         # And the way out is present for a browser with no PDF reader.
         self.assertIn("if the page below stays empty", html)
+
+    def test_the_panel_is_on_the_reading_page_too(self):
+        """Both halves of a lesson: she reads the material, then answers. The
+        booklet has to be on whichever one she is looking at."""
+        from tutor.models import Material
+
+        doc = self._ingest(self.violet, "Violet Weekly")
+        lesson = doc.curriculum.chapters.first().lessons.first()
+        material = Material.objects.create(
+            lesson=lesson, child=self.violet, family=self.family,
+            title="The issue", student_content="", status=Material.APPROVED)
+
+        html = self.client.get(reverse(
+            "portal:portal_material",
+            kwargs={"token": self.vtoken, "pk": material.pk})).content.decode()
+        self.assertIn("booklet-frame", html)
+        self.assertIn(reverse("portal:portal_booklet",
+                              kwargs={"token": self.vtoken, "pk": doc.pk}), html)
+
+    def test_a_shelved_curriculum_takes_its_booklet_with_it_too(self):
+        """The placement can be active while the CURRICULUM has been retired.
+        Both gates matter; only the placement one was covered."""
+        doc = self._ingest(self.violet, "Violet Weekly")
+        self.assertEqual(self._fetch(self.vtoken, doc).status_code, 200)
+        doc.curriculum.is_active = False
+        doc.curriculum.save(update_fields=["is_active"])
+        self.assertEqual(self._fetch(self.vtoken, doc).status_code, 404)
+
+    def test_a_row_whose_file_has_gone_is_a_missing_booklet_not_a_crash(self):
+        """A cleared bucket or a half-finished ingest must not 500 the page she
+        is trying to do her work on."""
+        doc = self._ingest(self.violet, "Violet Weekly")
+        doc.student_file.storage.delete(doc.student_file.name)
+        self.assertEqual(self._fetch(self.vtoken, doc).status_code, 404)
+
+    def test_a_correction_filed_under_a_new_title_is_shouted_about(self):
+        """update_or_create keys on (curriculum, title), so a correction typed
+        with a different title ADDS a booklet instead of replacing one — and
+        she is then offered both, including the wide one somebody had already
+        noticed was wrong. It is the only realistic route back to the answer
+        key, so the command has to say so."""
+        first = self._ingest(self.violet, "Violet Weekly", student_pages="1-6")
+        out = StringIO()
+        from curricula.models import Curriculum
+        import os
+        import tempfile
+
+        fd, path = tempfile.mkstemp(suffix=".pdf")
+        with os.fdopen(fd, "wb") as fh:
+            fh.write(self._source_pdf())
+        try:
+            call_command("ingest_booklet",
+                         "--curriculum", str(first.curriculum.pk),
+                         "--pdf", path, "--title", "Violet Weekly CORRECTED",
+                         "--student-pages", "5-6", stdout=out)
+        finally:
+            os.unlink(path)
+        message = out.getvalue()
+        self.assertIn("WARNING", message)
+        self.assertIn("already offers", message)
+        self.assertIn("1-6", message, "it names the one still reachable")
 
     # -- the whitelist parser ------------------------------------------------
 

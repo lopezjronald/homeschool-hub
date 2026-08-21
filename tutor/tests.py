@@ -7153,6 +7153,30 @@ class RubricReadabilityTests(TestCase):
                        "|---|"):
             self.assertNotIn(marker, body, "the Markdown source leaked through")
 
+    def test_a_typed_rubric_cannot_carry_script_onto_a_reviewer_s_page(self):
+        """A rubric is NOT seeder-only. `AssessmentRequestForm.rubric` is a
+        textarea any editor posts to, and the finished assessment is read by
+        every view role — including `teacher`, the charter-oversight account,
+        which can hold memberships across several families. Rendering it with
+        the raw-HTML-allowing filter would let an editor in one family run
+        script in an overseer's session.
+        """
+        a = self._assessment(
+            "## Real heading\n\n"
+            "<script>alert(document.cookie)</script>\n\n"
+            "<img src=x onerror=alert(1)>")
+        html = self._page(a)
+        body = html.split('class="assess-rubric"')[1].split("</div>")[0]
+
+        # The words survive as escaped TEXT — that is the point — so assert on
+        # the tags, which are what a browser would act on.
+        self.assertNotIn("<script", body)
+        self.assertNotIn("<img", body)
+        self.assertIn("&lt;script&gt;", body, "shown as the text someone typed")
+        self.assertIn("&lt;img", body)
+        # ...and the formatting a rubric actually needs still works.
+        self.assertIn("<h2>Real heading</h2>", body)
+
     def test_a_rubric_with_no_markdown_still_reads_normally(self):
         """Most rubrics are a plain sentence. Rendering must not mangle them."""
         a = self._assessment("Bonds to 100. Reward showing the working.")
@@ -7205,6 +7229,39 @@ class WorklogTranscriptTests(TestCase):
                                  "___B___ questions look at smaller parts."),
             "A ___A___ question guides inquiry. ___B___ questions look at "
             "smaller parts.")
+
+    def test_the_transcript_itself_is_clean_not_just_the_helper(self):
+        """The helper was tested; the CALL was not. Reverting `as_worklog_text`
+        to interpolating the raw prompt left the whole suite green, which means
+        nothing was actually guarding the thing a parent reads."""
+        from curricula.models import Chapter, Curriculum, Lesson
+
+        child = Student.objects.create(
+            parent=self.parent, first_name="Violet", grade_level="G03",
+            family=self.family)
+        curriculum = Curriculum.objects.create(
+            parent=self.parent, name="Transcript Fixture", subject="Social Studies",
+            grade_level="G03", family=self.family)
+        chapter = Chapter.objects.create(curriculum=curriculum, number=1, title="U1")
+        lesson = Lesson.objects.create(chapter=chapter, number=1, order=1, title="L1")
+        qset = QuestionSet.objects.create(
+            lesson=lesson, title="Check", family=self.family,
+            status=QuestionSet.APPROVED)
+        q = Question.objects.create(
+            question_set=qset, order=1, category="reading",
+            prompt="**Blank A**", response_type=Question.TYPE_TEXT)
+        blank = Question.objects.create(
+            question_set=qset, order=2, category="reading",
+            prompt="A ___A___ question guides inquiry.",
+            response_type=Question.TYPE_TEXT)
+
+        sheet = ResponseSheet.objects.create(question_set=qset, child=child)
+        sheet.answers = {str(q.pk): "compelling", str(blank.pk): "compelling"}
+        text = sheet.as_worklog_text()
+
+        self.assertIn("Blank A", text)
+        self.assertNotIn("**", text, "the prompt's Markdown reached the parent")
+        self.assertIn("___A___", text, "the printed blank is not emphasis")
 
     def test_it_never_drops_the_words_themselves(self):
         """A stripper that eats content is worse than the markers it removes."""

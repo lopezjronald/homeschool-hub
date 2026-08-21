@@ -117,7 +117,7 @@
           the thing that makes it readable — Markdown would run the pairs
           together into paragraphs.{% endcomment %}
           <p><strong>Rubric</strong></p>
-          <div class="assess-rubric">{{ assessment.rubric|markdownify }}</div>
+          <div class="assess-rubric">{{ assessment.rubric|markdownify_typed }}</div>
           <p class="mt-4"><strong>The child's work</strong></p>
           <p class="text-muted" style="white-space: pre-wrap;">{{ assessment.answers }}</p>
         </div>

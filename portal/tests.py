@@ -2515,3 +2515,173 @@ class BookletViewerTests(TestCase):
         with self.assertRaises(CommandError) as caught:
             self._ingest(self.violet, "Violet Weekly", student_pages="5-99")
         self.assertIn("only 6", str(caught.exception))
+
+
+class HundredDressesSeedTests(TestCase):
+    """Violet's Blackbird guide for The Hundred Dresses.
+
+    Transcribed from the family's purchased Level 3 guide. What these pin is the
+    transcription: a vocabulary number that drifts, or a word missing from a
+    bank, tells a nine-year-old her right answer is wrong.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.parent = User.objects.create_user(
+            username="hd", email="hd@e.com", password="pw")
+        cls.family = Family.objects.create(name="HD Fam")
+        FamilyMembership.objects.create(user=cls.parent, family=cls.family,
+                                        role="parent")
+        cls.violet = Student.objects.create(
+            parent=cls.parent, first_name="Violet", grade_level="G03",
+            family=cls.family)
+        call_command("seed_the_hundred_dresses", "--for-user", "hd",
+                     stdout=StringIO())
+        cls.curriculum = Curriculum.objects.get(
+            name__contains="Hundred Dresses")
+
+    def _set(self, title):
+        return QuestionSet.objects.get(
+            lesson__chapter__curriculum=self.curriculum, title=title)
+
+    # -- the guide's own shape ----------------------------------------------
+
+    def test_the_course_is_the_guide_s_five_week_shape(self):
+        """Four reading sections plus a final project — Read, Journal, Acquire,
+        Recollect, Explore."""
+        guide_sections = self.curriculum.chapters.filter(number__lte=5)
+        self.assertEqual(guide_sections.count(), 5)
+        self.assertEqual(self.curriculum.grade_level, "G03")
+        for n in range(1, 5):
+            for part in ("Journal", "Vocabulary", "Comprehension", "Writing",
+                         "Discussion"):
+                self._set(f"Section {n} · {part}")     # raises if missing
+        self._set("Section 5 · Glean: Final Project")
+
+    def test_the_sections_are_named_the_way_the_guide_names_them(self):
+        """This guide divides the book by where the story gets to, not by
+        chapter number. Calling section 1 "Chapters Wanda—The Dresses Game"
+        would be nonsense on her page."""
+        titles = [c.title for c in
+                  self.curriculum.chapters.filter(number__lte=5).order_by("number")]
+        self.assertIn("Section 1: Wanda—The Dresses Game", titles)
+        self.assertIn("Section 4: The Letter to Room 13", titles)
+        for title in titles:
+            self.assertNotIn("Chapters None", title)
+
+    # -- the transcription ---------------------------------------------------
+
+    def test_every_vocabulary_word_can_be_matched_and_used(self):
+        """A word in the bank with no definition — or a definition whose word is
+        not in the bank — is a question she cannot finish."""
+        from tutor.hundred_dresses import SECTIONS
+
+        for section in SECTIONS:
+            words = set(section["matching"]["words"])
+            defined = {word for _n, _text, word in section["matching"]["definitions"]}
+            self.assertEqual(words, defined, f"section {section['number']}")
+
+            numbers = sorted(n for n, _t, _w in section["matching"]["definitions"])
+            self.assertEqual(numbers, [1, 2, 3, 4, 5, 6],
+                             f"section {section['number']} numbering")
+
+            used = [word for _text, word in section["fill_blank"]]
+            self.assertEqual(sorted(used), sorted(words),
+                             f"section {section['number']}: each word once")
+
+    def test_every_blank_is_actually_blank(self):
+        """A sentence that lost its ______ is one she cannot answer."""
+        from tutor.hundred_dresses import SECTIONS
+
+        for section in SECTIONS:
+            for text, word in section["fill_blank"]:
+                self.assertIn("______", text, f"{word}: no blank to fill")
+
+    def test_the_matching_exercise_marks_itself(self):
+        """Six words a week across four weeks is not something a parent should
+        be checking by hand."""
+        import json
+
+        qset = self._set("Section 1 · Vocabulary")
+        question = qset.questions.get(order=1)
+        right = {d["word"]: d["n"] for d in question.vocab_data["definitions"]}
+
+        sheet = ResponseSheet(question_set=qset)
+        sheet.answers = {str(question.pk): json.dumps({"matches": right, "tries": 6})}
+        shown = sheet.answer_display(question)
+        self.assertIn("scuffling", shown)
+        self.assertIn("a noisy shuffling of feet", shown)
+
+    def test_the_comprehension_key_is_teacher_only_and_present(self):
+        """Suggested answers, never shown to the child."""
+        for n in range(1, 5):
+            key = self._set(f"Section {n} · Comprehension").answer_key
+            self.assertIn("teacher reference only", key)
+            self.assertTrue(key.strip())
+        resource = CurriculumResource.objects.get(
+            curriculum=self.curriculum,
+            resource_type=CurriculumResource.ANSWER_KEY)
+        self.assertTrue(resource.teacher_only)
+        self.assertIn("blackbirdandcompany.com", resource.url)
+
+    def test_the_guide_s_printed_slips_are_kept_not_tidied(self):
+        """Three of them. A child copying from a page that reads one way and a
+        screen that reads another is a small avoidable confusion, and reviewers
+        keep flagging these as mine."""
+        from tutor.hundred_dresses import SECTIONS
+
+        sentences = {text for s in SECTIONS for text, _w in s["fill_blank"]}
+        self.assertTrue(any("in the Forrest" in t for t in sentences))
+        self.assertTrue(any("when I'm talk to my tutor" in t for t in sentences))
+        self.assertTrue(any(t.rstrip().endswith("toys?") for t in sentences))
+
+    # -- what she opens ------------------------------------------------------
+
+    def test_the_journal_gives_a_box_per_character_the_guide_names(self):
+        """Section 3 journals three people, section 1 only two."""
+        first = self._set("Section 1 · Journal").questions.get(order=1)
+        third = self._set("Section 3 · Journal").questions.get(order=1)
+        self.assertEqual(first.character_names, ["Peggy", "Wanda"])
+        self.assertEqual(third.character_names,
+                         ["Miss Mason", "Peggy", "Old Man Svenson"])
+
+    def test_the_writing_prompt_is_the_guide_s_own(self):
+        writing = self._set("Section 2 · Writing").questions.get(order=1)
+        self.assertIn("teasing", writing.prompt)
+        self.assertEqual(writing.response_type, Question.TYPE_PARAGRAPH)
+
+    def test_the_discussion_sets_are_teacher_led_not_turned_in(self):
+        """Discussion is spoken. Rendering it as work to submit would turn the
+        best part of the week into a worksheet."""
+        for n in range(1, 5):
+            self.assertEqual(self._set(f"Section {n} · Discussion").mode,
+                             QuestionSet.MODE_DISCUSSION)
+
+    def test_the_glean_lists_all_six_of_the_guide_s_options(self):
+        from tutor.hundred_dresses import GLEAN_OPTIONS
+
+        intro = self._set("Section 5 · Glean: Final Project").intro
+        self.assertEqual(len(GLEAN_OPTIONS), 6)
+        for option in GLEAN_OPTIONS:
+            self.assertIn(option[:40], intro)
+
+    def test_the_glean_note_points_at_the_hands_on_option(self):
+        """This guide's Glean is already hands-on, so it needs no no-writing
+        alternative added beside it the way A Mouse Called Wolf did."""
+        rubric = self._set("Section 5 · Glean: Final Project").rubric
+        self.assertIn("already hands-on", rubric)
+        self.assertIn("Option 3", rubric)
+
+    def test_reseeding_changes_nothing(self):
+        before = (QuestionSet.objects.count(), Question.objects.count())
+        call_command("seed_the_hundred_dresses", "--for-user", "hd",
+                     stdout=StringIO())
+        self.assertEqual(
+            (QuestionSet.objects.count(), Question.objects.count()), before)
+
+    def test_a_missing_child_is_refused(self):
+        from django.core.management.base import CommandError
+
+        with self.assertRaises(CommandError):
+            call_command("seed_the_hundred_dresses", "--for-user", "hd",
+                         "--child-name", "Nobody", stdout=StringIO())

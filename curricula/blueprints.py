@@ -234,13 +234,20 @@ DIMENSIONS_MATH_3A = {
 }
 
 
-def _bb_section(number, chapters):
-    """One Blackbird & Company section: Read → Journal → Acquire → Recollect → Explore."""
+def _bb_section(number, chapters, label=None):
+    """One Blackbird & Company section: Read → Journal → Acquire → Recollect → Explore.
+
+    `label` is the reading assignment as the guide names it. Most guides divide
+    a book by chapter number; some — The Hundred Dresses among them — divide it
+    by where the story gets to ("Wanda—The Dresses Game"), and calling that
+    "Chapters Wanda—The Dresses Game" would be nonsense on the child's page.
+    """
+    read = label or f"Chapters {chapters}"
     return {
         "number": number,
-        "title": f"Section {number}: Chapters {chapters}",
+        "title": f"Section {number}: {read}",
         "lessons": [
-            _ls(1, 1, f"Read: Chapters {chapters}",
+            _ls(1, 1, f"Read: {read}",
                 "Read the entire assignment before beginning any guide work. "
                 "Silent reading plus read-aloud opportunities build fluency, accuracy, "
                 "pacing, intonation, and dramatic expression."),
@@ -261,6 +268,38 @@ def _bb_section(number, chapters):
                 "with no single right answer."),
         ],
     }
+
+
+# Blackbird & Company Literature Discovery Guide: The Hundred Dresses
+# (Eleanor Estes), Level 3. Violet's, same series and level as A Mouse Called
+# Wolf and Rickshaw Girl — but this guide names its reading assignments by where
+# the story gets to rather than by chapter, so its sections carry labels.
+BLACKBIRD_HUNDRED_DRESSES = {
+    "slug": "blackbird_hundred_dresses",
+    "name": "The Hundred Dresses — Literature Discovery",
+    "subject": "Literature",
+    "grade_level": "G03",
+    "source": "Blackbird & Company Educational Press — Literature Discovery Guide: "
+              "The Hundred Dresses by Eleanor Estes (Level 3). Family-owned guide; "
+              "content follows the workbook for private family use.",
+    "chapters": [
+        _bb_section(1, None, "Wanda—The Dresses Game"),
+        _bb_section(2, None, "A Bright Blue Day—The Contest"),
+        _bb_section(3, None, "The Hundred Dresses—Up On Boggins Heights"),
+        _bb_section(4, None, "The Letter to Room 13"),
+        {
+            "number": 5,
+            "title": "Section 5: Glean — Final Project",
+            "lessons": [
+                _ls(1, 1, "Glean: Final Project",
+                    "Complete one or more of the guide's final project options: recite "
+                    "the Gettysburg Address; write a letter to Wanda; design and paint "
+                    "ten dresses; write and illustrate what discrimination means to you; "
+                    "build a diorama of a scene; or write to a schoolmate who moved away."),
+            ],
+        },
+    ],
+}
 
 
 # Blackbird & Company Literature Discovery Guide: I Am David (Anne Holm), Level 7.
@@ -1035,6 +1074,7 @@ BLUEPRINTS = {
     BLACKBIRD_THE_FOLK_KEEPER["slug"]: BLACKBIRD_THE_FOLK_KEEPER,
     BLACKBIRD_A_MOUSE_CALLED_WOLF["slug"]: BLACKBIRD_A_MOUSE_CALLED_WOLF,
     BLACKBIRD_RICKSHAW_GIRL["slug"]: BLACKBIRD_RICKSHAW_GIRL,
+    BLACKBIRD_HUNDRED_DRESSES["slug"]: BLACKBIRD_HUNDRED_DRESSES,
     BLACKBIRD_MISS_AGNES["slug"]: BLACKBIRD_MISS_AGNES,
     ESSENTIALS_IN_WRITING_3["slug"]: ESSENTIALS_IN_WRITING_3,
     SAXON_PREALGEBRA_DIVE["slug"]: SAXON_PREALGEBRA_DIVE,

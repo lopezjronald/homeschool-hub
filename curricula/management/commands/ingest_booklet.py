@@ -34,9 +34,17 @@ class Command(BaseCommand):
     help = "Attach a booklet PDF to a curriculum and extract the child-safe pages."
 
     def add_arguments(self, parser):
-        parser.add_argument("--curriculum", type=int, required=True)
-        parser.add_argument("--pdf", required=True)
-        parser.add_argument("--title", required=True)
+        parser.add_argument("--curriculum", type=int)
+        parser.add_argument("--pdf")
+        parser.add_argument(
+            "--doc", type=int,
+            help="Build the child copy from a document ALREADY uploaded "
+                 "(the parent's own upload form). This is how it is done on "
+                 "production, where the PDF is in storage and not on the box "
+                 "running the command — and it keys on the row, so a "
+                 "correction always replaces rather than adding a second "
+                 "booklet.")
+        parser.add_argument("--title")
         parser.add_argument(
             "--student-pages", required=True,
             help="1-based pages of the source a child may see, e.g. '23-26'.")
@@ -51,18 +59,38 @@ class Command(BaseCommand):
         except ImportError:                                  # pragma: no cover
             import fitz
 
-        path = options["pdf"]
-        if not os.path.exists(path):
-            raise CommandError(f"No such file: {path}")
-        try:
-            curriculum = Curriculum.objects.get(pk=options["curriculum"])
-        except Curriculum.DoesNotExist:
-            raise CommandError(f"No curriculum #{options['curriculum']}.")
-
-        # Closed in every path, including the error one: an open handle keeps a
-        # Windows lock on the source file, and the caller usually wants to move
-        # or delete it straight afterwards.
-        source = fitz.open(path)
+        existing = None
+        if options["doc"]:
+            if options["pdf"] or options["curriculum"]:
+                raise CommandError("--doc replaces --pdf and --curriculum.")
+            try:
+                existing = CurriculumDocument.objects.get(pk=options["doc"])
+            except CurriculumDocument.DoesNotExist:
+                raise CommandError(f"No document #{options['doc']}.")
+            if not existing.file:
+                raise CommandError(
+                    f"Document #{existing.pk} has no file to extract from.")
+            curriculum = existing.curriculum
+            label = os.path.basename(existing.file.name)
+            with existing.file.open("rb") as fh:
+                source = fitz.open(stream=fh.read(), filetype="pdf")
+        else:
+            if not (options["pdf"] and options["curriculum"] and options["title"]):
+                raise CommandError(
+                    "Give either --doc, or all of --pdf, --curriculum and "
+                    "--title.")
+            path = options["pdf"]
+            if not os.path.exists(path):
+                raise CommandError(f"No such file: {path}")
+            try:
+                curriculum = Curriculum.objects.get(pk=options["curriculum"])
+            except Curriculum.DoesNotExist:
+                raise CommandError(f"No curriculum #{options['curriculum']}.")
+            label = os.path.basename(path)
+            # Closed in every path, including the error one: an open handle
+            # keeps a Windows lock on the source file, and the caller usually
+            # wants to move or delete it straight afterwards.
+            source = fitz.open(path)
         try:
             try:
                 pages = CurriculumDocument.parse_pages(
@@ -72,7 +100,7 @@ class Command(BaseCommand):
 
             self.stdout.write(
                 "%s — %d pages; giving the child %d of them: %s"
-                % (os.path.basename(path), source.page_count, len(pages),
+                % (label, source.page_count, len(pages),
                    options["student_pages"]))
             for n in pages:
                 first = (source[n - 1].get_text().strip().splitlines()
@@ -97,14 +125,24 @@ class Command(BaseCommand):
                 "%.1f KB." % (len(pages), len(child_bytes) / 1024)))
             return
 
-        doc, created = CurriculumDocument.objects.update_or_create(
-            curriculum=curriculum, title=options["title"],
-            defaults={
-                "doc_type": options["doc_type"],
-                "student_pages": options["student_pages"],
-                "student_label": options["student_label"],
-            },
-        )
+        if existing is not None:
+            # Keyed on the ROW, so re-running always replaces this booklet
+            # rather than adding a second one beside it.
+            doc, created = existing, False
+            doc.student_pages = options["student_pages"]
+            if options["student_label"]:
+                doc.student_label = options["student_label"]
+            if options["title"]:
+                doc.title = options["title"]
+        else:
+            doc, created = CurriculumDocument.objects.update_or_create(
+                curriculum=curriculum, title=options["title"],
+                defaults={
+                    "doc_type": options["doc_type"],
+                    "student_pages": options["student_pages"],
+                    "student_label": options["student_label"],
+                },
+            )
 
         # A correction filed under a slightly different title does not replace
         # the booklet it was correcting — it ADDS one, and the child is offered
@@ -126,9 +164,13 @@ class Command(BaseCommand):
             self.stdout.write(self.style.ERROR(
                 "  She will see ALL of them. If one of these was meant to be "
                 "replaced, re-run with its exact --title, or delete it."))
-        with open(path, "rb") as fh:
-            doc.file.save(os.path.basename(path), ContentFile(fh.read()), save=False)
-        stem = os.path.splitext(os.path.basename(path))[0]
+        if existing is None:
+            # Only the --pdf path uploads a source; --doc extracts from one
+            # that is already in storage and must not re-upload it.
+            with open(path, "rb") as fh:
+                doc.file.save(os.path.basename(path), ContentFile(fh.read()),
+                              save=False)
+        stem = os.path.splitext(label)[0]
         doc.student_file.save(f"{stem}-student.pdf",
                               ContentFile(child_bytes), save=False)
         doc.save()

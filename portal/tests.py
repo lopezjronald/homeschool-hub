@@ -2429,6 +2429,43 @@ class BookletViewerTests(TestCase):
         doc.student_file.storage.delete(doc.student_file.name)
         self.assertEqual(self._fetch(self.vtoken, doc).status_code, 404)
 
+    def test_re_extracting_an_uploaded_document_replaces_it_in_place(self):
+        """How this is done on production: the parent uploads through their own
+        form, and the extraction runs server-side against the row. Keyed on the
+        row, so narrowing a range that turned out too wide REPLACES the booklet
+        rather than leaving the wide one beside it."""
+        from curricula.models import CurriculumDocument
+
+        doc = self._ingest(self.violet, "Violet Weekly", student_pages="1-6")
+        _, wide = self._text_of(self._fetch(self.vtoken, doc))
+        self.assertIn("ANSWER KEY", wide)          # too wide, as uploaded
+
+        call_command("ingest_booklet", "--doc", str(doc.pk),
+                     "--student-pages", "5-6", stdout=StringIO())
+
+        self.assertEqual(
+            CurriculumDocument.objects.filter(curriculum=doc.curriculum).count(),
+            1, "a correction must not leave the wide one beside it")
+        pages, text = self._text_of(self._fetch(self.vtoken, doc))
+        self.assertEqual(pages, 2)
+        self.assertNotIn("ANSWER KEY", text)
+        doc.refresh_from_db()
+        self.assertEqual(doc.student_pages, "5-6")
+        self.assertTrue(doc.file, "the teacher edition is still there for a parent")
+
+    def test_extracting_from_a_document_with_no_file_is_refused(self):
+        from django.core.management.base import CommandError
+
+        from curricula.models import CurriculumDocument
+
+        doc = self._ingest(self.violet, "Violet Weekly")
+        doc.file = ""
+        doc.save(update_fields=["file"])
+        with self.assertRaises(CommandError) as caught:
+            call_command("ingest_booklet", "--doc", str(doc.pk),
+                         "--student-pages", "5-6", stdout=StringIO())
+        self.assertIn("no file", str(caught.exception))
+
     def test_a_correction_filed_under_a_new_title_is_shouted_about(self):
         """update_or_create keys on (curriculum, title), so a correction typed
         with a different title ADDS a booklet instead of replacing one — and

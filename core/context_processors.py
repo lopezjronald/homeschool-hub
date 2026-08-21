@@ -2,6 +2,19 @@ from core.models import FamilyMembership
 from core.utils import get_selected_family, get_user_families
 
 
+def signup_open(request):
+    """Whether anyone may create an account, for the templates that offer it.
+
+    A "Register" link that leads to "invitation only" is a small lie the nav
+    tells every visitor. The flag is the single source of truth for both, so
+    the link and the page can never disagree.
+    """
+    from django.conf import settings
+
+    return {"public_signup_enabled":
+            bool(getattr(settings, "PUBLIC_SIGNUP_ENABLED", False))}
+
+
 def family_context(request):
     """Provide family data to all templates for the navbar switcher."""
     if not hasattr(request, "user") or not request.user.is_authenticated:

@@ -176,6 +176,7 @@ TEMPLATES = [
                 "django.template.context_processors.csp",  # {{ csp_nonce }} for lingua templates
                 "core.context_processors.family_context",
                 "core.context_processors.onboarding_hints",
+                "core.context_processors.signup_open",
             ],
         },
     },

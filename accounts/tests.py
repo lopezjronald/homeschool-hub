@@ -750,3 +750,14 @@ class InvitationOnlyTests(TestCase):
         the closed state is a decision rather than an accident."""
         self.assertEqual(
             self.client.get(reverse("accounts:register")).status_code, 200)
+
+    def test_the_nav_does_not_offer_a_register_link_that_leads_nowhere(self):
+        """A "Register" link that lands on "invitation only" is a small lie the
+        nav tells every visitor. One flag drives both, so they cannot disagree."""
+        page = self.client.get(reverse("accounts:login")).content.decode()
+        self.assertNotIn(reverse("accounts:register"), page)
+
+    @override_settings(PUBLIC_SIGNUP_ENABLED=True)
+    def test_the_register_link_comes_back_when_signup_opens(self):
+        page = self.client.get(reverse("accounts:login")).content.decode()
+        self.assertIn(reverse("accounts:register"), page)

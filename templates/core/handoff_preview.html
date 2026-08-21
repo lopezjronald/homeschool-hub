@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+
+{% block title %}Send this handoff · Steadfast Scholars{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+  <div class="row justify-content-center">
+    <div class="col-lg-8">
+
+      <h2>Read it, then send it</h2>
+      <p class="text-muted">
+        This is exactly what goes out — nothing is added on the way.
+      </p>
+
+      {% comment %} The message verbatim. Monospace and pre-wrap because this
+      same text is what lands in an email and what goes on the clipboard for a
+      text: what you see here is the thing itself, not a rendering of it.
+      {% endcomment %}
+      <div class="card mb-3">
+        <div class="card-body">
+          <pre id="handoff-body" class="mb-0" style="white-space: pre-wrap; font-size: .92rem; margin:0;">{{ draft.body }}</pre>
+        </div>
+      </div>
+
+      <div class="row g-3">
+        <div class="col-md-6">
+          <div class="card h-100">
+            <div class="card-header"><h6 class="mb-0">Text it</h6></div>
+            <div class="card-body d-flex flex-column">
+              <p class="small text-muted">
+                Copies it to your clipboard so you can paste it into your own
+                Messages app — it arrives from your number, in the thread you
+                already use.
+              </p>
+              <form method="post" action="{% url 'core:handoff_send' draft.pk %}" class="mt-auto">
+                {% csrf_token %}
+                <input type="hidden" name="how" value="copied">
+                <button type="submit" id="copy-and-record" class="btn btn-outline-primary w-100">
+                  Copy for text
+                </button>
+              </form>
+            </div>
+          </div>
+        </div>
+
+        <div class="col-md-6">
+          <div class="card h-100">
+            <div class="card-header"><h6 class="mb-0">Email it</h6></div>
+            <div class="card-body d-flex flex-column">
+              <form method="post" action="{% url 'core:handoff_send' draft.pk %}" class="d-flex flex-column h-100">
+                {% csrf_token %}
+                <input type="hidden" name="how" value="email">
+                {% if recipients %}
+                  {% for r in recipients %}
+                    <div class="form-check">
+                      <input class="form-check-input" type="checkbox" name="recipient"
+                             value="{{ r.pk }}" id="r{{ r.pk }}"
+                             {% if not r.email %}disabled{% endif %}>
+                      <label class="form-check-label" for="r{{ r.pk }}">
+                        {{ r.name }}
+                        <span class="text-muted small">{{ r.email|default:"no email saved" }}</span>
+                      </label>
+                    </div>
+                  {% endfor %}
+                  <button type="submit" class="btn btn-primary w-100 mt-auto">Send it</button>
+                {% else %}
+                  <p class="small text-muted">
+                    Nobody's saved yet. Add the other parent under
+                    Family settings and they'll appear here — saved rather than
+                    typed each time, so a wrong character can't send the girls'
+                    records to a stranger.
+                  </p>
+                {% endif %}
+              </form>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <p class="mt-3">
+        <a href="{% url 'core:handoff_new' %}">← Change what's included</a>
+      </p>
+
+    </div>
+  </div>
+</div>
+
+<script>
+  /* Copy on the way to the server: the click both puts the message on the
+     clipboard and records that it happened, so the next handoff knows where to
+     start from. If the clipboard is unavailable the form still submits — the
+     text is on screen and can be selected by hand, which is a worse experience
+     but not a broken one. */
+  (function () {
+    "use strict";
+    var btn = document.getElementById("copy-and-record");
+    var body = document.getElementById("handoff-body");
+    if (!btn || !body || !navigator.clipboard) return;
+    btn.closest("form").addEventListener("submit", function () {
+      try { navigator.clipboard.writeText(body.textContent); } catch (e) { /* selectable by hand */ }
+    });
+  })();
+</script>
+{% endblock %}

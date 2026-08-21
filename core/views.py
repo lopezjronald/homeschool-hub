@@ -251,3 +251,131 @@ def accept_invite(request, invite_id):
         "invite": invite,
         "role_label": role_label,
     })
+
+
+# ---------------------------------------------------------------------------
+# Handoff — telling the other household what the girls finished.
+# ---------------------------------------------------------------------------
+
+@login_required
+def handoff_new(request):
+    """Compose a handoff. Nothing leaves until a person presses send.
+
+    Edit access only: this discloses the children's school records outside the
+    app, which is not something a view-only teacher or guardian should be able
+    to do on the household's behalf.
+    """
+    from core import handoff as handoff_lib
+    from core.models import Handoff, HandoffRecipient
+    from students.models import Student
+
+    family = get_selected_family(request) or get_active_family(request.user)
+    if family is None or not can_edit_family(request.user, family):
+        raise Http404
+
+    since = handoff_lib.default_since(family)
+    until = timezone.now()
+    children = list(Student.objects.filter(family=family).order_by("first_name"))
+    summaries = [handoff_lib.summarise(child, since, until) for child in children]
+
+    return render(request, "core/handoff_new.html", {
+        "family": family,
+        "since": since,
+        "until": until,
+        "summaries": [s for s in summaries if s.has_anything],
+        "nothing_found": not any(s.has_anything for s in summaries),
+        "recipients": HandoffRecipient.objects.filter(family=family, is_active=True),
+        "previous": Handoff.objects.filter(family=family).exclude(sent_at=None)[:5],
+    })
+
+
+@login_required
+@require_POST
+def handoff_preview(request):
+    """Build the exact message, from exactly what was ticked.
+
+    A separate step on purpose. Nobody should be able to send a message they
+    have not read, and rebuilding from the ticked keys — rather than from the
+    whole window again — is what makes the preview the SAME text that sends.
+    """
+    from core import handoff as handoff_lib
+    from core.models import Handoff
+    from django.utils.dateparse import parse_datetime
+    from students.models import Student
+
+    family = get_selected_family(request) or get_active_family(request.user)
+    if family is None or not can_edit_family(request.user, family):
+        raise Http404
+
+    since = parse_datetime(request.POST.get("since", "")) or handoff_lib.default_since(family)
+    until = parse_datetime(request.POST.get("until", "")) or timezone.now()
+    keep = set(request.POST.getlist("include"))
+    note = request.POST.get("note", "")
+
+    summaries = []
+    for child in Student.objects.filter(family=family).order_by("first_name"):
+        summary = handoff_lib.summarise(child, since, until)
+        for subject in summary.subjects:
+            subject.items = [i for i in subject.items if i.key in keep]
+        summary.subjects = [s for s in summary.subjects if s.items]
+        if summary.has_anything:
+            summaries.append(summary)
+
+    body = handoff_lib.compose(summaries, note=note, author=request.user)
+    draft = Handoff.objects.create(
+        family=family, created_by=request.user,
+        covers_since=since, covers_until=until, note=note, body=body,
+    )
+    return render(request, "core/handoff_preview.html", {
+        "family": family,
+        "draft": draft,
+        "recipients": family.handoff_recipients.filter(is_active=True),
+    })
+
+
+@login_required
+@require_POST
+def handoff_send(request, pk):
+    """Email the draft, or record that it was copied for a text.
+
+    Copying is NOT sending, and the record says which — a log that claims a
+    message went out when it was only put on a clipboard is worse than no log.
+    """
+    from core.models import Handoff, HandoffRecipient
+
+    draft = get_object_or_404(Handoff, pk=pk)
+    if not can_edit_family(request.user, draft.family):
+        raise Http404
+    if draft.sent_at:
+        messages.info(request, "That handoff has already been sent.")
+        return redirect("core:handoff_new")
+
+    if request.POST.get("how") == "copied":
+        draft.copied_at = timezone.now()
+        draft.status = Handoff.SENT
+        draft.sent_to = "copied for texting"
+        draft.save(update_fields=["copied_at", "status", "sent_to"])
+        messages.success(request, "Copied. The next handoff will start from here.")
+        return redirect("core:handoff_new")
+
+    chosen = HandoffRecipient.objects.filter(
+        pk__in=request.POST.getlist("recipient"), family=draft.family, is_active=True,
+    ).exclude(email="")
+    emails = [r.email for r in chosen]
+    if not emails:
+        messages.error(request, "Choose at least one person with an email address.")
+        return redirect("core:handoff_new")
+
+    send_mail(
+        subject="School update — %s" % timezone.localtime(draft.covers_until).strftime("%d %b"),
+        message=draft.body,
+        from_email=getattr(settings, "DEFAULT_FROM_EMAIL", None),
+        recipient_list=emails,
+        fail_silently=False,
+    )
+    draft.sent_at = timezone.now()
+    draft.status = Handoff.SENT
+    draft.sent_to = ", ".join(emails)
+    draft.save(update_fields=["sent_at", "status", "sent_to"])
+    messages.success(request, "Sent to %s." % ", ".join(r.name for r in chosen))
+    return redirect("core:handoff_new")

@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+
+{% block title %}Handoff · Steadfast Scholars{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+  <div class="row justify-content-center">
+    <div class="col-lg-8">
+
+      <div class="d-flex align-items-baseline justify-content-between mb-3">
+        <h2 class="mb-0">Handoff</h2>
+        <span class="text-muted small">
+          since {{ since|date:"D j M" }}
+        </span>
+      </div>
+      <p class="text-muted">
+        What the girls finished, and where they're up to — so whoever has them
+        next starts in the right place instead of asking.
+      </p>
+
+      {% if nothing_found %}
+        <div class="card">
+          <div class="card-body">
+            <p class="mb-0">Nothing has been turned in since
+              {{ since|date:"j M" }}. There's nothing to hand over yet.</p>
+          </div>
+        </div>
+      {% else %}
+        <form method="post" action="{% url 'core:handoff_preview' %}">
+          {% csrf_token %}
+          <input type="hidden" name="since" value="{{ since|date:'c' }}">
+          <input type="hidden" name="until" value="{{ until|date:'c' }}">
+
+          {% for summary in summaries %}
+            <div class="card mb-3">
+              <div class="card-header">
+                <h5 class="mb-0">{{ summary.child.first_name }}</h5>
+              </div>
+              <div class="card-body">
+                {% for subject in summary.subjects %}
+                  <p class="fw-semibold mb-2{% if not forloop.first %} mt-3{% endif %}">
+                    {{ subject.name }}
+                  </p>
+                  {% for item in subject.items %}
+                    <div class="form-check">
+                      {% comment %} Ticked by default: the common case is
+                      sending all of it, and a page that starts empty makes the
+                      parent do the work twice. {% endcomment %}
+                      <input class="form-check-input" type="checkbox" name="include"
+                             value="{{ item.key }}" id="i{{ item.key|slugify }}" checked>
+                      <label class="form-check-label" for="i{{ item.key|slugify }}">
+                        {{ item.title }}
+                        {% if item.detail %}<span class="text-muted"> — {{ item.detail }}</span>{% endif %}
+                      </label>
+                    </div>
+                  {% endfor %}
+                  {% if subject.next_up %}
+                    <p class="text-muted small mb-0 mt-1">
+                      → Next: {{ subject.next_up }}
+                    </p>
+                  {% endif %}
+                {% endfor %}
+              </div>
+            </div>
+          {% endfor %}
+
+          <div class="card mb-3">
+            <div class="card-body">
+              <label for="note" class="form-label fw-semibold">Anything worth saying?</label>
+              <textarea class="form-control" name="note" id="note" rows="3"
+                        placeholder="Violet's still mixing up human and physical geography — worth one more pass before week 2."></textarea>
+            </div>
+          </div>
+
+          <button type="submit" class="btn btn-primary">Read it before sending →</button>
+        </form>
+      {% endif %}
+
+      {% if previous %}
+        <h6 class="mt-4 text-muted">Already sent</h6>
+        <ul class="list-unstyled small text-muted">
+          {% for h in previous %}
+            <li>{{ h.sent_at|date:"j M, H:i" }} — {{ h.sent_to }}</li>
+          {% endfor %}
+        </ul>
+      {% endif %}
+
+    </div>
+  </div>
+</div>
+{% endblock %}

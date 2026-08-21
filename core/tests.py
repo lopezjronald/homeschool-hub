@@ -14,7 +14,7 @@ from assignments.models import Assignment
 from django.test import RequestFactory
 
 from core.forms import TeacherInviteForm
-from core.models import Family, FamilyMembership, Invitation
+from core.models import Family, FamilyMembership, Handoff, Invitation
 from core.utils import get_active_family, get_selected_family
 from curricula.models import Curriculum
 from students.models import Student
@@ -1963,3 +1963,286 @@ class FaviconAndBrandRenderTests(TestCase):
         self.assertNotContains(resp, "favicon set")  # the leaked prose specifically
         self.assertContains(resp, 'rel="apple-touch-icon"')  # the favicon actually wired
         self.assertContains(resp, "brand/favicon")           # (hashed) icon links present
+
+
+class HandoffTests(TestCase):
+    """Telling the other household what the girls finished.
+
+    The children's school work moves between two houses. Without this the
+    handover is "what did you do?" followed by somebody guessing, and the
+    receiving parent repeats a week or skips one.
+    """
+
+    def setUp(self):
+        from curricula.models import Chapter, Curriculum, CurriculumPlacement, Lesson
+        from tutor.models import QuestionSet
+
+        self.parent = CustomUser.objects.create_user(
+            username="ho", email="ho@e.com", password="pw")
+        self.family = Family.objects.create(name="Handoff Fam")
+        FamilyMembership.objects.create(user=self.parent, family=self.family,
+                                        role="parent")
+        self.child = Student.objects.create(
+            parent=self.parent, first_name="Violet", grade_level="G03",
+            family=self.family)
+        self.curriculum = Curriculum.objects.create(
+            parent=self.parent, name="Studies Weekly 3", subject="Social Studies",
+            grade_level="G03", family=self.family)
+        chapter = Chapter.objects.create(curriculum=self.curriculum, number=1,
+                                         title="Unit 1")
+        self.week1 = Lesson.objects.create(chapter=chapter, number=1, order=1,
+                                           title="Week 1 - Developing Inquiries")
+        self.week2 = Lesson.objects.create(chapter=chapter, number=2, order=2,
+                                           title="Week 2 - Sources")
+        CurriculumPlacement.objects.create(
+            child=self.child, curriculum=self.curriculum, current_lesson=self.week1)
+        self.qset = QuestionSet.objects.create(
+            lesson=self.week1, title="Week 1 Comprehension Check",
+            family=self.family, status=QuestionSet.APPROVED)
+
+    def _submit(self, when=None, answers=None):
+        from django.utils import timezone
+        from tutor.models import Question, ResponseSheet
+
+        for i in range(1, 4):
+            Question.objects.get_or_create(
+                question_set=self.qset, order=i,
+                defaults={"prompt": "Q%d" % i, "category": "reading"})
+        return ResponseSheet.objects.create(
+            question_set=self.qset, child=self.child,
+            submitted_at=when or timezone.now(),
+            answers=answers if answers is not None else {"1": "a", "2": "b", "3": "c"})
+
+    def _login(self):
+        self.client.login(username="ho", password="pw")
+
+    def _keys(self):
+        import re
+
+        page = self.client.get(reverse("core:handoff_new")).content.decode()
+        # Whitespace-tolerant: the attributes sit on separate lines in the
+        # template, and a regex that assumed they were adjacent found nothing
+        # and quietly asserted against an empty list.
+        return re.findall(r'name="include"\s+value="([^"]+)"', page)
+
+    # -- what the message is for ---------------------------------------------
+
+    def test_it_says_what_comes_next_which_is_the_whole_point(self):
+        """Joyce does not need a transcript. She needs to know to start Violet
+        on Week 2 - everything else in the message is supporting detail."""
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        from core.handoff import compose, summarise
+
+        self._submit()
+        summary = summarise(self.child, timezone.now() - timedelta(days=1))
+        body = compose([summary])
+
+        self.assertIn("Week 1 Comprehension Check", body)
+        # The line that matters: turning work in does NOT move the placement
+        # pointer, so without accounting for what this handoff reports, the
+        # message would say "next: Week 1" beside "finished Week 1" and the
+        # other household would repeat the week.
+        self.assertIn("Next: Week 2 - Sources", body)
+        self.assertNotIn("Next: Week 1", body)
+
+    def test_next_up_only_covers_what_was_actually_worked_on(self):
+        """A child with eight active courses produced eight lines of "next",
+        which is the opposite of telling somebody where to start. A course
+        nobody touched this week is not part of this handover."""
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        from core.handoff import compose, summarise
+        from curricula.models import Chapter, Curriculum, CurriculumPlacement, Lesson
+
+        other = Curriculum.objects.create(
+            parent=self.parent, name="Saxon Maths", subject="Maths",
+            grade_level="G03", family=self.family)
+        chapter = Chapter.objects.create(curriculum=other, number=1, title="U1")
+        lesson = Lesson.objects.create(chapter=chapter, number=1, order=1,
+                                       title="Lesson 1")
+        CurriculumPlacement.objects.create(child=self.child, curriculum=other,
+                                           current_lesson=lesson)
+
+        self._submit()
+        body = compose([summarise(self.child, timezone.now() - timedelta(days=1))])
+        self.assertIn("Studies Weekly 3", body)
+        self.assertNotIn("Saxon Maths", body)
+
+    def test_paper_work_is_not_reported_as_nothing(self):
+        """A worksheet she filled in by hand stores no answers. Counting them
+        would tell the other parent "0 of 3 answered" about a child who did the
+        whole thing - the most damaging thing this message could get wrong."""
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        from core.handoff import summarise
+        from tutor.models import ResponseSheet
+
+        sheet = self._submit(answers={})
+        sheet.completion_mode = ResponseSheet.ON_PAPER
+        sheet.approved_at = timezone.now()
+        sheet.approved_by = self.parent
+        sheet.attachment = "uploads/scan.jpg"
+        sheet.save()
+
+        summary = summarise(self.child, timezone.now() - timedelta(days=1))
+        detail = summary.items[0].detail
+        self.assertIn("on paper", detail)
+        self.assertNotIn("0 of", detail)
+
+    def test_an_unfinalized_ai_level_is_never_sent(self):
+        """A draft is not a grade. Sending one to the other household puts a
+        number on a child's work that nobody has agreed to."""
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        from core.handoff import summarise
+        from tutor.models import MasteryAssessment
+        from worklog.models import WorkLogEntry
+
+        sheet = self._submit()
+        entry = WorkLogEntry.objects.create(
+            parent=self.parent, child=self.child, family=self.family,
+            subject="Social Studies", description="week 1")
+        sheet.work_entry = entry
+        sheet.save(update_fields=["work_entry"])
+        MasteryAssessment.objects.create(
+            work_entry=entry, rubric="r", answers="a",
+            ai_level="mastered", status=MasteryAssessment.DRAFT)
+
+        summary = summarise(self.child, timezone.now() - timedelta(days=1))
+        self.assertNotIn("Mastered", summary.items[0].detail)
+
+        MasteryAssessment.objects.filter(work_entry=entry).update(
+            status=MasteryAssessment.FINALIZED, final_level="proficient",
+            finalized_at=timezone.now())
+        summary = summarise(self.child, timezone.now() - timedelta(days=1))
+        self.assertIn("Proficient", summary.items[0].detail)
+
+    # -- nothing leaves without a person ------------------------------------
+
+    def test_what_you_read_is_what_sends(self):
+        """The preview is built from the ticked keys and STORED, then sent
+        verbatim. Regenerating at send time would let the message change
+        between reading it and sending it."""
+        self._submit()
+        self._login()
+        keys = self._keys()
+        self.assertTrue(keys)
+
+        resp = self.client.post(reverse("core:handoff_preview"),
+                                {"include": keys, "note": "Week 1 done."})
+        self.assertEqual(resp.status_code, 200)
+        draft = Handoff.objects.get()
+        self.assertIn("Week 1 Comprehension Check", draft.body)
+        self.assertIn("Week 1 done.", draft.body)
+        self.assertContains(resp, "Week 2 - Sources")
+        self.assertIsNone(draft.sent_at)
+
+    def test_unticking_something_keeps_it_out(self):
+        """The checkbox has to mean something, or the parent is not in control
+        of what leaves their house."""
+        self._submit()
+        self._login()
+        self.client.post(reverse("core:handoff_preview"),
+                         {"include": [], "note": "nothing this week"})
+        draft = Handoff.objects.get()
+        self.assertNotIn("Comprehension Check", draft.body)
+
+    def test_email_goes_only_to_a_saved_recipient(self):
+        """Typed-fresh addresses are how a child's record reaches a stranger
+        through one wrong character. You pick from a list."""
+        from django.core import mail
+
+        from core.models import HandoffRecipient
+
+        joyce = HandoffRecipient.objects.create(
+            family=self.family, name="Joyce", email="joyce@e.com")
+        stranger_family = Family.objects.create(name="Someone Else")
+        stranger = HandoffRecipient.objects.create(
+            family=stranger_family, name="Stranger", email="nope@e.com")
+
+        self._submit()
+        self._login()
+        self.client.post(reverse("core:handoff_preview"), {"include": self._keys()})
+        draft = Handoff.objects.get()
+
+        # A recipient from another family is not reachable even by id.
+        self.client.post(reverse("core:handoff_send", args=[draft.pk]),
+                         {"how": "email", "recipient": [joyce.pk, stranger.pk]})
+        draft.refresh_from_db()
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(mail.outbox[0].to, ["joyce@e.com"])
+        self.assertEqual(draft.sent_to, "joyce@e.com")
+        self.assertIsNotNone(draft.sent_at)
+
+    def test_copying_is_recorded_as_copying_not_as_sending(self):
+        """A log that claims a message went out when it was only put on a
+        clipboard is worse than no log."""
+        self._submit()
+        self._login()
+        self.client.post(reverse("core:handoff_preview"), {"include": []})
+        draft = Handoff.objects.get()
+
+        self.client.post(reverse("core:handoff_send", args=[draft.pk]),
+                         {"how": "copied"})
+        draft.refresh_from_db()
+        self.assertIsNotNone(draft.copied_at)
+        self.assertIsNone(draft.sent_at)
+        self.assertTrue(draft.was_delivered)
+        self.assertEqual(draft.sent_to, "copied for texting")
+
+    def test_the_next_handoff_starts_where_the_last_one_stopped(self):
+        """So nobody has to remember a date, and nothing is reported twice."""
+        from django.utils import timezone
+
+        from core.handoff import default_since
+
+        self._submit()
+        self._login()
+        self.client.post(reverse("core:handoff_preview"), {"include": []})
+        draft = Handoff.objects.get()
+        self.client.post(reverse("core:handoff_send", args=[draft.pk]),
+                         {"how": "copied"})
+        draft.refresh_from_db()
+        draft.sent_at = timezone.now()
+        draft.save(update_fields=["sent_at"])
+
+        self.assertEqual(default_since(self.family), draft.covers_since)
+
+    # -- who may do it -------------------------------------------------------
+
+    def test_a_view_only_member_cannot_send_the_children_s_records_out(self):
+        """A teacher or guardian may look. Disclosing the girls' work to
+        somebody outside the app is the household's decision."""
+        viewer = CustomUser.objects.create_user(
+            username="look", email="look@e.com", password="pw")
+        FamilyMembership.objects.create(user=viewer, family=self.family,
+                                        role="teacher")
+        self.client.login(username="look", password="pw")
+        self.assertEqual(self.client.get(reverse("core:handoff_new")).status_code, 404)
+
+    def test_another_family_cannot_send_this_one_s_handoff(self):
+        self._submit()
+        self._login()
+        self.client.post(reverse("core:handoff_preview"), {"include": []})
+        draft = Handoff.objects.get()
+
+        outsider = CustomUser.objects.create_user(
+            username="out", email="out@e.com", password="pw")
+        other_family = Family.objects.create(name="Other")
+        FamilyMembership.objects.create(user=outsider, family=other_family,
+                                        role="parent")
+        self.client.login(username="out", password="pw")
+        resp = self.client.post(reverse("core:handoff_send", args=[draft.pk]),
+                                {"how": "copied"})
+        self.assertEqual(resp.status_code, 404)
+        draft.refresh_from_db()
+        self.assertIsNone(draft.copied_at)

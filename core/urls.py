@@ -23,4 +23,7 @@ urlpatterns = [
         views.remove_member,
         name="remove_member",
     ),
+    path("handoff/", views.handoff_new, name="handoff_new"),
+    path("handoff/preview/", views.handoff_preview, name="handoff_preview"),
+    path("handoff/<int:pk>/send/", views.handoff_send, name="handoff_send"),
 ]

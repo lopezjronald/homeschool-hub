@@ -72,6 +72,10 @@
                 <li><span class="dropdown-header">Signed in as {{ user.username }}</span></li>
                 <li><a class="dropdown-item" href="{% url 'accounts:settings' %}"><i class="bi bi-gear me-2"></i>Settings</a></li>
                 {% if can_invite_teacher %}
+                  {% comment %} Same gate as inviting: both hand something of
+                  the family's to somebody outside it, so both are the
+                  household's to do. {% endcomment %}
+                  <li><a class="dropdown-item" href="{% url 'core:handoff_new' %}"><i class="bi bi-arrow-left-right me-2"></i>Handoff</a></li>
                   <li><a class="dropdown-item" href="{% url 'core:invite_teacher' %}">Invite people</a></li>
                 {% endif %}
                 <li><hr class="dropdown-divider"></li>
@@ -85,7 +89,9 @@
             </li>
           {% else %}
             <li class="nav-item"><a class="nav-link" href="{% url 'accounts:login' %}">Login</a></li>
-            <li class="nav-item"><a class="nav-link" href="{% url 'accounts:register' %}">Register</a></li>
+            {% if public_signup_enabled %}
+              <li class="nav-item"><a class="nav-link" href="{% url 'accounts:register' %}">Register</a></li>
+            {% endif %}
           {% endif %}
         </ul>
       </div>

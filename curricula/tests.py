@@ -1747,3 +1747,59 @@ class LessonWorkUploadTests(TestCase):
         work = LessonWork.objects.get()
         self.assertTrue(work.file)
         self.assertFalse(work.is_image)
+
+    # ---- guards the first pass left undefended (found by mutation review) ------
+
+    def test_remove_refuses_a_siblings_row_on_the_very_same_lesson(self):
+        """Both girls sit the same lesson. Kaylin's row must not be deletable
+        through Violet's URL by guessing the id — the delete filters on child as
+        well as lesson, and nothing was holding that in place."""
+        c = self._c()
+        c.post(self._url(child=self.sibling), {"file": self._photo(), "caption": "Kaylins"})
+        hers = LessonWork.objects.get()
+        r = c.post(self._remove_url(), {"work": hers.pk})   # Violet's URL, Kaylin's row
+        self.assertEqual(r.status_code, 404)
+        self.assertTrue(LessonWork.objects.filter(pk=hers.pk).exists())
+
+    def test_a_second_familys_curriculum_cannot_be_pinned_to_this_child(self):
+        """A user who parents family A and TEACHES family B can view B's course.
+        Posting child A + curriculum B must still 404 — otherwise a child ends up
+        with work filed against a course she is not enrolled in (the HH-141 guard).
+        """
+        from core.models import FamilyMembership as FM
+        FM.objects.create(user=self.parent, family=self.other_family, role="teacher")
+        other_curr = self.foreign_lesson.chapter.curriculum
+        url = reverse("students:lesson_work", kwargs={
+            "pk": self.child.pk, "curriculum_id": other_curr.pk,
+            "lesson_id": self.foreign_lesson.pk})
+        self.assertEqual(self._c().post(url, {"file": self._photo()}).status_code, 404)
+        self.assertFalse(self.foreign_lesson.work_uploads.exists())
+        # and the read page is a 404 too, not a dead end showing B's lesson title
+        self.assertEqual(self._c().get(url).status_code, 404)
+
+    def test_the_badge_counts_only_this_childs_files(self):
+        """Two files on the lesson, one of them Kaylin's. Violet's checklist must
+        say 1 — a badge counting the sibling's work reads as work she has done."""
+        c = self._c()
+        c.post(self._url(), {"file": self._photo()})
+        c.post(self._url(child=self.sibling), {"file": self._photo("hers.jpg")})
+        self.assertEqual(LessonWork.objects.count(), 2)
+        html = c.get(reverse("students:student_lessons", kwargs={
+            "pk": self.child.pk, "curriculum_id": self.curriculum.pk})).content.decode()
+        row = html.split(self._url())[1][:300]
+        self.assertIn("</span> 1</a>", row)
+        self.assertNotIn("</span> 2</a>", row)
+
+    def test_an_outsider_cannot_read_the_page_for_a_child_they_do_not_have(self):
+        """Defence in depth: the child lookup is scoped on the READ path too, not
+        only rescued by the curriculum lookup two lines further down."""
+        c = self._c("lwo")                                  # other family's parent
+        self.assertEqual(c.get(self._url()).status_code, 404)
+
+    def test_a_caption_longer_than_the_column_is_cut_not_crashed(self):
+        """max_length is not enforced by .objects.create(), so on Postgres an
+        over-long caption is a 500 ('value too long for character varying(200)').
+        SQLite would swallow it, so assert the truncation directly."""
+        r = self._c().post(self._url(), {"file": self._photo(), "caption": "x" * 500})
+        self.assertEqual(r.status_code, 302)
+        self.assertEqual(len(LessonWork.objects.get().caption), 200)

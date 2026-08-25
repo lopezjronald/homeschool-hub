@@ -498,12 +498,11 @@ def _lesson_for_child(request, pk, curriculum_id, lesson_id, *, editable):
 
     base = editable_queryset if editable else viewable_queryset
     student = get_object_or_404(base(Student.objects.all(), request.user), pk=pk)
-    if editable:
-        curriculum = _child_curriculum(request, student, curriculum_id)
-    else:
-        from curricula.models import Curriculum
-        curriculum = get_object_or_404(
-            viewable_queryset(Curriculum.objects.all(), request.user), pk=curriculum_id)
+    # The curriculum is pinned to the CHILD's family on read as well as on write.
+    # Resolving GET with a plain viewable_queryset leaked nothing, but it rendered a
+    # dead end: someone who parents family A and teaches family B got family B's
+    # lesson title shown as child A's page, with an upload form whose POST then 404s.
+    curriculum = _child_curriculum(request, student, curriculum_id)
     lesson = get_object_or_404(
         Lesson.objects.filter(chapter__curriculum=curriculum).select_related("chapter"),
         pk=lesson_id)

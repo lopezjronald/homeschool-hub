@@ -7,6 +7,7 @@ from .models import (
     CurriculumPlacement,
     Lesson,
     LessonProgress,
+    LessonWork,
 )
 
 
@@ -58,3 +59,14 @@ class CurriculumPlacementAdmin(admin.ModelAdmin):
     list_display = ("child", "curriculum", "current_lesson", "is_active", "updated_at")
     list_filter = ("is_active",)
     raw_id_fields = ("child", "curriculum", "current_lesson")
+
+
+@admin.register(LessonWork)
+class LessonWorkAdmin(admin.ModelAdmin):
+    """Every sibling model is registered; without this there is no route to
+    inspect or repair a bad upload (HH-167)."""
+
+    list_display = ("child", "lesson", "caption", "uploaded_by", "created_at")
+    list_filter = ("lesson__chapter__curriculum",)
+    search_fields = ("caption", "file")
+    raw_id_fields = ("child", "lesson", "family", "uploaded_by")

@@ -82,6 +82,33 @@ class CalendarEvent(models.Model):
         help_text="ISO dates of cancelled occurrences.",
     )
 
+    # Reminders are Google's job, not ours (HH-168). The app stores WHEN to nudge;
+    # the actual notification is delivered by Google Calendar, which already knows
+    # how to reach a phone. Building our own notifier would mean re-solving push,
+    # email and quiet hours for one household.
+    #
+    # A CharField rather than an integer because "no reminder at all" and "whatever
+    # that calendar normally does" are both real answers, and neither is a number.
+    REMIND_DEFAULT = ""
+    REMIND_NONE = "none"
+    REMINDER_CHOICES = [
+        (REMIND_DEFAULT, "The calendar's usual reminder"),
+        (REMIND_NONE, "No reminder"),
+        ("0", "At the start time"),
+        ("10", "10 minutes before"),
+        ("30", "30 minutes before"),
+        ("60", "1 hour before"),
+        ("120", "2 hours before"),
+        ("1440", "1 day before"),
+        ("2880", "2 days before"),
+        ("10080", "1 week before"),
+    ]
+    reminder = models.CharField(
+        max_length=8, blank=True, default=REMIND_DEFAULT, choices=REMINDER_CHOICES,
+        help_text="When Google should nudge you. Blank leaves it to the calendar's "
+                  "own setting.",
+    )
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -100,6 +127,26 @@ class CalendarEvent(models.Model):
         if self.activity_id and self.activity and self.activity.emoji:
             return self.activity.emoji
         return self.TYPE_EMOJI.get(self.event_type, "📌")
+
+    def reminder_overrides(self):
+        """The Google ``reminders`` payload for this event, or None to defer.
+
+        None means "send useDefault: true" — the event behaves like any other on
+        that calendar. An empty list means the parent explicitly asked for silence,
+        which Google expresses as useDefault: false with no overrides.
+        """
+        if self.reminder == self.REMIND_DEFAULT:
+            return None
+        if self.reminder == self.REMIND_NONE:
+            return []
+        try:
+            minutes = int(self.reminder)
+        except (TypeError, ValueError):
+            return None            # a junk value defers rather than crashing a sync
+        # Google rejects anything outside 0..40320 (four weeks).
+        if not 0 <= minutes <= 40320:
+            return None
+        return [{"method": "popup", "minutes": minutes}]
 
     def weekday_set(self):
         """The weekdays a repeating event lands on (defensive against bad JSON)."""

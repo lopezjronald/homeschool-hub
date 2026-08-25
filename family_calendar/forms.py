@@ -38,7 +38,7 @@ class CalendarEventForm(forms.ModelForm):
         fields = [
             "title", "event_type", "child", "date", "start_time", "end_time",
             "location", "repeats_weekly", "repeat_weekdays", "repeat_until",
-            "notes", "activity",
+            "reminder", "notes", "activity",
         ]
         widgets = {
             "title": forms.TextInput(attrs={"class": "form-control form-control-lg",
@@ -55,6 +55,7 @@ class CalendarEventForm(forms.ModelForm):
             "notes": forms.Textarea(attrs={"rows": 2, "class": "form-control",
                                            "placeholder": "Anything to remember…"}),
             "activity": forms.Select(attrs={"class": "form-select"}),
+            "reminder": forms.Select(attrs={"class": "form-select"}),
         }
 
     def __init__(self, *args, user=None, family=None, **kwargs):
@@ -74,6 +75,8 @@ class CalendarEventForm(forms.ModelForm):
         self.fields["activity"].required = False
         self.fields["activity"].empty_label = "— none —"
         self.fields["activity"].label = "Linked program"
+        self.fields["reminder"].label = "Remind me"
+        self.fields["reminder"].required = False
 
     def clean_child(self):
         child = self.cleaned_data.get("child")

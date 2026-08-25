@@ -18,6 +18,11 @@ urlpatterns = [
     path("<int:pk>/lessons/<int:curriculum_id>/mark/", views.lesson_mark, name="lesson_mark"),
     path("<int:pk>/lessons/<int:curriculum_id>/save/", views.lessons_save, name="lessons_save"),
     path("<int:pk>/lessons/<int:curriculum_id>/skip-practice/", views.lessons_skip_practice, name="lessons_skip_practice"),
+    # Finished work filed against ONE lesson — maths is done on paper (HH-167)
+    path("<int:pk>/lessons/<int:curriculum_id>/work/<int:lesson_id>/",
+         views.lesson_work, name="lesson_work"),
+    path("<int:pk>/lessons/<int:curriculum_id>/work/<int:lesson_id>/remove/",
+         views.lesson_work_delete, name="lesson_work_delete"),
     path("<int:pk>/edit/", views.student_update, name="student_update"),
     path("<int:pk>/delete/", views.student_delete, name="student_delete"),
 ]

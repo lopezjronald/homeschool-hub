@@ -1,4 +1,5 @@
 from django.conf import settings
+from django.core.validators import FileExtensionValidator
 from django.db import models
 
 
@@ -579,3 +580,83 @@ class CurriculumResource(models.Model):
     @property
     def emoji(self):
         return self.TYPE_EMOJI.get(self.resource_type, "🔗")
+
+
+class LessonWork(models.Model):
+    """A file of the child's finished work for ONE lesson.
+
+    WHY THIS EXISTS SEPARATELY. The paper-copy upload built for the literature
+    projects hangs off a ResponseSheet, which needs a QuestionSet. Saxon and
+    Dimensions have none — they are lesson materials, not turn-in-able work — so
+    a maths chapter test had nowhere to live except a Work Log entry, which ties
+    it to a DATE rather than to Lesson 71. When a charter reviewer asks to see
+    the work for a chapter, a date is the wrong index.
+
+    The alternative — inventing an empty QuestionSet per maths lesson just to
+    have something to attach a file to — was rejected: it would put a turn-in
+    button in the child's portal for work she does on paper.
+
+    Per CHILD as well as per lesson: two children can sit the same lesson, and
+    the file belongs to whoever did it.
+    """
+
+    lesson = models.ForeignKey(
+        Lesson, on_delete=models.CASCADE, related_name="work_uploads",
+    )
+    child = models.ForeignKey(
+        "students.Student", on_delete=models.CASCADE, related_name="lesson_work",
+    )
+    family = models.ForeignKey(
+        "core.Family", on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="lesson_work",
+    )
+    # Same envelope as the literature projects (tutor.ResponseSheet): one list of
+    # extensions, one ceiling, so a parent does not learn two different rules for
+    # "photograph the page you just did".
+    WORK_EXTENSIONS = (".png", ".jpg", ".jpeg", ".heic", ".webp",
+                       ".pdf", ".doc", ".docx")
+    WORK_MAX_BYTES = 25 * 1024 * 1024
+
+    file = models.FileField(
+        upload_to="lesson_work/%Y/%m/",
+        validators=[FileExtensionValidator(
+            allowed_extensions=[e.lstrip(".") for e in WORK_EXTENSIONS])],
+        help_text="A photo, scan, PDF or document of the finished work.",
+    )
+    caption = models.CharField(
+        max_length=200, blank=True,
+        help_text="Optional — e.g. 'Chapter 4 test' or 'practice set B'.",
+    )
+    uploaded_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="+",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.child} · {self.lesson} · {self.filename}"
+
+    @property
+    def filename(self):
+        import os
+
+        return os.path.basename(self.file.name) if self.file else ""
+
+    @property
+    def is_image(self):
+        """True if it can be shown rather than merely linked.
+
+        HEIC is excluded on purpose, matching ResponseSheet.project_is_image:
+        browsers do not render it, so an <img> would be a broken icon in the
+        middle of the printed charter report.
+        """
+        import os
+
+        if not self.file:
+            return False
+        return os.path.splitext(self.file.name)[1].lower() in (
+            ".png", ".jpg", ".jpeg", ".webp",
+        )

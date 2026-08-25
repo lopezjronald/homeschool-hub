@@ -419,7 +419,10 @@ def student_lessons(request, pk, curriculum_id):
     where the child is. Read view; the mark buttons POST to lesson_mark."""
     from itertools import groupby
 
-    from curricula.models import Curriculum, CurriculumPlacement, Lesson, LessonProgress
+    from django.db.models import Count
+
+    from curricula.models import (
+        Curriculum, CurriculumPlacement, Lesson, LessonProgress, LessonWork)
     from tutor.models import QuestionSet, ResponseSheet
 
     student = get_object_or_404(viewable_queryset(Student.objects.all(), request.user), pk=pk)
@@ -440,6 +443,12 @@ def student_lessons(request, pk, curriculum_id):
             question_set__mode=QuestionSet.MODE_STUDENT, question_set__lesson__in=lessons,
         ).values_list("question_set__lesson_id", flat=True)
     )
+    # One grouped count for the whole page — a per-row .count() would be one
+    # query per lesson, and Saxon runs to 120 of them.
+    work_counts = dict(
+        LessonWork.objects.filter(child=student, lesson__in=lessons)
+        .values_list("lesson_id").annotate(n=Count("id")).values_list("lesson_id", "n")
+    )
     placement = CurriculumPlacement.objects.filter(child=student, curriculum=curriculum).first()
     # Resolve ONCE and hand the result to both derived readings below — the checklist,
     # the "Now" pointer and the progress bar all need it, and each recomputing it meant
@@ -459,6 +468,7 @@ def student_lessons(request, pk, curriculum_id):
         )
         lesson.is_current = lesson.id == current_id
         lesson.is_practice = lesson.lesson_type == Lesson.TYPE_PRACTICE
+        lesson.work_count = work_counts.get(lesson.id, 0)
 
     chapters = [
         {"heading": f"Chapter {num} · {items[0].chapter.title}", "lessons": items}
@@ -475,6 +485,117 @@ def student_lessons(request, pk, curriculum_id):
         "current_lesson": actionable,
         "finished": bool(placement and actionable is None and lessons),
     })
+
+
+def _lesson_for_child(request, pk, curriculum_id, lesson_id, *, editable):
+    """Resolve (student, curriculum, lesson) for a per-lesson work upload (HH-167).
+
+    The lesson is looked up THROUGH the resolved curriculum, so a lesson id from
+    another family's course 404s instead of quietly attaching a child's work to
+    a course she is not enrolled in.
+    """
+    from curricula.models import Lesson
+
+    base = editable_queryset if editable else viewable_queryset
+    student = get_object_or_404(base(Student.objects.all(), request.user), pk=pk)
+    if editable:
+        curriculum = _child_curriculum(request, student, curriculum_id)
+    else:
+        from curricula.models import Curriculum
+        curriculum = get_object_or_404(
+            viewable_queryset(Curriculum.objects.all(), request.user), pk=curriculum_id)
+    lesson = get_object_or_404(
+        Lesson.objects.filter(chapter__curriculum=curriculum).select_related("chapter"),
+        pk=lesson_id)
+    return student, curriculum, lesson
+
+
+@login_required
+def lesson_work(request, pk, curriculum_id, lesson_id):
+    """Show and add the finished work for ONE lesson (HH-167).
+
+    Maths is done on paper. Saxon and Dimensions carry no question sets, so
+    before this there was nowhere to file a chapter test except a work-log entry
+    keyed on a DATE — the wrong index when a reviewer asks to see Lesson 71.
+
+    GET renders the file list; POST adds one. Deliberately its own page rather
+    than a control on the checklist: that page is one big checkbox form, and a
+    file input cannot be nested inside it.
+    """
+    import os
+
+    from curricula.models import LessonWork
+
+    editable = request.method == "POST"
+    student, curriculum, lesson = _lesson_for_child(
+        request, pk, curriculum_id, lesson_id, editable=editable)
+    can_edit = can_edit_family_or_global(request.user, student.family)
+    back = redirect("students:lesson_work", pk=pk, curriculum_id=curriculum_id,
+                    lesson_id=lesson_id)
+
+    if request.method == "POST":
+        upload = request.FILES.get("file")
+        if upload is None:
+            messages.error(request, "Choose a file first.")
+            return back
+        ext = os.path.splitext(upload.name)[1].lower()
+        if ext not in LessonWork.WORK_EXTENSIONS:
+            messages.error(
+                request,
+                "That file type isn't one we can take. Use a photo (JPG, PNG, "
+                "HEIC), a PDF, or a Word document.")
+            return back
+        if upload.size > LessonWork.WORK_MAX_BYTES:
+            messages.error(
+                request,
+                "That file is too big (%.0f MB). The limit is %d MB."
+                % (upload.size / 1024 / 1024,
+                   LessonWork.WORK_MAX_BYTES // (1024 * 1024)))
+            return back
+        LessonWork.objects.create(
+            lesson=lesson, child=student, family=student.family, file=upload,
+            caption=(request.POST.get("caption", "") or "").strip()[:200],
+            uploaded_by=request.user,
+        )
+        messages.success(request, "Saved to %s." % lesson.code)
+        return back
+
+    uploads = list(
+        LessonWork.objects.filter(lesson=lesson, child=student)
+        .select_related("uploaded_by")
+    )
+    return render(request, "students/lesson_work.html", {
+        "student": student, "curriculum": curriculum, "lesson": lesson,
+        "uploads": uploads, "can_edit": can_edit,
+        "max_mb": LessonWork.WORK_MAX_BYTES // (1024 * 1024),
+        "accept": ",".join(LessonWork.WORK_EXTENSIONS),
+    })
+
+
+@login_required
+@require_POST
+def lesson_work_delete(request, pk, curriculum_id, lesson_id):
+    """Remove one uploaded file (HH-167) — a blurred photo, or the wrong lesson.
+
+    Scoped through the same resolver as the upload, and the row itself is
+    re-filtered on child AND lesson so an id belonging to a sibling's copy of
+    the same lesson cannot be deleted by guessing.
+    """
+    from curricula.models import LessonWork
+
+    student, _curriculum, lesson = _lesson_for_child(
+        request, pk, curriculum_id, lesson_id, editable=True)
+    work_pk = (request.POST.get("work") or "").strip()
+    if not (work_pk.isdigit() and work_pk.isascii()):
+        raise Http404  # a non-numeric pk must 404, not 500
+    work = get_object_or_404(
+        LessonWork.objects.filter(lesson=lesson, child=student), pk=work_pk)
+    name = work.filename
+    work.file.delete(save=False)
+    work.delete()
+    messages.success(request, "Removed %s." % name)
+    return redirect("students:lesson_work", pk=pk, curriculum_id=curriculum_id,
+                    lesson_id=lesson_id)
 
 
 @login_required

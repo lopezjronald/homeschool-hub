@@ -51,6 +51,9 @@
                 {% if lesson.mark_status == 'submitted' %}<span class="lessons-badge is-info">Turned in</span>{% endif %}
               </span>
             </label>
+            <a class="lessons-work" href="{% url 'students:lesson_work' student.pk curriculum.id lesson.id %}"
+               title="Photos, scans and PDFs of the finished work">
+              📎<span class="visually-hidden">Work for {{ lesson.code }}</span>{% if lesson.work_count %} {{ lesson.work_count }}{% endif %}</a>
             <label class="lessons-skip" title="Skip this lesson — it won't count as missing">
               <input type="checkbox" name="skip" value="{{ lesson.id }}"
                      {% if lesson.mark_status == 'skipped' %}checked{% endif %}>
@@ -94,6 +97,9 @@
                 <span class="lessons-name">{{ lesson.title }}</span>
               </span>
             </span>
+            <a class="lessons-work" href="{% url 'students:lesson_work' student.pk curriculum.id lesson.id %}"
+               title="Photos, scans and PDFs of the finished work">
+              📎<span class="visually-hidden">Work for {{ lesson.code }}</span>{% if lesson.work_count %} {{ lesson.work_count }}{% endif %}</a>
           </li>
           {% endfor %}
         </ul>

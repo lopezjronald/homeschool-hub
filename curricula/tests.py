@@ -11,7 +11,7 @@ from students.models import Student
 
 from .models import (
     Chapter, Curriculum, CurriculumDocument, CurriculumPlacement, CurriculumResource, Lesson,
-    LessonProgress,
+    LessonProgress, LessonWork,
 )
 from .services import apply_blueprint, get_blueprint
 
@@ -1590,3 +1590,160 @@ class CurriculumStateTests(TestCase):
         self.cur.refresh_from_db()
         self.assertTrue(self.cur.is_active)
         self.assertIsNone(self.cur.archived_at)
+
+
+@override_settings(MEDIA_ROOT=MEDIA)
+class LessonWorkUploadTests(TestCase):
+    """HH-167: maths is done on paper, so the finished work has to be filable
+    against a LESSON. Before this the only home was a work-log entry keyed on a
+    DATE — the wrong index when a reviewer asks to see Lesson 71."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.parent = User.objects.create_user(username="lw", email="lw@e.com", password="pw")
+        cls.teacher = User.objects.create_user(username="lwt", email="lwt@e.com", password="pw")
+        cls.family = Family.objects.create(name="LW Fam")
+        FamilyMembership.objects.create(user=cls.parent, family=cls.family, role="parent")
+        FamilyMembership.objects.create(user=cls.teacher, family=cls.family, role="teacher")
+        cls.child = Student.objects.create(
+            parent=cls.parent, first_name="Violet", grade_level="G03", family=cls.family)
+        cls.sibling = Student.objects.create(
+            parent=cls.parent, first_name="Kaylin", grade_level="G07", family=cls.family)
+        cls.curriculum = Curriculum.objects.create(
+            parent=cls.parent, name="Dimensions Math 3A", subject="Math", family=cls.family)
+        chapter = Chapter.objects.create(curriculum=cls.curriculum, number=1, title="Numbers")
+        cls.lesson = Lesson.objects.create(chapter=chapter, order=1, number=1, title="Counting")
+        cls.other_lesson = Lesson.objects.create(
+            chapter=chapter, order=2, number=2, title="Place value")
+
+        # A second family's course, to prove the resolver refuses a foreign lesson id.
+        cls.outsider = User.objects.create_user(username="lwo", email="lwo@e.com", password="pw")
+        cls.other_family = Family.objects.create(name="Other Fam")
+        FamilyMembership.objects.create(user=cls.outsider, family=cls.other_family, role="parent")
+        other_curr = Curriculum.objects.create(
+            parent=cls.outsider, name="Saxon", subject="Math", family=cls.other_family)
+        other_ch = Chapter.objects.create(curriculum=other_curr, number=1, title="C")
+        cls.foreign_lesson = Lesson.objects.create(chapter=other_ch, order=1, number=1, title="L")
+
+    def _c(self, who="lw"):
+        c = Client()
+        c.login(username=who, password="pw")
+        return c
+
+    def _url(self, lesson=None, child=None):
+        return reverse("students:lesson_work", kwargs={
+            "pk": (child or self.child).pk, "curriculum_id": self.curriculum.pk,
+            "lesson_id": (lesson or self.lesson).pk})
+
+    def _remove_url(self, lesson=None):
+        return reverse("students:lesson_work_delete", kwargs={
+            "pk": self.child.pk, "curriculum_id": self.curriculum.pk,
+            "lesson_id": (lesson or self.lesson).pk})
+
+    @staticmethod
+    def _photo(name="test.jpg", size=10):
+        return SimpleUploadedFile(name, b"x" * size, content_type="image/jpeg")
+
+    def test_upload_is_filed_against_that_lesson_and_that_child(self):
+        r = self._c().post(self._url(), {"file": self._photo(), "caption": "Chapter 4 test"})
+        self.assertEqual(r.status_code, 302)
+        work = LessonWork.objects.get()
+        self.assertEqual(work.lesson, self.lesson)
+        self.assertEqual(work.child, self.child)
+        self.assertEqual(work.caption, "Chapter 4 test")
+        self.assertEqual(work.uploaded_by, self.parent)
+        self.assertEqual(work.family, self.family)
+        self.assertTrue(work.file.name.startswith("lesson_work/"))
+
+    def test_the_page_lists_this_lessons_work_and_not_another_lessons(self):
+        c = self._c()
+        c.post(self._url(), {"file": self._photo("mine.jpg"), "caption": "Chapter four test"})
+        c.post(self._url(self.other_lesson),
+               {"file": self._photo("other.jpg"), "caption": "Practice set B"})
+        html = c.get(self._url()).content.decode()
+        self.assertIn("Chapter four test", html)
+        self.assertNotIn("Practice set B", html)
+
+    def test_a_siblings_upload_for_the_same_lesson_stays_hers(self):
+        c = self._c()
+        c.post(self._url(), {"file": self._photo(), "caption": "Violets page"})
+        c.post(self._url(child=self.sibling), {"file": self._photo(), "caption": "Kaylins page"})
+        html = c.get(self._url()).content.decode()
+        self.assertIn("Violets page", html)
+        self.assertNotIn("Kaylins page", html)
+
+    def test_view_only_teacher_can_see_the_work_but_not_add_to_it(self):
+        self._c().post(self._url(), {"file": self._photo(), "caption": "Chapter 4 test"})
+        c = self._c("lwt")
+        html = c.get(self._url()).content.decode()
+        self.assertIn("Chapter 4 test", html)             # oversight can read it
+        self.assertNotIn('type="file"', html)             # but gets no upload form
+        r = c.post(self._url(), {"file": self._photo("sneak.jpg")})
+        self.assertEqual(r.status_code, 404)
+        self.assertEqual(LessonWork.objects.count(), 1)   # nothing added
+
+    def test_another_familys_lesson_id_is_refused(self):
+        url = reverse("students:lesson_work", kwargs={
+            "pk": self.child.pk, "curriculum_id": self.curriculum.pk,
+            "lesson_id": self.foreign_lesson.pk})
+        self.assertEqual(self._c().post(url, {"file": self._photo()}).status_code, 404)
+        self.assertFalse(LessonWork.objects.exists())
+
+    def test_an_executable_is_refused(self):
+        r = self._c().post(self._url(), {
+            "file": SimpleUploadedFile("evil.exe", b"MZ",
+                                       content_type="application/octet-stream")})
+        self.assertEqual(r.status_code, 302)
+        self.assertFalse(LessonWork.objects.exists())
+
+    def test_an_oversized_file_is_refused(self):
+        big = self._photo("huge.jpg", size=LessonWork.WORK_MAX_BYTES + 1)
+        r = self._c().post(self._url(), {"file": big})
+        self.assertEqual(r.status_code, 302)
+        self.assertFalse(LessonWork.objects.exists())
+
+    def test_remove_deletes_the_row_and_the_stored_file(self):
+        import os
+
+        c = self._c()
+        c.post(self._url(), {"file": self._photo()})
+        work = LessonWork.objects.get()
+        path = work.file.path
+        self.assertTrue(os.path.exists(path))
+        r = c.post(self._remove_url(), {"work": work.pk})
+        self.assertEqual(r.status_code, 302)
+        self.assertFalse(LessonWork.objects.filter(pk=work.pk).exists())
+        self.assertFalse(os.path.exists(path))            # the blob goes too, not just the row
+
+    def test_remove_refuses_a_row_belonging_to_another_lesson(self):
+        c = self._c()
+        c.post(self._url(self.other_lesson), {"file": self._photo()})
+        work = LessonWork.objects.get()
+        # Guessing the id while pointing at the wrong lesson must not delete it.
+        r = c.post(self._remove_url(), {"work": work.pk})
+        self.assertEqual(r.status_code, 404)
+        self.assertTrue(LessonWork.objects.filter(pk=work.pk).exists())
+
+    def test_a_junk_row_id_404s_rather_than_500s(self):
+        self.assertEqual(self._c().post(self._remove_url(), {"work": "abc"}).status_code, 404)
+
+    def test_the_checklist_links_to_each_lessons_work_with_a_count(self):
+        c = self._c()
+        c.post(self._url(), {"file": self._photo()})
+        c.post(self._url(), {"file": self._photo("second.jpg")})
+        html = c.get(reverse("students:student_lessons", kwargs={
+            "pk": self.child.pk, "curriculum_id": self.curriculum.pk})).content.decode()
+        self.assertIn(self._url(), html)                  # a link on the row
+        # Two files on lesson 1, none on lesson 2 — the badge must say so.
+        row = html.split(self._url())[1][:300]
+        self.assertIn("</span> 2</a>", row)
+        other = html.split(self._url(self.other_lesson))[1][:300]
+        self.assertNotIn("</span> ", other)
+
+    def test_heic_is_stored_but_never_rendered_as_an_image(self):
+        # Browsers cannot draw HEIC; an <img> would be a broken icon on the page.
+        self._c().post(self._url(), {"file": SimpleUploadedFile(
+            "photo.heic", b"ftypheic", content_type="image/heic")})
+        work = LessonWork.objects.get()
+        self.assertTrue(work.file)
+        self.assertFalse(work.is_image)

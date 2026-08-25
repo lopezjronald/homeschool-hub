@@ -643,6 +643,17 @@ a:focus-visible > .hub-tile {
 }
 .lessons-badge.is-info { background: var(--ss-green-tint); color: var(--ss-green-700); }
 
+/* the paperclip: finished work filed against this lesson (HH-167). A link, not
+   a control on the checklist form — that form is one big POST of checkboxes, and
+   a file input cannot live inside it. 44px so it is a real tap target. */
+.lessons-work {
+  display: inline-flex; align-items: center; justify-content: center; gap: .2rem;
+  min-width: 44px; min-height: 44px; flex: 0 0 auto;
+  font-size: .8rem; font-weight: 700; text-decoration: none;
+  color: var(--ss-muted); border-radius: var(--ss-r-sm);
+}
+.lessons-work:hover, .lessons-work:focus-visible { color: var(--ss-forest); background: var(--ss-cloud); }
+
 .lessons-skip {
   display: flex; align-items: center; gap: .25rem; margin: 0; cursor: pointer;
   font-size: .74rem; color: var(--ss-muted); user-select: none; padding: .35rem .1rem;

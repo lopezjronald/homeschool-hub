@@ -7756,3 +7756,78 @@ class HandsOnGleanContentTests(SimpleTestCase):
             check = book["steps"][-1][3]["passage"]
             self.assertFalse(check.get("notes", True), key)
             self.assertGreaterEqual(len(check["items"]), 4, key)
+
+
+class HandsOnGleanShapeTests(SimpleTestCase):
+    """HH-199: these projects exist BECAUSE every printed option ends in writing.
+
+    The father asked twice for no writing and got writing twice. These assert the
+    properties that make them what they are, so a later edit cannot quietly undo
+    the point of the file.
+    """
+
+    def _books(self):
+        from tutor import glean_handson
+
+        return glean_handson.BOOKS
+
+    def test_no_project_contains_any_writing(self):
+        from tutor.models import Question
+
+        writing = {Question.TYPE_TEXT, Question.TYPE_PARAGRAPH,
+                   Question.TYPE_WRITE_MARKUP, Question.TYPE_HANDWRITING}
+        for key, book in self._books().items():
+            for _cat, prompt, _hint, extra in book["steps"]:
+                self.assertNotIn(
+                    extra["response_type"], writing,
+                    "%s asks her to write: %r" % (key, prompt[:60]))
+
+    def test_each_project_is_mostly_making_not_drawing(self):
+        """One drawing step at most. Five drawing prompts in a row is exactly
+        what these replaced."""
+        from tutor.models import Question
+
+        for key, book in self._books().items():
+            kinds = [e["response_type"] for _c, _p, _h, e in book["steps"]]
+            self.assertLessEqual(kinds.count(Question.TYPE_DRAWING), 1, key)
+            self.assertGreaterEqual(kinds.count(Question.TYPE_PHOTO), 4, key)
+
+    def test_every_project_ends_in_a_tap_a_face_check(self):
+        from tutor.models import Question
+
+        for key, book in self._books().items():
+            last = book["steps"][-1]
+            self.assertEqual(last[3]["response_type"], Question.TYPE_SELF_EVAL, key)
+            self.assertFalse(last[3]["passage"].get("notes"),
+                             "%s reintroduces writing via self-eval notes" % key)
+
+    def test_no_prompt_asserts_a_count_the_book_must_supply(self):
+        """"Find three things he was given" is an unverified claim about how
+        often the book does something. A child who hunts for three and finds one
+        concludes she read badly. The hundred dresses is the one allowed number,
+        because Wanda says it out loud."""
+        import re
+
+        # Only the dangerous form: a number that QUANTIFIES what she must find in
+        # the text. "Draw it as six panels" counts her own work and is fine, as
+        # is "take as many as you can find; do not stop before four" — open with
+        # a floor cannot strand her. "Find three things he was given" can.
+        banned = re.compile(
+            r"\b(find|there are|there were)\s+(at least\s+|about\s+)?"
+            r"(two|three|four|five|six|seven|eight|nine|ten|\d+)\b", re.I)
+        # A hundred is Wanda's own number, said aloud in the text.
+        allowed = {"hundred_dresses"}
+        for key, book in self._books().items():
+            if key in allowed:
+                continue
+            for _cat, prompt, hint, _extra in book["steps"]:
+                for text in (prompt, hint):
+                    self.assertIsNone(
+                        banned.search(text),
+                        "%s states a count the book must supply: %r" % (key, text[:90]))
+
+    def test_every_project_has_teacher_notes_worth_the_same_marks(self):
+        for key, book in self._books().items():
+            self.assertIn("20 points", book["rubric"], key)
+            self.assertTrue(book["title"], key)
+            self.assertIn("##", book["intro"], key)

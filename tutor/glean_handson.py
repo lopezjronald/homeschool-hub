@@ -1,46 +1,48 @@
-"""Hands-on Glean options for Kaylin's Blackbird books.
+"""Hands-on Glean options — the girls MAKE something instead of writing about it.
 
-WHY THESE EXIST. All six of I Am David's printed final projects end in writing —
-an epilogue, an alternate ending, a research essay, an essay about a discussion
-question. The Folk Keeper's are better, but four of its six are writing too.
-Kaylin draws. She read the books; she did not want to write about them a seventh
-time.
+WHY THESE EXIST. Every final project the printed guides offer ends in writing —
+an epilogue, an alternate ending, a research essay. By the time a child reaches
+the Glean section she has already written about the book repeatedly. Both girls
+are makers. So each book gains ONE more option alongside the printed ones; the
+guide's stay exactly as they are, so the record still shows the purchased guide
+followed, and she picks.
 
-So each book gains one more option, alongside the printed ones. Not instead of:
-the guide's six stay exactly as they are, so the record still shows the
-purchased guide followed, and she picks.
+WHAT CHANGED IN THE SECOND PASS. The first version of this file was five drawing
+prompts in a row. Good prompts, but one mode repeated — and the thing that made
+Violet's music project work was that it moved between listening, tapping and
+drawing. For an artist the equivalent is not different senses but different
+MATERIALS: clay, hand-mixed paint, sewing, printing, construction. Every project
+below spans at least four, and no more than one step in each is drawing.
 
-WHAT MAKES THESE GRADE 7 AND NOT GRADE 3. Violet's hands-on Glean asks her to
-draw what the music put in her head. These ask for drawings that carry an
-argument — the same face twice and what changed between them; a journey drawn as
-scenes rather than dots; the thing the book deliberately never describes. Every
-one of them requires having read closely, and several cannot be done without
-going back to the text. That is the point: the drawing is the comprehension
-check.
+THERE IS NO WRITING IN THIS FILE. Not a paragraph, not "a few sentences", not a
+caption that is a sentence in disguise. Hand-lettered labels on her own work are
+fine — a child labelling her own museum case is not being asked to compose prose.
 
-PROMPTS SEND HER TO THE BOOK RATHER THAN ASSERTING ITS DETAILS. "Draw everything
-David carried out of the camp — go back and get the list right" is a better
-prompt than a list I supply, and it cannot be wrong.
+RULE ONE, AND IT IS THE ONE THAT KEEPS THESE HONEST: never state a number the
+book has to supply. "Find three things he was given" is an unverified claim about
+how often the book does something, and a child who hunts for three and finds one
+concludes she read badly. Open counts cannot be wrong. Where a number does appear
+below, it is because a character says it out loud in the text.
 
-Any of these can be done properly on paper and photographed in; the teacher note
-says so, and for the big ones that is what I would do.
+Everything is made on a kitchen table, photographed, and uploaded step by step —
+Question.TYPE_PHOTO exists for exactly this.
 """
 
 from .models import Question
 
 DRAW = Question.TYPE_DRAWING
-WRITE = Question.TYPE_TEXT
+MAKE = Question.TYPE_PHOTO
 
 
-def _drawing(prompt, hint, height=520):
+def _photo(prompt, hint):
+    """She built a real thing and photographs it. Many photos per step."""
+    return ("application", prompt, hint, {"response_type": MAKE, "passage": {}})
+
+
+def _drawing(prompt, hint, height=560):
+    """The one drawing step. At most one per project, deliberately."""
     return ("application", prompt, hint,
             {"response_type": DRAW, "passage": {"height": height}})
-
-
-def _written(prompt, hint):
-    """The one place she writes — with the type-it/write-it picker."""
-    return ("writing", prompt, hint,
-            {"response_type": WRITE, "passage": {"answer_mode": True}})
 
 
 def _self_eval(items):
@@ -53,376 +55,427 @@ def _self_eval(items):
                          "notes": False}})
 
 
+_ON_PAPER = ("Photograph each piece as you finish it and add it to that step. "
+             "You can add more than one photo.")
+
+
 # ---------------------------------------------------------------------------
-# I Am David — Anne Holm. A boy escapes a prison camp and crosses Europe alone.
+# I Am David — Anne Holm. Kaylin, 12. A boy escapes a camp and crosses Europe.
 # ---------------------------------------------------------------------------
 
 I_AM_DAVID = {
-    "title": "What David Saw",
+    "title": "The David Museum",
     "intro": (
-        "## 🧭 What David Saw\n\n"
-        "David walked out of a camp and across a continent, and almost "
-        "everything he met he was seeing for the first time. This project is "
-        "that — drawn.\n\n"
-        "There is **one** thing to write, at the end. Everything else you make. "
-        "Work on paper if you'd rather; photograph it and upload it here."
+        "## 🏛️ The David Museum\n\n"
+        "You are curating an exhibition about this book. Everything in it you "
+        "make — nothing is written anywhere, and only one piece is drawn.\n\n"
+        "Work in whatever you have: clay, card, paint, foil, string, things out "
+        "of the recycling. " + _ON_PAPER
     ),
     "steps": [
+        _photo(
+            "**Case one: what he carried out.** Make every single thing David "
+            "took with him when he escaped, at the size it really was. Go back "
+            "to the first chapter and get the list right — he did not carry "
+            "much, and the book tells you how it was wrapped. Lay the case out "
+            "and hand-letter a small card for each thing: what it is, and the "
+            "chapter it turns up in. Two lines, no more.",
+            "Make them at real size, not miniature. A bar of soap you could "
+            "actually hold says something a drawing of one does not."),
+        _photo(
+            "**Case two: what he was given.** A second, smaller case — "
+            "everything you can find that came to him along the way, from "
+            "somebody who chose to give it. Hunt the whole book. However many "
+            "you turn up is the right number.",
+            "Group them by who gave them, not by what they are. That grouping "
+            "is the argument this case is making."),
+        _photo(
+            "**The colour wall.** Mix real paint. Start with the colours of the "
+            "place he escaped from — go and look at what the book actually says "
+            "was there, because there IS colour in the camp and most people "
+            "miss it. Then mix every colour that stops him once he is out. "
+            "Paint them as patches in the order he meets them and letter what "
+            "each one belongs to.",
+            "Mix them; do not use a colour straight out of the tube. Getting "
+            "the exact green of something you have only read about is the whole "
+            "exercise, and the failures are worth keeping."),
         _drawing(
-            "**The bundle.** Draw everything David carried out of the camp, laid "
-            "out flat like a museum case, each thing labelled. Go back to the "
-            "book and get the list right — he did not carry much, and every "
-            "single item mattered to him.",
-            "Draw them at the size they matter, not the size they are. Label in "
-            "your own hand.",
-            480),
-        _drawing(
-            "**First colour.** David had spent his life somewhere grey. Find the "
-            "moment in the book where he first really SEES something — colour, "
-            "or beauty, or the sea — and draw it the way somebody would see it "
-            "who had never seen it before.",
-            "This is the hard one, and the best one. How do you draw a colour "
-            "somebody has never met? Think about how much of the page it takes up.",
-            560),
-        _drawing(
-            "**The journey.** Map David's route out of the camp and north. "
-            "Instead of a dot at each place, draw a small scene of what happened "
-            "there — six or seven of them, joined by his path.",
-            "Check the countries against the book rather than guessing. Small "
-            "scenes, drawn tight — this is a map made of pictures.",
+            "**One chapter, six panels.** Pick a chapter and draw it as a comic "
+            "— six panels, and **no narration boxes and no captions.** Only what "
+            "a reader could actually see. Speech is allowed only if somebody "
+            "says it in the book.",
+            "The no-narration rule is the whole exercise. Anything you cannot "
+            "show, you have to work out how to show.",
             620),
-        _drawing(
-            "**The same face, twice.** David on the day he got out, and David on "
-            "the last page. Same boy, drawn twice, side by side.",
-            "Everything you know about what changed has to live in the second "
-            "face. Nothing else on the page is allowed to explain it.",
-            520),
-        _drawing(
-            "**The cover.** Pick the ONE moment you would put on the cover of a "
-            "new edition of this book, and draw it. Title and author on the "
-            "page, in your own lettering.",
-            "A cover has to make somebody pick the book up without spoiling what "
-            "happens. Choose carefully.",
-            600),
-        _written(
-            "**Why that moment?** In a short paragraph, say why you chose the "
-            "scene you put on the cover — and what you wanted somebody who has "
-            "never read the book to feel when they see it.",
-            "This is the only writing in the whole project. Say the real reason, "
-            "not the tidy one."),
+        _photo(
+            "**The dust jacket.** Build the wraparound cover for a new edition — "
+            "front, spine and back, in one strip, with your own lettering. On "
+            "the inside flap, map his route. The book never names the country he "
+            "starts in, so leave that end of your map blank, the way Anne Holm "
+            "left it.",
+            "Measure the spine with a strip of paper rather than a ruler — wrap "
+            "it round the book and pinch it. The blank end of the map is not a "
+            "mistake; it is the most interesting thing on the jacket."),
+        _photo(
+            "**Install it.** Set the whole exhibition up together, the way a "
+            "museum would, and photograph it from low down and off to one side "
+            "with a single lamp — not from above, and not with the big light on.",
+            "One light from the side gives everything a shadow and makes the "
+            "clay look like objects instead of lumps. Move the lamp about "
+            "before you take the picture."),
         _self_eval([
-            "I went back to the book to get the details right",
-            "My two portraits of David really are different",
-            "Somebody could follow David's journey from my map",
-            "My cover would make a stranger pick the book up",
+            "I went back to the book for the escape kit instead of guessing",
+            "My colours are mixed, not straight from the tube",
+            "My six panels work with no narration at all",
+            "Somebody could walk round my museum and follow the story",
             "I am proud of at least one of these",
         ]),
     ],
     "rubric": (
         "## Teacher notes — Glean, hands-on option (20 points)\n"
-        "The same 20 points as the guide's six written options, earned the same "
-        "way: a finished project, done with care, that connects to the story.\n\n"
-        "**Every one of the printed six ends in writing.** This one has a single "
-        "paragraph in it and five drawings, and it is not the easier option — "
-        "each drawing carries an argument that cannot be made without having "
-        "read closely.\n\n"
+        "The same 20 points as the guide's printed options, earned the same way: "
+        "a finished project, done with care, that could not have been made "
+        "without reading the book.\n\n"
+        "**This is not the easier option.** Every printed option ends in writing; "
+        "this one has none. What it has instead is five different materials and "
+        "an escape-kit list that cannot be faked.\n\n"
         "**What to look at**\n"
-        "- *The bundle* and *the journey* are comprehension checks wearing "
-        "different clothes. Wrong items or wrong countries mean a re-read, not a "
-        "lower mark for drawing.\n"
-        "- *The same face, twice* is the one that shows whether she understood "
-        "the book. If the second David is only older, ask her what else changed.\n"
-        "- *First colour* is the hardest and the most worth talking about. There "
-        "is no right answer; there are answers she can defend.\n"
-        "- The paragraph is the only writing. Judge whether she says a real "
-        "reason, not whether it is polished.\n\n"
-        "**On paper is fine** — photograph it, upload it to this section, tick "
-        "it complete. The photo prints in her report the same as a drawing does."
+        "- *Case one* is the comprehension check. The book is specific about what "
+        "he carried and how it was wrapped. Wrong contents mean a re-read, not a "
+        "lower mark for modelling.\n"
+        "- *Case two* has no fixed answer on purpose — the count is hers to turn "
+        "up. Ask her who gave what; the grouping is the argument.\n"
+        "- *The colour wall* is the best conversation in the project. There is "
+        "colour in the camp and most readers miss it; if she caught it, say so.\n"
+        "- *Six panels* — if she has smuggled narration back in, that is the note "
+        "to give. Everything has to be shown.\n"
+        "- *The blank end of the map* is deliberate. If she asks whether she has "
+        "missed the country's name, she has understood the book.\n\n"
+        "**Materials**: the jacket needs one strip about 24 inches long — two "
+        "cereal-box panels taped together, or parcel paper. Everything else is "
+        "clay, paint and the recycling."
     ),
 }
 
 
 # ---------------------------------------------------------------------------
-# The Folk Keeper — Franny Billingsley. Corinna lives as Corin, keeps the Folk
-# in the cellar, and finds out what she actually is.
+# The Folk Keeper — Franny Billingsley. Kaylin, 12.
 # ---------------------------------------------------------------------------
 
 FOLK_KEEPER = {
-    "title": "The Cellar and the Sea",
+    "title": "The Keeper's Kit",
     "intro": (
-        "## 🌊 The Cellar and the Sea\n\n"
-        "This book keeps two things hidden: what Corinna is, and what is down "
-        "in the dark eating the food she leaves. You get to decide what both of "
-        "them look like.\n\n"
-        "There is **one** thing to write, at the end. Everything else you make. "
-        "Work on paper if you'd rather; photograph it and upload it here."
+        "## 🔦 The Keeper's Kit\n\n"
+        "You are making the equipment for a job nobody sane would want. "
+        "Everything here you build, sew or mix — one piece only is drawn, and "
+        "there is nothing to write.\n\n" + _ON_PAPER
     ),
     "steps": [
+        _photo(
+            "**The charms.** Corinna protects herself with particular things, in "
+            "particular places. Hunt the book for them and make them for real. "
+            "If you have turned up fewer than a handful you have not gone back "
+            "far enough.",
+            "Use the real materials where you can, and a stand-in where you "
+            "cannot — a twist of garden dirt does for anything you are not "
+            "digging up."),
+        _photo(
+            "**What goes down to the Folk.** Make what she takes into the cellar "
+            "— in clay, on a real plate. Go back to her Record and see what she "
+            "actually brings and how often.",
+            "Check whether the Record logs it every time or only sometimes. That "
+            "changes how much food you make."),
+        _photo(
+            "**The sealskin.** Sew one, by hand, out of whatever cloth you have. "
+            "Go and look up the lines that tell you how it fits and how heavy it "
+            "is before you cut anything.",
+            "Hand-sewn and slightly wrong is better than neat and invented. The "
+            "weight matters more than the shape."),
         _drawing(
-            "**The Folk.** The book never lets you see them. Draw what you think "
-            "is down there — using only what the story actually tells you: the "
-            "sounds, the damage, what they will and will not accept.",
-            "Everything you draw has to be defensible from the text. That "
-            "constraint is the whole exercise.",
-            560),
-        _drawing(
-            "**Corin and Corinna.** The same person, drawn twice — as the Folk "
-            "Keeper everybody sees, and as herself.",
-            "Not just different clothes. What does she do with her shoulders, "
-            "her hands, her eyes, when she is being Corin?",
-            520),
-        _drawing(
-            "**The Folk Keeper's kit.** Draw the tools of the job, laid out and "
-            "labelled — what she takes down to the cellar and what each thing is "
-            "for.",
-            "Go back to the book for these. Anything you cannot find, leave out.",
-            480),
-        _drawing(
-            "**Marblehaugh Park, from above.** Draw the place as a map — the "
-            "house, the cellar, the sea, and the paths between them. Mark where "
-            "the important things happen.",
-            "A reader who has never been there should be able to follow the "
-            "story on your map.",
-            600),
-        _drawing(
-            "**Sealfolk.** Design one. Not a seal and not a person — the thing "
-            "the story is actually describing.",
-            "The interesting decision is what you keep from each and what you "
-            "refuse to.",
-            560),
-        _written(
-            "**The sea.** Corinna writes about the sea more beautifully than "
-            "about anything else. In a short paragraph, say what the sea is "
-            "doing in this book — what it means, not what happens in it.",
-            "This is the only writing in the whole project. There is more than "
-            "one right answer; pick one and back it."),
+            "**The cellar, with nothing in it.** Draw the dark below the house — "
+            "and no Folk anywhere in the picture. Not because they are absent, "
+            "but because nobody in the book has ever seen them: they cannot bear "
+            "light. Draw what a person WOULD see, and let the rest be dark.\n\n"
+            "Work the way charcoal works: put the dark down first, then take "
+            "light back out of it.",
+            "The temptation is to draw a monster. The book refuses to, and it is "
+            "more frightening for it. Everything you show has to be something a "
+            "person could actually have seen.",
+            620),
+        _photo(
+            "**The sea, in colours.** Corinna writes about the sea more carefully "
+            "than about anything else. Go through the book for the places where "
+            "she gives it a colour and mix each one as a real patch of paint. "
+            "Take as many as you can; do not stop early.",
+            "Put them in the order they happen in the book, not prettiest first. "
+            "The order is doing something."),
+        _photo(
+            "**Hair up, hair down.** Two panels, made of fibre — thread, wool, "
+            "string, anything. On one, her hair the way it is when she is Corin: "
+            "cut with scissors, contained, kept. On the other, her hair the way "
+            "it is when she is not: torn rather than cut, and running off the "
+            "edge of the paper.",
+            "Cut versus torn is the whole point. Do not draw this one — glue "
+            "actual fibre down."),
         _self_eval([
-            "Everything in my Folk drawing can be defended from the book",
-            "Corin and Corinna read as the same person",
-            "Somebody could follow the story on my map",
-            "My sealfolk is neither a seal nor a person",
+            "Every charm I made, I turned up in the book",
+            "There are no Folk in my cellar picture",
+            "I looked up the lines about the sealskin before I cut",
+            "My two hair panels really are cut and torn, not drawn",
             "I am proud of at least one of these",
         ]),
     ],
     "rubric": (
         "## Teacher notes — Glean, hands-on option (20 points)\n"
-        "The same 20 points as the guide's six, earned the same way. Four of the "
-        "printed six end in writing; this one has a single paragraph and five "
-        "drawings, and it is not the easier option.\n\n"
+        "The same 20 points as the guide's printed options. Four of the printed "
+        "six end in writing; this one has none, and is not the easier option.\n\n"
         "**What to look at**\n"
-        "- *The Folk* is the best question in the book made visible. The test is "
-        "not whether it is frightening but whether every choice can be pointed "
-        "back to a line of the text. Ask her to justify one detail.\n"
-        "- *Corin and Corinna* is the comprehension check: if the only difference "
-        "is clothing, she has the disguise but not the person.\n"
-        "- *The kit* and *the map* both send her back to the book, which is the "
-        "point of them.\n"
-        "- The paragraph is the only writing. Judge the thinking, not the polish.\n\n"
-        "**On paper is fine** — photograph it, upload it to this section, tick "
-        "it complete."
+        "- *The charms* are a whole-book re-read wearing a craft apron. Ask her "
+        "where each one is in the text.\n"
+        "- *The cellar* is the best idea in the book made visible. The test is "
+        "not whether it is frightening but whether every mark could be something "
+        "a person actually saw. Nobody has ever seen the Folk — they cannot bear "
+        "light — and a drawing that shows them has missed the point.\n"
+        "- *The sealskin* — hand-sewing is slow and that is fine. Check she went "
+        "and looked the description up first.\n"
+        "- *Hair up, hair down* is the comprehension check. If both panels look "
+        "the same, she has the disguise but not the person.\n\n"
+        "**Materials**: an old towel or layered paper beats a bed sheet for the "
+        "sealskin. Garden dirt stands in for anything you would rather not go "
+        "and dig up."
     ),
 }
 
 
-
-
 # ---------------------------------------------------------------------------
-# Violet's three, at nine. Same idea as Kaylin's, pitched younger: the drawings
-# still need the book, but they are invitations rather than arguments.
+# Violet's three, at nine. Same idea, pitched younger: the making still needs
+# the book, but the steps are invitations rather than arguments.
 # ---------------------------------------------------------------------------
 
 RICKSHAW_GIRL = {
-    "title": "Naima Paints",
+    "title": "Naima's Colours",
     "intro": (
-        "## 🎨 Naima Paints\n\n"
-        "Naima is the best alpana painter in her village, and by the end of the "
-        "book she is painting something much bigger. This project is all "
-        "painting and drawing — there is **one** thing to write, right at the "
-        "end.\n\n"
-        "Do it on paper if you'd rather, then photograph it and upload it here."
+        "## 🎨 Naima's Colours\n\n"
+        "Naima is the best alpana painter in her village. In this project you "
+        "are going to **make your own paint** out of things from the kitchen, "
+        "and then paint the way she does.\n\n"
+        "Nothing to write. " + _ON_PAPER
     ),
     "steps": [
-        _drawing(
-            "**An alpana.** Look at the patterns printed at the start of each "
-            "chapter in your book — those are alpanas. Draw one of your own in "
-            "that style.",
-            "Alpanas are built out of the same shape repeated and turned. Start "
-            "in the middle and work outwards.",
-            520),
-        _drawing(
-            "**Paint the rickshaw.** Draw a rickshaw panel the way Naima would "
-            "paint one — as bright and as full as you can make it.",
-            "Rickshaw panels are covered edge to edge. Leave no boring corners.",
-            520),
-        _drawing(
-            "**The day it went wrong.** Find the moment in the book where "
-            "Naima's plan goes badly wrong, and draw it.",
-            "Faces matter here. What is she feeling in the second it happens?",
-            480),
-        _drawing(
-            "**An alpana for YOUR family.** Design one for something your own "
-            "family celebrates. Same style, your celebration.",
-            "What colours and shapes belong to your family? There is no wrong "
-            "answer to this one.",
-            520),
-        _written(
-            "**Tell her.** If you could say one thing to Naima at the end of the "
-            "book, what would it be? A few sentences is plenty.",
-            "This is the only writing in the whole project."),
+        _photo(
+            "**The colour chart.** Go through the book and pick out every colour "
+            "it says out loud. Paint a patch of each one and letter what it "
+            "belongs to. However many the book names is how many you need.",
+            "Only colours the book actually says. If you are not sure, go and "
+            "look — that is the game."),
+        _photo(
+            "**Make the paint.** Real paint, out of the kitchen. Turmeric for "
+            "yellow, cold tea for brown, beetroot juice for pink-red, a burnt "
+            "matchstick or charcoal for black, brick or terracotta dust for "
+            "orange. Grind each one, mix it with a little water and a squeeze of "
+            "glue, and photograph your row of pots.",
+            "Do this on a tray — beetroot stains everything it touches. The "
+            "glue is what makes it stick instead of wiping off."),
+        _photo(
+            "**Paint the rickshaw panel.** Rickshaws are covered in painted "
+            "pictures, and Naima's father's is one of them. Paint a panel with "
+            "YOUR paints — flat bright colours first, all the way to the edges, "
+            "and the black outlines last.",
+            "Rickshaw art leaves no boring corners. Outlines go on at the very "
+            "end, over the top of the colour, not before it."),
+        _photo(
+            "**An alpana, big.** Mix rice flour with water into a thin paste, go "
+            "outside, and paint an alpana on a paving slab — as wide as your "
+            "arms can reach. Start in the middle and work outwards.",
+            "Needs a dry day and somewhere outdoors. Alpanas are built from one "
+            "shape repeated and turned, so pick your shape before you start."),
+        _photo(
+            "**Photograph it, then wash it away.** Take your picture of the "
+            "alpana first — then wash it off the slab with a bucket of water, "
+            "which is what really happens to them.",
+            "Take the photo before the water. Once it is gone, the photograph "
+            "is the only one there is."),
         _self_eval([
-            "I looked at the alpanas in my book before I drew mine",
+            "Every colour on my chart is one the book says",
+            "I made my own paint out of real things",
             "My rickshaw panel is bright all the way to the edges",
-            "My family's alpana really is about my family",
+            "My alpana was as wide as my arms",
             "I am proud of at least one of these",
         ]),
     ],
     "rubric": (
         "## Teacher notes — Glean, hands-on option (20 points)\n"
-        "The same 20 points as the guide's six printed options, earned the same "
-        "way — and it is not the easier option: the first and third both send "
-        "her back to the book.\n\n"
+        "The same 20 points as the guide's printed options, earned the same way.\n\n"
+        "**Why this one is worth the mess.** The material itself is the "
+        "comprehension check: she makes Naima's kind of paint out of Naima's "
+        "kind of things, paints what Naima paints, and ends on the book's own "
+        "ending by washing her work away.\n\n"
         "**What to look at**\n"
-        "- *An alpana* is a looking exercise. Did she study the chapter-heading "
-        "patterns, or invent from nothing? Ask her to point at the one she "
-        "copied from.\n"
-        "- *The day it went wrong* is the comprehension check — the wrong scene "
-        "means a re-read, not a lower mark for drawing.\n"
-        "- *An alpana for your family* is the one that matters most and the one "
-        "with no wrong answer.\n"
-        "- The few sentences at the end are the only writing. Judge whether she "
-        "means it.\n\n"
-        "**On paper is fine** — and for the alpanas, better. Photograph it, "
-        "upload it here, tick it complete."
+        "- *The colour chart* sets no number on purpose. However many the book "
+        "names is right. Ask her to point at one in the text.\n"
+        "- *Make the paint* is the heart of it. Home-made paint is streaky and "
+        "pale; that is what home-made paint is.\n"
+        "- *The alpana* needs a dry day and a paving slab — schedule it rather "
+        "than springing it.\n\n"
+        "**Warn her before the last step that the washing-away is deliberate**, "
+        "or losing an hour's work reads as a punishment rather than the point."
     ),
 }
 
 
 MISS_AGNES = {
-    "title": "The Year Everything Changed",
+    "title": "The Room Miss Agnes Made",
     "intro": (
-        "## 🏫 The Year Everything Changed\n\n"
-        "Miss Agnes walked into a one-room school in Alaska and changed almost "
-        "everything about it. This project is that year, drawn.\n\n"
-        "There is **one** thing to write, right at the end. Do it on paper if "
-        "you'd rather and photograph it in."
+        "## 🏫 The Room Miss Agnes Made\n\n"
+        "This whole book is about one room changing. You are going to build that "
+        "room twice — once before she arrives, and once after.\n\n"
+        "A shoebox or a cereal box is plenty. Nothing to write. " + _ON_PAPER
     ),
     "steps": [
-        _drawing(
-            "**The schoolroom, before and after.** Miss Agnes changed the room "
-            "almost straight away. Draw it twice — how it was, and how it "
-            "became. Same room, two pictures.",
-            "Go back to the book for what she actually did to it. The "
-            "difference between your two pictures IS the answer.",
-            560),
-        _drawing(
-            "**Outside.** Draw the village and the country around it, in the "
-            "season the story spends most of its time in.",
-            "Alaska is the other main character in this book. What is the "
-            "weather doing?",
-            520),
-        _drawing(
-            "**Talking without words.** Bokko is deaf, and by the end of the "
-            "book she is not shut out any more. Draw the moment that changes.",
-            "Hands are hard to draw and worth trying. Look at your own while "
-            "you draw.",
-            480),
-        _drawing(
-            "**Your wall.** Miss Agnes covered her walls with pictures of the "
-            "whole world. If the wall were yours, what would you put on it? "
-            "Draw the wall.",
-            "Whatever you would actually want to look at every day. That is the "
-            "only rule.",
-            560),
-        _written(
-            "**Why did she come back?** Miss Agnes did not have to return. In a "
-            "few sentences, say why you think she did.",
-            "This is the only writing in the project. Use what the book showed "
-            "you about her."),
+        _photo(
+            "**The room, before.** Build the schoolroom the way it is at the "
+            "very start of the book, in a box. Walls, floor, whatever furniture "
+            "the story gives you.",
+            "Go back to the first chapter. What is on the walls at the "
+            "beginning matters as much as what is on them later."),
+        _photo(
+            "**The room, after.** Now build it again — the same room once Miss "
+            "Agnes has been there a while. Everything you add has to be "
+            "something the book actually puts in the room.",
+            "Two boxes side by side is the whole idea. Do not change the walls; "
+            "change what is on them."),
+        _photo(
+            "**Mix the colours.** Do not use paint straight from the tube. Mix "
+            "the colours you need for both rooms, and letter what each one is "
+            "for.",
+            "The two rooms should not be the same colour. Working out how they "
+            "differ is the interesting part."),
+        _photo(
+            "**The timeline.** Miss Agnes makes a long paper timeline, and she "
+            "makes it out of PICTURES rather than words. Look it up in the book, "
+            "copy her marks, and draw each one as a picture the way she did. "
+            "Then put it in your 'after' room.",
+            "Copy the marks she actually uses — the book tells you several of "
+            "them. Pictures, not words, because that was her whole idea."),
+        _photo(
+            "**The record.** Miss Agnes brings music. Cut a disc of black card "
+            "and draw the music onto it as one unbroken spiral, from the outside "
+            "edge into the middle — thick where it is loud, thin where it is "
+            "soft, jagged or smooth as it sounds to you. Then stand it in your "
+            "'after' room.",
+            "One line, never lifted, all the way to the middle. Put a record on "
+            "and draw while it plays."),
+        _photo(
+            "**Two photographs.** Photograph the finished 'after' room twice — "
+            "once from down at a child's desk looking up, and once from the "
+            "doorway looking in.",
+            "Get the camera right down inside the box for the first one. The "
+            "room looks like a different place from a desk than from the door."),
         _self_eval([
-            "My two schoolrooms really are different",
-            "I checked the book for what Miss Agnes changed",
-            "You can tell what the weather is doing in my outside picture",
-            "My wall is full of things I would actually want to look at",
+            "My 'before' room came from the first chapter",
+            "Everything I added to the 'after' room is really in the book",
+            "I mixed my colours instead of using them straight",
+            "My timeline is pictures, like hers",
+            "I am proud of at least one of these",
         ]),
     ],
     "rubric": (
         "## Teacher notes — Glean, hands-on option (20 points)\n"
-        "Four of the guide's six printed options are research reports or "
-        "writing. This one is drawn, and it is not the easier option — the "
-        "before-and-after cannot be done without going back to the text.\n\n"
+        "The same 20 points as the guide's printed options.\n\n"
+        "**Why this one.** The book's subject is a single room changing, so "
+        "building it twice is a comprehension check that leaves a non-reader's "
+        "second box empty.\n\n"
         "**What to look at**\n"
-        "- *Before and after* is the comprehension check. If the two rooms are "
-        "the same but tidier, she has missed what Miss Agnes actually did.\n"
-        "- *Talking without words* is the heart of the book. There is more than "
-        "one right moment; ask her why she chose hers.\n"
-        "- *Your wall* is hers. No wrong answers, and worth talking about.\n"
-        "- The few sentences at the end are the only writing.\n\n"
-        "**On paper is fine** — photograph it, upload it here, tick it complete."
+        "- The *before* room is the one children skim. If it is bare, ask what "
+        "the first chapter says was there.\n"
+        "- The *timeline* is the best-grounded step: the book describes it and "
+        "describes that it was made of pictures. Check she copied the marks "
+        "rather than inventing them.\n"
+        "- The *record disc* has no right answer. It is a listening exercise "
+        "wearing a craft hat.\n\n"
+        "**Scope**: two boxes is a long afternoon at nine. Splitting it across "
+        "two days is fine and does not cost marks."
     ),
 }
 
 
 HUNDRED_DRESSES = {
-    "title": "A Hundred Dresses",
+    "title": "Room Thirteen",
     "intro": (
-        "## 👗 A Hundred Dresses\n\n"
-        "Wanda said she had a hundred dresses at home. She wasn't lying — but "
-        "you have to finish the book to find out why. This project is the "
-        "drawing one, done properly.\n\n"
-        "There is **one** thing to write, right at the end. Paper is lovely for "
-        "this — photograph it and upload it here."
+        "## 👗 Room Thirteen\n\n"
+        "Wanda said she had a hundred dresses, all lined up in her closet. She "
+        "was telling the truth — just not the way anybody thought.\n\n"
+        "You are going to make them, and put them up the way they went up in the "
+        "book. Nothing to write. " + _ON_PAPER
     ),
     "steps": [
+        _photo(
+            "**The colour chart.** The book gives some of the dresses a colour, "
+            "and sometimes a colour for the trimming too. Go through and pick "
+            "out every one it names, and mix that exact colour as a patch. "
+            "Letter which dress each patch belongs to.",
+            "Mix them — do not use the tube colour. Some of them have two "
+            "colours, the dress and the trim, so those patches need both."),
+        _photo(
+            "**A hundred dresses, four ways.** Make them in four batches of "
+            "about twenty-five, and change the material every batch: painted, "
+            "then stamped or printed, then cut from catalogues or magazines, "
+            "then coloured pencil. **No two the same** — that is the rule Miss "
+            "Mason gives in the book.\n\nFold long strips concertina-style and "
+            "cut several at once, then make each one different.",
+            "A hundred sounds impossible and is not — concertina folding does "
+            "most of the work. Different material each batch is what stops your "
+            "hand getting bored."),
+        _photo(
+            "**Put them up.** Look up how the drawings were put up in the "
+            "classroom — the book is very specific about where they went. Now do "
+            "that in your own room, in the same places, and photograph it from "
+            "the doorway.",
+            "The book lists the places. Put yours where it says, not where it "
+            "is easiest."),
+        _photo(
+            "**The dress she actually wore.** Make it, out of real cloth. Here "
+            "is the thing to get right: it was **clean**. It was never pressed "
+            "properly and it did not hang right, but it was clean. Crumple it, "
+            "wet it, let it dry crumpled — do not stain it or dirty it.",
+            "Getting this wrong is easy and it matters. She was poor, not "
+            "grubby, and the book is careful about that."),
         _drawing(
-            "**Ten dresses.** Design ten of Wanda's hundred, on one page. All "
-            "different, all coloured in.",
-            "Wanda drew hers from her head, in a house with almost nothing in "
-            "it. Ten is a lot — start small and fill the page.",
+            "**The two from the letter.** At the very end, Wanda says who should "
+            "have which drawing. Draw those two — and draw them the way she drew "
+            "them, because each one is a picture of the girl it is for.\n\n"
+            "Draw the face last, and lightly.",
+            "You can only do this step if you got to the last chapter. The faces "
+            "are the whole point, and Wanda hid hers so quietly that neither "
+            "girl noticed at first.",
             620),
-        _drawing(
-            "**Room 13.** Draw the classroom, and show where everybody sat — "
-            "including the corner Wanda sat in.",
-            "The book tells you exactly where she sat and why. Go and find it.",
-            520),
-        _drawing(
-            "**The day they walked in.** Find the moment the girls come into the "
-            "classroom and stop short, and draw what they saw.",
-            "This is the biggest moment in the book. How much of the page does "
-            "it take up?",
-            560),
-        _drawing(
-            "**A picture for Wanda.** Wanda gave two drawings away at the end. "
-            "Draw something you would give to her.",
-            "It can be anything. Think about what she would like, not what you "
-            "like.",
-            520),
-        _written(
-            "**What would you say?** If Wanda were standing in front of you, "
-            "what would you say to her? A few sentences.",
-            "This is the only writing in the project. Say the true thing."),
         _self_eval([
-            "I really drew ten different dresses",
-            "I found where Wanda sat before I drew Room 13",
-            "My picture of the classroom shows why the girls gasped",
-            "I thought about Wanda when I chose her present",
+            "Every colour on my chart is one the book names",
+            "I used four different materials for my hundred dresses",
+            "I put mine up where the book puts them",
+            "My cloth dress is clean, just crumpled",
+            "I am proud of at least one of these",
         ]),
     ],
     "rubric": (
         "## Teacher notes — Glean, hands-on option (20 points)\n"
-        "This is the guide's own option 3 — ten dress designs — done in the app "
-        "instead of on the photocopier, with three more pieces around it. Not "
-        "the easier option: two of the four send her back to the text.\n\n"
+        "The same 20 points as the guide's printed options.\n\n"
         "**What to look at**\n"
-        "- *Ten dresses* is stamina as much as art. Ten genuinely different "
-        "ones is the assignment; five and a shrug is not.\n"
-        "- *Room 13* and *the day they walked in* are the comprehension checks. "
-        "The corner Wanda sat in is stated in the book.\n"
-        "- *A picture for Wanda* is the one that shows whether the book landed.\n"
-        "- The few sentences are the only writing. This book is about somebody "
-        "who said nothing while a friend was teased — if what she writes is "
-        "uncomfortable, that is the book working.\n\n"
-        "**On paper is fine, and for the dresses it is better** — photograph it, "
-        "upload it here, tick it complete."
+        "- *The colour chart* has no fixed count. However many the book names is "
+        "right.\n"
+        "- *A hundred dresses* is ambition on purpose, and the concertina fold "
+        "makes it doable at nine. Check the four batches really are four "
+        "materials.\n"
+        "- *Putting them up* is a comprehension check — the book says exactly "
+        "where the drawings went, and it is a lovely list.\n"
+        "- *The cloth dress* is the one that carries the book's moral point. "
+        "**Clean but unpressed.** If she has made it dirty, that is the "
+        "conversation to have, and it is the most important one in the project.\n"
+        "- *The two from the letter* cannot be done without finishing the book. "
+        "If the faces are not likenesses of Peggy and Maddie, ask her to look "
+        "at the last chapter again.\n\n"
+        "**Scope**: a hundred is a lot. Twenty-five a day across four days, one "
+        "material each day, is the intended shape."
     ),
 }
 

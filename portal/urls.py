@@ -39,6 +39,11 @@ urlpatterns = [
     path("<str:token>/questions/<int:set_pk>/autosave/", views.portal_autosave, name="portal_autosave"),
     path("<str:token>/questions/<int:set_pk>/upload/", views.portal_project_upload,
          name="portal_project_upload"),
+    # Per-step photographs of things she MADE (HH-199)
+    path("<str:token>/questions/<int:set_pk>/photo/<int:question_pk>/",
+         views.portal_answer_photo, name="portal_answer_photo"),
+    path("<str:token>/questions/<int:set_pk>/photo/<int:question_pk>/remove/",
+         views.portal_answer_photo_remove, name="portal_answer_photo_remove"),
     path("<str:token>/questions/<int:set_pk>/word-help/", views.portal_word_help, name="portal_word_help"),
     path("<str:token>/questions/<int:set_pk>/spellcheck/", views.portal_spellcheck, name="portal_spellcheck"),
     path(

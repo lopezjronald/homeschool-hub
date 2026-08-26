@@ -12,7 +12,7 @@ from core.models import Family, FamilyMembership
 from curricula.models import Chapter, Curriculum, CurriculumPlacement, CurriculumResource, Lesson
 from curricula.services import apply_blueprint, get_blueprint
 from students.models import Student
-from tutor.models import Question, QuestionSet, ResponseSheet
+from tutor.models import AnswerPhoto, Question, QuestionSet, ResponseSheet
 from worklog.models import WorkLogEntry
 
 from .tokens import make_portal_token, student_from_token
@@ -2690,3 +2690,200 @@ class HundredDressesSeedTests(TestCase):
         with self.assertRaises(CommandError):
             call_command("seed_the_hundred_dresses", "--for-user", "hd",
                          "--child-name", "Nobody", stdout=StringIO())
+
+
+# ---- HH-199: photographed answers ------------------------------------------
+
+import tempfile
+
+from django.core.files.uploadedfile import SimpleUploadedFile
+from django.test import Client
+
+
+@override_settings(MEDIA_ROOT=tempfile.mkdtemp())
+class AnswerPhotoTests(TestCase):
+    """HH-199: a step whose answer is a thing she MADE.
+
+    Answers live in a JSONField, which can hold a drawing's strokes but not a
+    file — so a project built around making needed its own substrate."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.parent = User.objects.create_user(username="ph", email="ph@e.com", password="pw")
+        cls.family = Family.objects.create(name="PH Fam")
+        FamilyMembership.objects.create(user=cls.parent, family=cls.family, role="parent")
+        cls.child = Student.objects.create(
+            parent=cls.parent, first_name="Kaylin", grade_level="G07", family=cls.family)
+        cls.sibling = Student.objects.create(
+            parent=cls.parent, first_name="Violet", grade_level="G03", family=cls.family)
+        cls.curriculum = Curriculum.objects.create(
+            parent=cls.parent, name="Blackbird", subject="Reading", family=cls.family)
+        chapter = Chapter.objects.create(curriculum=cls.curriculum, number=1, title="C")
+        cls.lesson = Lesson.objects.create(chapter=chapter, order=1, number=1, title="L")
+        # A shared set (child=None) is only visible to a child PLACED in the
+        # curriculum, and both girls read the same Blackbird guide.
+        for kid in (cls.child, cls.sibling):
+            CurriculumPlacement.objects.create(
+                child=kid, curriculum=cls.curriculum, current_lesson=cls.lesson,
+                is_active=True)
+        cls.qset = QuestionSet.objects.create(
+            lesson=cls.lesson, title="Glean", family=cls.family,
+            status=QuestionSet.APPROVED, mode=QuestionSet.MODE_STUDENT)
+        cls.photo_q = Question.objects.create(
+            question_set=cls.qset, order=1, category="application",
+            prompt="Build the bundle.", response_type=Question.TYPE_PHOTO)
+        cls.text_q = Question.objects.create(
+            question_set=cls.qset, order=2, category="writing",
+            prompt="A sentence.", response_type=Question.TYPE_TEXT)
+
+    def setUp(self):
+        self.token = make_portal_token(self.child)
+
+    @staticmethod
+    def _jpg(name="made.jpg", size=32):
+        return SimpleUploadedFile(name, b"\xff\xd8\xff" + b"x" * size,
+                                  content_type="image/jpeg")
+
+    def _url(self, q=None):
+        return reverse("portal:portal_answer_photo", kwargs={
+            "token": self.token, "set_pk": self.qset.pk,
+            "question_pk": (q or self.photo_q).pk})
+
+    def _rm_url(self, q=None):
+        return reverse("portal:portal_answer_photo_remove", kwargs={
+            "token": self.token, "set_pk": self.qset.pk,
+            "question_pk": (q or self.photo_q).pk})
+
+    def test_a_photo_is_filed_against_that_step(self):
+        r = Client().post(self._url(), {"photo": self._jpg()})
+        self.assertEqual(r.status_code, 302)
+        photo = AnswerPhoto.objects.get()
+        self.assertEqual(photo.question, self.photo_q)
+        self.assertEqual(photo.sheet.child, self.child)
+        self.assertTrue(photo.image.name.startswith("answer_photos/"))
+
+    def test_more_than_one_photo_per_step(self):
+        """The front and the back of a dust jacket are two photographs. One slot
+        per step would flatten a made object into a single shot."""
+        c = Client()
+        c.post(self._url(), {"photo": self._jpg("front.jpg")})
+        c.post(self._url(), {"photo": self._jpg("back.jpg")})
+        self.assertEqual(AnswerPhoto.objects.count(), 2)
+
+    def test_a_step_that_does_not_take_photos_refuses_one(self):
+        r = Client().post(self._url(self.text_q), {"photo": self._jpg()})
+        self.assertEqual(r.status_code, 404)
+        self.assertFalse(AnswerPhoto.objects.exists())
+
+    def test_a_pdf_is_refused(self):
+        r = Client().post(self._url(), {
+            "photo": SimpleUploadedFile("x.pdf", b"%PDF", content_type="application/pdf")})
+        self.assertEqual(r.status_code, 302)
+        self.assertFalse(AnswerPhoto.objects.exists())
+
+    def test_an_oversized_photo_is_refused(self):
+        big = self._jpg("huge.jpg", size=AnswerPhoto.PHOTO_MAX_BYTES + 1)
+        r = Client().post(self._url(), {"photo": big})
+        self.assertEqual(r.status_code, 302)
+        self.assertFalse(AnswerPhoto.objects.exists())
+
+    def test_there_is_a_ceiling_on_photos_per_step(self):
+        c = Client()
+        for i in range(AnswerPhoto.MAX_PER_QUESTION + 2):
+            c.post(self._url(), {"photo": self._jpg("p%d.jpg" % i)})
+        self.assertEqual(AnswerPhoto.objects.count(), AnswerPhoto.MAX_PER_QUESTION)
+
+    def test_a_turned_in_sheet_takes_no_more_photos(self):
+        c = Client()
+        c.post(self._url(), {"photo": self._jpg()})
+        sheet = ResponseSheet.objects.get()
+        sheet.status = ResponseSheet.SUBMITTED
+        sheet.save()
+        c.post(self._url(), {"photo": self._jpg("late.jpg")})
+        self.assertEqual(AnswerPhoto.objects.count(), 1)
+
+    def test_remove_deletes_the_row_and_the_file(self):
+        import os
+
+        c = Client()
+        c.post(self._url(), {"photo": self._jpg()})
+        photo = AnswerPhoto.objects.get()
+        path = photo.image.path
+        self.assertTrue(os.path.exists(path))
+        r = c.post(self._rm_url(), {"photo": photo.pk})
+        self.assertEqual(r.status_code, 302)
+        self.assertFalse(AnswerPhoto.objects.filter(pk=photo.pk).exists())
+        self.assertFalse(os.path.exists(path))
+
+    def test_remove_refuses_a_siblings_photo_on_the_same_shared_question(self):
+        """The question set is shared between the girls. A guessed id must not
+        reach the other child's sheet."""
+        Client().post(self._url(), {"photo": self._jpg()})
+        hers = AnswerPhoto.objects.get()
+
+        # Give the sibling a sheet of her own FIRST, so this exercises the real
+        # scoping filter rather than the has-no-sheet short circuit.
+        sib_token = make_portal_token(self.sibling)
+        sib_add = reverse("portal:portal_answer_photo", kwargs={
+            "token": sib_token, "set_pk": self.qset.pk, "question_pk": self.photo_q.pk})
+        Client().post(sib_add, {"photo": self._jpg("sib.jpg")})
+        self.assertEqual(AnswerPhoto.objects.count(), 2)
+
+        sib_rm = reverse("portal:portal_answer_photo_remove", kwargs={
+            "token": sib_token, "set_pk": self.qset.pk, "question_pk": self.photo_q.pk})
+        r = Client().post(sib_rm, {"photo": hers.pk})
+        self.assertEqual(r.status_code, 404)
+        self.assertTrue(AnswerPhoto.objects.filter(pk=hers.pk).exists())
+
+    def test_a_junk_photo_id_404s_rather_than_500s(self):
+        Client().post(self._url(), {"photo": self._jpg()})
+        self.assertEqual(
+            Client().post(self._rm_url(), {"photo": "abc"}).status_code, 404)
+
+    def test_a_photographed_step_counts_as_answered(self):
+        """This number renders as 'N of M answered' directly above a Turn-it-in
+        button she cannot undo, and photos live outside the answers JSON."""
+        Client().post(self._url(), {"photo": self._jpg()})
+        sheet = ResponseSheet.objects.get()
+        self.assertEqual(sheet.answered_count, 1)
+
+    def test_answered_count_does_not_double_count_a_photo_step(self):
+        Client().post(self._url(), {"photo": self._jpg()})
+        sheet = ResponseSheet.objects.get()
+        sheet.answers = {str(self.photo_q.pk): "something"}
+        sheet.save()
+        self.assertEqual(sheet.answered_count, 1)
+
+    def test_the_display_says_how_many_she_made(self):
+        c = Client()
+        sheet = ResponseSheet.objects.create(question_set=self.qset, child=self.child)
+        self.assertIn("nothing photographed", sheet.answer_display(self.photo_q))
+        c.post(self._url(), {"photo": self._jpg()})
+        sheet.refresh_from_db()
+        self.assertIn("1 photo", sheet.answer_display(self.photo_q))
+
+    def test_heic_is_stored_but_never_rendered_as_an_image(self):
+        """No browser draws HEIC. An <img> would be a broken icon in the middle
+        of the printed charter report."""
+        Client().post(self._url(), {
+            "photo": SimpleUploadedFile("p.heic", b"ftypheic", content_type="image/heic")})
+        photo = AnswerPhoto.objects.get()
+        self.assertTrue(photo.image)
+        self.assertFalse(photo.is_viewable)
+
+    def test_the_portal_page_shows_her_photos_and_an_add_control(self):
+        Client().post(self._url(), {"photo": self._jpg()})
+        html = Client().get(reverse("portal:portal_questions", kwargs={
+            "token": self.token, "set_pk": self.qset.pk})).content.decode()
+        self.assertIn("photo-widget", html)
+        self.assertIn('id="photo-add-%d"' % self.photo_q.pk, html)   # the out-of-form form
+        self.assertIn('form="photo-add-%d"' % self.photo_q.pk, html)  # the control reaching it
+        self.assertIn("answer_photos/", html)                         # the photo itself
+
+    def test_the_upload_form_is_not_nested_inside_the_answers_form(self):
+        """Nested forms are illegal and the browser drops the inner one, so the
+        upload would silently post the answers form instead."""
+        html = Client().get(reverse("portal:portal_questions", kwargs={
+            "token": self.token, "set_pk": self.qset.pk})).content.decode()
+        widget = html.split('class="photo-widget"')[1].split("</div>")[0]
+        self.assertNotIn("<form", widget)

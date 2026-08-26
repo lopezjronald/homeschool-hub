@@ -321,6 +321,43 @@
                     </div>
                     <input type="hidden" name="answer_{{ q.pk }}" data-question="{{ q.pk }}" value="{{ q.my_answer }}">
                   </div>
+                {% elif q.is_photo %}
+                  {% comment %}She made a real thing. The controls here point at
+                  forms rendered further down by `form=`, because a file upload
+                  cannot nest inside the answers form.{% endcomment %}
+                  <div class="photo-widget" data-question-widget="{{ q.pk }}">
+                    {% if q.my_photos %}
+                      <ul class="photo-strip">
+                        {% for p in q.my_photos %}
+                          <li class="photo-item">
+                            {% if p.is_viewable %}
+                              <a href="{{ p.image.url }}" target="_blank" rel="noopener">
+                                <img src="{{ p.image.url }}" alt="Something {{ child.first_name }} made">
+                              </a>
+                            {% else %}
+                              <span class="photo-file">{{ p.filename }}</span>
+                            {% endif %}
+                            {% if not sheet.is_submitted %}
+                              <button type="submit" form="photo-rm-{{ p.pk }}"
+                                      class="photo-remove" aria-label="Remove this photo">Remove</button>
+                            {% endif %}
+                          </li>
+                        {% endfor %}
+                      </ul>
+                    {% endif %}
+                    {% if not sheet.is_submitted %}
+                      <div class="photo-add">
+                        <input type="file" name="photo" accept="image/*"
+                               id="photo-input-{{ q.pk }}" form="photo-add-{{ q.pk }}">
+                        <button type="submit" form="photo-add-{{ q.pk }}" class="photo-btn">
+                          📷 Add this photo
+                        </button>
+                      </div>
+                      <p class="photo-help">Take a picture of what you made and add it here. You can add more than one.</p>
+                    {% elif not q.my_photos %}
+                      <p class="photo-help">Nothing was photographed for this one.</p>
+                    {% endif %}
+                  </div>
                 {% elif q.is_write_markup %}
                   <div class="writemark-widget" data-question-widget="{{ q.pk }}">
                     <textarea class="form-control portal-answer writemark-input" rows="2"
@@ -637,6 +674,25 @@
                   action="{% url 'portal:portal_project_upload' token=token set_pk=question_set.pk %}">
               {% csrf_token %}
             </form>
+
+            {% comment %}One add-form per photographed step, and one remove-form
+            per photo already taken. Same reason as above — the controls live up
+            in the question and reach these by id.{% endcomment %}
+            {% for q in questions %}
+              {% if q.is_photo %}
+                <form id="photo-add-{{ q.pk }}" method="post" enctype="multipart/form-data"
+                      action="{% url 'portal:portal_answer_photo' token=token set_pk=question_set.pk question_pk=q.pk %}">
+                  {% csrf_token %}
+                </form>
+                {% for p in q.my_photos %}
+                  <form id="photo-rm-{{ p.pk }}" method="post"
+                        action="{% url 'portal:portal_answer_photo_remove' token=token set_pk=question_set.pk question_pk=q.pk %}">
+                    {% csrf_token %}
+                    <input type="hidden" name="photo" value="{{ p.pk }}">
+                  </form>
+                {% endfor %}
+              {% endif %}
+            {% endfor %}
           {% endif %}
 
         </div>

@@ -1461,9 +1461,16 @@ def portal_questions(request, token, set_pk):
 
     sheet = _sheet_for(student, question_set)
     questions = list(question_set.questions.all())
+    # One grouped read for every photographed step, rather than a query per
+    # question — a museum project is six steps and this page is her whole screen.
+    photos_by_question = {}
+    if any(q.is_photo for q in questions):
+        for photo in sheet.photos.all():
+            photos_by_question.setdefault(photo.question_id, []).append(photo)
     for q in questions:
         q.my_answer = sheet.answer_for(q)
         q.my_coach = (sheet.draft_feedback or {}).get(str(q.pk))
+        q.my_photos = photos_by_question.get(q.pk, [])
 
     # Spell-check + synonym help everywhere EXCEPT spelling curricula, where the
     # child is supposed to spell the words unaided.
@@ -1793,6 +1800,95 @@ def portal_draft_feedback(request, token, set_pk):
 
     return JsonResponse({"ok": True, "praise": result["praise"],
                          "suggestions": result["suggestions"]})
+
+
+@require_POST
+def portal_answer_photo(request, token, set_pk, question_pk):
+    """She photographs something she MADE, as the answer to one step (HH-199).
+
+    Distinct from portal_project_upload, which takes ONE file standing for a
+    whole section of paper work. This is per question, and many per question:
+    a project whose steps are "build the bundle", "mix the colour", "draw the
+    cover" is four different made things, and one shared slot would flatten
+    them into a single photograph.
+
+    Refused once the sheet is turned in, the same as every other answer.
+    """
+    import os
+
+    from tutor.models import AnswerPhoto
+
+    student = _resolve_student(token)
+    question_set = get_object_or_404(_visible_question_sets(student), pk=set_pk)
+    question = get_object_or_404(question_set.questions, pk=question_pk)
+    back = redirect("portal:portal_questions", token=token, set_pk=set_pk)
+
+    if not question.is_photo:
+        raise Http404  # not a step that takes a photograph
+
+    upload = request.FILES.get("photo")
+    if upload is None:
+        messages.error(request, "Choose a photo first.")
+        return back
+
+    ext = os.path.splitext(upload.name)[1].lower()
+    if ext not in AnswerPhoto.PHOTO_EXTENSIONS:
+        messages.error(request, "That has to be a photo — a JPG, PNG or HEIC.")
+        return back
+    if upload.size > AnswerPhoto.PHOTO_MAX_BYTES:
+        messages.error(
+            request,
+            "That photo is too big (%.0f MB). The limit is %d MB — your camera "
+            "probably has a smaller size setting."
+            % (upload.size / 1024 / 1024,
+               AnswerPhoto.PHOTO_MAX_BYTES // (1024 * 1024)))
+        return back
+
+    with transaction.atomic():
+        sheet, _ = ResponseSheet.objects.select_for_update().get_or_create(
+            question_set=question_set, child=student,
+        )
+        if sheet.is_submitted:
+            messages.info(request, "This one is already turned in.")
+            return back
+        if sheet.photos.filter(question=question).count() >= AnswerPhoto.MAX_PER_QUESTION:
+            messages.error(
+                request,
+                "That step already has %d photos — remove one first."
+                % AnswerPhoto.MAX_PER_QUESTION)
+            return back
+        AnswerPhoto.objects.create(sheet=sheet, question=question, image=upload)
+
+    messages.success(request, "Got it — that photo is saved.")
+    return back
+
+
+@require_POST
+def portal_answer_photo_remove(request, token, set_pk, question_pk):
+    """Delete one photo — a blurred shot, or the wrong thing entirely."""
+    from tutor.models import AnswerPhoto
+
+    student = _resolve_student(token)
+    question_set = get_object_or_404(_visible_question_sets(student), pk=set_pk)
+    question = get_object_or_404(question_set.questions, pk=question_pk)
+    back = redirect("portal:portal_questions", token=token, set_pk=set_pk)
+
+    photo_pk = (request.POST.get("photo") or "").strip()
+    if not (photo_pk.isdigit() and photo_pk.isascii()):
+        raise Http404  # a non-numeric pk must 404, not 500
+
+    sheet = ResponseSheet.objects.filter(
+        question_set=question_set, child=student).first()
+    if sheet is None or sheet.is_submitted:
+        return back
+    # Scoped to HER sheet and THIS question, so a guessed id cannot reach a
+    # sibling's photo on the same shared question set.
+    photo = get_object_or_404(
+        AnswerPhoto.objects.filter(sheet=sheet, question=question), pk=photo_pk)
+    photo.image.delete(save=False)
+    photo.delete()
+    messages.success(request, "Removed.")
+    return back
 
 
 @require_POST

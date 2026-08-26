@@ -150,7 +150,15 @@
                     {% if row.question.prompt %}
                       <div class="ss-qa-prompt">{{ row.question.order }}. {{ row.question.prompt|markdownify_inline }}</div>
                     {% endif %}
-                    {% if row.replay %}
+                    {% if row.photos %}
+                      {% comment %}Work she built with her hands. The photograph
+                      is the work; the count is not.{% endcomment %}
+                      <div class="ss-photo-row">
+                        {% for p in row.photos %}
+                          <img src="{{ p.image.url }}" alt="Work made by hand" class="ss-photo">
+                        {% endfor %}
+                      </div>
+                    {% elif row.replay %}
                       {% comment %}Her actual pen work. On a mark-the-sentence or
                       handwriting exercise the marks ARE the answer, and a report
                       that says "annotated: yes" has not shown the work.{% endcomment %}

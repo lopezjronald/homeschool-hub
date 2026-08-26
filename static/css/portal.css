@@ -1689,3 +1689,47 @@ button.portal-subject-card {
   /* Her reference copy, not part of anything printed. */
   .portal-booklets { display: none; }
 }
+
+/* ===== Photographed answers — she made a real thing (HH-199) ============== */
+
+.photo-widget { margin-top: .4rem; }
+
+.photo-strip {
+  list-style: none; margin: 0 0 .75rem; padding: 0;
+  display: flex; flex-wrap: wrap; gap: .7rem;
+}
+.photo-item { position: relative; }
+.photo-item img {
+  display: block; max-width: 190px; max-height: 190px;
+  border-radius: 10px; border: 3px solid #fff;
+  box-shadow: 0 2px 8px rgba(0,0,0,.18);
+}
+.photo-file {
+  display: inline-block; padding: .8rem 1rem; border-radius: 10px;
+  background: #f1eee8; font-size: .85rem;
+}
+/* A real tap target, and never covering the middle of the picture. */
+.photo-remove {
+  position: absolute; top: -.5rem; right: -.5rem;
+  min-width: 44px; min-height: 44px;
+  border: none; border-radius: 999px;
+  background: #fff; color: #b03a3a;
+  font-size: .72rem; font-weight: 700; cursor: pointer;
+  box-shadow: 0 1px 5px rgba(0,0,0,.28);
+}
+.photo-remove:hover, .photo-remove:focus-visible { background: #ffecec; }
+
+.photo-add { display: flex; flex-wrap: wrap; align-items: center; gap: .6rem; }
+.photo-add input[type="file"] { max-width: 100%; font-size: .9rem; }
+.photo-btn {
+  border: none; border-radius: 999px; cursor: pointer;
+  padding: .6rem 1.1rem; min-height: 44px;
+  background: var(--ss-green, #1E7A50); color: #fff;
+  font-size: .95rem; font-weight: 700;
+}
+.photo-btn:hover, .photo-btn:focus-visible { filter: brightness(1.08); }
+.photo-help { margin: .5rem 0 0; font-size: .85rem; color: #6b6459; }
+
+@media (max-width: 480px) {
+  .photo-item img { max-width: 132px; max-height: 132px; }
+}

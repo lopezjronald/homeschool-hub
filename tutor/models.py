@@ -481,6 +481,7 @@ class Question(models.Model):
     TYPE_CHOICE = "choice"
     TYPE_ORDER = "order"
     TYPE_DRAWING = "drawing"
+    TYPE_PHOTO = "photo"
     RESPONSE_TYPES = [
         (TYPE_TEXT, "Typed answer"),
         (TYPE_MARKUP, "Mark up the sentence (draw)"),
@@ -495,6 +496,7 @@ class Question(models.Model):
         (TYPE_CHOICE, "Multiple choice: pick one, or pick several"),
         (TYPE_ORDER, "Put the steps in order"),
         (TYPE_DRAWING, "Draw it: the picture IS the answer"),
+        (TYPE_PHOTO, "Make it: photograph what you made"),
     ]
 
     # The three-point scale a self-evaluation offers, and the components it rates,
@@ -596,6 +598,17 @@ class Question(models.Model):
         because ruled lines and three pencils are for writing on.
         """
         return self.response_type == self.TYPE_DRAWING
+
+    @property
+    def is_photo(self):
+        """She made a real thing and photographed it.
+
+        The drawing type covers a picture made ON the screen. This covers work
+        that was never on a screen at all — clay, paint, card, a thing built on
+        the kitchen table — which is the only honest way to set a project whose
+        whole point is making something with her hands.
+        """
+        return self.response_type == self.TYPE_PHOTO
 
     @property
     def drawing_height(self):
@@ -1044,8 +1057,18 @@ class ResponseSheet(models.Model):
 
     @property
     def answered_count(self):
-        return sum(1 for v in (self.answers or {}).values()
-                   if self._counts_as_answered(v))
+        answers = self.answers or {}
+        n = sum(1 for v in answers.values() if self._counts_as_answered(v))
+        # A photographed answer lives in its own table, not in `answers`, so the
+        # sum above cannot see it. This number renders as "N of M answered"
+        # directly above a Turn-it-in button she cannot undo, so a making
+        # project would have read "0 of 6" with every step finished.
+        if self.pk is None:
+            return n                       # unsaved sheet: no photos can exist yet
+        photo_question_ids = set(self.photos.values_list("question_id", flat=True))
+        n += sum(1 for qid in photo_question_ids
+                 if not self._counts_as_answered(answers.get(str(qid), "")))
+        return n
 
     @staticmethod
     def _counts_as_answered(raw):
@@ -1098,6 +1121,8 @@ class ResponseSheet(models.Model):
             return self._format_handwriting(raw, question)
         if question.is_drawing:
             return self._format_drawing(raw)
+        if question.is_photo:
+            return self._format_photo(question)
         if question.is_self_eval:
             return self._format_self_eval(raw, question)
         if question.is_choice:
@@ -1120,6 +1145,16 @@ class ResponseSheet(models.Model):
                 return "[marked up the sentence, no words typed]" if marked else "(no answer)"
             return raw or "(no answer)"  # legacy plain-text answer from before this was a markup box
         return raw or "(no answer)"
+
+    def _format_photo(self, question):
+        n = self.photos.filter(question=question).count()
+        if not n:
+            return "(nothing photographed yet)"
+        return "[photographed what she made: %d %s]" % (n, "photo" if n == 1 else "photos")
+
+    def photos_for(self, question):
+        """Her photographs for one question, oldest first."""
+        return list(self.photos.filter(question=question))
 
     def answer_replay(self, question):
         """Her drawn work for one question, redrawn — or None if she drew nothing.
@@ -1598,3 +1633,56 @@ class AiSpend(models.Model):
 
     def __str__(self):
         return f"AiSpend<{self.period}: ${self.micro_usd / 1_000_000:.2f}, {self.calls} calls>"
+
+
+class AnswerPhoto(models.Model):
+    """A photograph of something she MADE, answering one question (HH-199).
+
+    Answers normally live in ResponseSheet.answers, a JSONField — which can hold
+    a drawing's strokes but cannot hold a file. A project whose steps are "build
+    this, photograph it" therefore needs its own table.
+
+    MANY per question, deliberately. One slot would force a single shot of a
+    made object, and the front and the back of a dust jacket are two different
+    photographs. Mirrors curricula.LessonWork, which solved the same problem for
+    work done on paper.
+    """
+
+    PHOTO_EXTENSIONS = (".png", ".jpg", ".jpeg", ".heic", ".webp")
+    PHOTO_MAX_BYTES = 25 * 1024 * 1024
+    MAX_PER_QUESTION = 6
+
+    sheet = models.ForeignKey(
+        ResponseSheet, on_delete=models.CASCADE, related_name="photos",
+    )
+    question = models.ForeignKey(
+        Question, on_delete=models.CASCADE, related_name="answer_photos",
+    )
+    image = models.ImageField(
+        upload_to="answer_photos/%Y/%m/",
+        validators=[FileExtensionValidator(
+            allowed_extensions=[e.lstrip(".") for e in PHOTO_EXTENSIONS])],
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at", "id"]
+
+    def __str__(self):
+        return "photo for q%s" % self.question_id
+
+    @property
+    def filename(self):
+        import os
+
+        return os.path.basename(self.image.name) if self.image else ""
+
+    @property
+    def is_viewable(self):
+        """HEIC uploads fine but no browser draws it, so it must never reach an
+        <img> — it would print as a broken icon in the middle of her report."""
+        import os
+
+        if not self.image:
+            return False
+        return os.path.splitext(self.image.name)[1].lower() != ".heic"

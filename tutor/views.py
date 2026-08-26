@@ -233,15 +233,27 @@ def _assessed_work(assessment):
              .first()) if entry else None
     if sheet is None:
         return None
+    # One grouped read rather than a query per question.
+    photos_by_question = {}
+    for photo in sheet.photos.all():
+        photos_by_question.setdefault(photo.question_id, []).append(photo)
+
     rows = []
     for question in sheet.question_set.questions.all():
         shown = sheet.answer_display(question)
+        photos = photos_by_question.get(question.pk, [])
         rows.append({
             "question": question,
             "answer": shown,
-            "answered": shown not in ("", "(no answer)", "(nothing drawn yet)",
+            # A photographed step is answered when a photo exists. Its
+            # answer_display is a COUNT, so judging it by the text alone would
+            # call an unphotographed step finished on the strength of the words
+            # "(nothing photographed yet)".
+            "answered": bool(photos) if question.is_photo else
+                        shown not in ("", "(no answer)", "(nothing drawn yet)",
                                       "(nothing written yet)"),
             "replay": sheet.answer_replay(question),
+            "photos": photos,
         })
     return {"sheet": sheet, "rows": rows}
 

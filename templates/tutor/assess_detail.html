@@ -147,8 +147,24 @@
                   <p class="mb-2" style="font-family:Georgia,serif;font-size:1.1rem;">{{ row.question.passage }}</p>
                 {% endif %}
 
-                {% if row.replay %}
-                  {# The drawing above IS the answer. #}
+                {% if row.photos %}
+                  <p class="text-muted small mb-1">{{ child.first_name }} made this:</p>
+                  <div class="d-flex flex-wrap gap-2 mb-2">
+                    {% for p in row.photos %}
+                      {% if p.is_viewable %}
+                        <a href="{{ p.image.url }}" target="_blank" rel="noopener">
+                          <img src="{{ p.image.url }}" alt="Something {{ child.first_name }} made"
+                               style="max-width:220px;max-height:220px;border-radius:8px;border:1px solid #ddd;">
+                        </a>
+                      {% else %}
+                        <a href="{{ p.image.url }}" target="_blank" rel="noopener">{{ p.filename }}</a>
+                      {% endif %}
+                    {% endfor %}
+                  </div>
+                {% endif %}
+
+                {% if row.replay or row.photos %}
+                  {# The picture above IS the answer. #}
                 {% elif row.answered %}
                   <div class="ss-answer-block">{{ row.answer }}</div>
                 {% else %}

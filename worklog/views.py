@@ -114,7 +114,10 @@ def worklog_report(request):
             Prefetch(
                 "response_sheets",
                 queryset=ResponseSheet.objects.select_related("question_set")
-                .prefetch_related("question_set__questions"),
+                # "photos" belongs on the INNER queryset: _report_item reads the
+                # photographed answers, and without it the report costs one extra
+                # query per entry (HH-199).
+                .prefetch_related("question_set__questions", "photos"),
             ),
             # _report_item reads the entry's assessments too. This report does
             # not show grades, but leaving them unprefetched is a query per
@@ -193,7 +196,10 @@ def charter_report(request):
             Prefetch(
                 "response_sheets",
                 queryset=ResponseSheet.objects.select_related("question_set")
-                .prefetch_related("question_set__questions"),
+                # "photos" belongs on the INNER queryset: _report_item reads the
+                # photographed answers, and without it the report costs one extra
+                # query per entry (HH-199).
+                .prefetch_related("question_set__questions", "photos"),
             ),
             Prefetch("assessments", queryset=MasteryAssessment.objects.select_related("lesson")),
         )
@@ -364,15 +370,25 @@ def _report_item(entry, mastery):
 
     qa_rows = []
     if sheet:
+        photos_by_question = {}
+        for photo in sheet.photos.all():
+            photos_by_question.setdefault(photo.question_id, []).append(photo)
         for q in sheet.question_set.questions.all():
             display = sheet.answer_display(q)
+            # HEIC never reaches an <img>: no browser draws it, and the printed
+            # charter report would carry a broken icon where the work should be.
+            photos = [p for p in photos_by_question.get(q.pk, []) if p.is_viewable]
             qa_rows.append({
                 "question": q,
                 "answer": display,
-                "answered": display not in ("", "(no answer)"),
+                "answered": bool(photos) if q.is_photo
+                            else display not in ("", "(no answer)"),
                 # The drawn work itself, so a printed sample of a
                 # mark-the-sentence exercise shows the marks.
                 "replay": sheet.answer_replay(q),
+                # And the made work, so a project whose whole point was building
+                # something is not represented in the report by the word "3".
+                "photos": photos,
             })
 
     ext = os.path.splitext(entry.attachment.name)[1].lower() if entry.attachment else ""

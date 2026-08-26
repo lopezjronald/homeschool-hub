@@ -869,3 +869,22 @@ a:focus-visible > .hub-tile {
   color: var(--ss-teal, #0A5C63);
   margin: 0.35rem 0 0.4rem;
 }
+
+/* ===== Photographed work in the reports (HH-199) ========================== */
+
+.ss-photo-row { display: flex; flex-wrap: wrap; gap: .5rem; margin: .35rem 0 .5rem; }
+.ss-photo {
+  max-width: 260px; max-height: 260px;
+  border: 1px solid var(--ss-line); border-radius: 6px;
+}
+
+@media print {
+  /* A photograph is the work sample, so it must not be split across a page
+     break or shrunk to a thumbnail. Percentage heights collapse in print
+     layout, so these are absolute. */
+  .ss-photo-row { break-inside: avoid; page-break-inside: avoid; }
+  .ss-photo {
+    max-width: 3in; max-height: 3in;
+    break-inside: avoid; page-break-inside: avoid;
+  }
+}

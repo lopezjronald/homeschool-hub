@@ -40,9 +40,16 @@ def _photo(prompt, hint):
 
 
 def _drawing(prompt, hint, height=560):
-    """The one drawing step. At most one per project, deliberately."""
+    """The one drawing step. At most one per project, deliberately.
+
+    allow_photo because a comic page or a charcoal cellar is often better on
+    real paper than on a tablet, and the intro of every project already tells
+    her she can photograph each piece. She gets both: the canvas, or a photo of
+    what she did on paper.
+    """
     return ("application", prompt, hint,
-            {"response_type": DRAW, "passage": {"height": height}})
+            {"response_type": DRAW,
+             "passage": {"height": height, "allow_photo": True}})
 
 
 def _self_eval(items):

@@ -1,0 +1,42 @@
+{% comment %}Photographs of something she MADE, for one step.
+
+Used twice: as the whole answer for a making step, and underneath the canvas on
+a drawing step that opted into paper. The controls post to forms rendered
+outside the answers form (see the bottom of portal_questions.html) because
+forms cannot nest.{% endcomment %}
+<div class="photo-widget" data-question-widget="{{ q.pk }}">
+  {% if q.my_photos %}
+    <ul class="photo-strip">
+      {% for p in q.my_photos %}
+        <li class="photo-item">
+          {% if p.is_viewable %}
+            <a href="{{ p.image.url }}" target="_blank" rel="noopener">
+              <img src="{{ p.image.url }}" alt="Something {{ child.first_name }} made">
+            </a>
+          {% else %}
+            <span class="photo-file">{{ p.filename }}</span>
+          {% endif %}
+          {% if not sheet.is_submitted %}
+            <button type="submit" form="photo-rm-{{ p.pk }}"
+                    class="photo-remove" aria-label="Remove this photo">Remove</button>
+          {% endif %}
+        </li>
+      {% endfor %}
+    </ul>
+  {% endif %}
+  {% if not sheet.is_submitted %}
+    <div class="photo-add">
+      <input type="file" name="photo" accept="image/*"
+             id="photo-input-{{ q.pk }}" form="photo-add-{{ q.pk }}">
+      <button type="submit" form="photo-add-{{ q.pk }}" class="photo-btn">
+        📷 Add this photo
+      </button>
+    </div>
+    <p class="photo-help">
+      {% if q.is_drawing %}Done it on paper? Take a picture of it and add it here.
+      {% else %}Take a picture of what you made and add it here. You can add more than one.{% endif %}
+    </p>
+  {% elif not q.my_photos %}
+    <p class="photo-help">Nothing was photographed for this one.</p>
+  {% endif %}
+</div>

@@ -249,9 +249,12 @@ def _assessed_work(assessment):
             # answer_display is a COUNT, so judging it by the text alone would
             # call an unphotographed step finished on the strength of the words
             # "(nothing photographed yet)".
-            "answered": bool(photos) if question.is_photo else
-                        shown not in ("", "(no answer)", "(nothing drawn yet)",
-                                      "(nothing written yet)"),
+            # A drawing step that opted into paper is answered by EITHER a
+            # canvas full of strokes or a photograph of the real thing.
+            "answered": bool(photos) or (
+                False if question.is_photo else
+                shown not in ("", "(no answer)", "(nothing drawn yet)",
+                              "(nothing written yet)")),
             "replay": sheet.answer_replay(question),
             "photos": photos,
         })

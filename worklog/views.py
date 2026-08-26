@@ -381,8 +381,8 @@ def _report_item(entry, mastery):
             qa_rows.append({
                 "question": q,
                 "answer": display,
-                "answered": bool(photos) if q.is_photo
-                            else display not in ("", "(no answer)"),
+                "answered": bool(photos) or (
+                    False if q.is_photo else display not in ("", "(no answer)")),
                 # The drawn work itself, so a printed sample of a
                 # mark-the-sentence exercise shows the marks.
                 "replay": sheet.answer_replay(q),

@@ -1733,3 +1733,12 @@ button.portal-subject-card {
 @media (max-width: 480px) {
   .photo-item img { max-width: 132px; max-height: 132px; }
 }
+
+/* "or do it on paper" — the seam between the canvas and the camera. */
+.photo-or {
+  display: flex; align-items: center; gap: .6rem;
+  margin: .75rem 0 .5rem; color: #6b6459; font-size: .85rem;
+}
+.photo-or::before, .photo-or::after {
+  content: ""; flex: 1 1 auto; height: 1px; background: #ded8cd;
+}

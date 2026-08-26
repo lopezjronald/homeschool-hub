@@ -1464,7 +1464,7 @@ def portal_questions(request, token, set_pk):
     # One grouped read for every photographed step, rather than a query per
     # question — a museum project is six steps and this page is her whole screen.
     photos_by_question = {}
-    if any(q.is_photo for q in questions):
+    if any(q.accepts_photo for q in questions):
         for photo in sheet.photos.all():
             photos_by_question.setdefault(photo.question_id, []).append(photo)
     for q in questions:
@@ -1823,7 +1823,7 @@ def portal_answer_photo(request, token, set_pk, question_pk):
     question = get_object_or_404(question_set.questions, pk=question_pk)
     back = redirect("portal:portal_questions", token=token, set_pk=set_pk)
 
-    if not question.is_photo:
+    if not question.accepts_photo:
         raise Http404  # not a step that takes a photograph
 
     upload = request.FILES.get("photo")

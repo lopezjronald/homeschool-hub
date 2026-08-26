@@ -611,6 +611,19 @@ class Question(models.Model):
         return self.response_type == self.TYPE_PHOTO
 
     @property
+    def accepts_photo(self):
+        """Can she answer this step with a photograph of something real?
+
+        Always true for a making step. Also true for a DRAWING step that opts in
+        with {"allow_photo": true}, because a comic page is very often better on
+        paper than on a tablet — and every hands-on project already promises in
+        its intro that she can photograph each piece.
+        """
+        if self.is_photo:
+            return True
+        return bool(self.is_drawing and self.vocab_data.get("allow_photo"))
+
+    @property
     def drawing_height(self):
         """How tall her paper is. A poster needs more room than a doodle."""
         try:

@@ -1,4 +1,5 @@
 import json
+from datetime import date
 from io import StringIO
 from unittest import mock
 
@@ -2887,3 +2888,103 @@ class AnswerPhotoTests(TestCase):
             "token": self.token, "set_pk": self.qset.pk})).content.decode()
         widget = html.split('class="photo-widget"')[1].split("</div>")[0]
         self.assertNotIn("<form", widget)
+
+
+@override_settings(MEDIA_ROOT=tempfile.mkdtemp())
+class DrawOrPhotographTests(TestCase):
+    """A drawing step can opt into paper: draw it on the tablet, OR draw it on
+    real paper and photograph it. A comic page is very often better on paper,
+    and every hands-on project's intro already promised she could photograph
+    each piece — the drawing steps just could not accept one."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.parent = User.objects.create_user(username="dp", email="dp@e.com", password="pw")
+        cls.family = Family.objects.create(name="DP Fam")
+        FamilyMembership.objects.create(user=cls.parent, family=cls.family, role="parent")
+        cls.child = Student.objects.create(
+            parent=cls.parent, first_name="Kaylin", grade_level="G07", family=cls.family)
+        cls.curriculum = Curriculum.objects.create(
+            parent=cls.parent, name="Blackbird", subject="Reading", family=cls.family)
+        chapter = Chapter.objects.create(curriculum=cls.curriculum, number=1, title="C")
+        cls.lesson = Lesson.objects.create(chapter=chapter, order=1, number=1, title="L")
+        CurriculumPlacement.objects.create(
+            child=cls.child, curriculum=cls.curriculum,
+            current_lesson=cls.lesson, is_active=True)
+        cls.qset = QuestionSet.objects.create(
+            lesson=cls.lesson, title="Glean", family=cls.family,
+            status=QuestionSet.APPROVED, mode=QuestionSet.MODE_STUDENT)
+        cls.comic = Question.objects.create(
+            question_set=cls.qset, order=1, category="application",
+            prompt="One chapter, six panels.",
+            response_type=Question.TYPE_DRAWING,
+            passage=json.dumps({"height": 620, "allow_photo": True}))
+        cls.screen_only = Question.objects.create(
+            question_set=cls.qset, order=2, category="application",
+            prompt="Draw it here.",
+            response_type=Question.TYPE_DRAWING,
+            passage=json.dumps({"height": 400}))
+
+    def setUp(self):
+        self.token = make_portal_token(self.child)
+
+    @staticmethod
+    def _jpg(name="comic.jpg"):
+        return SimpleUploadedFile(name, b"\xff\xd8\xff" + b"x" * 32,
+                                  content_type="image/jpeg")
+
+    def _url(self, q):
+        return reverse("portal:portal_answer_photo", kwargs={
+            "token": self.token, "set_pk": self.qset.pk, "question_pk": q.pk})
+
+    def test_a_drawing_step_that_opted_in_accepts_a_photo(self):
+        r = Client().post(self._url(self.comic), {"photo": self._jpg()})
+        self.assertEqual(r.status_code, 302)
+        self.assertEqual(AnswerPhoto.objects.get().question, self.comic)
+
+    def test_a_drawing_step_that_did_not_opt_in_still_refuses_one(self):
+        """Only steps that say so take paper. Otherwise every drawing question
+        in the app silently grows an upload box."""
+        r = Client().post(self._url(self.screen_only), {"photo": self._jpg()})
+        self.assertEqual(r.status_code, 404)
+        self.assertFalse(AnswerPhoto.objects.exists())
+
+    def test_accepts_photo_is_the_flag_not_the_response_type(self):
+        self.assertTrue(self.comic.accepts_photo)
+        self.assertFalse(self.screen_only.accepts_photo)
+        self.assertTrue(self.comic.is_drawing)      # still a drawing step
+
+    def test_the_page_offers_the_canvas_AND_the_camera_on_that_step(self):
+        html = Client().get(reverse("portal:portal_questions", kwargs={
+            "token": self.token, "set_pk": self.qset.pk})).content.decode()
+        self.assertIn("drawing-widget", html)                       # the canvas
+        self.assertIn('id="photo-add-%d"' % self.comic.pk, html)    # and the camera
+        self.assertIn("Done it on paper?", html)
+        # ...but not on the step that never opted in.
+        self.assertNotIn('id="photo-add-%d"' % self.screen_only.pk, html)
+
+    def test_a_photo_answers_the_step_even_with_an_empty_canvas(self):
+        """She drew it on paper, so the canvas is blank. The count above the
+        Turn-it-in button has to know that step is done."""
+        Client().post(self._url(self.comic), {"photo": self._jpg()})
+        sheet = ResponseSheet.objects.get()
+        self.assertEqual(sheet.answered_count, 1)
+
+    def test_the_parent_sees_the_photographed_comic_in_the_review(self):
+        from tutor.views import _assessed_work
+        from worklog.models import WorkLogEntry
+        from tutor.models import MasteryAssessment
+
+        Client().post(self._url(self.comic), {"photo": self._jpg()})
+        sheet = ResponseSheet.objects.get()
+        entry = WorkLogEntry.objects.create(
+            child=self.child, family=self.family, parent=self.parent,
+            date=date(2026, 8, 26), subject="Reading", description="Glean")
+        sheet.work_entry = entry
+        sheet.save()
+        assessment = MasteryAssessment.objects.create(
+            work_entry=entry, rubric="r", answers="a")
+        rows = _assessed_work(assessment)["rows"]
+        comic_row = [r for r in rows if r["question"].pk == self.comic.pk][0]
+        self.assertTrue(comic_row["photos"])
+        self.assertTrue(comic_row["answered"])

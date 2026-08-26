@@ -126,7 +126,19 @@ def _children_by_level(request, family):
             level = 2
         else:
             level = 3
-        out.append({"child": child, "level": level})
+        # The app's own grade choices are labelled "Level 1".."Level 12", which
+        # on THIS page collides head-on with Blackbird's Levels 1-3 — Violet's
+        # card would read "Level 3" (her grade) beside a "Level 1" badge (her
+        # guide). Say Grade here and leave no room for the confusion.
+        if child.grade_level == "PREK":
+            grade = "Pre-K"
+        elif child.grade_level == "K":
+            grade = "Kindergarten"
+        elif rank >= 0:
+            grade = "Grade %d" % int(child.grade_level.lstrip("G"))
+        else:
+            grade = ""
+        out.append({"child": child, "level": level, "grade": grade})
     return out
 
 

@@ -240,3 +240,109 @@
   .tg-fig { overflow: visible; }
   .tg-svg { min-width: 0; width: 100%; }
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Animation (HH-201)
+
+   The DEFAULT state below is the finished diagram. `tg-anim` — added by
+   teaching-guide.js, and only when the reader has not asked for reduced
+   motion — hides the pieces; `is-live` brings them back as the figure scrolls
+   into view. So no JavaScript means a complete diagram, never an empty box.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ---- the five-week arc: the moves arrive in the order she does them ------ */
+
+.tg-anim .tg-week,
+.tg-anim .tg-chip,
+.tg-anim .tg-movebox,
+.tg-anim .tg-movetitle,
+.tg-anim .tg-arrow { opacity: 0; }
+
+/* fill-box, or a scale on an SVG group pivots around the whole canvas and the
+   chip flies in from the corner instead of growing in place. */
+.tg-anim .tg-week,
+.tg-anim .tg-chip { transform-box: fill-box; transform-origin: center; }
+
+.tg-anim.is-live .tg-movebox { animation: tg-fade .45s ease-out .05s forwards; }
+.tg-anim.is-live .tg-movetitle { animation: tg-fade .4s ease-out .3s forwards; }
+.tg-anim.is-live .tg-week { animation: tg-pop .45s cubic-bezier(.2,.8,.3,1.2) forwards; }
+.tg-anim.is-live .tg-week:nth-of-type(1) { animation-delay: .10s; }
+.tg-anim.is-live .tg-week:nth-of-type(2) { animation-delay: .18s; }
+.tg-anim.is-live .tg-week:nth-of-type(3) { animation-delay: .26s; }
+.tg-anim.is-live .tg-week:nth-of-type(4) { animation-delay: .34s; }
+.tg-anim.is-live .tg-week--glean { animation-delay: .95s; }
+
+/* The five moves land left to right — that IS the week's order, so the
+   animation is carrying information rather than decorating. */
+.tg-anim.is-live .tg-moves .tg-chip { animation: tg-rise .42s cubic-bezier(.2,.8,.3,1) forwards; }
+.tg-anim.is-live .tg-moves .tg-chip:nth-of-type(1) { animation-delay: .45s; }
+.tg-anim.is-live .tg-moves .tg-chip:nth-of-type(2) { animation-delay: .55s; }
+.tg-anim.is-live .tg-moves .tg-chip:nth-of-type(3) { animation-delay: .65s; }
+.tg-anim.is-live .tg-moves .tg-chip:nth-of-type(4) { animation-delay: .75s; }
+.tg-anim.is-live .tg-moves .tg-chip:nth-of-type(5) { animation-delay: .85s; }
+.tg-anim.is-live .tg-arrow { animation: tg-fade .3s ease-out 1.0s forwards; }
+.tg-anim.is-live .tg-chip--glean { animation: tg-pop .5s cubic-bezier(.2,.8,.3,1.2) 1.05s forwards; }
+
+/* ---- the points bar: each segment wipes out to its real width ------------ */
+
+.tg-anim .tg-seg { transform-box: fill-box; transform-origin: left center; transform: scaleX(0); }
+.tg-anim .tg-barlabel text, .tg-anim .tg-total { opacity: 0; }
+
+.tg-anim.is-live .tg-seg { animation: tg-wipe .55s cubic-bezier(.25,.9,.3,1) forwards; }
+.tg-anim.is-live .tg-seg-1 { animation-delay: .05s; }
+.tg-anim.is-live .tg-seg-2 { animation-delay: .18s; }
+.tg-anim.is-live .tg-seg-3 { animation-delay: .31s; }
+.tg-anim.is-live .tg-seg-4 { animation-delay: .44s; }
+.tg-anim.is-live .tg-seg-5 { animation-delay: .57s; }
+.tg-anim.is-live .tg-barlabel text { animation: tg-fade .4s ease-out forwards; animation-delay: .75s; }
+.tg-anim.is-live .tg-total { animation: tg-fade .4s ease-out 1.05s forwards; }
+
+/* ---- the ladder: the rail draws, then the weeks land on it --------------- */
+
+.tg-anim .tg-rail { stroke-dasharray: 720; stroke-dashoffset: 720; }
+.tg-anim .tg-rung { opacity: 0; transform-box: fill-box; transform-origin: center; }
+
+.tg-anim.is-live .tg-rail { animation: tg-draw .8s ease-out forwards; }
+.tg-anim.is-live .tg-rung { animation: tg-pop .45s cubic-bezier(.2,.8,.3,1.2) forwards; }
+.tg-anim.is-live .tg-rung:nth-of-type(1) { animation-delay: .35s; }
+.tg-anim.is-live .tg-rung:nth-of-type(2) { animation-delay: .55s; }
+.tg-anim.is-live .tg-rung:nth-of-type(3) { animation-delay: .75s; }
+.tg-anim.is-live .tg-rung--last { animation-delay: 1.0s; }
+
+/* ---- the writing process: one stage at a time --------------------------- */
+
+.tg-anim.tg-process li { opacity: 0; }
+.tg-anim.tg-process.is-live li { animation: tg-slide .4s cubic-bezier(.2,.8,.3,1) forwards; }
+.tg-anim.tg-process.is-live li:nth-child(1) { animation-delay: .05s; }
+.tg-anim.tg-process.is-live li:nth-child(2) { animation-delay: .17s; }
+.tg-anim.tg-process.is-live li:nth-child(3) { animation-delay: .29s; }
+.tg-anim.tg-process.is-live li:nth-child(4) { animation-delay: .41s; }
+.tg-anim.tg-process.is-live li:nth-child(5) { animation-delay: .53s; }
+
+@keyframes tg-fade  { to { opacity: 1; } }
+@keyframes tg-pop   { from { opacity: 0; transform: scale(.55); } to { opacity: 1; transform: scale(1); } }
+@keyframes tg-rise  { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+@keyframes tg-wipe  { to { transform: scaleX(1); } }
+@keyframes tg-draw  { to { stroke-dashoffset: 0; } }
+@keyframes tg-slide { from { opacity: 0; transform: translateX(-14px); } to { opacity: 1; transform: none; } }
+
+/* Belt and braces: the JS already bails out for reduced motion, but a stylesheet
+   that only behaved when a script ran would be the wrong way round. */
+@media (prefers-reduced-motion: reduce) {
+  .tg-anim .tg-week, .tg-anim .tg-chip, .tg-anim .tg-movebox,
+  .tg-anim .tg-movetitle, .tg-anim .tg-arrow, .tg-anim .tg-rung,
+  .tg-anim .tg-barlabel text, .tg-anim .tg-total,
+  .tg-anim.tg-process li { opacity: 1 !important; animation: none !important; }
+  .tg-anim .tg-seg { transform: none !important; animation: none !important; }
+  .tg-anim .tg-rail { stroke-dashoffset: 0 !important; animation: none !important; }
+}
+
+/* Nothing half-drawn on paper. */
+@media print {
+  .tg-anim .tg-week, .tg-anim .tg-chip, .tg-anim .tg-movebox,
+  .tg-anim .tg-movetitle, .tg-anim .tg-arrow, .tg-anim .tg-rung,
+  .tg-anim .tg-barlabel text, .tg-anim .tg-total,
+  .tg-anim.tg-process li { opacity: 1 !important; animation: none !important; }
+  .tg-anim .tg-seg { transform: none !important; animation: none !important; }
+  .tg-anim .tg-rail { stroke-dashoffset: 0 !important; animation: none !important; }
+}

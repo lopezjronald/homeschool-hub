@@ -2633,8 +2633,14 @@ class TeacherGuideTests(TestCase):
         html = self._get().content.decode()
         self.assertIn("Violet", html)
         self.assertIn("Kaylin", html)
-        self.assertIn("Level 1", html)      # Violet, grade 3
-        self.assertIn("Level 3", html)      # Kaylin, grade 7
+        self.assertIn("Guide Level 1", html)   # Violet, grade 3
+        self.assertIn("Guide Level 3", html)   # Kaylin, grade 7
+        # And her GRADE says grade. The app's own choices label G07 as
+        # "Level 7", which on this page would sit beside a "Guide Level 3"
+        # badge meaning something entirely different.
+        self.assertIn("Grade 7", html)
+        self.assertIn("Grade 3", html)
+        self.assertNotIn(">Level 7<", html)
 
     def test_the_pdf_links_when_one_is_attached(self):
         from curricula.models import CurriculumDocument
@@ -2663,6 +2669,42 @@ class TeacherGuideTests(TestCase):
             file=SimpleUploadedFile("t.pdf", b"%PDF", content_type="application/pdf"))
         html = self._get().content.decode()
         self.assertNotIn("Their Teacher Helps", html)
+
+    def test_the_diagrams_are_complete_without_javascript(self):
+        """The hidden state is added by the SCRIPT, never by the template.
+
+        If `tg-anim` were ever rendered server-side, a reader with JavaScript
+        off — or a script that failed to load — would get four empty boxes
+        instead of four diagrams, and nothing would say so.
+        """
+        import re
+
+        html = self._get().content.decode()
+        # As a class TOKEN — "tg-anim" is also a substring of "data-tg-animate",
+        # which is exactly what the first version of this test tripped over.
+        self.assertIsNone(re.search(r'class="[^"]*tg-anim', html))
+        self.assertEqual(html.count("data-tg-animate"), 4)
+        self.assertIn("js/teaching-guide", html)
+
+    def test_the_animation_can_never_leave_a_diagram_hidden(self):
+        """A structural guard, not a behavioural one — but the property is worth
+        pinning.
+
+        The script HIDES the pieces before animating them back, so anything that
+        stops the reveal (an IntersectionObserver that never fires, a discarded
+        background tab) leaves a blank box where a diagram should be. That is
+        strictly worse than no animation. It happened during development, which
+        is why the failsafe timer exists; this fails if someone removes it.
+        """
+        from pathlib import Path
+
+        js = (Path(__file__).resolve().parent.parent
+              / "static" / "js" / "teaching-guide.js").read_text(encoding="utf-8")
+        self.assertIn("FAILSAFE_MS", js)
+        self.assertIn("setTimeout", js)
+        # And it must bail out entirely for a reader who asked for less motion,
+        # rather than arming and then animating slowly.
+        self.assertIn("prefers-reduced-motion", js)
 
     def test_it_is_reachable_from_the_navigation(self):
         c = Client()

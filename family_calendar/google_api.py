@@ -7,7 +7,7 @@ already pinned. The library's transitive tree (httplib2, protobuf,
 googleapis-common-protos, its own auth stack) is not worth carrying on a slug
 that is already 225MB of a 500MB ceiling.
 
-The whole module is inert unless GOOGLE_CALENDAR_SA_JSON is set, so a deploy
+The whole module is inert unless GOOGLE_CALENDAR_SA_KEY_JSON is set, so a deploy
 without the key behaves exactly as it did before the feature existed.
 """
 
@@ -19,6 +19,7 @@ import time
 import jwt
 import requests
 from django.conf import settings
+from django.views.decorators.debug import sensitive_variables
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +35,7 @@ SCOPE = "https://www.googleapis.com/auth/calendar"
 # set off holding one that expires mid-flight.
 _TOKEN_SKEW = 60
 
-_lock = threading.Lock()
+_lock = threading.RLock()
 _cached_token = None
 _cached_until = 0.0
 
@@ -51,8 +52,17 @@ class GoogleCalendarError(RuntimeError):
 
 def is_configured():
     """True when there is a key to sign with AND somewhere to write to."""
-    return bool(getattr(settings, "GOOGLE_CALENDAR_SA_JSON", "")
-                and calendar_ids())
+    return bool(_raw_key() and calendar_ids())
+
+
+def _raw_key():
+    """The configured key with surrounding whitespace and any BOM removed.
+
+    A trailing newline survives most ways of setting a config var, and a value
+    of "   " would otherwise make is_configured() say yes and every call fail.
+    """
+    raw = getattr(settings, "GOOGLE_CALENDAR_SA_KEY_JSON", "") or ""
+    return raw.strip().lstrip("﻿").strip()
 
 
 def calendar_ids():
@@ -72,71 +82,107 @@ def service_account():
     but broken is a misconfiguration to shout about, not a feature to silently
     disable.
     """
-    raw = getattr(settings, "GOOGLE_CALENDAR_SA_JSON", "") or ""
+    raw = _raw_key()
     if not raw:
         return None
     try:
         parsed = json.loads(raw)
     except ValueError as exc:
         raise GoogleCalendarError(
-            "GOOGLE_CALENDAR_SA_JSON is not valid JSON — paste the whole key "
+            "GOOGLE_CALENDAR_SA_KEY_JSON is not valid JSON — paste the whole key "
             "file, including the outer braces.") from exc
+    # json.loads happily returns a str, list or int for a well-formed document
+    # that is not an object. Without this, the field loop below dies with an
+    # AttributeError that no caller catches.
+    if not isinstance(parsed, dict):
+        raise GoogleCalendarError(
+            "GOOGLE_CALENDAR_SA_KEY_JSON parsed as %s, not an object — that is "
+            "not a service account key file." % type(parsed).__name__)
     for field in ("client_email", "private_key", "token_uri"):
         if not parsed.get(field):
             raise GoogleCalendarError(
-                "GOOGLE_CALENDAR_SA_JSON is missing %r — that is not a service "
+                "GOOGLE_CALENDAR_SA_KEY_JSON is missing %r — that is not a service "
                 "account key file." % field)
     return parsed
 
 
+@sensitive_variables()
 def access_token(*, force=False):
-    """A bearer token, minted on demand and cached until it nearly expires."""
+    """A bearer token, minted on demand and cached until it nearly expires.
+
+    @sensitive_variables masks this frame on a Django error page. Without it the
+    traceback renders `sa` (which holds the private key) and `assertion` (a
+    signed JWT) in the locals table.
+    """
     global _cached_token, _cached_until
 
     with _lock:
         if not force and _cached_token and time.time() < _cached_until:
             return _cached_token
-
         sa = service_account()
-        if sa is None:
-            raise GoogleCalendarError("Google Calendar is not configured.")
 
-        now = int(time.time())
-        assertion = jwt.encode(
-            {
-                "iss": sa["client_email"],
-                "scope": SCOPE,
-                "aud": sa["token_uri"],
-                "iat": now,
-                "exp": now + 3600,
+    if sa is None:
+        raise GoogleCalendarError("Google Calendar is not configured.")
+
+    # Everything below runs OUTSIDE the lock. Holding it across a 10s round trip
+    # would serialise every thread needing a token, and four gunicorn threads
+    # waiting 10s each is 40s — past the 30s worker timeout. The cost is that two
+    # threads can mint concurrently on a cold start; both tokens are valid and
+    # the second simply replaces the first.
+    now = int(time.time())
+    assertion = jwt.encode(
+        {
+            "iss": sa["client_email"],
+            "scope": SCOPE,
+            "aud": sa["token_uri"],
+            "iat": now,
+            "exp": now + 3600,
+        },
+        sa["private_key"],
+        algorithm="RS256",
+    )
+    try:
+        response = requests.post(
+            sa["token_uri"],
+            data={
+                "grant_type": "urn:ietf:params:oauth:grant-type:jwt-bearer",
+                "assertion": assertion,
             },
-            sa["private_key"],
-            algorithm="RS256",
+            timeout=10,
         )
-        try:
-            response = requests.post(
-                sa["token_uri"],
-                data={
-                    "grant_type": "urn:ietf:params:oauth:grant-type:jwt-bearer",
-                    "assertion": assertion,
-                },
-                timeout=10,
-            )
-        except requests.RequestException as exc:
-            raise GoogleCalendarError("Could not reach Google to get a token: %s" % exc)
+    except requests.RequestException as exc:
+        raise GoogleCalendarError("Could not reach Google to get a token: %s" % exc)
 
-        if response.status_code != 200:
-            # The body carries Google's own diagnosis ("invalid_grant" for a
-            # clock skew or a revoked key). Pass it through — guessing is worse.
-            raise GoogleCalendarError(
-                "Google refused the service account key (HTTP %s). %s"
-                % (response.status_code, response.text[:400]),
-                status=response.status_code, body=response.text[:400])
+    if response.status_code != 200:
+        # The body carries Google's own diagnosis ("invalid_grant" for a clock
+        # skew or a revoked key) and never echoes the assertion. Pass it through
+        # — guessing is worse.
+        raise GoogleCalendarError(
+            "Google refused the service account key (HTTP %s). %s"
+            % (response.status_code, response.text[:400]),
+            status=response.status_code, body=response.text[:400])
 
+    # A 200 is not a promise of the payload we expect: a captive portal or a
+    # proxy interstitial answers 200 with HTML.
+    try:
         payload = response.json()
-        _cached_token = payload["access_token"]
-        _cached_until = time.time() + int(payload.get("expires_in", 3600)) - _TOKEN_SKEW
-        return _cached_token
+    except ValueError:
+        raise GoogleCalendarError(
+            "Google's token endpoint answered 200 with something that is not "
+            "JSON — check for a proxy intercepting HTTPS.")
+    token = payload.get("access_token") if isinstance(payload, dict) else None
+    if not token:
+        raise GoogleCalendarError(
+            "Google's token endpoint answered 200 without an access_token.")
+    try:
+        lifetime = int(payload.get("expires_in", 3600))
+    except (TypeError, ValueError):
+        lifetime = 3600            # a malformed lifetime is not worth failing over
+
+    with _lock:
+        _cached_token = token
+        _cached_until = time.time() + max(lifetime, _TOKEN_SKEW + 1) - _TOKEN_SKEW
+    return token
 
 
 def request(method, path, *, params=None, json_body=None, timeout=10):
@@ -160,15 +206,25 @@ def request(method, path, *, params=None, json_body=None, timeout=10):
 
         if response.status_code == 401 and attempt == 1:
             continue
+
+        # Judge the STATUS first. Testing for an empty body before the status
+        # made every bodiless error — a 403, a 404, a bare 502 from Google's
+        # edge — return None, which reads to every caller as a success.
+        if not 200 <= response.status_code < 300:
+            raise GoogleCalendarError(
+                "Google returned HTTP %s for %s %s. %s"
+                % (response.status_code, method, path, response.text[:400]),
+                status=response.status_code, body=response.text[:400])
+
         if response.status_code == 204 or not response.content:
             return None
-        if 200 <= response.status_code < 300:
+        try:
             return response.json()
-
-        raise GoogleCalendarError(
-            "Google returned HTTP %s for %s %s. %s"
-            % (response.status_code, method, path, response.text[:400]),
-            status=response.status_code, body=response.text[:400])
+        except ValueError:
+            raise GoogleCalendarError(
+                "Google returned HTTP %s for %s %s with a body that is not JSON."
+                % (response.status_code, method, path),
+                status=response.status_code)
 
 
 # Roles that can actually create and update events. writerWithoutPrivateAccess

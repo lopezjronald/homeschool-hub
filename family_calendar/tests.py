@@ -844,11 +844,12 @@ FAKE_SA = json.dumps({
     "token_uri": "https://oauth2.googleapis.com/token",
 })
 
-BOTH_CALENDARS = ("mom.dad.homeschool@gmail.com,"
-                  "family12229112883802399559@group.calendar.google.com")
+# Deliberately fake. The real calendar ids live in Heroku config, not in a
+# public repo — they are a household's Gmail address on a children's app.
+BOTH_CALENDARS = "primary@example.com,secondary@group.calendar.example.com"
 
 
-@override_settings(GOOGLE_CALENDAR_SA_JSON=FAKE_SA, GOOGLE_CALENDAR_IDS=BOTH_CALENDARS)
+@override_settings(GOOGLE_CALENDAR_SA_KEY_JSON=FAKE_SA, GOOGLE_CALENDAR_IDS=BOTH_CALENDARS)
 class GoogleApiConfigTests(TestCase):
     """HH-168: the module is inert unless BOTH halves of the config exist."""
 
@@ -859,7 +860,7 @@ class GoogleApiConfigTests(TestCase):
         from family_calendar import google_api
 
         self.assertTrue(google_api.is_configured())
-        with override_settings(GOOGLE_CALENDAR_SA_JSON=""):
+        with override_settings(GOOGLE_CALENDAR_SA_KEY_JSON=""):
             self.assertFalse(google_api.is_configured())   # key but nowhere to write
         with override_settings(GOOGLE_CALENDAR_IDS=""):
             self.assertFalse(google_api.is_configured())   # destination, no key
@@ -870,18 +871,10 @@ class GoogleApiConfigTests(TestCase):
         with override_settings(GOOGLE_CALENDAR_IDS=" a@x.com , , b@y.com "):
             self.assertEqual(google_api.calendar_ids(), ["a@x.com", "b@y.com"])
 
-    def test_the_two_real_calendars_parse(self):
-        from family_calendar import google_api
-
-        self.assertEqual(google_api.calendar_ids(), [
-            "mom.dad.homeschool@gmail.com",
-            "family12229112883802399559@group.calendar.google.com",
-        ])
-
     def test_a_broken_key_shouts_rather_than_switching_off_quietly(self):
         from family_calendar import google_api
 
-        with override_settings(GOOGLE_CALENDAR_SA_JSON="{not json"):
+        with override_settings(GOOGLE_CALENDAR_SA_KEY_JSON="{not json"):
             with self.assertRaises(google_api.GoogleCalendarError):
                 google_api.service_account()
 
@@ -890,18 +883,18 @@ class GoogleApiConfigTests(TestCase):
 
         partial = json.dumps({"client_email": "a@b.com",
                               "token_uri": "https://oauth2.googleapis.com/token"})
-        with override_settings(GOOGLE_CALENDAR_SA_JSON=partial):
+        with override_settings(GOOGLE_CALENDAR_SA_KEY_JSON=partial):
             with self.assertRaises(google_api.GoogleCalendarError):
                 google_api.service_account()
 
     def test_no_key_at_all_is_simply_off(self):
         from family_calendar import google_api
 
-        with override_settings(GOOGLE_CALENDAR_SA_JSON=""):
+        with override_settings(GOOGLE_CALENDAR_SA_KEY_JSON=""):
             self.assertIsNone(google_api.service_account())
 
 
-@override_settings(GOOGLE_CALENDAR_SA_JSON=FAKE_SA, GOOGLE_CALENDAR_IDS=BOTH_CALENDARS)
+@override_settings(GOOGLE_CALENDAR_SA_KEY_JSON=FAKE_SA, GOOGLE_CALENDAR_IDS=BOTH_CALENDARS)
 class GoogleApiTokenTests(TestCase):
     """The token is minted once and reused — a fresh JWT per API call would be
     three round trips to Google for every event we push."""
@@ -960,12 +953,14 @@ class GoogleApiTokenTests(TestCase):
         self.assertEqual(claims["iss"],
                          "calendar-push@steadfast-scholars-calendar.iam.gserviceaccount.com")
         self.assertEqual(claims["aud"], "https://oauth2.googleapis.com/token")
-        self.assertEqual(claims["scope"], google_api.SCOPE)
+        # Spelled out, not compared to the constant — asserting SCOPE == SCOPE
+        # passes for every possible value, including a typo'd one.
+        self.assertEqual(claims["scope"], "https://www.googleapis.com/auth/calendar")
         self.assertGreater(claims["exp"], claims["iat"])
         self.assertEqual(enc.call_args[1]["algorithm"], "RS256")
 
 
-@override_settings(GOOGLE_CALENDAR_SA_JSON=FAKE_SA, GOOGLE_CALENDAR_IDS=BOTH_CALENDARS)
+@override_settings(GOOGLE_CALENDAR_SA_KEY_JSON=FAKE_SA, GOOGLE_CALENDAR_IDS=BOTH_CALENDARS)
 class GoogleApiRequestTests(TestCase):
     """A revoked token looks exactly like an expired one until Google says 401."""
 
@@ -1015,7 +1010,7 @@ class GoogleApiRequestTests(TestCase):
         self.assertEqual(caught.exception.status, 403)
 
 
-@override_settings(GOOGLE_CALENDAR_SA_JSON=FAKE_SA, GOOGLE_CALENDAR_IDS=BOTH_CALENDARS)
+@override_settings(GOOGLE_CALENDAR_SA_KEY_JSON=FAKE_SA, GOOGLE_CALENDAR_IDS=BOTH_CALENDARS)
 class AccessRoleTests(TestCase):
     """Google renamed the sharing levels on 2026-07-07 and added
     writerWithoutPrivateAccess directly above the one we need. It writes
@@ -1025,12 +1020,16 @@ class AccessRoleTests(TestCase):
     def setUp(self):
         _reset_token_cache()
 
-    def test_writer_without_private_access_is_not_treated_as_writable(self):
+    def test_the_role_names_are_googles_exact_strings(self):
+        """Spelled out rather than compared to the constants: a typo'd constant
+        would satisfy any assertion written against itself, and these three
+        strings are Google's, not ours."""
         from family_calendar import google_api
 
-        self.assertIn(google_api.ROLE_WRITER, google_api.WRITABLE_ROLES)
-        self.assertIn(google_api.ROLE_OWNER, google_api.WRITABLE_ROLES)
-        self.assertNotIn(google_api.ROLE_PARTIAL, google_api.WRITABLE_ROLES)
+        self.assertEqual(google_api.ROLE_WRITER, "writer")
+        self.assertEqual(google_api.ROLE_OWNER, "owner")
+        self.assertEqual(google_api.ROLE_PARTIAL, "writerWithoutPrivateAccess")
+        self.assertEqual(set(google_api.WRITABLE_ROLES), {"writer", "owner"})
 
     def test_a_calendar_already_in_the_list_is_read_not_re_added(self):
         from family_calendar import google_api
@@ -1067,7 +1066,7 @@ class AccessRoleTests(TestCase):
             self.assertEqual(req.call_count, 1)   # must NOT try to insert
 
 
-@override_settings(GOOGLE_CALENDAR_SA_JSON=FAKE_SA, GOOGLE_CALENDAR_IDS=BOTH_CALENDARS)
+@override_settings(GOOGLE_CALENDAR_SA_KEY_JSON=FAKE_SA, GOOGLE_CALENDAR_IDS=BOTH_CALENDARS)
 class CheckCommandTests(TestCase):
     """The command exists to answer one question truthfully, including when the
     answer is 'nearly'."""
@@ -1143,6 +1142,212 @@ class CheckCommandTests(TestCase):
         role.assert_not_called()      # no point asking about calendars
 
     def test_no_config_reports_switched_off_not_an_error(self):
-        with override_settings(GOOGLE_CALENDAR_SA_JSON=""):
+        with override_settings(GOOGLE_CALENDAR_SA_KEY_JSON=""):
             output = self._run()
         self.assertIn("switched off", output)
+
+
+@override_settings(GOOGLE_CALENDAR_SA_KEY_JSON=FAKE_SA, GOOGLE_CALENDAR_IDS=BOTH_CALENDARS)
+class GoogleApiWireFormatTests(TestCase):
+    """What actually goes over the wire. Mocking requests makes it easy to test
+    that the code runs without ever testing what it SENT — every assertion here
+    exists because the first pass shipped without it and a mutant survived."""
+
+    def setUp(self):
+        _reset_token_cache()
+
+    def _mint(self):
+        return mock.patch.object(
+            google_api_mod().requests, "post",
+            return_value=_FakeResponse(200, {"access_token": "tok", "expires_in": 3600}))
+
+    def test_the_assertion_is_signed_with_the_private_key(self):
+        from family_calendar import google_api
+
+        with mock.patch.object(google_api.jwt, "encode", return_value="signed") as enc, \
+             self._mint():
+            google_api.access_token()
+        # Signing with client_email instead would still produce a JWT, and every
+        # mocked test would pass while Google rejected every real call.
+        self.assertIn("BEGIN PRIVATE KEY", enc.call_args[0][1])
+
+    def test_the_assertion_goes_to_googles_token_endpoint(self):
+        from family_calendar import google_api
+
+        with mock.patch.object(google_api.jwt, "encode", return_value="signed"), \
+             mock.patch.object(google_api.requests, "post") as post:
+            post.return_value = _FakeResponse(200, {"access_token": "t", "expires_in": 3600})
+            google_api.access_token()
+        self.assertEqual(post.call_args[0][0], "https://oauth2.googleapis.com/token")
+        self.assertEqual(post.call_args[1]["data"]["assertion"], "signed")
+        self.assertEqual(post.call_args[1]["data"]["grant_type"],
+                         "urn:ietf:params:oauth:grant-type:jwt-bearer")
+
+    def test_the_token_lifetime_is_one_hour_not_ten(self):
+        """An exp too far in the future is a real invalid_grant cause; asserting
+        only exp > iat accepts a ten-hour claim."""
+        from family_calendar import google_api
+
+        with mock.patch.object(google_api.jwt, "encode", return_value="signed") as enc, \
+             self._mint():
+            google_api.access_token()
+        claims = enc.call_args[0][0]
+        self.assertEqual(claims["exp"] - claims["iat"], 3600)
+        self.assertLessEqual(abs(claims["iat"] - int(_time.time())), 5)   # iat is NOW
+
+    def test_every_api_call_carries_the_bearer_token(self):
+        from family_calendar import google_api
+
+        with mock.patch.object(google_api, "access_token", return_value="tok-abc"), \
+             mock.patch.object(google_api.requests, "request") as req:
+            req.return_value = _FakeResponse(200, {"ok": True})
+            google_api.request("GET", "/x")
+        self.assertEqual(req.call_args[1]["headers"],
+                         {"Authorization": "Bearer tok-abc"})
+
+    def test_calls_go_to_the_v3_api_root(self):
+        from family_calendar import google_api
+
+        with mock.patch.object(google_api, "access_token", return_value="tok"), \
+             mock.patch.object(google_api.requests, "request") as req:
+            req.return_value = _FakeResponse(200, {"ok": True})
+            google_api.request("GET", "/users/me/calendarList")
+        self.assertEqual(req.call_args[0][1],
+                         "https://www.googleapis.com/calendar/v3/users/me/calendarList")
+
+    def test_a_calendar_id_is_percent_encoded_into_the_path(self):
+        """A calendar id is an email address. Dropping the quoting leaves a bare
+        @ in the path, which is the single most likely thing to be wrong against
+        the real API — and it was previously untested."""
+        from family_calendar import google_api
+
+        with mock.patch.object(google_api, "access_token", return_value="tok"), \
+             mock.patch.object(google_api.requests, "request") as req:
+            req.return_value = _FakeResponse(200, {"accessRole": "writer"})
+            google_api.access_role("a b@group.calendar.example.com")
+        url = req.call_args[0][1]
+        self.assertIn("a%20b%40group.calendar.example.com", url)
+        self.assertNotIn("@", url)
+
+    def test_the_retry_actually_uses_a_new_token(self):
+        """The first pass asserted only that a retry happened. Retrying with the
+        same dead token is a retry that can never succeed."""
+        from family_calendar import google_api
+
+        with mock.patch.object(google_api, "access_token",
+                               side_effect=["stale", "fresh"]) as tok, \
+             mock.patch.object(google_api.requests, "request") as req:
+            req.side_effect = [_FakeResponse(401, text="expired"),
+                               _FakeResponse(200, {"ok": True})]
+            google_api.request("GET", "/x")
+        self.assertEqual(tok.call_args_list[0][1].get("force"), False)
+        self.assertEqual(tok.call_args_list[1][1].get("force"), True)   # re-minted
+        self.assertEqual(req.call_args_list[1][1]["headers"]["Authorization"],
+                         "Bearer fresh")
+
+
+@override_settings(GOOGLE_CALENDAR_SA_KEY_JSON=FAKE_SA, GOOGLE_CALENDAR_IDS=BOTH_CALENDARS)
+class GoogleApiErrorHandlingTests(TestCase):
+    """Every one of these shipped broken in the first pass."""
+
+    def setUp(self):
+        _reset_token_cache()
+
+    def test_a_bodiless_error_is_an_error_not_a_success(self):
+        """Testing for an empty body BEFORE the status made a bodiless 403, 404
+        or 502 return None, which every caller reads as success."""
+        from family_calendar import google_api
+
+        for status in (403, 404, 500, 502):
+            with self.subTest(status=status):
+                with mock.patch.object(google_api, "access_token", return_value="tok"), \
+                     mock.patch.object(google_api.requests, "request") as req:
+                    req.return_value = _FakeResponse(status, content=b"", text="")
+                    with self.assertRaises(google_api.GoogleCalendarError) as caught:
+                        google_api.request("GET", "/x")
+                self.assertEqual(caught.exception.status, status)
+
+    def test_a_bodiless_success_is_still_a_success(self):
+        from family_calendar import google_api
+
+        with mock.patch.object(google_api, "access_token", return_value="tok"), \
+             mock.patch.object(google_api.requests, "request") as req:
+            req.return_value = _FakeResponse(204, content=b"", text="")
+            self.assertIsNone(google_api.request("DELETE", "/x"))
+
+    def test_a_200_that_is_not_json_is_an_error(self):
+        from family_calendar import google_api
+
+        bad = _FakeResponse(200, content=b"<html>proxy</html>")
+        bad.json = mock.Mock(side_effect=ValueError("nope"))
+        with mock.patch.object(google_api, "access_token", return_value="tok"), \
+             mock.patch.object(google_api.requests, "request", return_value=bad):
+            with self.assertRaises(google_api.GoogleCalendarError):
+                google_api.request("GET", "/x")
+
+    def test_a_key_that_is_valid_json_but_not_an_object_is_refused_cleanly(self):
+        """json.loads happily returns a str for '"hello"'. The field loop then
+        died with AttributeError, which no caller catches."""
+        from family_calendar import google_api
+
+        for raw in ('"hello"', "[1,2]", "null", "123"):
+            with self.subTest(raw=raw):
+                with override_settings(GOOGLE_CALENDAR_SA_KEY_JSON=raw):
+                    with self.assertRaises(google_api.GoogleCalendarError):
+                        google_api.service_account()
+
+    def test_a_token_response_without_a_token_is_refused_cleanly(self):
+        from family_calendar import google_api
+
+        with mock.patch.object(google_api.jwt, "encode", return_value="signed"), \
+             mock.patch.object(google_api.requests, "post",
+                               return_value=_FakeResponse(200, {"expires_in": 3600})):
+            with self.assertRaises(google_api.GoogleCalendarError):
+                google_api.access_token()
+
+    def test_a_nonsense_lifetime_does_not_crash_the_call(self):
+        from family_calendar import google_api
+
+        with mock.patch.object(google_api.jwt, "encode", return_value="signed"), \
+             mock.patch.object(google_api.requests, "post",
+                               return_value=_FakeResponse(
+                                   200, {"access_token": "t", "expires_in": "soon"})):
+            self.assertEqual(google_api.access_token(), "t")
+
+    def test_whitespace_only_config_is_off_not_on(self):
+        """A trailing newline through heroku config:set would otherwise make
+        is_configured() say yes and every call fail."""
+        from family_calendar import google_api
+
+        blank = "  " + chr(10) + "  "     # chr(10), so no escape can be eaten
+        with override_settings(GOOGLE_CALENDAR_SA_KEY_JSON=blank):
+            self.assertFalse(google_api.is_configured())
+            self.assertIsNone(google_api.service_account())
+
+    def test_a_key_wrapped_in_a_bom_still_parses(self):
+        from family_calendar import google_api
+
+        wrapped = chr(0xFEFF) + FAKE_SA + chr(10)    # a real BOM and a real newline
+        with override_settings(GOOGLE_CALENDAR_SA_KEY_JSON=wrapped):
+            self.assertTrue(google_api.is_configured())
+            self.assertEqual(google_api.service_account()["client_email"],
+                             "calendar-push@steadfast-scholars-calendar.iam.gserviceaccount.com")
+
+
+class SettingNameMaskingTests(SimpleTestCase):
+    """The key setting must be masked on a Django error page. Django only masks
+    settings whose NAME matches its filter, so this is a property of the name."""
+
+    def test_django_masks_the_key_setting_by_name(self):
+        from django.views.debug import SafeExceptionReporterFilter
+
+        pattern = SafeExceptionReporterFilter.hidden_settings
+        self.assertTrue(pattern.search("GOOGLE_CALENDAR_SA_KEY_JSON"))
+        # and the name it replaced did NOT match — which is why it was renamed
+        self.assertFalse(pattern.search("GOOGLE_CALENDAR_SA_JSON"))
+
+
+def google_api_mod():
+    from family_calendar import google_api
+
+    return google_api

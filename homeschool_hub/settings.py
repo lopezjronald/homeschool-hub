@@ -489,8 +489,11 @@ REPLICATE_API_TOKEN = os.getenv("REPLICATE_API_TOKEN", "")
 
 # Google Calendar push (HH-168). Both must be present or the feature stays off:
 # a key with nowhere to write is as useless as a destination we cannot sign for.
-# Set them in Heroku config; never commit a key.
-GOOGLE_CALENDAR_SA_JSON = os.getenv("GOOGLE_CALENDAR_SA_JSON", "")
+# Set them in Heroku config; never commit a key. The name ends in KEY_JSON
+# deliberately: Django's error-page filter masks settings matching
+# API|AUTH|TOKEN|KEY|SECRET|PASS|SIGNATURE, and "SA_JSON" alone matched none
+# of them — the whole private key would have rendered on a DEBUG page.
+GOOGLE_CALENDAR_SA_KEY_JSON = os.getenv("GOOGLE_CALENDAR_SA_KEY_JSON", "")
 GOOGLE_CALENDAR_IDS = os.getenv("GOOGLE_CALENDAR_IDS", "")
 MANGA_IMAGE_MODEL = os.getenv("MANGA_IMAGE_MODEL", "google/nano-banana-2")
 MANGA_REFERENCE_KEY = os.getenv("MANGA_REFERENCE_KEY", "image_input")

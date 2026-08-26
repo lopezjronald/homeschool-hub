@@ -7,7 +7,9 @@ even when the permission is live, so looking at the screen proves nothing.
 
     heroku run python manage.py check_google_calendar -a steadfast-scholars
 
-Read-only. It creates no events and changes nobody's calendar.
+It creates no events and changes nobody's calendar. It may add a
+calendar to the SERVICE ACCOUNT's own list, which is how a robot picks up a
+share nobody can accept on its behalf.
 """
 
 from django.core.management.base import BaseCommand
@@ -28,7 +30,7 @@ class Command(BaseCommand):
 
         if sa is None:
             self.stdout.write(self.style.WARNING(
-                "GOOGLE_CALENDAR_SA_JSON is not set — the sync is switched off."))
+                "GOOGLE_CALENDAR_SA_KEY_JSON is not set — the sync is switched off."))
             return
 
         ids = google_api.calendar_ids()
@@ -59,10 +61,16 @@ class Command(BaseCommand):
                 if exc.status == 404:
                     self.stdout.write(
                         "        Google has never heard of this calendar for this "
-                        "account. Either the id is wrong, or it was never shared.")
+                        "account. Either the id is wrong, or it was never shared "
+                        "with the address above.")
                 elif exc.status == 403:
+                    # Calendar v3 answers 404 — not 403 — when access is denied,
+                    # so it cannot leak whether a calendar exists. A 403 here is
+                    # a quota or rate limit, and telling the operator to reshare
+                    # a correctly-shared calendar would send them the wrong way.
                     self.stdout.write(
-                        "        Shared, but not with enough access to read it.")
+                        "        Google refused with a quota or rate limit, not a "
+                        "permission problem. Wait a minute and run this again.")
                 else:
                     self.stdout.write("        %s" % exc)
                 continue

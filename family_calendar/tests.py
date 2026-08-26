@@ -800,3 +800,349 @@ class StaticJavaScriptParsesTests(SimpleTestCase):
                 first = (proc.stderr or "").strip().splitlines()
                 broken.append("%s: %s" % (path.name, first[-1] if first else "?"))
         self.assertEqual(broken, [], "these scripts do not parse:\n" + "\n".join(broken))
+
+
+# ---- HH-168: Google Calendar push ------------------------------------------
+
+import json
+import time as _time
+from io import StringIO
+from unittest import mock
+
+from django.core.management import call_command
+from django.test import override_settings
+
+
+class _FakeResponse:
+    """Just enough of requests.Response for these tests."""
+
+    def __init__(self, status_code=200, payload=None, text="", content=b"x"):
+        self.status_code = status_code
+        self._payload = {} if payload is None else payload
+        self.text = text
+        self.content = content
+
+    def json(self):
+        return self._payload
+
+
+def _reset_token_cache():
+    from family_calendar import google_api
+
+    google_api._cached_token = None
+    google_api._cached_until = 0.0
+
+
+# A syntactically complete service-account key. The private_key is deliberately
+# nonsense: every test that would need a real signature mocks jwt.encode, so a
+# real key would only be a liability sitting in the repo.
+FAKE_SA = json.dumps({
+    "type": "service_account",
+    "project_id": "steadfast-scholars-calendar",
+    "client_email": "calendar-push@steadfast-scholars-calendar.iam.gserviceaccount.com",
+    "private_key": "-----BEGIN PRIVATE KEY-----\nnot-a-real-key\n-----END PRIVATE KEY-----\n",
+    "token_uri": "https://oauth2.googleapis.com/token",
+})
+
+BOTH_CALENDARS = ("mom.dad.homeschool@gmail.com,"
+                  "family12229112883802399559@group.calendar.google.com")
+
+
+@override_settings(GOOGLE_CALENDAR_SA_JSON=FAKE_SA, GOOGLE_CALENDAR_IDS=BOTH_CALENDARS)
+class GoogleApiConfigTests(TestCase):
+    """HH-168: the module is inert unless BOTH halves of the config exist."""
+
+    def setUp(self):
+        _reset_token_cache()
+
+    def test_both_halves_are_required(self):
+        from family_calendar import google_api
+
+        self.assertTrue(google_api.is_configured())
+        with override_settings(GOOGLE_CALENDAR_SA_JSON=""):
+            self.assertFalse(google_api.is_configured())   # key but nowhere to write
+        with override_settings(GOOGLE_CALENDAR_IDS=""):
+            self.assertFalse(google_api.is_configured())   # destination, no key
+
+    def test_calendar_ids_are_split_and_trimmed(self):
+        from family_calendar import google_api
+
+        with override_settings(GOOGLE_CALENDAR_IDS=" a@x.com , , b@y.com "):
+            self.assertEqual(google_api.calendar_ids(), ["a@x.com", "b@y.com"])
+
+    def test_the_two_real_calendars_parse(self):
+        from family_calendar import google_api
+
+        self.assertEqual(google_api.calendar_ids(), [
+            "mom.dad.homeschool@gmail.com",
+            "family12229112883802399559@group.calendar.google.com",
+        ])
+
+    def test_a_broken_key_shouts_rather_than_switching_off_quietly(self):
+        from family_calendar import google_api
+
+        with override_settings(GOOGLE_CALENDAR_SA_JSON="{not json"):
+            with self.assertRaises(google_api.GoogleCalendarError):
+                google_api.service_account()
+
+    def test_a_key_missing_its_private_key_is_rejected(self):
+        from family_calendar import google_api
+
+        partial = json.dumps({"client_email": "a@b.com",
+                              "token_uri": "https://oauth2.googleapis.com/token"})
+        with override_settings(GOOGLE_CALENDAR_SA_JSON=partial):
+            with self.assertRaises(google_api.GoogleCalendarError):
+                google_api.service_account()
+
+    def test_no_key_at_all_is_simply_off(self):
+        from family_calendar import google_api
+
+        with override_settings(GOOGLE_CALENDAR_SA_JSON=""):
+            self.assertIsNone(google_api.service_account())
+
+
+@override_settings(GOOGLE_CALENDAR_SA_JSON=FAKE_SA, GOOGLE_CALENDAR_IDS=BOTH_CALENDARS)
+class GoogleApiTokenTests(TestCase):
+    """The token is minted once and reused — a fresh JWT per API call would be
+    three round trips to Google for every event we push."""
+
+    def setUp(self):
+        _reset_token_cache()
+
+    def test_the_token_is_cached_between_calls(self):
+        from family_calendar import google_api
+
+        with mock.patch.object(google_api.jwt, "encode", return_value="signed"), \
+             mock.patch.object(google_api.requests, "post") as post:
+            post.return_value = _FakeResponse(
+                200, {"access_token": "tok-1", "expires_in": 3600})
+            self.assertEqual(google_api.access_token(), "tok-1")
+            self.assertEqual(google_api.access_token(), "tok-1")
+            self.assertEqual(post.call_count, 1)          # minted once, not twice
+
+    def test_an_expired_token_is_reminted(self):
+        from family_calendar import google_api
+
+        with mock.patch.object(google_api.jwt, "encode", return_value="signed"), \
+             mock.patch.object(google_api.requests, "post") as post:
+            post.return_value = _FakeResponse(
+                200, {"access_token": "tok-1", "expires_in": 3600})
+            google_api.access_token()
+            google_api._cached_until = _time.time() - 1     # pretend an hour passed
+            post.return_value = _FakeResponse(
+                200, {"access_token": "tok-2", "expires_in": 3600})
+            self.assertEqual(google_api.access_token(), "tok-2")
+            self.assertEqual(post.call_count, 2)
+
+    def test_a_rejected_key_reports_googles_own_reason(self):
+        from family_calendar import google_api
+
+        with mock.patch.object(google_api.jwt, "encode", return_value="signed"), \
+             mock.patch.object(google_api.requests, "post") as post:
+            post.return_value = _FakeResponse(
+                400, text='{"error":"invalid_grant"}')
+            with self.assertRaises(google_api.GoogleCalendarError) as caught:
+                google_api.access_token()
+        # Google's diagnosis must survive to the operator — "invalid_grant" is
+        # the difference between a revoked key and a clock problem.
+        self.assertIn("invalid_grant", str(caught.exception))
+        self.assertEqual(caught.exception.status, 400)
+
+    def test_the_signed_claims_name_the_service_account_and_scope(self):
+        from family_calendar import google_api
+
+        with mock.patch.object(google_api.jwt, "encode", return_value="signed") as enc, \
+             mock.patch.object(google_api.requests, "post") as post:
+            post.return_value = _FakeResponse(
+                200, {"access_token": "tok", "expires_in": 3600})
+            google_api.access_token()
+        claims = enc.call_args[0][0]
+        self.assertEqual(claims["iss"],
+                         "calendar-push@steadfast-scholars-calendar.iam.gserviceaccount.com")
+        self.assertEqual(claims["aud"], "https://oauth2.googleapis.com/token")
+        self.assertEqual(claims["scope"], google_api.SCOPE)
+        self.assertGreater(claims["exp"], claims["iat"])
+        self.assertEqual(enc.call_args[1]["algorithm"], "RS256")
+
+
+@override_settings(GOOGLE_CALENDAR_SA_JSON=FAKE_SA, GOOGLE_CALENDAR_IDS=BOTH_CALENDARS)
+class GoogleApiRequestTests(TestCase):
+    """A revoked token looks exactly like an expired one until Google says 401."""
+
+    def setUp(self):
+        _reset_token_cache()
+
+    def test_a_401_is_retried_once_with_a_fresh_token(self):
+        from family_calendar import google_api
+
+        with mock.patch.object(google_api.jwt, "encode", return_value="signed"), \
+             mock.patch.object(google_api.requests, "post",
+                               return_value=_FakeResponse(
+                                   200, {"access_token": "tok", "expires_in": 3600})), \
+             mock.patch.object(google_api.requests, "request") as req:
+            req.side_effect = [
+                _FakeResponse(401, text="expired"),
+                _FakeResponse(200, {"ok": True}),
+            ]
+            self.assertEqual(google_api.request("GET", "/x"), {"ok": True})
+            self.assertEqual(req.call_count, 2)
+
+    def test_a_second_401_gives_up_rather_than_looping(self):
+        from family_calendar import google_api
+
+        with mock.patch.object(google_api.jwt, "encode", return_value="signed"), \
+             mock.patch.object(google_api.requests, "post",
+                               return_value=_FakeResponse(
+                                   200, {"access_token": "tok", "expires_in": 3600})), \
+             mock.patch.object(google_api.requests, "request") as req:
+            req.return_value = _FakeResponse(401, text="nope")
+            with self.assertRaises(google_api.GoogleCalendarError):
+                google_api.request("GET", "/x")
+            self.assertEqual(req.call_count, 2)      # two attempts, then stop
+
+    def test_a_403_is_not_retried(self):
+        from family_calendar import google_api
+
+        with mock.patch.object(google_api.jwt, "encode", return_value="signed"), \
+             mock.patch.object(google_api.requests, "post",
+                               return_value=_FakeResponse(
+                                   200, {"access_token": "tok", "expires_in": 3600})), \
+             mock.patch.object(google_api.requests, "request") as req:
+            req.return_value = _FakeResponse(403, text="forbidden")
+            with self.assertRaises(google_api.GoogleCalendarError) as caught:
+                google_api.request("GET", "/x")
+            self.assertEqual(req.call_count, 1)      # a permission problem is final
+        self.assertEqual(caught.exception.status, 403)
+
+
+@override_settings(GOOGLE_CALENDAR_SA_JSON=FAKE_SA, GOOGLE_CALENDAR_IDS=BOTH_CALENDARS)
+class AccessRoleTests(TestCase):
+    """Google renamed the sharing levels on 2026-07-07 and added
+    writerWithoutPrivateAccess directly above the one we need. It writes
+    non-private events fine, so accepting it would look like success and then
+    misbehave later."""
+
+    def setUp(self):
+        _reset_token_cache()
+
+    def test_writer_without_private_access_is_not_treated_as_writable(self):
+        from family_calendar import google_api
+
+        self.assertIn(google_api.ROLE_WRITER, google_api.WRITABLE_ROLES)
+        self.assertIn(google_api.ROLE_OWNER, google_api.WRITABLE_ROLES)
+        self.assertNotIn(google_api.ROLE_PARTIAL, google_api.WRITABLE_ROLES)
+
+    def test_a_calendar_already_in_the_list_is_read_not_re_added(self):
+        from family_calendar import google_api
+
+        with mock.patch.object(google_api, "access_token", return_value="tok"), \
+             mock.patch.object(google_api.requests, "request") as req:
+            req.return_value = _FakeResponse(200, {"accessRole": "writer"})
+            self.assertEqual(google_api.access_role("a@b.com"), "writer")
+            self.assertEqual(req.call_args[0][0], "GET")   # never POSTs when present
+
+    def test_an_unaccepted_share_is_picked_up_then_read(self):
+        """A calendar shared with a service account never appears on its own —
+        nobody accepts an invitation on a robot's behalf."""
+        from family_calendar import google_api
+
+        with mock.patch.object(google_api, "access_token", return_value="tok"), \
+             mock.patch.object(google_api.requests, "request") as req:
+            req.side_effect = [
+                _FakeResponse(404, text="not found"),
+                _FakeResponse(200, {"accessRole": "writer"}),
+            ]
+            self.assertEqual(google_api.access_role("a@b.com"), "writer")
+            self.assertEqual(req.call_count, 2)
+            self.assertEqual(req.call_args[0][0], "POST")  # calendarList.insert
+
+    def test_a_403_is_not_mistaken_for_an_unaccepted_share(self):
+        from family_calendar import google_api
+
+        with mock.patch.object(google_api, "access_token", return_value="tok"), \
+             mock.patch.object(google_api.requests, "request") as req:
+            req.return_value = _FakeResponse(403, text="forbidden")
+            with self.assertRaises(google_api.GoogleCalendarError):
+                google_api.access_role("a@b.com")
+            self.assertEqual(req.call_count, 1)   # must NOT try to insert
+
+
+@override_settings(GOOGLE_CALENDAR_SA_JSON=FAKE_SA, GOOGLE_CALENDAR_IDS=BOTH_CALENDARS)
+class CheckCommandTests(TestCase):
+    """The command exists to answer one question truthfully, including when the
+    answer is 'nearly'."""
+
+    def setUp(self):
+        _reset_token_cache()
+
+    def _run(self):
+        out = StringIO()
+        err = StringIO()
+        call_command("check_google_calendar", stdout=out, stderr=err)
+        return out.getvalue() + err.getvalue()
+
+    def test_two_writable_calendars_reads_as_done(self):
+        from family_calendar import google_api
+
+        with mock.patch.object(google_api, "access_token", return_value="tok"), \
+             mock.patch.object(google_api, "access_role", return_value="writer"):
+            output = self._run()
+        self.assertIn("handshake is done", output)
+        self.assertNotIn("Not ready", output)
+
+    def test_the_near_miss_role_is_called_out_by_name(self):
+        from family_calendar import google_api
+
+        with mock.patch.object(google_api, "access_token", return_value="tok"), \
+             mock.patch.object(google_api, "access_role",
+                               return_value=google_api.ROLE_PARTIAL):
+            output = self._run()
+        self.assertIn("Not ready", output)
+        self.assertIn("Make changes and see event details", output)  # the fix, verbatim
+
+    def test_a_read_only_share_is_reported_as_read_only(self):
+        from family_calendar import google_api
+
+        with mock.patch.object(google_api, "access_token", return_value="tok"), \
+             mock.patch.object(google_api, "access_role", return_value="reader"):
+            output = self._run()
+        self.assertIn("Not ready", output)
+        self.assertIn("Read-only", output)
+
+    def test_one_good_one_bad_still_reports_not_ready(self):
+        """Both calendars must work. Reporting success on a partial setup would
+        mean events silently landing on only one of them."""
+        from family_calendar import google_api
+
+        with mock.patch.object(google_api, "access_token", return_value="tok"), \
+             mock.patch.object(google_api, "access_role",
+                               side_effect=["writer", "reader"]):
+            output = self._run()
+        self.assertIn("Not ready", output)
+
+    def test_a_missing_calendar_says_so_rather_than_crashing(self):
+        from family_calendar import google_api
+
+        with mock.patch.object(google_api, "access_token", return_value="tok"), \
+             mock.patch.object(google_api, "access_role",
+                               side_effect=google_api.GoogleCalendarError(
+                                   "gone", status=404)):
+            output = self._run()
+        self.assertIn("never shared", output)
+        self.assertIn("Not ready", output)
+
+    def test_a_rejected_key_stops_before_touching_any_calendar(self):
+        from family_calendar import google_api
+
+        with mock.patch.object(google_api, "access_token",
+                               side_effect=google_api.GoogleCalendarError(
+                                   "invalid_grant", status=400)), \
+             mock.patch.object(google_api, "access_role") as role:
+            output = self._run()
+        self.assertIn("invalid_grant", output)
+        role.assert_not_called()      # no point asking about calendars
+
+    def test_no_config_reports_switched_off_not_an_error(self):
+        with override_settings(GOOGLE_CALENDAR_SA_JSON=""):
+            output = self._run()
+        self.assertIn("switched off", output)

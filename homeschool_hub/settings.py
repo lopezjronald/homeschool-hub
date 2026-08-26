@@ -486,6 +486,12 @@ ACTIVITY_SIGNAL_PROVIDERS = [
 # is the model's input field name for reference images (varies by model).
 # ---------------------------------------------------------------------------
 REPLICATE_API_TOKEN = os.getenv("REPLICATE_API_TOKEN", "")
+
+# Google Calendar push (HH-168). Both must be present or the feature stays off:
+# a key with nowhere to write is as useless as a destination we cannot sign for.
+# Set them in Heroku config; never commit a key.
+GOOGLE_CALENDAR_SA_JSON = os.getenv("GOOGLE_CALENDAR_SA_JSON", "")
+GOOGLE_CALENDAR_IDS = os.getenv("GOOGLE_CALENDAR_IDS", "")
 MANGA_IMAGE_MODEL = os.getenv("MANGA_IMAGE_MODEL", "google/nano-banana-2")
 MANGA_REFERENCE_KEY = os.getenv("MANGA_REFERENCE_KEY", "image_input")
 

@@ -305,7 +305,9 @@ RICKSHAW_GIRL = {
     ],
     "rubric": (
         "## Teacher notes — Glean, hands-on option (20 points)\n"
-        "The same 20 points as the guide's printed options, earned the same way.\n\n"
+        "The same 20 points as the guide's printed options, earned the same "
+        "way, and it is **not the easier option** — grinding a pigment that "
+        "actually works is harder than writing a paragraph about one.\n\n"
         "**Why this one is worth the mess.** The material itself is the "
         "comprehension check: she makes Naima's kind of paint out of Naima's "
         "kind of things, paints what Naima paints, and ends on the book's own "
@@ -384,7 +386,8 @@ MISS_AGNES = {
         "The same 20 points as the guide's printed options.\n\n"
         "**Why this one.** The book's subject is a single room changing, so "
         "building it twice is a comprehension check that leaves a non-reader's "
-        "second box empty.\n\n"
+        "second box empty. It is **not the easier option**: she has to know what "
+        "was in the room before anything can go into the box.\n\n"
         "**What to look at**\n"
         "- The *before* room is the one children skim. If it is bare, ask what "
         "the first chapter says was there.\n"
@@ -459,7 +462,9 @@ HUNDRED_DRESSES = {
     ],
     "rubric": (
         "## Teacher notes — Glean, hands-on option (20 points)\n"
-        "The same 20 points as the guide's printed options.\n\n"
+        "The same 20 points as the guide's printed options, and it is **not the "
+        "easier option** — a hundred dresses is more work than an essay, and the "
+        "last step cannot be done without finishing the book.\n\n"
         "**What to look at**\n"
         "- *The colour chart* has no fixed count. However many the book names is "
         "right.\n"

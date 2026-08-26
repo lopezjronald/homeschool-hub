@@ -5060,8 +5060,11 @@ class MissAgnesTests(TestCase):
         self.assertEqual(gleans.count(), 2)
         self.assertTrue(gleans.filter(title__endswith="Final Project").exists(),
                         "the guide's own options must still be offered")
+        # 90 = the guide's own questions plus the hands-on project's seven steps
+        # (six made pieces and the tap-a-face check). It was 89 when that project
+        # was five drawings and a paragraph.
         self.assertEqual(
-            Question.objects.filter(question_set__in=sets).count(), 89)
+            Question.objects.filter(question_set__in=sets).count(), 90)
 
     def test_journals_name_this_books_pairs_not_rickshaws_four(self):
         from tutor.models import Question
@@ -7590,7 +7593,7 @@ class HandsOnGleanEveryBookTests(TestCase):
     def _set(self, contains):
         return QuestionSet.objects.get(title__contains=contains)
 
-    BOOKS = ["What David Saw", "The Cellar and the Sea"]
+    BOOKS = ["The David Museum", "The Keeper's Kit"]
 
     # -- it is an EXTRA option, not a replacement ---------------------------
 
@@ -7613,27 +7616,20 @@ class HandsOnGleanEveryBookTests(TestCase):
 
     # -- and it is genuinely hands-on ---------------------------------------
 
-    def test_it_is_drawing_with_exactly_one_thing_to_write(self):
-        """The complaint was that ALL of it was writing, not that any of it
-        was. One paragraph is right for a twelve-year-old; six is not."""
+    def test_it_is_making_with_nothing_at_all_to_write(self):
+        """The first version answered "too much writing" with five drawings and
+        a paragraph. The paragraph is gone and the drawings are down to one:
+        what she does instead is BUILD things."""
         for title in self.BOOKS:
             questions = list(self._set(title).questions.order_by("order"))
-            drawings = [q for q in questions if q.is_drawing]
+            made = [q for q in questions if q.is_photo]
+            drawn = [q for q in questions if q.is_drawing]
             written = [q for q in questions
                        if q.response_type == Question.TYPE_TEXT]
-            self.assertEqual(len(drawings), 5, title)
-            self.assertEqual(len(written), 1, title)
-            self.assertTrue(written[0].offers_answer_mode,
-                            "she can type it or write it by hand")
+            self.assertGreaterEqual(len(made), 4, title)
+            self.assertLessEqual(len(drawn), 1, title)
+            self.assertEqual(written, [], title)
             self.assertTrue(questions[-1].is_self_eval)
-
-    def test_the_big_pieces_get_more_paper(self):
-        """A cover and a map need more room than an inventory sketch."""
-        for title in self.BOOKS:
-            heights = [q.drawing_height
-                       for q in self._set(title).questions.all() if q.is_drawing]
-            self.assertGreater(max(heights), min(heights), title)
-            self.assertGreaterEqual(min(heights), 480, title)
 
     def test_the_self_check_asks_for_no_writing(self):
         for title in self.BOOKS:
@@ -7643,47 +7639,46 @@ class HandsOnGleanEveryBookTests(TestCase):
 
     # -- it is Grade 7, not Grade 3 -----------------------------------------
 
-    def test_the_drawings_send_her_back_to_the_book(self):
-        """This is what makes it a comprehension check rather than an art
-        period: several of these cannot be done without re-reading."""
+    def test_the_making_sends_her_back_to_the_book(self):
+        """This is what makes it a comprehension check rather than a craft
+        afternoon: several of these cannot be built without re-reading."""
         david = " ".join(q.prompt + q.hint
-                         for q in self._set("What David Saw").questions.all())
-        self.assertIn("go back to the book", david.lower())
-        self.assertIn("the same face, twice", david.lower())
+                         for q in self._set("The David Museum").questions.all())
+        self.assertIn("go back to the first chapter", david.lower())
+        self.assertIn("never names the country", david.lower())
 
         folk = " ".join(q.prompt + q.hint
-                        for q in self._set("The Cellar and the Sea").questions.all())
-        self.assertIn("defensible from the text", folk.lower())
+                        for q in self._set("The Keeper's Kit").questions.all())
+        self.assertIn("hunt the book", folk.lower())
 
     def test_no_prompt_asserts_a_plot_detail_i_could_have_got_wrong(self):
         """The prompts ask HER to find the details rather than supplying them —
         a list I invented would be wrong in a way she would trust."""
-        david = self._set("What David Saw")
-        bundle = david.questions.get(order=1)
-        self.assertIn("get the list right", bundle.prompt)
-        self.assertNotIn("soap", bundle.prompt.lower())
-        journey = david.questions.get(order=3)
-        self.assertIn("against the book", journey.hint)
+        david = self._set("The David Museum")
+        case_one = david.questions.get(order=1)
+        self.assertIn("get the list right", case_one.prompt)
+        self.assertNotIn("soap", case_one.prompt.lower())
+        # And no step names a COUNT the book has to supply.
+        case_two = david.questions.get(order=2)
+        self.assertIn("however many you turn up", case_two.prompt.lower())
 
     def test_the_teacher_note_says_it_is_not_the_easier_option(self):
         for title in self.BOOKS:
             rubric = self._set(title).rubric
             self.assertIn("20 points", rubric)
             self.assertIn("not the easier option", rubric)
-            self.assertIn("on paper", rubric.lower())
 
     # -- the page she opens --------------------------------------------------
 
-    def test_the_page_gives_her_paper_and_no_typing_box_but_one(self):
+    def test_the_page_offers_a_camera_and_no_typing_box_at_all(self):
         for title in self.BOOKS:
             html = self.client.get(reverse(
                 "portal:portal_questions",
                 args=[self.token, self._set(title).pk])).content.decode()
-            self.assertIn("drawing-widget", html)
-            self.assertIn("Draw here", html)
-            # The single written answer offers the pen as well as the keyboard.
-            self.assertIn('data-mode="write"', html)
-            self.assertIn("handwriting-canvas", html)
+            self.assertIn("photo-widget", html)          # somewhere to add a photo
+            self.assertIn("Add this photo", html)
+            self.assertIn("drawing-widget", html)        # the single drawn step
+            self.assertNotIn("portal-answer", html)      # and no typing box
 
     def test_reseeding_changes_nothing(self):
         before = (QuestionSet.objects.count(), Question.objects.count())
@@ -7712,23 +7707,6 @@ class HandsOnGleanContentTests(SimpleTestCase):
             self.assertTrue(book["title"], key)
             self.assertTrue(book["steps"], key)
 
-    def test_every_one_of_them_is_drawing_with_one_thing_to_write(self):
-        """The complaint was never that there was ANY writing — it was that
-        there was nothing else. One short piece is right; six is not."""
-        from tutor.models import Question
-
-        for key, book in self._books().items():
-            types = [extra["response_type"] for _c, _p, _h, extra in book["steps"]]
-            self.assertGreaterEqual(types.count(Question.TYPE_DRAWING), 4, key)
-            self.assertEqual(types.count(Question.TYPE_TEXT), 1, key)
-            self.assertEqual(types[-1], Question.TYPE_SELF_EVAL, key)
-
-    def test_the_one_written_step_lets_her_use_a_pen(self):
-        for key, book in self._books().items():
-            written = [extra for _c, _p, _h, extra in book["steps"]
-                       if extra["response_type"] == "text"]
-            self.assertTrue(written[0]["passage"].get("answer_mode"), key)
-
     def test_every_teacher_note_says_it_is_not_the_lighter_option(self):
         """A parent glancing at five drawings and one paragraph could
         reasonably assume it is the soft choice. It is not, and the note says
@@ -7737,7 +7715,6 @@ class HandsOnGleanContentTests(SimpleTestCase):
             rubric = book["rubric"]
             self.assertIn("20 points", rubric, key)
             self.assertIn("not the easier option", rubric.lower(), key)
-            self.assertIn("on paper", rubric.lower(), key)
 
     def test_every_book_sends_her_back_to_its_own_text(self):
         """These are comprehension checks wearing different clothes. A project
@@ -7747,8 +7724,9 @@ class HandsOnGleanContentTests(SimpleTestCase):
             self.assertTrue(
                 any(phrase in words for phrase in
                     ("go back to the book", "back to the book", "in the book",
-                     "from the text", "against the book", "find the moment",
-                     "find where", "look at the")),
+                     "from the text", "against the book", "look it up in the book",
+                     "hunt the book", "go through the book", "go and look",
+                     "look at the")),
                 f"{key}: nothing sends her to the text")
 
     def test_the_self_check_never_asks_for_writing(self):

@@ -174,3 +174,44 @@ class CalendarEvent(models.Model):
                 out.append(d)
             d += timedelta(days=1)
         return out
+
+
+class GoogleCalendarLink(models.Model):
+    """What we have pushed to Google, and where (HH-168).
+
+    One row per (event, calendar) because an event goes to more than one Google
+    calendar and each copy gets its own id. Keying only on the event would mean
+    the second calendar silently overwriting the first's id and orphaning a
+    Google event nobody can find again.
+
+    ``content_hash`` is what makes a re-save cheap: saving an event whose fields
+    did not change should cost nothing, and a parent editing one field should
+    not re-push to every calendar.
+    """
+
+    event = models.ForeignKey(
+        CalendarEvent, on_delete=models.CASCADE, related_name="google_links",
+    )
+    calendar_id = models.CharField(max_length=255)
+    google_event_id = models.CharField(max_length=1024, blank=True)
+    content_hash = models.CharField(max_length=64, blank=True)
+    synced_at = models.DateTimeField(null=True, blank=True)
+    # Kept rather than raised: a push that fails must never fail the parent's
+    # save, so the failure has to be legible somewhere afterwards.
+    last_error = models.TextField(blank=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["event", "calendar_id"],
+                name="unique_google_link_per_event_calendar",
+            ),
+        ]
+        ordering = ["calendar_id"]
+
+    def __str__(self):
+        return "%s -> %s" % (self.event_id, self.calendar_id)
+
+    @property
+    def is_synced(self):
+        return bool(self.google_event_id and not self.last_error)

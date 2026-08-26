@@ -495,6 +495,11 @@ REPLICATE_API_TOKEN = os.getenv("REPLICATE_API_TOKEN", "")
 # of them — the whole private key would have rendered on a DEBUG page.
 GOOGLE_CALENDAR_SA_KEY_JSON = os.getenv("GOOGLE_CALENDAR_SA_KEY_JSON", "")
 GOOGLE_CALENDAR_IDS = os.getenv("GOOGLE_CALENDAR_IDS", "")
+
+# The push runs off the request thread so a parent never waits on Google. Tests
+# flip this off: a thread has its own connection and would not see the row a
+# TestCase created inside its rolled-back transaction.
+GOOGLE_CALENDAR_SYNC_ASYNC = True
 MANGA_IMAGE_MODEL = os.getenv("MANGA_IMAGE_MODEL", "google/nano-banana-2")
 MANGA_REFERENCE_KEY = os.getenv("MANGA_REFERENCE_KEY", "image_input")
 

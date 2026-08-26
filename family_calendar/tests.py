@@ -1351,3 +1351,387 @@ def google_api_mod():
     from family_calendar import google_api
 
     return google_api
+
+
+GCAL = dict(GOOGLE_CALENDAR_SA_KEY_JSON=FAKE_SA, GOOGLE_CALENDAR_IDS=BOTH_CALENDARS,
+            GOOGLE_CALENDAR_SYNC_ASYNC=False, TIME_ZONE="America/Los_Angeles")
+
+
+def _event(**kw):
+    """A CalendarEvent with the boring fields filled in."""
+    from family_calendar.models import CalendarEvent
+
+    owner = kw.pop("owner", None) or User.objects.create_user(
+        username="ev%d" % User.objects.count(), email="e%d@x.com" % User.objects.count(),
+        password="pw")
+    fields = dict(parent=owner, title="Jiu-jitsu", date=date(2026, 9, 7),
+                  start_time=time(16, 0), end_time=time(17, 0))
+    fields.update(kw)
+    return CalendarEvent.objects.create(**fields)
+
+
+@override_settings(**GCAL)
+class EventBodyShapeTests(TestCase):
+    """What we hand Google. Every assertion here is a thing that would put an
+    event on the wrong day, at the wrong time, or not at all."""
+
+    def test_an_all_day_event_ends_on_the_FOLLOWING_date(self):
+        """Google treats an all-day end as EXCLUSIVE. Sending the same date for
+        start and end makes the event vanish from the calendar entirely."""
+        from family_calendar import sync
+
+        body = sync.event_body(_event(start_time=None, end_time=None,
+                                      date=date(2026, 9, 7)))
+        self.assertEqual(body["start"], {"date": "2026-09-07"})
+        self.assertEqual(body["end"], {"date": "2026-09-08"})
+
+    def test_a_timed_event_carries_both_the_offset_and_the_zone_name(self):
+        """One of the two target calendars is set to UTC. The offset fixes the
+        instant; the NAME is what holds a recurring 4pm at 4pm across a DST
+        change instead of sliding it to 3pm."""
+        from family_calendar import sync
+
+        body = sync.event_body(_event())
+        self.assertEqual(body["start"]["timeZone"], "America/Los_Angeles")
+        self.assertTrue(body["start"]["dateTime"].startswith("2026-09-07T16:00:00"))
+        self.assertRegex(body["start"]["dateTime"], r"[+-]\d{2}:\d{2}$")   # real offset
+        self.assertTrue(body["end"]["dateTime"].startswith("2026-09-07T17:00:00"))
+
+    def test_a_start_with_no_end_gets_an_hour_not_zero_length(self):
+        from family_calendar import sync
+
+        body = sync.event_body(_event(end_time=None))
+        self.assertTrue(body["end"]["dateTime"].startswith("2026-09-07T17:00:00"))
+
+    def test_the_childs_name_reaches_the_shared_calendar(self):
+        from family_calendar import sync
+
+        fam = Family.objects.create(name="F")
+        owner = User.objects.create_user(username="cn", email="cn@x.com", password="pw")
+        kid = Student.objects.create(parent=owner, first_name="Violet",
+                                     grade_level="G03", family=fam)
+        body = sync.event_body(_event(owner=owner, child=kid, family=fam))
+        self.assertIn("Violet", body["summary"])
+        self.assertIn("Jiu-jitsu", body["summary"])
+
+    def test_a_whole_family_event_has_no_name_appended(self):
+        from family_calendar import sync
+
+        self.assertEqual(sync.event_body(_event())["summary"], "Jiu-jitsu")
+
+
+@override_settings(**GCAL)
+class RecurrenceTests(TestCase):
+    """The app's light weekly recurrence, expressed as RFC 5545."""
+
+    def test_weekday_numbers_map_to_the_right_rrule_tokens(self):
+        from family_calendar import sync
+
+        # 0=Mon in CalendarEvent.weekday_set(); an off-by-one here moves every
+        # practice to the wrong day of the week.
+        body = sync.event_body(_event(repeats_weekly=True,
+                                      repeat_weekdays=[1, 3],   # Tue, Thu
+                                      date=date(2026, 9, 8)))   # a Tuesday
+        self.assertEqual(body["recurrence"][0], "RRULE:FREQ=WEEKLY;BYDAY=TU,TH")
+
+    def test_the_series_starts_on_the_first_REAL_occurrence(self):
+        """RFC 5545 makes DTSTART an instance whether or not it matches BYDAY,
+        and Google honours that. Anchoring on a Monday for a Tue/Thu series
+        would grow a phantom Monday in Google the app never shows."""
+        from family_calendar import sync
+
+        monday = date(2026, 9, 7)
+        self.assertEqual(monday.weekday(), 0)
+        event = _event(repeats_weekly=True, repeat_weekdays=[1, 3], date=monday)
+        self.assertEqual(sync.first_occurrence(event), date(2026, 9, 8))   # the Tuesday
+        self.assertEqual(sync.event_body(event)["start"]["dateTime"][:10], "2026-09-08")
+
+    def test_until_for_a_timed_series_is_the_END_of_the_last_day_in_utc(self):
+        """UNTIL is inclusive, but for a timed series it must be a UTC instant.
+        Using local midnight would drop the final occurrence."""
+        from family_calendar import sync
+
+        body = sync.event_body(_event(repeats_weekly=True, repeat_weekdays=[0],
+                                      date=date(2026, 9, 7),
+                                      repeat_until=date(2026, 12, 14)))
+        rule = body["recurrence"][0]
+        self.assertIn("UNTIL=", rule)
+        self.assertTrue(rule.endswith("Z"), rule)
+        # 23:59:59 Pacific on the 14th is the 15th in UTC — proving a conversion
+        # happened rather than the date being pasted in.
+        self.assertIn("UNTIL=20261215T075959Z", rule)
+
+    def test_until_for_an_all_day_series_is_a_plain_date(self):
+        from family_calendar import sync
+
+        body = sync.event_body(_event(start_time=None, end_time=None,
+                                      repeats_weekly=True, repeat_weekdays=[0],
+                                      date=date(2026, 9, 7),
+                                      repeat_until=date(2026, 12, 14)))
+        self.assertIn("UNTIL=20261214", body["recurrence"][0])
+        self.assertNotIn("Z", body["recurrence"][0])
+
+    def test_exdate_for_a_timed_series_carries_the_time_and_zone(self):
+        """The EXDATE value type must match DTSTART's. A bare date against a
+        timed DTSTART makes Google reject the whole event."""
+        from family_calendar import sync
+
+        body = sync.event_body(_event(repeats_weekly=True, repeat_weekdays=[0],
+                                      date=date(2026, 9, 7),
+                                      skip_dates=["2026-09-14"]))
+        exdate = [l for l in body["recurrence"] if l.startswith("EXDATE")][0]
+        self.assertEqual(exdate,
+                         "EXDATE;TZID=America/Los_Angeles:20260914T160000")
+
+    def test_exdate_for_an_all_day_series_is_a_date_list(self):
+        from family_calendar import sync
+
+        body = sync.event_body(_event(start_time=None, end_time=None,
+                                      repeats_weekly=True, repeat_weekdays=[0],
+                                      date=date(2026, 9, 7),
+                                      skip_dates=["2026-09-14", "2026-09-21"]))
+        exdate = [l for l in body["recurrence"] if l.startswith("EXDATE")][0]
+        self.assertEqual(exdate, "EXDATE;VALUE=DATE:20260914,20260921")
+
+    def test_a_skip_date_the_series_never_lands_on_is_dropped(self):
+        """Sending an EXDATE for a date outside the pattern makes Google reject
+        the event outright, so one stray skip would stop the whole series."""
+        from family_calendar import sync
+
+        body = sync.event_body(_event(repeats_weekly=True, repeat_weekdays=[0],
+                                      date=date(2026, 9, 7),
+                                      skip_dates=["2026-09-09", "bogus", "2026-09-14"]))
+        exdate = [l for l in body["recurrence"] if l.startswith("EXDATE")]
+        self.assertEqual(len(exdate), 1)
+        self.assertIn("20260914", exdate[0])
+        self.assertNotIn("20260909", exdate[0])      # a Wednesday, not in BYDAY
+
+    def test_a_one_off_event_has_no_recurrence_at_all(self):
+        from family_calendar import sync
+
+        self.assertNotIn("recurrence", sync.event_body(_event()))
+
+
+@override_settings(**GCAL)
+class ReminderBodyTests(TestCase):
+    """The parent chose no app-imposed default, so blank must defer to Google."""
+
+    def test_blank_defers_to_the_calendars_own_setting(self):
+        from family_calendar import sync
+
+        self.assertEqual(sync.event_body(_event())["reminders"],
+                         {"useDefault": True})
+
+    def test_a_chosen_reminder_becomes_an_override(self):
+        from family_calendar import sync
+
+        body = sync.event_body(_event(reminder="1440"))
+        self.assertEqual(body["reminders"],
+                         {"useDefault": False,
+                          "overrides": [{"method": "popup", "minutes": 1440}]})
+
+    def test_explicit_silence_is_not_the_same_as_blank(self):
+        from family_calendar.models import CalendarEvent
+        from family_calendar import sync
+
+        body = sync.event_body(_event(reminder=CalendarEvent.REMIND_NONE))
+        self.assertEqual(body["reminders"], {"useDefault": False, "overrides": []})
+
+
+@override_settings(**GCAL)
+class PushTests(TestCase):
+    """Pushing to two calendars, and surviving everything Google might do."""
+
+    def setUp(self):
+        _reset_token_cache()
+
+    def _push(self, event, responses, force=False):
+        from family_calendar import google_api, sync
+
+        with mock.patch.object(google_api, "request", side_effect=responses) as req:
+            results = sync.push_event(event, force=force)
+        return results, req
+
+    def test_one_event_becomes_one_google_event_per_calendar(self):
+        from family_calendar.models import GoogleCalendarLink
+
+        event = _event()
+        results, req = self._push(event, [{"id": "g1"}, {"id": "g2"}])
+        self.assertEqual([s for _c, s in results], ["created", "created"])
+        links = GoogleCalendarLink.objects.filter(event=event).order_by("calendar_id")
+        # Separate ids. Keying on the event alone would let the second calendar
+        # overwrite the first's id and orphan a Google event forever.
+        self.assertEqual(sorted(l.google_event_id for l in links), ["g1", "g2"])
+        self.assertEqual(len(set(l.calendar_id for l in links)), 2)
+
+    def test_saving_again_with_no_changes_does_not_touch_google(self):
+        event = _event()
+        self._push(event, [{"id": "g1"}, {"id": "g2"}])
+        results, req = self._push(event, [])
+        self.assertEqual([s for _c, s in results], ["unchanged", "unchanged"])
+        req.assert_not_called()
+
+    def test_an_edit_updates_rather_than_duplicating(self):
+        event = _event()
+        self._push(event, [{"id": "g1"}, {"id": "g2"}])
+        event.title = "Karate"
+        event.save()
+        results, req = self._push(event, [{"id": "g1"}, {"id": "g2"}])
+        self.assertEqual([s for _c, s in results], ["updated", "updated"])
+        self.assertEqual([c.args[0] for c in req.call_args_list], ["PUT", "PUT"])
+
+    def test_one_calendar_failing_does_not_stop_the_other(self):
+        from family_calendar import google_api
+        from family_calendar.models import GoogleCalendarLink
+
+        event = _event()
+        results, _req = self._push(event, [
+            google_api.GoogleCalendarError("boom", status=500),
+            {"id": "g2"},
+        ])
+        self.assertEqual(sorted(s for _c, s in results), ["created", "failed"])
+        self.assertEqual(GoogleCalendarLink.objects.exclude(last_error="").count(), 1)
+        self.assertEqual(GoogleCalendarLink.objects.filter(google_event_id="g2").count(), 1)
+
+    def test_a_push_never_raises_however_google_misbehaves(self):
+        from family_calendar import google_api, sync
+
+        event = _event()
+        with mock.patch.object(google_api, "request",
+                               side_effect=google_api.GoogleCalendarError("down", status=503)):
+            results = sync.push_event(event)          # must not raise
+        self.assertEqual([s for _c, s in results], ["failed", "failed"])
+
+    def test_a_failed_push_is_retried_on_the_next_run(self):
+        from family_calendar import google_api
+
+        event = _event()
+        self._push(event, [google_api.GoogleCalendarError("boom", status=500),
+                           google_api.GoogleCalendarError("boom", status=500)])
+        results, req = self._push(event, [{"id": "g1"}, {"id": "g2"}])
+        # The content hash is unchanged, so only the recorded error keeps this
+        # from being skipped as "unchanged" — and a swallowed failure that is
+        # never retried is a lost event.
+        self.assertEqual([s for _c, s in results], ["created", "created"])
+
+    def test_an_event_deleted_inside_google_is_recreated_not_updated_forever(self):
+        from family_calendar import google_api
+        from family_calendar.models import GoogleCalendarLink
+
+        event = _event()
+        self._push(event, [{"id": "g1"}, {"id": "g2"}])
+        self._push(event, [google_api.GoogleCalendarError("gone", status=404),
+                           google_api.GoogleCalendarError("gone", status=404)],
+                   force=True)
+        self.assertEqual(
+            list(GoogleCalendarLink.objects.values_list("google_event_id", flat=True)),
+            ["", ""])                       # id forgotten, so the next run creates
+
+    def test_deleting_an_event_removes_both_google_copies(self):
+        from family_calendar import google_api, sync
+        from family_calendar.models import GoogleCalendarLink
+
+        event = _event()
+        self._push(event, [{"id": "g1"}, {"id": "g2"}])
+        with mock.patch.object(google_api, "request", return_value=None) as req:
+            results = sync.remove_event(event)
+        self.assertEqual([s for _c, s in results], ["deleted", "deleted"])
+        self.assertEqual([c.args[0] for c in req.call_args_list], ["DELETE", "DELETE"])
+        self.assertFalse(GoogleCalendarLink.objects.exists())
+
+    def test_deleting_something_google_already_lost_is_a_success(self):
+        from family_calendar import google_api, sync
+        from family_calendar.models import GoogleCalendarLink
+
+        event = _event()
+        self._push(event, [{"id": "g1"}, {"id": "g2"}])
+        with mock.patch.object(google_api, "request",
+                               side_effect=google_api.GoogleCalendarError("gone", status=410)):
+            results = sync.remove_event(event)
+        self.assertEqual([s for _c, s in results], ["deleted", "deleted"])
+        self.assertFalse(GoogleCalendarLink.objects.exists())
+
+    def test_nothing_is_pushed_when_the_feature_is_off(self):
+        from family_calendar import google_api, sync
+
+        event = _event()
+        with override_settings(GOOGLE_CALENDAR_SA_KEY_JSON=""):
+            with mock.patch.object(google_api, "request") as req:
+                self.assertEqual(sync.push_event(event), [])
+                req.assert_not_called()
+
+
+@override_settings(**GCAL)
+class SignalTests(TestCase):
+    """Saving an event should reach Google without the parent waiting on it."""
+
+    def setUp(self):
+        _reset_token_cache()
+
+    def test_saving_an_event_pushes_it(self):
+        from family_calendar import sync
+
+        with mock.patch.object(sync, "push_event") as push:
+            with self.captureOnCommitCallbacks(execute=True):
+                event = _event()
+        push.assert_called_once()
+        self.assertEqual(push.call_args[0][0].pk, event.pk)
+
+    def test_deleting_an_event_removes_it_using_links_captured_first(self):
+        """The links cascade away with the event, so they have to be read before
+        the delete — afterwards there is nothing left to say which Google events
+        to remove, and they would sit on the calendar forever."""
+        from family_calendar import sync
+        from family_calendar.models import GoogleCalendarLink
+
+        event = _event()
+        GoogleCalendarLink.objects.create(event=event, calendar_id="a@x.com",
+                                          google_event_id="g1")
+        with mock.patch.object(sync, "remove_event") as remove:
+            with self.captureOnCommitCallbacks(execute=True):
+                event.delete()
+        remove.assert_called_once()
+        links = remove.call_args[1]["links"]
+        self.assertEqual([l.google_event_id for l in links], ["g1"])
+
+    def test_a_google_outage_does_not_break_the_save(self):
+        from family_calendar import google_api
+
+        with mock.patch.object(google_api, "request",
+                               side_effect=google_api.GoogleCalendarError("down", status=503)):
+            with self.captureOnCommitCallbacks(execute=True):
+                event = _event()                   # must not raise
+        self.assertIsNotNone(event.pk)
+
+    def test_nothing_is_attempted_when_the_feature_is_off(self):
+        from family_calendar import sync
+
+        with override_settings(GOOGLE_CALENDAR_SA_KEY_JSON=""):
+            with mock.patch.object(sync, "push_event") as push:
+                with self.captureOnCommitCallbacks(execute=True):
+                    _event()
+            push.assert_not_called()
+
+
+@override_settings(**GCAL)
+class PendingEventsTests(TestCase):
+    """The backfill window. A series still running counts as future even though
+    its anchor date is in the past — otherwise every weekly practice set up last
+    term would be left out of Google."""
+
+    def test_a_running_series_anchored_in_the_past_is_still_in_scope(self):
+        from family_calendar import sync
+
+        old_one_off = _event(date=date(2026, 1, 5))
+        running = _event(date=date(2026, 1, 5), repeats_weekly=True,
+                         repeat_weekdays=[0], repeat_until=date(2026, 12, 14))
+        endless = _event(date=date(2026, 1, 5), repeats_weekly=True,
+                         repeat_weekdays=[0])
+        future = _event(date=date(2026, 11, 2))
+
+        in_scope = set(sync.pending_events(since=date(2026, 9, 1))
+                       .values_list("pk", flat=True))
+        self.assertIn(running.pk, in_scope)
+        self.assertIn(endless.pk, in_scope)
+        self.assertIn(future.pk, in_scope)
+        self.assertNotIn(old_one_off.pk, in_scope)      # last March needs no reminder

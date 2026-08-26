@@ -3,6 +3,7 @@ from django.contrib import messages
 from django.contrib.auth import login
 from django.contrib.auth.decorators import login_required
 from django.core.mail import send_mail
+from django.db.models import Q
 from django.http import Http404
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -11,8 +12,9 @@ from django.views.decorators.http import require_POST
 
 from core.forms import FamilyForm, InviteSignupForm, TeacherInviteForm
 from core.models import FamilyMembership, Invitation
-from core.permissions import can_edit_family
+from core.permissions import can_edit_family, scoped_queryset
 from core.utils import get_active_family, get_selected_family
+from curricula.models import Curriculum
 
 # Friendly label for an invitation role. Two grantable roles; the retired ones
 # keep an entry so an invitation sent before the change still reads sensibly.
@@ -62,6 +64,70 @@ def how_it_works(request):
     users); linked prominently in-app for signed-in parents and teachers.
     """
     return render(request, "core/how_it_works.html", {})
+
+
+@login_required
+def teacher_guide(request):
+    """The Discovery Method, explained for the grown-up leading it (HH-201).
+
+    A reference for the teaching approach the Blackbird literature guides use —
+    the shape of the five weeks, what each element is actually for, what to look
+    for in her work, and where the marks sit. Written here rather than left in
+    the PDF because the PDF is a scan you have to hunt through, and the thing a
+    parent needs mid-week is one screen that says "this is what Acquire is for
+    and this is what good looks like at her level".
+
+    It links to the purchased PDF where one has been attached to a curriculum,
+    because this page explains the method and the book remains the source.
+    """
+    from curricula.models import CurriculumDocument
+
+    family = get_selected_family(request)
+    # Any instructor-facing PDF the household has attached whose title looks like
+    # the teacher guide. Scoped through the curricula they may view.
+    viewable = scoped_queryset(Curriculum.objects.all(), request.user, family)
+    pdf = (CurriculumDocument.objects
+           .filter(curriculum__in=viewable)
+           .filter(Q(title__icontains="teacher help")
+                   | Q(title__icontains="teacher guide"))
+           .select_related("curriculum")
+           .order_by("-created_at")
+           .first())
+    return render(request, "core/teacher_guide.html", {
+        "pdf": pdf,
+        # The guide speaks in Levels 1-3; the girls are in grades. Map it once
+        # here so the page can say "Violet" instead of "Level 1-2".
+        "children": _children_by_level(request, family),
+    })
+
+
+def _children_by_level(request, family):
+    """Each child with the guide's Level that matches her grade.
+
+    Level 1 is roughly grades 1-3, Level 2 grades 4-6, Level 3 grades 7+. The
+    guide's own expectations are written per level, so a page that only said
+    "Level 3" would make the parent do the lookup every time.
+    """
+    from students.models import Student
+
+    order = ["PREK", "K", "G01", "G02", "G03", "G04", "G05", "G06",
+             "G07", "G08", "G09", "G10", "G11", "G12"]
+    out = []
+    for child in scoped_queryset(Student.objects.all(), request.user, family):
+        try:
+            rank = order.index(child.grade_level)
+        except ValueError:
+            rank = -1
+        if rank < 0:
+            level = None
+        elif rank <= order.index("G03"):
+            level = 1
+        elif rank <= order.index("G06"):
+            level = 2
+        else:
+            level = 3
+        out.append({"child": child, "level": level})
+    return out
 
 
 @login_required

@@ -1,0 +1,455 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}Teaching Guide · Steadfast Scholars{% endblock %}
+{% block extra_css %}<link href="{% static 'css/teaching-guide.css' %}" rel="stylesheet">{% endblock %}
+
+{% block content %}
+<div class="container tg">
+
+  <header class="tg-hero">
+    <p class="tg-eyebrow">Literature &amp; Writing Discovery</p>
+    <h1>The Discovery Method</h1>
+    <p class="tg-standfirst">
+      What each week asks of the girls, what it asks of you, and what good work
+      looks like at their age. Written as one screen you can check mid-week —
+      the book stays the source of record.
+    </p>
+    {% if pdf %}
+      <a class="tg-pdf" href="{{ pdf.file.url }}" target="_blank" rel="noopener">
+        📕 Open <em>{{ pdf.title }}</em>
+        <span>{{ pdf.curriculum.name }}</span>
+      </a>
+    {% else %}
+      <p class="tg-pdf tg-pdf--missing">
+        The Teacher Helps PDF isn't attached yet. Add it to any Blackbird
+        curriculum under <strong>Documents</strong> and it'll open from here.
+      </p>
+    {% endif %}
+  </header>
+
+  <!-- ─────────────────────────  THE ARC  ───────────────────────── -->
+  <section class="tg-section">
+    <h2>One book, five weeks</h2>
+    <p class="tg-lede">
+      Four weeks of reading and responding, then a fifth week to make something.
+      Sections&nbsp;1–4 are the same five moves every week; Section&nbsp;5 is the
+      project.
+    </p>
+
+    <figure class="tg-fig">
+      <svg viewBox="0 0 860 300" role="img" aria-labelledby="arc-t arc-d" class="tg-svg">
+        <title id="arc-t">The five-week arc of one book</title>
+        <desc id="arc-d">Weeks one to four each repeat five elements — Read,
+          Journal, Acquire, Recollect, Explore. Week five is the Glean project.</desc>
+
+        <!-- week rail -->
+        <line x1="40" y1="52" x2="820" y2="52" class="tg-rail"/>
+        {% for w in "1234" %}
+          <g transform="translate({{ forloop.counter0|add:0 }},0)"></g>
+        {% endfor %}
+        <g class="tg-week"><circle cx="120" cy="52" r="20"/><text x="120" y="58">1</text></g>
+        <g class="tg-week"><circle cx="270" cy="52" r="20"/><text x="270" y="58">2</text></g>
+        <g class="tg-week"><circle cx="420" cy="52" r="20"/><text x="420" y="58">3</text></g>
+        <g class="tg-week"><circle cx="570" cy="52" r="20"/><text x="570" y="58">4</text></g>
+        <g class="tg-week tg-week--glean"><circle cx="750" cy="52" r="26"/><text x="750" y="59">5</text></g>
+
+        <text x="345" y="22" class="tg-caption" text-anchor="middle">Sections 1–4 · read and respond</text>
+        <text x="750" y="22" class="tg-caption" text-anchor="middle">Section 5</text>
+
+        <!-- the five moves, repeated each week -->
+        <g class="tg-moves">
+          <rect x="60" y="105" width="620" height="150" rx="14" class="tg-movebox"/>
+          <text x="370" y="132" class="tg-movetitle" text-anchor="middle">every one of those four weeks</text>
+          <g class="tg-chip"><rect x="86"  y="152" width="104" height="76" rx="10"/><text x="138" y="182">Read</text><text x="138" y="204" class="tg-chipsub">the section</text></g>
+          <g class="tg-chip"><rect x="204" y="152" width="104" height="76" rx="10"/><text x="256" y="182">Journal</text><text x="256" y="204" class="tg-chipsub">who / where / what</text></g>
+          <g class="tg-chip"><rect x="322" y="152" width="104" height="76" rx="10"/><text x="374" y="182">Acquire</text><text x="374" y="204" class="tg-chipsub">words</text></g>
+          <g class="tg-chip"><rect x="440" y="152" width="104" height="76" rx="10"/><text x="492" y="182">Recollect</text><text x="492" y="204" class="tg-chipsub">details</text></g>
+          <g class="tg-chip"><rect x="558" y="152" width="104" height="76" rx="10"/><text x="610" y="182">Explore</text><text x="610" y="204" class="tg-chipsub">write &amp; talk</text></g>
+        </g>
+
+        <g class="tg-chip tg-chip--glean">
+          <rect x="700" y="152" width="104" height="76" rx="10"/>
+          <text x="752" y="182">Glean</text><text x="752" y="204" class="tg-chipsub">make something</text>
+        </g>
+
+        <path d="M680 190 L698 190" class="tg-arrow" marker-end="url(#tg-ah)"/>
+        <defs>
+          <marker id="tg-ah" viewBox="0 0 10 10" refX="8" refY="5"
+                  markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M 0 0 L 10 5 L 0 10 z" class="tg-arrowhead"/>
+          </marker>
+        </defs>
+      </svg>
+      <figcaption>The same five moves, four times — then the project.</figcaption>
+    </figure>
+  </section>
+
+  <!-- ─────────────────────────  YOUR TWO JOBS  ───────────────────────── -->
+  <section class="tg-section">
+    <h2>Your two jobs</h2>
+    <p class="tg-lede">
+      The method is deliberately light on you. Each week there are two things to
+      do, and neither is marking.
+    </p>
+    <div class="tg-two">
+      <div class="tg-card">
+        <span class="tg-num">1</span>
+        <h3>Read alongside her</h3>
+        <p>
+          Stay a section ahead, or read it together. The point isn't to steer her
+          toward the right answer — it's to notice things out loud so she starts
+          noticing her own. Point at one good sentence, not twelve.
+        </p>
+      </div>
+      <div class="tg-card">
+        <span class="tg-num">2</span>
+        <h3>Talk about her writing</h3>
+        <p>
+          She reads her paragraph to you before you touch a pen. You respond to
+          the <em>idea</em> first — where it jumps a step, where it goes vague —
+          and only then to spelling. The order matters more than it sounds.
+        </p>
+      </div>
+    </div>
+    <aside class="tg-note">
+      <strong>The trap worth naming:</strong> a conference that opens with a
+      spelling correction teaches her the spelling was the point. The guide is
+      blunt about this — never use the conference to crush the idea.
+    </aside>
+  </section>
+
+  <!-- ─────────────────────────  THE FIVE MOVES  ───────────────────────── -->
+  <section class="tg-section">
+    <h2>What each move is actually for</h2>
+
+    <div class="tg-element" id="read">
+      <div class="tg-element-head"><span class="tg-badge">Read</span><span class="tg-pts">4 pts</span></div>
+      <p>
+        Read the whole section before touching the guide — keeping the story
+        intact is the priority. Skim the comprehension questions and the
+        vocabulary <em>first</em>, so she reads on the lookout rather than reading
+        blind and reconstructing afterwards.
+      </p>
+      <p class="tg-look"><strong>What you're listening for:</strong> point of
+        view, a word that's doing unusual work, a sentence whose rhythm you can
+        hear. Tag them as you go — sticky notes, margins. Breadcrumbs, not a
+        dissection.</p>
+    </div>
+
+    <div class="tg-element" id="journal">
+      <div class="tg-element-head"><span class="tg-badge">Journal</span><span class="tg-pts">4 pts</span></div>
+      <p>
+        Character, setting, plot — but the interesting half is her opinion of
+        them. A character trait is only worth writing down with an example from
+        the story attached: <em>courageous</em> is a claim, and the sentence
+        after it is the evidence.
+      </p>
+      <p class="tg-look"><strong>The lever here is vocabulary.</strong> Push
+        past <em>nice</em> and <em>good</em>. A thesaurus on the table changes
+        this exercise more than any instruction does.</p>
+      <div class="tg-split">
+        <div><span class="tg-mini">Character</span><span class="tg-minipts">2</span></div>
+        <div><span class="tg-mini">Setting</span><span class="tg-minipts">1</span></div>
+        <div><span class="tg-mini">Plot</span><span class="tg-minipts">1</span></div>
+      </div>
+    </div>
+
+    <div class="tg-element" id="acquire">
+      <div class="tg-element-head"><span class="tg-badge">Acquire</span><span class="tg-pts">2 pts</span></div>
+      <p>
+        Words from the book, defined and then <em>used</em>. The word list is a
+        sample, not a syllabus — the real goal is that she starts noticing
+        exceptional words on her own.
+      </p>
+      <p class="tg-look"><strong>The sentence is the whole exercise.</strong>
+        "I saw a picture" is a complete sentence and worth nothing. Ask who,
+        what, where, when, why — a dull sentence becomes a real one.</p>
+    </div>
+
+    <div class="tg-element" id="recollect">
+      <div class="tg-element-head"><span class="tg-badge">Recollect</span><span class="tg-pts">3 pts</span></div>
+      <p>
+        A second, directed pass through the plot — the questions run in story
+        order on purpose, so answering them walks her back through the section
+        and lets her join the dots she missed the first time.
+      </p>
+      <p class="tg-look"><strong>Complete sentences, always.</strong> The move to
+        teach first is echoing the question back: <em>Who thought up the game?</em>
+        → <em>Peggy thought up the game.</em> Once that's automatic, push for a
+        sentence that says something the question didn't.</p>
+    </div>
+
+    <div class="tg-element" id="explore">
+      <div class="tg-element-head"><span class="tg-badge">Explore</span><span class="tg-pts">7 pts</span></div>
+      <p>
+        Two halves: she writes an original paragraph, and you talk about the
+        book. This is where the marks are, and it's the part most worth your
+        hour.
+      </p>
+      <div class="tg-split">
+        <div><span class="tg-mini">Writing</span><span class="tg-minipts">4</span></div>
+        <div><span class="tg-mini">Discussion</span><span class="tg-minipts">3</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─────────────────────────  MARKS  ───────────────────────── -->
+  <section class="tg-section">
+    <h2>Where the twenty points sit</h2>
+    <p class="tg-lede">
+      Worth knowing before you mark anything: over a third of the week rides on
+      Explore, and reading itself is worth as much as the whole journal.
+    </p>
+
+    <figure class="tg-fig">
+      <svg viewBox="0 0 860 210" role="img" aria-labelledby="pts-t pts-d" class="tg-svg">
+        <title id="pts-t">How the twenty weekly points divide</title>
+        <desc id="pts-d">Reading 4, Journal 4, Acquire 2, Recollect 3, Explore 7,
+          totalling 20 points.</desc>
+        <g class="tg-bar">
+          <rect x="40"  y="60" width="152" height="58" class="tg-seg tg-seg-1"/>
+          <rect x="192" y="60" width="152" height="58" class="tg-seg tg-seg-2"/>
+          <rect x="344" y="60" width="76"  height="58" class="tg-seg tg-seg-3"/>
+          <rect x="420" y="60" width="114" height="58" class="tg-seg tg-seg-4"/>
+          <rect x="534" y="60" width="266" height="58" class="tg-seg tg-seg-5"/>
+        </g>
+        <g class="tg-barlabel">
+          <text x="116" y="95">Read</text>      <text x="116" y="140" class="tg-barpts">4</text>
+          <text x="268" y="95">Journal</text>   <text x="268" y="140" class="tg-barpts">4</text>
+          <text x="382" y="95">Acq.</text>      <text x="382" y="140" class="tg-barpts">2</text>
+          <text x="477" y="95">Recollect</text> <text x="477" y="140" class="tg-barpts">3</text>
+          <text x="667" y="95">Explore</text>   <text x="667" y="140" class="tg-barpts">7</text>
+        </g>
+        <text x="667" y="172" class="tg-caption" text-anchor="middle">writing 4 · discussion 3</text>
+        <text x="820" y="45" class="tg-total" text-anchor="end">20 points a week</text>
+      </svg>
+      <figcaption>Full marks are for work that goes past the requirement. Nothing done, nothing awarded.</figcaption>
+    </figure>
+  </section>
+
+  <!-- ─────────────────────────  WRITING PROCESS  ───────────────────────── -->
+  <section class="tg-section">
+    <h2>How a paragraph gets made</h2>
+    <p class="tg-lede">
+      Five stages, and the order is load-bearing. Mechanics come last, on
+      purpose — worrying about commas during the first draft is what kills the
+      idea before it lands.
+    </p>
+
+    <ol class="tg-process">
+      <li>
+        <span class="tg-step">Brainstorm</span>
+        <p>No sentences yet. Fill a blank page with words, phrases, drawings. Get fodder.</p>
+      </li>
+      <li>
+        <span class="tg-step">First draft</span>
+        <p>Wrangle the idea onto the page inside a paragraph. Ignore spelling entirely.</p>
+      </li>
+      <li>
+        <span class="tg-step">Read &amp; confer</span>
+        <p>She reads it aloud to you <em>first</em>, red pen in her own hand. Then you respond — to the idea.</p>
+      </li>
+      <li>
+        <span class="tg-step">Revise</span>
+        <p>Rewrite, reread. Now the mechanics.</p>
+      </li>
+      <li>
+        <span class="tg-step">Polish</span>
+        <p>Copy it out clean, for a reader who isn't you.</p>
+      </li>
+    </ol>
+
+    <aside class="tg-note tg-note--shape">
+      <strong>The shape of the paragraph itself:</strong> open with something
+      that makes a stranger want the next sentence · develop it with evidence ·
+      close with a turn that leaves them thinking. Hook, body, clincher.
+    </aside>
+  </section>
+
+  <!-- ─────────────────────────  RUBRIC  ───────────────────────── -->
+  <section class="tg-section">
+    <h2>Marking the writing</h2>
+    <p class="tg-lede">Four points, five bands. The differences are about idea and structure far more than about errors.</p>
+    <div class="tg-rubric">
+      <div class="tg-band tg-band--4">
+        <div class="tg-bandhead"><span>Accomplished</span><b>4</b></div>
+        <p>Creative focus, ideas that build, varied sentences, word choice you notice, conventions handled.</p>
+      </div>
+      <div class="tg-band tg-band--3">
+        <div class="tg-bandhead"><span>Proficient</span><b>3</b></div>
+        <p>On topic with real support, a logical order, some sentence variety, adequate but unremarkable choices.</p>
+      </div>
+      <div class="tg-band tg-band--25">
+        <div class="tg-bandhead"><span>Basic</span><b>2.5</b></div>
+        <p>The topic is in there but unclear, support is thin, sentences sit still.</p>
+      </div>
+      <div class="tg-band tg-band--2">
+        <div class="tg-bandhead"><span>Limited</span><b>2</b></div>
+        <p>Topic mentioned rather than addressed, weak organisation, fragments and run-ons.</p>
+      </div>
+      <div class="tg-band tg-band--1">
+        <div class="tg-bandhead"><span>Poor</span><b>1</b></div>
+        <p>No clear topic or support, structure missing, frequent basic errors.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─────────────────────────  SECTION 5 LADDER  ───────────────────────── -->
+  <section class="tg-section tg-section--accent">
+    <h2>Don't let Section 5 start in week 5</h2>
+    <p class="tg-lede">
+      This is the single most practical thing in the whole guide, and the easiest
+      to miss. The project is planned across the four weeks before it — so that
+      week five is building, not deciding.
+    </p>
+
+    <figure class="tg-fig">
+      <svg viewBox="0 0 860 230" role="img" aria-labelledby="lad-t lad-d" class="tg-svg">
+        <title id="lad-t">Planning the Section 5 project across weeks two to five</title>
+        <desc id="lad-d">Week two brainstorm, week three choose and sketch,
+          week four gather materials, week five build.</desc>
+        <line x1="90" y1="170" x2="790" y2="170" class="tg-rail"/>
+        <g class="tg-rung"><circle cx="130" cy="170" r="15"/><text x="130" y="176">2</text>
+          <text x="130" y="130" class="tg-rungtitle" text-anchor="middle">Brainstorm</text>
+          <text x="130" y="150" class="tg-rungsub" text-anchor="middle">ideas, small sketches</text></g>
+        <g class="tg-rung"><circle cx="350" cy="170" r="15"/><text x="350" y="176">3</text>
+          <text x="350" y="130" class="tg-rungtitle" text-anchor="middle">Choose one</text>
+          <text x="350" y="150" class="tg-rungsub" text-anchor="middle">full-page sketch, labelled</text></g>
+        <g class="tg-rung"><circle cx="570" cy="170" r="15"/><text x="570" y="176">4</text>
+          <text x="570" y="130" class="tg-rungtitle" text-anchor="middle">Gather</text>
+          <text x="570" y="150" class="tg-rungsub" text-anchor="middle">every material, in one box</text></g>
+        <g class="tg-rung tg-rung--last"><circle cx="770" cy="170" r="19"/><text x="770" y="177">5</text>
+          <text x="770" y="130" class="tg-rungtitle" text-anchor="middle">Build it</text>
+          <text x="770" y="150" class="tg-rungsub" text-anchor="middle">nothing left to decide</text></g>
+        <text x="440" y="212" class="tg-caption" text-anchor="middle">
+          a sketchbook that lives with the guide is enough
+        </text>
+      </svg>
+      <figcaption>Week five is for making. Everything else is decided before it starts.</figcaption>
+    </figure>
+
+    <aside class="tg-note">
+      <strong>Why this matters here specifically:</strong> the hands-on projects
+      in this app need clay, mixed paint, card, real cloth. Deciding on the
+      Monday of week five means an afternoon lost to a shop. Ask her in week two
+      what she's thinking of making.
+    </aside>
+  </section>
+
+  <!-- ─────────────────────────  DISCUSSION  ───────────────────────── -->
+  <section class="tg-section">
+    <h2>Running the discussion</h2>
+    <p class="tg-lede">Three points a week, and the part that changes how she thinks. It is a conversation, not an oral exam.</p>
+    <div class="tg-dos">
+      <div class="tg-do">
+        <h3>Do</h3>
+        <ul>
+          <li>Follow the conversation where it naturally wants to go</li>
+          <li>Rephrase a question she doesn't get, rather than moving on</li>
+          <li>Add your own questions, and let her add hers</li>
+          <li>Let her act it out, or argue the other side, if that's what's alive</li>
+        </ul>
+      </div>
+      <div class="tg-dont">
+        <h3>Don't</h3>
+        <ul>
+          <li>Accept "I dunno" — that's where the thinking starts</li>
+          <li>Panic when it drifts, as long as she's genuinely thinking</li>
+          <li>Feel obliged to get through every question</li>
+          <li>Fill the silence yourself</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- ─────────────────────────  LEVELS  ───────────────────────── -->
+  <section class="tg-section">
+    <h2>What to expect from each of them</h2>
+    <p class="tg-lede">
+      The guide is written in Levels&nbsp;1–3 — but the level belongs to the
+      <em>workbook</em>, not the child. Check the book in front of you before
+      trusting the grade.
+    </p>
+
+    <aside class="tg-diagnostic">
+      <h3>Which level is this guide? Open its Acquire page.</h3>
+      <div class="tg-diag-two">
+        <div>
+          <span class="tg-diag-tag">Level 1</span>
+          <p>The definitions are printed, numbered, and she matches them —
+             then fills the words into ready-made sentences.</p>
+        </div>
+        <div>
+          <span class="tg-diag-tag">Level 2 or 3</span>
+          <p>There are no definitions. She looks each word up herself and
+             writes her own sentence.</p>
+        </div>
+      </div>
+      <p class="tg-diag-note">
+        Violet's <em>Hundred Dresses</em> guide prints the definitions, so it is
+        a Level&nbsp;1 book — regardless of what the folder it came in is called.
+      </p>
+    </aside>
+
+    {% if children %}
+      <div class="tg-kids">
+        {% for row in children %}
+          <div class="tg-kid tg-kid--{{ row.level|default:'x' }}">
+            <div class="tg-kidhead">
+              <strong>{{ row.child.first_name }}</strong>
+              <span>{{ row.child.get_grade_level_display }}</span>
+            </div>
+            <p class="tg-kidcaveat">Usual level for her grade — check the workbook.</p>
+            {% if row.level == 1 %}
+              <span class="tg-level">Level 1</span>
+              <ul>
+                <li>Single words for character traits, simple phrases for setting and plot</li>
+                <li>Matching vocabulary to definitions; starting to use a dictionary with you</li>
+                <li>Answers that echo the question back, in a complete sentence</li>
+                <li>Learning what a paragraph is: hook, body, clincher</li>
+                <li>Needs the project scoped and the materials handed to her</li>
+              </ul>
+            {% elif row.level == 2 %}
+              <span class="tg-level">Level 2</span>
+              <ul>
+                <li>Character words defended with an example; setting and plot in full sentences</li>
+                <li>Finding her own definitions in a real dictionary</li>
+                <li>Adding specificity beyond mimicking the question</li>
+                <li>Experimenting with different kinds of hook; filling the page</li>
+                <li>Planning the project with advice, inside limits you set</li>
+              </ul>
+            {% else %}
+              <span class="tg-level">Level 3</span>
+              <ul>
+                <li>Traits drawn from a pattern of events, not one incident</li>
+                <li>Definitions checked against how the word is used in <em>this</em> story</li>
+                <li>Answers in her own words, without losing precision</li>
+                <li>Expanded paragraphs that show she cares about the subject</li>
+                <li>Planning and building the project herself; aiming past the brief</li>
+              </ul>
+            {% endif %}
+          </div>
+        {% endfor %}
+      </div>
+    {% endif %}
+
+    <aside class="tg-note">
+      <strong>Reading stamina is the quiet measure.</strong> By the end of a
+      Level&nbsp;2 year, 10–20 minutes at a stretch with real retention. By the
+      end of Level&nbsp;3, 30–60 minutes — and thinking about it afterwards.
+    </aside>
+  </section>
+
+  <footer class="tg-foot">
+    <p>
+      This page explains the method in our own words so it's quick to check
+      mid-week. For the worked examples, the full level-by-level notes and the
+      answer keys, open the guide itself.
+    </p>
+    {% if pdf %}
+      <a class="tg-pdf" href="{{ pdf.file.url }}" target="_blank" rel="noopener">📕 Open {{ pdf.title }}</a>
+    {% endif %}
+  </footer>
+
+</div>
+{% endblock %}

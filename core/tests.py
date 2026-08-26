@@ -1,7 +1,8 @@
 from datetime import date, timedelta
 
 from django.core import mail
-from django.test import TestCase, override_settings
+from django.core.files.uploadedfile import SimpleUploadedFile
+from django.test import Client, TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
@@ -18,6 +19,8 @@ from core.models import Family, FamilyMembership, Handoff, Invitation
 from core.utils import get_active_family, get_selected_family
 from curricula.models import Curriculum
 from students.models import Student
+
+User = CustomUser
 
 
 class FamilyBackfillMixin:
@@ -2564,3 +2567,105 @@ class HandoffWindowTests(TestCase):
         self.assertAlmostEqual(
             default_since(self.family).timestamp(), now.timestamp(), delta=2,
             msg="a back-fill moved the watermark backwards")
+
+
+class TeacherGuideTests(TestCase):
+    """HH-201: the Discovery Method, explained on one screen.
+
+    The PDF is a scan you have to hunt through; the thing a parent needs
+    mid-week is one page that says what Acquire is for and what good looks like.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        from curricula.models import Curriculum
+
+        cls.parent = User.objects.create_user(username="tg", email="tg@e.com", password="pw")
+        cls.family = Family.objects.create(name="TG Fam")
+        FamilyMembership.objects.create(user=cls.parent, family=cls.family, role="parent")
+        cls.violet = Student.objects.create(
+            parent=cls.parent, first_name="Violet", grade_level="G03", family=cls.family)
+        cls.kaylin = Student.objects.create(
+            parent=cls.parent, first_name="Kaylin", grade_level="G07", family=cls.family)
+        cls.curriculum = Curriculum.objects.create(
+            parent=cls.parent, name="Blackbird", subject="Reading", family=cls.family)
+
+    def _get(self):
+        c = Client()
+        c.login(username="tg", password="pw")
+        return c.get(reverse("core:teacher_guide"))
+
+    def test_it_needs_a_login(self):
+        r = Client().get(reverse("core:teacher_guide"))
+        self.assertEqual(r.status_code, 302)
+        self.assertIn("/login", r["Location"])
+
+    def test_the_marks_add_up_to_twenty(self):
+        """These come straight off the guide's own grading page. If the page
+        shows a breakdown that does not total 20, it is worse than no page."""
+        html = self._get().content.decode()
+        for bit in (">Read<", ">Journal<", ">Acquire<", ">Recollect<", ">Explore<"):
+            self.assertIn(bit, html)
+        self.assertIn("20 points a week", html)
+
+    def test_every_element_is_explained(self):
+        html = self._get().content.decode()
+        for anchor in ("read", "journal", "acquire", "recollect", "explore"):
+            self.assertIn('id="%s"' % anchor, html)
+
+    def test_it_carries_the_plan_ahead_warning(self):
+        """The single most practical thing in the guide, and the easiest to miss
+        — especially now the projects need clay and mixed paint."""
+        html = self._get().content.decode()
+        self.assertIn("Section 5 start in week 5", html)
+        self.assertIn("Gather", html)
+
+    def test_it_says_how_to_tell_which_level_a_guide_is(self):
+        """Level belongs to the workbook, not the child. Violet is in grade 3
+        and her Hundred Dresses guide prints its definitions, which makes it a
+        Level 1 book — a page that inferred level from grade alone would be
+        confidently wrong about the book in her hand."""
+        html = self._get().content.decode()
+        self.assertIn("Acquire page", html)
+        self.assertIn("check the workbook", html.lower())
+
+    def test_each_child_gets_the_level_that_matches_her_grade(self):
+        html = self._get().content.decode()
+        self.assertIn("Violet", html)
+        self.assertIn("Kaylin", html)
+        self.assertIn("Level 1", html)      # Violet, grade 3
+        self.assertIn("Level 3", html)      # Kaylin, grade 7
+
+    def test_the_pdf_links_when_one_is_attached(self):
+        from curricula.models import CurriculumDocument
+
+        html = self._get().content.decode()
+        self.assertIn("isn't attached yet", html)
+
+        CurriculumDocument.objects.create(
+            curriculum=self.curriculum, title="BB Teacher Helps",
+            doc_type=CurriculumDocument.TYPE_INSTRUCTOR,
+            file=SimpleUploadedFile("helps.pdf", b"%PDF-1.4", content_type="application/pdf"))
+        html = self._get().content.decode()
+        self.assertIn("BB Teacher Helps", html)
+        self.assertNotIn("isn't attached yet", html)
+
+    def test_another_familys_document_is_not_offered(self):
+        from curricula.models import Curriculum, CurriculumDocument
+
+        other_fam = Family.objects.create(name="Other")
+        other_user = User.objects.create_user(username="tg2", email="tg2@e.com", password="pw")
+        other_curr = Curriculum.objects.create(
+            parent=other_user, name="Theirs", subject="Reading", family=other_fam)
+        CurriculumDocument.objects.create(
+            curriculum=other_curr, title="Their Teacher Helps",
+            doc_type=CurriculumDocument.TYPE_INSTRUCTOR,
+            file=SimpleUploadedFile("t.pdf", b"%PDF", content_type="application/pdf"))
+        html = self._get().content.decode()
+        self.assertNotIn("Their Teacher Helps", html)
+
+    def test_it_is_reachable_from_the_navigation(self):
+        c = Client()
+        c.login(username="tg", password="pw")
+        html = c.get(reverse("dashboard:dashboard")).content.decode()
+        self.assertIn(reverse("core:teacher_guide"), html)

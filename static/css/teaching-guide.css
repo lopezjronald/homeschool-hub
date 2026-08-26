@@ -1,0 +1,242 @@
+/* The Discovery Method reference (HH-201).
+   Built on the Dawn Harbor tokens already in aurora-scholars.css, so this page
+   reads as part of the app rather than a pasted-in document. */
+
+.tg { max-width: 62rem; padding-bottom: 4rem; }
+
+/* ---- masthead ---------------------------------------------------------- */
+
+.tg-hero { padding: 2.25rem 0 1.5rem; border-bottom: 2px solid var(--ss-line); margin-bottom: 2.5rem; }
+.tg-eyebrow {
+  font-size: .74rem; font-weight: 800; letter-spacing: .16em; text-transform: uppercase;
+  color: var(--ss-green); margin: 0 0 .5rem;
+}
+.tg-hero h1 { font-size: clamp(2rem, 5vw, 2.9rem); font-weight: 800; letter-spacing: -.02em; margin: 0 0 .7rem; }
+.tg-standfirst { font-size: 1.13rem; color: var(--ss-muted); max-width: 44ch; margin: 0 0 1.4rem; }
+
+.tg-pdf {
+  display: inline-flex; align-items: baseline; gap: .55rem; flex-wrap: wrap;
+  background: var(--ss-green); color: #fff; text-decoration: none;
+  border-radius: var(--ss-r-pill, 999px); padding: .6rem 1.2rem;
+  font-weight: 700; font-size: .95rem;
+}
+.tg-pdf span { font-weight: 400; opacity: .85; font-size: .85rem; }
+.tg-pdf:hover, .tg-pdf:focus-visible { filter: brightness(1.08); color: #fff; }
+.tg-pdf--missing {
+  background: var(--ss-amber-tint); color: var(--ss-amber-700);
+  font-weight: 400; display: block; max-width: 40rem;
+}
+
+/* ---- sections ---------------------------------------------------------- */
+
+.tg-section { margin: 0 0 3.25rem; }
+.tg-section h2 {
+  font-size: 1.6rem; font-weight: 800; letter-spacing: -.015em;
+  margin: 0 0 .55rem; text-wrap: balance;
+}
+.tg-lede { color: var(--ss-muted); max-width: 58ch; margin: 0 0 1.5rem; }
+.tg-section--accent {
+  background: var(--ss-green-tint); border-radius: var(--ss-r-md);
+  padding: 1.9rem 1.9rem .6rem; margin-inline: -.4rem;
+}
+
+/* ---- figures ----------------------------------------------------------- */
+
+.tg-fig { margin: 0 0 1.25rem; }
+/* Diagrams scroll inside their own box rather than making the page slide. */
+.tg-fig { overflow-x: auto; }
+.tg-svg { width: 100%; min-width: 620px; height: auto; display: block; }
+.tg-fig figcaption { font-size: .87rem; color: var(--ss-muted); margin-top: .6rem; }
+
+.tg-rail { stroke: var(--ss-line); stroke-width: 2; }
+.tg-week circle { fill: var(--ss-paper); stroke: var(--ss-green); stroke-width: 2.5; }
+.tg-week text { fill: var(--ss-green); font-weight: 800; font-size: 1rem; text-anchor: middle; }
+.tg-week--glean circle { fill: var(--ss-green); stroke: var(--ss-green); }
+.tg-week--glean text { fill: #fff; font-size: 1.15rem; }
+
+.tg-movebox { fill: var(--ss-cloud); stroke: var(--ss-line); }
+.tg-movetitle { fill: var(--ss-muted); font-size: .8rem; letter-spacing: .04em; text-transform: uppercase; font-weight: 700; }
+.tg-chip rect { fill: var(--ss-paper); stroke: var(--ss-line); stroke-width: 1.5; }
+.tg-chip text { fill: var(--ss-ink); font-weight: 700; font-size: .92rem; text-anchor: middle; }
+.tg-chip .tg-chipsub { fill: var(--ss-muted); font-weight: 400; font-size: .72rem; }
+.tg-chip--glean rect { fill: var(--ss-green-tint); stroke: var(--ss-green); }
+.tg-chip--glean text { fill: var(--ss-green-700); }
+.tg-caption { fill: var(--ss-muted); font-size: .78rem; letter-spacing: .05em; text-transform: uppercase; font-weight: 700; }
+.tg-arrow { stroke: var(--ss-green); stroke-width: 2; fill: none; }
+.tg-arrowhead { fill: var(--ss-green); }
+
+/* ---- two jobs ---------------------------------------------------------- */
+
+.tg-two { display: grid; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); gap: 1.1rem; }
+.tg-card {
+  background: var(--ss-paper); border: 1px solid var(--ss-line);
+  border-radius: var(--ss-r-md); padding: 1.3rem 1.4rem; position: relative;
+}
+.tg-num {
+  display: grid; place-items: center; width: 2rem; height: 2rem; border-radius: 50%;
+  background: var(--ss-green); color: #fff; font-weight: 800; font-size: .95rem;
+  margin-bottom: .7rem;
+}
+.tg-card h3 { font-size: 1.08rem; font-weight: 700; margin: 0 0 .45rem; }
+.tg-card p { margin: 0; font-size: .95rem; color: var(--ss-ink); }
+
+.tg-note {
+  margin: 1.2rem 0 0; padding: .95rem 1.15rem;
+  background: var(--ss-amber-tint); border-left: 3px solid var(--ss-amber-700);
+  border-radius: 4px; font-size: .94rem;
+}
+.tg-note--shape { background: var(--ss-cloud); border-left-color: var(--ss-green); }
+
+/* ---- the five elements ------------------------------------------------- */
+
+.tg-element {
+  border: 1px solid var(--ss-line); border-radius: var(--ss-r-md);
+  padding: 1.25rem 1.4rem; margin-bottom: 1rem; background: var(--ss-paper);
+}
+.tg-element-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: .7rem; }
+.tg-badge {
+  font-weight: 800; font-size: 1.05rem; letter-spacing: -.01em;
+  color: var(--ss-green-700); background: var(--ss-green-tint);
+  padding: .2rem .7rem; border-radius: var(--ss-r-pill, 999px);
+}
+.tg-pts { font-size: .8rem; font-weight: 700; color: var(--ss-muted); font-variant-numeric: tabular-nums; }
+.tg-element p { margin: 0 0 .6rem; font-size: .96rem; }
+.tg-element p:last-child { margin-bottom: 0; }
+.tg-look { color: var(--ss-muted); }
+.tg-look strong { color: var(--ss-ink); }
+
+.tg-split { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: .8rem; }
+.tg-split > div {
+  display: flex; align-items: baseline; gap: .4rem;
+  background: var(--ss-cloud); border-radius: var(--ss-r-pill, 999px); padding: .25rem .75rem;
+}
+.tg-mini { font-size: .82rem; color: var(--ss-muted); }
+.tg-minipts { font-weight: 800; font-size: .9rem; font-variant-numeric: tabular-nums; }
+
+/* ---- the points bar ---------------------------------------------------- */
+
+.tg-seg { stroke: var(--ss-paper); stroke-width: 3; }
+.tg-seg-1 { fill: #2F6FB3; }
+.tg-seg-2 { fill: #0A5C63; }
+.tg-seg-3 { fill: #8A5B12; }
+.tg-seg-4 { fill: #6B4E9B; }
+.tg-seg-5 { fill: #1E7A50; }
+.tg-barlabel text { fill: #fff; font-size: .88rem; font-weight: 700; text-anchor: middle; }
+.tg-barlabel .tg-barpts { font-size: 1.5rem; font-weight: 800; font-variant-numeric: tabular-nums; }
+.tg-total { fill: var(--ss-muted); font-size: .82rem; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; }
+
+/* ---- writing process --------------------------------------------------- */
+
+.tg-process { list-style: none; margin: 0; padding: 0; counter-reset: tgp; display: grid; gap: .55rem; }
+.tg-process li {
+  counter-increment: tgp; position: relative;
+  display: grid; grid-template-columns: 2rem 11rem 1fr; align-items: baseline; gap: .3rem 1rem;
+  background: var(--ss-paper); border: 1px solid var(--ss-line);
+  border-radius: var(--ss-r-md); padding: .85rem 1.1rem;
+}
+.tg-process li::before {
+  content: counter(tgp); font-weight: 800; color: var(--ss-green);
+  font-variant-numeric: tabular-nums;
+}
+.tg-step { font-weight: 700; }
+.tg-process p { margin: 0; font-size: .94rem; color: var(--ss-muted); }
+
+@media (max-width: 40rem) {
+  .tg-process li { grid-template-columns: 1.6rem 1fr; }
+  .tg-process p { grid-column: 2; }
+}
+
+/* ---- rubric ------------------------------------------------------------ */
+
+.tg-rubric { display: grid; gap: .5rem; }
+.tg-band {
+  border-radius: var(--ss-r-md); padding: .8rem 1.1rem;
+  border: 1px solid var(--ss-line); background: var(--ss-paper);
+  border-left-width: 5px;
+}
+.tg-bandhead { display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; }
+.tg-bandhead span { font-weight: 700; }
+.tg-bandhead b { font-size: 1.2rem; font-variant-numeric: tabular-nums; }
+.tg-band p { margin: .3rem 0 0; font-size: .93rem; color: var(--ss-muted); }
+.tg-band--4  { border-left-color: #1E7A50; }
+.tg-band--3  { border-left-color: #2F6FB3; }
+.tg-band--25 { border-left-color: #8A5B12; }
+.tg-band--2  { border-left-color: #B0762A; }
+.tg-band--1  { border-left-color: #A34141; }
+
+/* ---- section 5 ladder -------------------------------------------------- */
+
+.tg-rung circle { fill: var(--ss-paper); stroke: var(--ss-green); stroke-width: 2.5; }
+.tg-rung text { fill: var(--ss-green); font-weight: 800; font-size: .85rem; text-anchor: middle; }
+.tg-rung .tg-rungtitle { fill: var(--ss-ink); font-size: 1rem; font-weight: 700; }
+.tg-rung .tg-rungsub { fill: var(--ss-muted); font-size: .78rem; font-weight: 400; }
+.tg-rung--last circle { fill: var(--ss-green); }
+.tg-rung--last text { fill: #fff; font-size: 1rem; }
+.tg-rung--last .tg-rungtitle { fill: var(--ss-ink); }
+.tg-rung--last .tg-rungsub { fill: var(--ss-muted); }
+
+/* ---- discussion -------------------------------------------------------- */
+
+.tg-dos { display: grid; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); gap: 1rem; }
+.tg-do, .tg-dont {
+  border-radius: var(--ss-r-md); padding: 1.1rem 1.3rem; border: 1px solid var(--ss-line);
+}
+.tg-do { background: var(--ss-green-tint); }
+.tg-dont { background: var(--ss-amber-tint); }
+.tg-do h3, .tg-dont h3 { font-size: 1rem; font-weight: 800; margin: 0 0 .5rem; letter-spacing: .04em; text-transform: uppercase; }
+.tg-do h3 { color: var(--ss-green-700); }
+.tg-dont h3 { color: var(--ss-amber-700); }
+.tg-do ul, .tg-dont ul { margin: 0; padding-left: 1.1rem; font-size: .94rem; }
+.tg-do li, .tg-dont li { margin-bottom: .3rem; }
+
+/* ---- level diagnostic -------------------------------------------------- */
+
+.tg-diagnostic {
+  border: 2px dashed var(--ss-green); border-radius: var(--ss-r-md);
+  padding: 1.2rem 1.4rem; margin: 0 0 1.5rem; background: var(--ss-paper);
+}
+.tg-diagnostic h3 { font-size: 1.05rem; font-weight: 700; margin: 0 0 .8rem; }
+.tg-diag-two { display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: .9rem; }
+.tg-diag-two p { margin: .3rem 0 0; font-size: .93rem; color: var(--ss-muted); }
+.tg-diag-tag {
+  font-weight: 800; font-size: .8rem; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--ss-green-700); background: var(--ss-green-tint);
+  padding: .15rem .6rem; border-radius: var(--ss-r-pill, 999px);
+}
+.tg-diag-note { margin: 1rem 0 0; font-size: .92rem; padding-top: .8rem; border-top: 1px solid var(--ss-line); }
+
+/* ---- per-child --------------------------------------------------------- */
+
+.tg-kids { display: grid; grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr)); gap: 1rem; }
+.tg-kid { border: 1px solid var(--ss-line); border-radius: var(--ss-r-md); padding: 1.1rem 1.3rem; background: var(--ss-paper); }
+.tg-kidhead { display: flex; align-items: baseline; justify-content: space-between; gap: .8rem; }
+.tg-kidhead strong { font-size: 1.15rem; }
+.tg-kidhead span { font-size: .84rem; color: var(--ss-muted); }
+.tg-kidcaveat { font-size: .78rem; color: var(--ss-muted); margin: .15rem 0 .5rem; font-style: italic; }
+.tg-level {
+  display: inline-block; font-weight: 800; font-size: .78rem; letter-spacing: .07em;
+  text-transform: uppercase; color: var(--ss-green-700); background: var(--ss-green-tint);
+  padding: .15rem .6rem; border-radius: var(--ss-r-pill, 999px); margin-bottom: .6rem;
+}
+.tg-kid ul { margin: 0; padding-left: 1.1rem; font-size: .92rem; }
+.tg-kid li { margin-bottom: .3rem; }
+
+/* ---- footer ------------------------------------------------------------ */
+
+.tg-foot {
+  border-top: 2px solid var(--ss-line); padding-top: 1.4rem; margin-top: 1rem;
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 1rem;
+}
+.tg-foot p { margin: 0; font-size: .92rem; color: var(--ss-muted); max-width: 44ch; }
+
+/* ---- print ------------------------------------------------------------- */
+
+@media print {
+  .tg-section, .tg-element, .tg-card, .tg-band, .tg-kid, .tg-fig {
+    break-inside: avoid; page-break-inside: avoid;
+  }
+  .tg-pdf { display: none; }
+  /* A diagram that scrolls on screen must fit the sheet on paper. */
+  .tg-fig { overflow: visible; }
+  .tg-svg { min-width: 0; width: 100%; }
+}

@@ -489,6 +489,52 @@ BOOKS = {
 }
 
 
+HANDS_ON_SUFFIX = "(hands-on)"
+
+
+def hands_on_title(book):
+    """The set title for one book's hands-on option."""
+    return "Section 5 · Glean: %s %s" % (BOOKS[book]["title"], HANDS_ON_SUFFIX)
+
+
+def retire_superseded(lesson, new_title):
+    """Make sure this lesson ends up with ONE hands-on set, called new_title.
+
+    The seeders upsert on (lesson, title), so renaming a PROJECT — "What David
+    Saw" becoming "The David Museum" — created a second set and left the first,
+    meaning the child was offered both the retired writing-based project and its
+    replacement.
+
+    Renaming rather than deleting keeps work she has already done attached:
+    _seed_set then updates that same row in place. But a set with the new title
+    may ALREADY exist (a rename that has been seeded once), and two rows sharing
+    a title would make the next upsert blow up with MultipleObjectsReturned — so
+    the rename only happens when the destination is free.
+
+    A superseded set that carries no work is deleted. One that carries work is
+    left alone and reported, because silently binning a child's finished project
+    is worse than a duplicate a parent can see.
+    """
+    from .models import QuestionSet, ResponseSheet
+
+    target = QuestionSet.objects.filter(lesson=lesson, title=new_title).first()
+    superseded = list(QuestionSet.objects.filter(
+        lesson=lesson, title__endswith=HANDS_ON_SUFFIX).exclude(title=new_title))
+    stranded = []
+    for old in superseded:
+        has_work = ResponseSheet.objects.filter(question_set=old).exists()
+        if target is None:
+            # The destination is free, so reuse this row and keep its work.
+            QuestionSet.objects.filter(pk=old.pk).update(title=new_title)
+            target = QuestionSet.objects.get(pk=old.pk)
+            continue
+        if has_work:
+            stranded.append(old.title)
+        else:
+            old.delete()
+    return stranded
+
+
 def questions(book):
     """The steps for one book, as the seeder's (category, prompt, hint, extra)."""
     import json

@@ -7831,3 +7831,82 @@ class HandsOnGleanShapeTests(SimpleTestCase):
             self.assertIn("20 points", book["rubric"], key)
             self.assertTrue(book["title"], key)
             self.assertIn("##", book["intro"], key)
+
+
+class RetireSupersededGleanTests(TestCase):
+    """HH-199: renaming a project must not leave the retired one beside it.
+
+    The seeders upsert on (lesson, title), so "What David Saw" becoming "The
+    David Museum" created a second set and left the first — offering the child
+    both the writing-based project and the making-based one that replaced it.
+    """
+
+    def setUp(self):
+        from core.models import Family
+        from curricula.models import Chapter, Curriculum, Lesson
+
+        self.user = User.objects.create_user(username="rs", email="rs@e.com", password="pw")
+        self.family = Family.objects.create(name="RS")
+        self.curriculum = Curriculum.objects.create(
+            parent=self.user, name="Blackbird", subject="Reading", family=self.family)
+        chapter = Chapter.objects.create(curriculum=self.curriculum, number=5, title="Glean")
+        self.lesson = Lesson.objects.create(chapter=chapter, order=1, number=1, title="Final")
+        self.child = Student.objects.create(
+            parent=self.user, first_name="Kaylin", grade_level="G07", family=self.family)
+
+    def _set(self, title):
+        return QuestionSet.objects.create(
+            lesson=self.lesson, title=title, family=self.family,
+            status=QuestionSet.APPROVED, mode=QuestionSet.MODE_STUDENT)
+
+    def test_an_untouched_old_project_is_renamed_so_its_row_is_reused(self):
+        from tutor import glean_handson
+
+        old = self._set("Section 5 · Glean: What David Saw (hands-on)")
+        glean_handson.retire_superseded(
+            self.lesson, "Section 5 · Glean: The David Museum (hands-on)")
+        old.refresh_from_db()
+        self.assertEqual(old.title, "Section 5 · Glean: The David Museum (hands-on)")
+        self.assertEqual(QuestionSet.objects.filter(
+            lesson=self.lesson, title__endswith="(hands-on)").count(), 1)
+
+    def test_an_old_project_is_removed_when_the_new_one_already_exists(self):
+        """Renaming into an occupied title would leave two rows sharing it, and
+        the next upsert would die with MultipleObjectsReturned."""
+        from tutor import glean_handson
+
+        self._set("Section 5 · Glean: What David Saw (hands-on)")
+        self._set("Section 5 · Glean: The David Museum (hands-on)")
+        glean_handson.retire_superseded(
+            self.lesson, "Section 5 · Glean: The David Museum (hands-on)")
+        titles = list(QuestionSet.objects.filter(
+            lesson=self.lesson, title__endswith="(hands-on)").values_list("title", flat=True))
+        self.assertEqual(titles, ["Section 5 · Glean: The David Museum (hands-on)"])
+
+    def test_a_project_she_has_worked_on_is_never_binned(self):
+        """Silently deleting a finished project is worse than a duplicate a
+        parent can see and resolve."""
+        from tutor import glean_handson
+
+        old = self._set("Section 5 · Glean: What David Saw (hands-on)")
+        ResponseSheet.objects.create(question_set=old, child=self.child)
+        self._set("Section 5 · Glean: The David Museum (hands-on)")
+        stranded = glean_handson.retire_superseded(
+            self.lesson, "Section 5 · Glean: The David Museum (hands-on)")
+        self.assertTrue(QuestionSet.objects.filter(pk=old.pk).exists())
+        self.assertIn("Section 5 · Glean: What David Saw (hands-on)", stranded)
+
+    def test_the_guides_own_printed_sets_are_never_touched(self):
+        from tutor import glean_handson
+
+        printed = self._set("Section 5 · Glean: Final Project")
+        glean_handson.retire_superseded(
+            self.lesson, "Section 5 · Glean: The David Museum (hands-on)")
+        printed.refresh_from_db()
+        self.assertEqual(printed.title, "Section 5 · Glean: Final Project")
+
+    def test_it_does_nothing_when_there_is_nothing_to_retire(self):
+        from tutor import glean_handson
+
+        self.assertEqual(glean_handson.retire_superseded(
+            self.lesson, "Section 5 · Glean: The David Museum (hands-on)"), [])

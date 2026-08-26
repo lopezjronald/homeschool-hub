@@ -750,9 +750,13 @@ class Command(BaseCommand):
         from tutor import glean_handson
 
         book = glean_handson.BOOKS["i_am_david"]
+        hands_on = glean_handson.hands_on_title("i_am_david")
+        # Renaming a PROJECT must not leave the retired one beside its
+        # replacement — the child would be offered both.
+        glean_handson.retire_superseded(glean, hands_on)
         s, q = self._seed_set(
             glean, family,
-            title="Section 5 · Glean: %s (hands-on)" % book["title"],
+            title=hands_on,
             reading="",
             intro=book["intro"],
             rubric=book["rubric"],

@@ -3152,3 +3152,144 @@ class PortalLessonWorkTests(TestCase):
         url = reverse("portal:portal_material_work",
                       kwargs={"token": self.token, "pk": foreign.pk})
         self.assertEqual(Client().post(url, {"work": self._jpg()}).status_code, 404)
+
+
+@override_settings(MEDIA_ROOT=tempfile.mkdtemp())
+class LessonWorkAttributionTests(TestCase):
+    """HH-201: "Violet added this herself" and "you added this for her" are
+    different facts about a child's schoolwork, and the page showed neither."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from tutor.models import Material
+
+        cls.parent = User.objects.create_user(
+            username="attr", email="attr@e.com", password="pw", first_name="Ron")
+        cls.family = Family.objects.create(name="Attr Fam")
+        FamilyMembership.objects.create(user=cls.parent, family=cls.family, role="parent")
+        cls.child = Student.objects.create(
+            parent=cls.parent, first_name="Violet", grade_level="G03", family=cls.family)
+        cls.curriculum = Curriculum.objects.create(
+            parent=cls.parent, name="Dimensions Math 3A", subject="Math", family=cls.family)
+        chapter = Chapter.objects.create(curriculum=cls.curriculum, number=1, title="C")
+        cls.lesson = Lesson.objects.create(chapter=chapter, order=1, number=1, title="L")
+        CurriculumPlacement.objects.create(
+            child=cls.child, curriculum=cls.curriculum,
+            current_lesson=cls.lesson, is_active=True)
+        cls.material = Material.objects.create(
+            lesson=cls.lesson, title="Manga", student_content="…",
+            family=cls.family, status=Material.APPROVED)
+
+    @staticmethod
+    def _jpg(name="page.jpg"):
+        return SimpleUploadedFile(name, b"\xff\xd8\xff" + b"x" * 32,
+                                  content_type="image/jpeg")
+
+    def _parent_page(self):
+        c = Client()
+        c.login(username="attr", password="pw")
+        return c.get(reverse("students:lesson_work", kwargs={
+            "pk": self.child.pk, "curriculum_id": self.curriculum.pk,
+            "lesson_id": self.lesson.pk})).content.decode()
+
+    def test_the_portal_records_that_she_did_it_herself(self):
+        from curricula.models import LessonWork
+
+        token = make_portal_token(self.child)
+        Client().post(reverse("portal:portal_material_work", kwargs={
+            "token": token, "pk": self.material.pk}), {"work": self._jpg()})
+        work = LessonWork.objects.get()
+        self.assertEqual(work.source, LessonWork.BY_CHILD)
+        self.assertTrue(work.added_by_child)
+        self.assertEqual(work.added_by, "Violet")
+
+    def test_the_checklist_records_the_grown_up_by_name(self):
+        from curricula.models import LessonWork
+
+        c = Client()
+        c.login(username="attr", password="pw")
+        c.post(reverse("students:lesson_work", kwargs={
+            "pk": self.child.pk, "curriculum_id": self.curriculum.pk,
+            "lesson_id": self.lesson.pk}), {"file": self._jpg()})
+        work = LessonWork.objects.get()
+        self.assertEqual(work.source, LessonWork.BY_PARENT)
+        self.assertFalse(work.added_by_child)
+        self.assertEqual(work.added_by, "Ron")
+
+    def test_the_parent_page_says_which(self):
+        token = make_portal_token(self.child)
+        Client().post(reverse("portal:portal_material_work", kwargs={
+            "token": token, "pk": self.material.pk}), {"work": self._jpg("hers.jpg")})
+        html = self._parent_page()
+        self.assertIn("Violet added this herself", html)
+        self.assertNotIn("Added by Ron", html)
+
+        c = Client()
+        c.login(username="attr", password="pw")
+        c.post(reverse("students:lesson_work", kwargs={
+            "pk": self.child.pk, "curriculum_id": self.curriculum.pk,
+            "lesson_id": self.lesson.pk}), {"file": self._jpg("mine.jpg")})
+        html = self._parent_page()
+        self.assertIn("Violet added this herself", html)   # still there
+        self.assertIn("Added by Ron", html)                # and now the other
+
+    def test_attribution_is_stored_not_guessed_from_a_missing_user(self):
+        """"No uploader means the child" happens to be true today. It is exactly
+        the implicit rule that breaks the first time anything else creates a row
+        without a signed-in user, so the fact is recorded rather than inferred."""
+        from curricula.models import LessonWork
+
+        work = LessonWork.objects.create(
+            lesson=self.lesson, child=self.child, family=self.family,
+            file=self._jpg(), uploaded_by=None, source=LessonWork.BY_PARENT)
+        self.assertFalse(work.added_by_child)      # null user, still not the child
+
+    def test_a_user_with_no_first_name_falls_back_to_their_username(self):
+        from curricula.models import LessonWork
+
+        nameless = User.objects.create_user(
+            username="nameless", email="n@e.com", password="pw")
+        work = LessonWork.objects.create(
+            lesson=self.lesson, child=self.child, family=self.family,
+            file=self._jpg(), uploaded_by=nameless, source=LessonWork.BY_PARENT)
+        self.assertEqual(work.added_by, "nameless")
+
+
+@override_settings(MEDIA_ROOT=tempfile.mkdtemp())
+class LessonWorkSourceBackfillTests(TestCase):
+    """The new column defaults to "parent", which is right for every row the
+    checklist ever made. The migration has to fix the portal's rows — the ones
+    with no uploader — and must not touch anything else."""
+
+    def test_the_backfill_marks_uploader_less_rows_as_the_childs(self):
+        import importlib
+
+        from django.apps import apps as global_apps
+        from curricula.models import LessonWork
+
+        user = User.objects.create_user(username="bf", email="bf@e.com", password="pw")
+        family = Family.objects.create(name="BF")
+        child = Student.objects.create(
+            parent=user, first_name="Violet", grade_level="G03", family=family)
+        curriculum = Curriculum.objects.create(
+            parent=user, name="Maths", subject="Math", family=family)
+        chapter = Chapter.objects.create(curriculum=curriculum, number=1, title="C")
+        lesson = Lesson.objects.create(chapter=chapter, order=1, number=1, title="L")
+
+        def _row(uploaded_by):
+            return LessonWork.objects.create(
+                lesson=lesson, child=child, family=family, uploaded_by=uploaded_by,
+                file=SimpleUploadedFile("p.jpg", b"x", content_type="image/jpeg"),
+                source=LessonWork.BY_PARENT)   # the column default, pre-backfill
+
+        from_portal = _row(None)
+        from_checklist = _row(user)
+
+        module = importlib.import_module(
+            "curricula.migrations.0015_lesson_work_source")
+        module.mark_the_childs_own_uploads(global_apps, None)
+
+        from_portal.refresh_from_db()
+        from_checklist.refresh_from_db()
+        self.assertEqual(from_portal.source, LessonWork.BY_CHILD)
+        self.assertEqual(from_checklist.source, LessonWork.BY_PARENT)

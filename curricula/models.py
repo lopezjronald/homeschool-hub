@@ -634,6 +634,22 @@ class LessonWork(models.Model):
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
         related_name="+",
     )
+
+    # WHO put it there (HH-201). Explicit rather than inferred from uploaded_by
+    # being null: that happens to be true today, because the portal is
+    # token-authed and has no user behind it, but "null means the child" is the
+    # kind of implicit rule that breaks the first time anything else creates a
+    # row without a user.
+    BY_CHILD = "child"
+    BY_PARENT = "parent"
+    SOURCE_CHOICES = [
+        (BY_CHILD, "The child, from her portal"),
+        (BY_PARENT, "A grown-up, from the lesson checklist"),
+    ]
+    source = models.CharField(
+        max_length=10, choices=SOURCE_CHOICES, default=BY_PARENT,
+    )
+
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -647,6 +663,24 @@ class LessonWork(models.Model):
         import os
 
         return os.path.basename(self.file.name) if self.file else ""
+
+    @property
+    def added_by(self):
+        """A name for whoever put this here, for the grown-ups' side.
+
+        "Violet added this herself" and "you added this for her" are different
+        facts about a child's schoolwork, and the page was showing neither.
+        """
+        if self.source == self.BY_CHILD:
+            return self.child.first_name if self.child_id else "She"
+        if self.uploaded_by_id and self.uploaded_by:
+            return (self.uploaded_by.get_short_name()
+                    or self.uploaded_by.get_username())
+        return ""
+
+    @property
+    def added_by_child(self):
+        return self.source == self.BY_CHILD
 
     @property
     def is_image(self):

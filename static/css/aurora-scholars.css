@@ -888,3 +888,9 @@ a:focus-visible > .hub-tile {
     break-inside: avoid; page-break-inside: avoid;
   }
 }
+
+/* Who put the work there (HH-201). Her own uploads read differently from a
+   grown-up's, so they are marked rather than left to the reader to infer. */
+.work-by-child {
+  font-weight: 700; color: var(--ss-green-700, #1E7A50);
+}

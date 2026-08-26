@@ -1195,7 +1195,8 @@ def portal_material_work(request, token, pk):
     # uploaded_by stays null: the portal is token-authed and there is no user
     # behind it. The row still knows whose work it is, which is what matters.
     LessonWork.objects.create(
-        lesson=lesson, child=student, family=student.family, file=upload)
+        lesson=lesson, child=student, family=student.family, file=upload,
+        source=LessonWork.BY_CHILD)
     messages.success(request, "Got it — that is saved to this lesson.")
     return back
 

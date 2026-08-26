@@ -25,7 +25,14 @@
               {% if work.caption %}<div><strong>{{ work.caption }}</strong></div>{% endif %}
               <a href="{{ work.file.url }}" target="_blank" rel="noopener">{{ work.filename }}</a>
               <div class="small text-muted">
-                Added {{ work.created_at|date:"j M Y" }}{% if work.uploaded_by %} by {{ work.uploaded_by.get_short_name|default:work.uploaded_by.username }}{% endif %}
+                {% if work.added_by_child %}
+                  <span class="work-by-child">{{ work.added_by }} added this herself</span>
+                  · {{ work.created_at|date:"j M Y" }}
+                {% elif work.added_by %}
+                  Added by {{ work.added_by }} · {{ work.created_at|date:"j M Y" }}
+                {% else %}
+                  Added {{ work.created_at|date:"j M Y" }}
+                {% endif %}
               </div>
             </div>
             {% if can_edit %}

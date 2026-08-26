@@ -554,7 +554,7 @@ def lesson_work(request, pk, curriculum_id, lesson_id):
         LessonWork.objects.create(
             lesson=lesson, child=student, family=student.family, file=upload,
             caption=(request.POST.get("caption", "") or "").strip()[:200],
-            uploaded_by=request.user,
+            uploaded_by=request.user, source=LessonWork.BY_PARENT,
         )
         messages.success(request, "Saved to %s." % lesson.code)
         return back

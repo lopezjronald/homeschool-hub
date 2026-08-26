@@ -1735,3 +1735,91 @@ class PendingEventsTests(TestCase):
         self.assertIn(endless.pk, in_scope)
         self.assertIn(future.pk, in_scope)
         self.assertNotIn(old_one_off.pk, in_scope)      # last March needs no reminder
+
+
+@override_settings(**GCAL)
+class GoogleCalendarDeleteCommandTests(TestCase):
+    """Deleting events the app did NOT create — a hand-made series superseded by
+    a synced one. Destructive, so it is dry by default and refuses anything the
+    app manages."""
+
+    def setUp(self):
+        _reset_token_cache()
+
+    def _run(self, *args):
+        out = StringIO()
+        call_command("google_calendar_delete", *args, stdout=out, stderr=out)
+        return out.getvalue()
+
+    ARGS = ("--calendar", "primary@example.com", "--event", "abc123")
+
+    def test_a_dry_run_names_the_event_and_deletes_nothing(self):
+        from family_calendar import google_api
+
+        with mock.patch.object(google_api, "request") as req:
+            req.return_value = {"summary": "Violet - Soccer Practice",
+                                "recurrence": ["RRULE:FREQ=WEEKLY"]}
+            output = self._run(*self.ARGS)
+        self.assertIn("would delete", output)
+        self.assertIn("Violet - Soccer Practice", output)
+        self.assertIn("recurring series", output)
+        self.assertIn("nothing was deleted", output)
+        self.assertEqual([c.args[0] for c in req.call_args_list], ["GET"])
+
+    def test_yes_actually_deletes_it(self):
+        from family_calendar import google_api
+
+        with mock.patch.object(google_api, "request") as req:
+            req.side_effect = [{"summary": "Violet - Soccer Practice"}, None]
+            output = self._run(*self.ARGS, "--yes")
+        self.assertIn("deleted  Violet - Soccer Practice", output)
+        self.assertEqual([c.args[0] for c in req.call_args_list], ["GET", "DELETE"])
+
+    def test_it_refuses_an_event_the_app_manages(self):
+        """Deleting one of those only desyncs the two — the next push would find
+        the id gone and create it again."""
+        from family_calendar import google_api
+        from family_calendar.models import CalendarEvent, GoogleCalendarLink
+
+        event = CalendarEvent.objects.create(
+            parent=User.objects.create_user(username="gd", email="gd@e.com",
+                                            password="pw"),
+            title="Soccer", date=date(2026, 9, 7), start_time=time(16, 0))
+        GoogleCalendarLink.objects.create(
+            event=event, calendar_id="primary@example.com", google_event_id="abc123")
+
+        with mock.patch.object(google_api, "request") as req:
+            output = self._run(*self.ARGS, "--yes")
+        self.assertIn("REFUSED", output)
+        self.assertIn("Delete the event in the app instead", output)
+        req.assert_not_called()          # it never even looked it up
+
+    def test_an_event_that_is_already_gone_is_not_an_error(self):
+        from family_calendar import google_api
+
+        with mock.patch.object(google_api, "request",
+                               side_effect=google_api.GoogleCalendarError(
+                                   "gone", status=404)):
+            output = self._run(*self.ARGS, "--yes")
+        self.assertIn("already not there", output)
+
+    def test_it_warns_when_the_calendar_is_not_one_of_ours(self):
+        from family_calendar import google_api
+
+        with mock.patch.object(google_api, "request",
+                               return_value={"summary": "X"}):
+            output = self._run("--calendar", "someone@else.com",
+                               "--event", "abc123")
+        self.assertIn("not one of the configured calendars", output)
+
+    def test_the_calendar_id_is_percent_encoded(self):
+        """A calendar id is an email address; a bare @ in the path is the most
+        likely thing to be wrong against the real API."""
+        from family_calendar import google_api
+
+        with mock.patch.object(google_api, "request") as req:
+            req.side_effect = [{"summary": "X"}, None]
+            self._run(*self.ARGS, "--yes")
+        path = req.call_args_list[1].args[1]
+        self.assertIn("primary%40example.com", path)
+        self.assertNotIn("@", path)

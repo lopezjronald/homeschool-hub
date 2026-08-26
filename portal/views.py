@@ -1085,7 +1085,7 @@ def portal_material(request, token, pk):
     guide. The lesson's whole workflow lives HERE: its journal/quiz sets render as
     Start/Turned-in buttons under the lesson, and a set-less lesson (manga math)
     gets an "I finished this ✓" self-mark instead."""
-    from curricula.models import LessonProgress
+    from curricula.models import LessonProgress, LessonWork
 
     student = _resolve_student(token)
     material = get_object_or_404(_visible_materials(student), pk=pk)
@@ -1129,6 +1129,11 @@ def portal_material(request, token, pk):
         "lesson_sets": lesson_sets,
         "is_resolved": is_resolved,
         "can_mark_done": not lesson_sets and not is_resolved,
+        # A lesson with no turn-in work on screen is one whose real work is on
+        # paper — which is exactly when she needs somewhere to put it.
+        "can_add_work": not lesson_sets,
+        "lesson_work": list(LessonWork.objects.filter(
+            lesson=material.lesson, child=student)),
         # The subject page 404s without an active placement, so a bookmarked
         # link from a shelved subject must go home instead of to a dead end.
         "back_url": (
@@ -1142,6 +1147,77 @@ def portal_material(request, token, pk):
             else "my portal"
         ),
     })
+
+
+@require_POST
+def portal_material_work(request, token, pk):
+    """She photographs the maths she just did on paper, from the lesson itself.
+
+    Maths is done on paper, and a manga lesson has no turn-in work on screen —
+    so the portal could tell her "I finished this" and had nowhere for the page
+    she actually worked. The upload existed (HH-167) but only on the parent's
+    lesson checklist, which is not where anybody is standing when they finish a
+    lesson.
+
+    Writes the SAME LessonWork rows the parent's checklist reads, so there is one
+    home for her work with two doors onto it.
+    """
+    import os
+
+    from curricula.models import LessonWork
+
+    student = _resolve_student(token)
+    material = get_object_or_404(_visible_materials(student), pk=pk)
+    lesson = material.lesson
+    back = redirect("portal:portal_material", token=token, pk=material.pk)
+
+    upload = request.FILES.get("work")
+    if upload is None:
+        messages.error(request, "Choose a photo first.")
+        return back
+
+    ext = os.path.splitext(upload.name)[1].lower()
+    if ext not in LessonWork.WORK_EXTENSIONS:
+        messages.error(request, "That has to be a photo, a PDF or a document.")
+        return back
+    if upload.size > LessonWork.WORK_MAX_BYTES:
+        messages.error(
+            request,
+            "That one is too big (%.0f MB). The limit is %d MB — your camera "
+            "probably has a smaller size setting."
+            % (upload.size / 1024 / 1024,
+               LessonWork.WORK_MAX_BYTES // (1024 * 1024)))
+        return back
+    if LessonWork.objects.filter(lesson=lesson, child=student).count() >=             LessonWork.MAX_PER_LESSON:
+        messages.error(request, "That lesson already has plenty of photos on it.")
+        return back
+
+    # uploaded_by stays null: the portal is token-authed and there is no user
+    # behind it. The row still knows whose work it is, which is what matters.
+    LessonWork.objects.create(
+        lesson=lesson, child=student, family=student.family, file=upload)
+    messages.success(request, "Got it — that is saved to this lesson.")
+    return back
+
+
+@require_POST
+def portal_material_work_remove(request, token, pk):
+    """Take a blurred photo back off. Scoped to HER work on THIS lesson."""
+    from curricula.models import LessonWork
+
+    student = _resolve_student(token)
+    material = get_object_or_404(_visible_materials(student), pk=pk)
+    back = redirect("portal:portal_material", token=token, pk=material.pk)
+
+    work_pk = (request.POST.get("work") or "").strip()
+    if not (work_pk.isdigit() and work_pk.isascii()):
+        raise Http404  # a non-numeric pk must 404, not 500
+    work = get_object_or_404(
+        LessonWork.objects.filter(lesson=material.lesson, child=student), pk=work_pk)
+    work.file.delete(save=False)
+    work.delete()
+    messages.success(request, "Removed.")
+    return back
 
 
 @require_POST

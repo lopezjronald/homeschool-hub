@@ -114,6 +114,53 @@
         </div>
       {% endif %}
 
+      {% if can_add_work %}
+        {% comment %}Maths is done on paper, and this lesson has nothing to fill
+        in on screen — so this is where the page she actually worked goes. Same
+        rows the grown-ups' lesson checklist shows.{% endcomment %}
+        <div class="card portal-card mb-4">
+          <div class="card-body">
+            <h3 class="h6 mb-2">📸 Your work for this lesson</h3>
+            {% if lesson_work %}
+              <ul class="photo-strip">
+                {% for w in lesson_work %}
+                  <li class="photo-item">
+                    {% if w.is_image %}
+                      <a href="{{ w.file.url }}" target="_blank" rel="noopener">
+                        <img src="{{ w.file.url }}" alt="Work by {{ student.first_name }}">
+                      </a>
+                    {% else %}
+                      <a class="photo-file" href="{{ w.file.url }}" target="_blank" rel="noopener">{{ w.filename }}</a>
+                    {% endif %}
+                    <button type="submit" form="work-rm-{{ w.pk }}"
+                            class="photo-remove" aria-label="Remove this photo">Remove</button>
+                  </li>
+                {% endfor %}
+              </ul>
+            {% endif %}
+            <form method="post" enctype="multipart/form-data"
+                  action="{% url 'portal:portal_material_work' token=token pk=material.pk %}">
+              {% csrf_token %}
+              <div class="photo-add">
+                <input type="file" name="work" accept="image/*,.pdf" id="work-input">
+                <button type="submit" class="photo-btn">📷 Add my work</button>
+              </div>
+            </form>
+            <p class="photo-help">Take a picture of the page you did and add it here.</p>
+          </div>
+        </div>
+
+        {% comment %}Remove-forms live outside the add form because forms cannot
+        nest; the buttons above reach them by id.{% endcomment %}
+        {% for w in lesson_work %}
+          <form id="work-rm-{{ w.pk }}" method="post"
+                action="{% url 'portal:portal_material_work_remove' token=token pk=material.pk %}">
+            {% csrf_token %}
+            <input type="hidden" name="work" value="{{ w.pk }}">
+          </form>
+        {% endfor %}
+      {% endif %}
+
     </div>
   </div>
 </div>

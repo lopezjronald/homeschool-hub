@@ -8,6 +8,11 @@ urlpatterns = [
     path("<str:token>/", views.portal_home, name="portal_home"),
     path("<str:token>/materials/<int:pk>/done/", views.portal_material_done,
          name="portal_material_done"),
+    # Her maths, photographed from the lesson itself (HH-200)
+    path("<str:token>/materials/<int:pk>/work/", views.portal_material_work,
+         name="portal_material_work"),
+    path("<str:token>/materials/<int:pk>/work/remove/",
+         views.portal_material_work_remove, name="portal_material_work_remove"),
     path("<str:token>/lexicon/", views.lexicon_poster, name="lexicon_poster"),
     path("<str:token>/calendar/", views.portal_calendar, name="portal_calendar"),
     path("<str:token>/calendar/feed/", views.portal_calendar_feed, name="portal_calendar_feed"),

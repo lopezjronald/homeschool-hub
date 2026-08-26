@@ -616,6 +616,9 @@ class LessonWork(models.Model):
     WORK_EXTENSIONS = (".png", ".jpg", ".jpeg", ".heic", ".webp",
                        ".pdf", ".doc", ".docx")
     WORK_MAX_BYTES = 25 * 1024 * 1024
+    # A ceiling for the child's own door onto this (HH-200). The parent's side is
+    # unbounded; a kid with a camera is not.
+    MAX_PER_LESSON = 12
 
     file = models.FileField(
         upload_to="lesson_work/%Y/%m/",

@@ -2988,3 +2988,167 @@ class DrawOrPhotographTests(TestCase):
         comic_row = [r for r in rows if r["question"].pk == self.comic.pk][0]
         self.assertTrue(comic_row["photos"])
         self.assertTrue(comic_row["answered"])
+
+
+@override_settings(MEDIA_ROOT=tempfile.mkdtemp())
+class PortalLessonWorkTests(TestCase):
+    """HH-200: she photographs her maths from the lesson itself.
+
+    A manga maths lesson has no turn-in work on screen, so the portal could say
+    "I finished this" and had nowhere for the page she actually worked. The
+    upload existed but only on the parent's lesson checklist — not where anybody
+    is standing when they finish a lesson.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        from curricula.models import LessonWork  # noqa: F401
+        from tutor.models import Material
+
+        cls.parent = User.objects.create_user(username="pw2", email="pw2@e.com", password="pw")
+        cls.family = Family.objects.create(name="PW Fam")
+        FamilyMembership.objects.create(user=cls.parent, family=cls.family, role="parent")
+        cls.child = Student.objects.create(
+            parent=cls.parent, first_name="Violet", grade_level="G03", family=cls.family)
+        cls.sibling = Student.objects.create(
+            parent=cls.parent, first_name="Kaylin", grade_level="G07", family=cls.family)
+        cls.curriculum = Curriculum.objects.create(
+            parent=cls.parent, name="Dimensions Math 3A", subject="Math", family=cls.family)
+        chapter = Chapter.objects.create(curriculum=cls.curriculum, number=1, title="C")
+        cls.lesson = Lesson.objects.create(chapter=chapter, order=1, number=1, title="L")
+        for kid in (cls.child, cls.sibling):
+            CurriculumPlacement.objects.create(
+                child=kid, curriculum=cls.curriculum,
+                current_lesson=cls.lesson, is_active=True)
+        cls.material = Material.objects.create(
+            lesson=cls.lesson, title="Chapter 1 manga",
+            student_content="Read the manga, then do the page.",
+            family=cls.family, status=Material.APPROVED)
+
+    def setUp(self):
+        self.token = make_portal_token(self.child)
+
+    @staticmethod
+    def _jpg(name="page.jpg", size=32):
+        return SimpleUploadedFile(name, b"\xff\xd8\xff" + b"x" * size,
+                                  content_type="image/jpeg")
+
+    def _url(self):
+        return reverse("portal:portal_material_work",
+                       kwargs={"token": self.token, "pk": self.material.pk})
+
+    def _rm_url(self, token=None):
+        return reverse("portal:portal_material_work_remove",
+                       kwargs={"token": token or self.token, "pk": self.material.pk})
+
+    def test_she_can_photograph_her_work_from_the_lesson(self):
+        from curricula.models import LessonWork
+
+        r = Client().post(self._url(), {"work": self._jpg()})
+        self.assertEqual(r.status_code, 302)
+        work = LessonWork.objects.get()
+        self.assertEqual(work.lesson, self.lesson)
+        self.assertEqual(work.child, self.child)
+        self.assertEqual(work.family, self.family)
+        self.assertIsNone(work.uploaded_by)     # token-authed; no user behind it
+
+    def test_it_lands_where_the_parents_checklist_looks(self):
+        """One home, two doors. If these wrote to different places, a parent
+        would tick a lesson while looking at an empty page."""
+        from curricula.models import LessonWork
+
+        Client().post(self._url(), {"work": self._jpg()})
+        c = Client()
+        c.login(username="pw2", password="pw")
+        html = c.get(reverse("students:lesson_work", kwargs={
+            "pk": self.child.pk, "curriculum_id": self.curriculum.pk,
+            "lesson_id": self.lesson.pk})).content.decode()
+        self.assertIn(LessonWork.objects.get().filename, html)
+
+    def test_the_lesson_page_offers_the_camera_when_there_is_nothing_to_fill_in(self):
+        html = Client().get(reverse("portal:portal_material", kwargs={
+            "token": self.token, "pk": self.material.pk})).content.decode()
+        self.assertIn("Add my work", html)
+        self.assertIn("Your work for this lesson", html)
+
+    def test_a_lesson_with_turn_in_work_does_not_offer_it(self):
+        """Where there IS something to fill in, the answers are the work and a
+        second upload box is just clutter."""
+        qs = QuestionSet.objects.create(
+            lesson=self.lesson, title="Journal", family=self.family,
+            status=QuestionSet.APPROVED, mode=QuestionSet.MODE_STUDENT)
+        Question.objects.create(question_set=qs, order=1, category="writing",
+                                prompt="Write.", response_type=Question.TYPE_TEXT)
+        html = Client().get(reverse("portal:portal_material", kwargs={
+            "token": self.token, "pk": self.material.pk})).content.decode()
+        self.assertNotIn("Add my work", html)
+
+    def test_her_photos_show_and_the_siblings_do_not(self):
+        sib_token = make_portal_token(self.sibling)
+        sib_url = reverse("portal:portal_material_work",
+                          kwargs={"token": sib_token, "pk": self.material.pk})
+        Client().post(self._url(), {"work": self._jpg("violet.jpg")})
+        Client().post(sib_url, {"work": self._jpg("kaylin.jpg")})
+        html = Client().get(reverse("portal:portal_material", kwargs={
+            "token": self.token, "pk": self.material.pk})).content.decode()
+        self.assertIn("violet", html)
+        self.assertNotIn("kaylin", html)
+
+    def test_remove_refuses_a_siblings_photo_on_the_same_lesson(self):
+        from curricula.models import LessonWork
+
+        Client().post(self._url(), {"work": self._jpg("violet.jpg")})
+        hers = LessonWork.objects.get()
+        sib_token = make_portal_token(self.sibling)
+        r = Client().post(self._rm_url(sib_token), {"work": hers.pk})
+        self.assertEqual(r.status_code, 404)
+        self.assertTrue(LessonWork.objects.filter(pk=hers.pk).exists())
+
+    def test_remove_deletes_the_row_and_the_file(self):
+        import os
+
+        from curricula.models import LessonWork
+
+        Client().post(self._url(), {"work": self._jpg()})
+        work = LessonWork.objects.get()
+        path = work.file.path
+        Client().post(self._rm_url(), {"work": work.pk})
+        self.assertFalse(LessonWork.objects.filter(pk=work.pk).exists())
+        self.assertFalse(os.path.exists(path))
+
+    def test_an_executable_is_refused(self):
+        from curricula.models import LessonWork
+
+        r = Client().post(self._url(), {
+            "work": SimpleUploadedFile("x.exe", b"MZ",
+                                       content_type="application/octet-stream")})
+        self.assertEqual(r.status_code, 302)
+        self.assertFalse(LessonWork.objects.exists())
+
+    def test_there_is_a_ceiling_on_photos_per_lesson(self):
+        from curricula.models import LessonWork
+
+        c = Client()
+        for i in range(LessonWork.MAX_PER_LESSON + 2):
+            c.post(self._url(), {"work": self._jpg("p%d.jpg" % i)})
+        self.assertEqual(LessonWork.objects.count(), LessonWork.MAX_PER_LESSON)
+
+    def test_a_junk_row_id_404s_rather_than_500s(self):
+        Client().post(self._url(), {"work": self._jpg()})
+        self.assertEqual(Client().post(self._rm_url(), {"work": "abc"}).status_code, 404)
+
+    def test_a_material_she_cannot_see_is_refused(self):
+        from tutor.models import Material
+
+        other_fam = Family.objects.create(name="Other")
+        other_user = User.objects.create_user(username="pw3", email="pw3@e.com", password="pw")
+        other_curr = Curriculum.objects.create(
+            parent=other_user, name="Someone else", subject="Math", family=other_fam)
+        ch = Chapter.objects.create(curriculum=other_curr, number=1, title="C")
+        other_lesson = Lesson.objects.create(chapter=ch, order=1, number=1, title="L")
+        foreign = Material.objects.create(
+            lesson=other_lesson, title="Not hers", student_content="…",
+            family=other_fam, status=Material.APPROVED)
+        url = reverse("portal:portal_material_work",
+                      kwargs={"token": self.token, "pk": foreign.pk})
+        self.assertEqual(Client().post(url, {"work": self._jpg()}).status_code, 404)

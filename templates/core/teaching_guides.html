@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}Teaching Guides · Steadfast Scholars{% endblock %}
+{% block extra_css %}<link href="{% static 'css/teaching-guide.css' %}" rel="stylesheet">{% endblock %}
+
+{% block content %}
+<div class="container tg tg-shelf">
+
+  <header class="tg-hero">
+    <p class="tg-eyebrow">For the grown-ups</p>
+    <h1>Teaching Guides</h1>
+    <p class="tg-standfirst">
+      How each method actually works — written as one screen you can check
+      mid-week, rather than a manual you have to hunt through.
+    </p>
+  </header>
+
+  <div class="tg-shelf-grid">
+    {% for guide in guides %}
+      <a class="tg-guidecard" href="{% url 'core:teaching_guide' slug=guide.slug %}">
+        <span class="tg-guideicon" aria-hidden="true">{{ guide.emoji }}</span>
+        <span class="tg-guidepub">{{ guide.publisher }}</span>
+        <h2>{{ guide.title }}</h2>
+        <p>{{ guide.blurb|safe }}</p>
+        <span class="tg-guidego">Read it &rarr;</span>
+      </a>
+    {% empty %}
+      <p class="tg-lede">No guides yet.</p>
+    {% endfor %}
+  </div>
+
+  {% if gaps %}
+    <section class="tg-section tg-gaps">
+      <h2>Not written yet</h2>
+      <p class="tg-lede">
+        Subjects you're teaching that don't have a guide here. These come from
+        your own curricula, so this list keeps itself honest — add a course and
+        it turns up, write its guide and it disappears.
+      </p>
+      <ul class="tg-gaplist">
+        {% for gap in gaps %}
+          <li><span aria-hidden="true">{{ gap.emoji }}</span>{{ gap.label }}</li>
+        {% endfor %}
+      </ul>
+      <p class="tg-gapnote">
+        Ask for any of these and it gets the same treatment: the method
+        explained plainly, with diagrams, and your own PDF linked from it.
+      </p>
+    </section>
+  {% endif %}
+
+</div>
+{% endblock %}

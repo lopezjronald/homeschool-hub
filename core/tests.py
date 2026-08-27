@@ -2593,10 +2593,10 @@ class TeacherGuideTests(TestCase):
     def _get(self):
         c = Client()
         c.login(username="tg", password="pw")
-        return c.get(reverse("core:teacher_guide"))
+        return c.get(reverse("core:teaching_guide", args=["literature-discovery"]))
 
     def test_it_needs_a_login(self):
-        r = Client().get(reverse("core:teacher_guide"))
+        r = Client().get(reverse("core:teaching_guide", args=["literature-discovery"]))
         self.assertEqual(r.status_code, 302)
         self.assertIn("/login", r["Location"])
 
@@ -2710,4 +2710,93 @@ class TeacherGuideTests(TestCase):
         c = Client()
         c.login(username="tg", password="pw")
         html = c.get(reverse("dashboard:dashboard")).content.decode()
-        self.assertIn(reverse("core:teacher_guide"), html)
+        self.assertIn(reverse("core:teaching_guides"), html)
+
+
+class TeachingGuideShelfTests(TestCase):
+    """HH-202: the guides are a shelf you pick from, not one page.
+
+    The point of the shelf is that it grows — Math, Spelling, Science later —
+    so adding a guide must be "write the template, add a registry entry" and
+    nothing else.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.parent = User.objects.create_user(username="sh", email="sh@e.com", password="pw")
+        cls.family = Family.objects.create(name="SH Fam")
+        FamilyMembership.objects.create(user=cls.parent, family=cls.family, role="parent")
+        for subject, name in (("Reading", "Blackbird"), ("Math", "Dimensions"),
+                              ("Science", "Science 3")):
+            Curriculum.objects.create(parent=cls.parent, name=name, subject=subject,
+                                      family=cls.family, is_active=True)
+
+    def _get(self):
+        c = Client()
+        c.login(username="sh", password="pw")
+        return c.get(reverse("core:teaching_guides"))
+
+    def test_it_needs_a_login(self):
+        r = Client().get(reverse("core:teaching_guides"))
+        self.assertEqual(r.status_code, 302)
+
+    def test_every_registered_guide_is_on_the_shelf_and_links(self):
+        from core import teaching_guides as registry
+
+        html = self._get().content.decode()
+        self.assertTrue(registry.GUIDES)
+        for guide in registry.GUIDES:
+            self.assertIn(guide["title"], html)
+            self.assertIn(reverse("core:teaching_guide", args=[guide["slug"]]), html)
+
+    def test_subjects_without_a_guide_are_listed_from_the_real_curricula(self):
+        """Derived, not maintained by hand — so a new course turns up on its own
+        and nobody has to remember to add it."""
+        html = self._get().content.decode()
+        self.assertIn("Math", html)
+        self.assertIn("Science", html)
+        # Reading IS covered by the literature guide, so it is not a gap.
+        gap_block = html.split("Not written yet")[1]
+        self.assertNotIn(">Reading<", gap_block)
+
+    def test_a_subject_a_guide_claims_is_not_a_gap(self):
+        from core.teaching_guides import gaps
+
+        rows = gaps(Curriculum.objects.filter(family=self.family))
+        labels = [r["label"] for r in rows]
+        self.assertIn("Math", labels)
+        self.assertNotIn("Reading", labels)
+
+    def test_language_arts_folds_into_the_literature_guide(self):
+        """canonical() folds english / language arts into writing, so a course
+        called Language Arts must not show up as an uncovered subject."""
+        from core.teaching_guides import gaps
+
+        Curriculum.objects.create(parent=self.parent, name="EIW",
+                                  subject="Language Arts", family=self.family)
+        labels = [r["label"] for r in gaps(Curriculum.objects.filter(family=self.family))]
+        self.assertNotIn("Language Arts", labels)
+
+    def test_another_familys_subjects_are_not_listed(self):
+        other_fam = Family.objects.create(name="Other")
+        other_user = User.objects.create_user(username="sh2", email="sh2@e.com", password="pw")
+        Curriculum.objects.create(parent=other_user, name="Latin course",
+                                  subject="Latin", family=other_fam)
+        self.assertNotIn("Latin", self._get().content.decode())
+
+    def test_an_unknown_guide_is_a_404(self):
+        c = Client()
+        c.login(username="sh", password="pw")
+        self.assertEqual(
+            c.get(reverse("core:teaching_guide", args=["no-such-guide"])).status_code, 404)
+
+    def test_every_registry_entry_points_at_a_template_that_renders(self):
+        """A registry entry naming a template that does not exist would 500 the
+        moment somebody clicked it."""
+        from core import teaching_guides as registry
+
+        c = Client()
+        c.login(username="sh", password="pw")
+        for guide in registry.GUIDES:
+            r = c.get(reverse("core:teaching_guide", args=[guide["slug"]]))
+            self.assertEqual(r.status_code, 200, guide["slug"])

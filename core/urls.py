@@ -6,8 +6,9 @@ app_name = "core"
 
 urlpatterns = [
     path("how-it-works/", views.how_it_works, name="how_it_works"),
-    # The Discovery Method, explained for the grown-up leading it (HH-201)
-    path("teaching-guide/", views.teacher_guide, name="teacher_guide"),
+    # Teaching guides: the shelf, then one page per method (HH-201, HH-202)
+    path("teaching-guides/", views.teaching_guides, name="teaching_guides"),
+    path("teaching-guides/<slug:slug>/", views.teaching_guide, name="teaching_guide"),
     path("families/settings/", views.family_settings, name="family_settings"),
     path("invites/new/", views.invite_teacher, name="invite_teacher"),
     path(

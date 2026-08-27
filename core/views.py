@@ -67,33 +67,51 @@ def how_it_works(request):
 
 
 @login_required
-def teacher_guide(request):
-    """The Discovery Method, explained for the grown-up leading it (HH-201).
+def teaching_guides(request):
+    """The shelf: pick a teaching method to read about (HH-202).
 
-    A reference for the teaching approach the Blackbird literature guides use —
-    the shape of the five weeks, what each element is actually for, what to look
-    for in her work, and where the marks sit. Written here rather than left in
-    the PDF because the PDF is a scan you have to hunt through, and the thing a
-    parent needs mid-week is one screen that says "this is what Acquire is for
-    and this is what good looks like at her level".
-
-    It links to the purchased PDF where one has been attached to a curriculum,
-    because this page explains the method and the book remains the source.
+    One page per method we actually teach from, plus the subjects this household
+    teaches that nothing covers yet — derived from their curricula rather than
+    listed, so adding a Science course makes Science appear here on its own.
     """
-    from curricula.models import CurriculumDocument
+    from core import teaching_guides as registry
 
     family = get_selected_family(request)
-    # Any instructor-facing PDF the household has attached whose title looks like
-    # the teacher guide. Scoped through the curricula they may view.
+    curricula = list(scoped_queryset(Curriculum.objects.all(), request.user, family)
+                     .filter(is_active=True))
+    return render(request, "core/teaching_guides.html", {
+        "guides": registry.GUIDES,
+        "gaps": registry.gaps(curricula),
+    })
+
+
+@login_required
+def teaching_guide(request, slug):
+    """One teaching guide (HH-202).
+
+    The method explained in our own words, with diagrams, because the published
+    guide is a scan you have to hunt through and the thing a parent needs
+    mid-week is one screen. Links the household's own PDF where they have
+    attached one — this page explains the method, the book remains the source.
+    """
+    from core import teaching_guides as registry
+    from curricula.models import CurriculumDocument
+
+    guide = registry.by_slug(slug)
+    if guide is None:
+        raise Http404
+
+    family = get_selected_family(request)
     viewable = scoped_queryset(Curriculum.objects.all(), request.user, family)
-    pdf = (CurriculumDocument.objects
-           .filter(curriculum__in=viewable)
-           .filter(Q(title__icontains="teacher help")
-                   | Q(title__icontains="teacher guide"))
-           .select_related("curriculum")
-           .order_by("-created_at")
-           .first())
-    return render(request, "core/teacher_guide.html", {
+    matches = Q()
+    for hint in guide.get("pdf_hints", []):
+        matches |= Q(title__icontains=hint)
+    pdf = (CurriculumDocument.objects.filter(curriculum__in=viewable).filter(matches)
+           .select_related("curriculum").order_by("-created_at").first()
+           if guide.get("pdf_hints") else None)
+
+    return render(request, guide["template"], {
+        "guide": guide,
         "pdf": pdf,
         # The guide speaks in Levels 1-3; the girls are in grades. Map it once
         # here so the page can say "Violet" instead of "Level 1-2".

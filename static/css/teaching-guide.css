@@ -346,3 +346,43 @@
   .tg-anim .tg-seg { transform: none !important; animation: none !important; }
   .tg-anim .tg-rail { stroke-dashoffset: 0 !important; animation: none !important; }
 }
+
+/* ---- the shelf (HH-202) ------------------------------------------------- */
+
+.tg-shelf-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(19rem, 1fr));
+  gap: 1.1rem; margin-bottom: 3rem;
+}
+.tg-guidecard {
+  display: flex; flex-direction: column; gap: .4rem;
+  background: var(--ss-paper); border: 1px solid var(--ss-line);
+  border-left: 5px solid var(--ss-green);
+  border-radius: var(--ss-r-md); padding: 1.4rem 1.5rem;
+  text-decoration: none; color: inherit;
+  transition: transform .12s ease, box-shadow .12s ease;
+}
+.tg-guidecard:hover, .tg-guidecard:focus-visible {
+  transform: translateY(-2px); color: inherit;
+  box-shadow: 0 6px 18px -10px rgba(16,34,46,.35);
+}
+.tg-guideicon { font-size: 1.9rem; line-height: 1; }
+.tg-guidepub {
+  font-size: .72rem; font-weight: 800; letter-spacing: .12em;
+  text-transform: uppercase; color: var(--ss-muted);
+}
+.tg-guidecard h2 { font-size: 1.35rem; font-weight: 800; margin: 0; letter-spacing: -.015em; }
+.tg-guidecard p { margin: 0; font-size: .95rem; color: var(--ss-muted); }
+.tg-guidego { margin-top: .4rem; font-weight: 700; color: var(--ss-green-700); font-size: .92rem; }
+
+.tg-gaps { background: var(--ss-cloud); border-radius: var(--ss-r-md); padding: 1.6rem 1.7rem 1.4rem; }
+.tg-gaplist { list-style: none; display: flex; flex-wrap: wrap; gap: .55rem; margin: 0 0 1rem; padding: 0; }
+.tg-gaplist li {
+  display: inline-flex; align-items: center; gap: .45rem;
+  background: var(--ss-paper); border: 1px solid var(--ss-line);
+  border-radius: var(--ss-r-pill, 999px); padding: .35rem .9rem;
+  font-size: .93rem; font-weight: 600;
+}
+.tg-gapnote { margin: 0; font-size: .9rem; color: var(--ss-muted); }
+
+/* The shelf has no diagrams; keep its hero from inheriting the guide spacing. */
+.tg-shelf .tg-hero { margin-bottom: 2rem; }

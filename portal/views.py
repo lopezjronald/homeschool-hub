@@ -521,7 +521,11 @@ def _visible_materials(student):
             | Q(child__isnull=True, lesson__chapter__curriculum_id__in=curriculum_ids)
         )
         .select_related("lesson", "lesson__chapter")
-        .order_by("lesson__chapter__number", "lesson__order")
+        # "pk" is the tiebreaker WITHIN a lesson. Untied, Postgres returns heap
+        # order — and prod duly listed "Activity 3.2" above "Part 3.1" on a
+        # page whose entire premise is the order she does things in. SQLite
+        # hides this: it scans by rowid, so the local test passed either way.
+        .order_by("lesson__chapter__number", "lesson__order", "pk")
     )
 
 

@@ -8216,6 +8216,19 @@ class FlatWeekReseedTests(TestCase):
             Material.objects.get(title="Part 1.1 · Geography and Map Skills").child,
             self.kaylin)
 
+    def test_the_material_ordering_is_tied_so_parts_cannot_shuffle(self):
+        """Asserted on the QUERY, not on the rendered rows.
+
+        SQLite scans by rowid, so a render-only assertion passes whether or not
+        the ORDER BY is tied — which is exactly how "Activity 3.2" shipped
+        above "Part 3.1" on Postgres. The contract is that the ordering names a
+        unique tiebreaker; that is checkable on any backend.
+        """
+        from portal.views import _visible_materials
+
+        ordering = _visible_materials(self.kaylin).query.order_by
+        self.assertEqual(ordering[-1], "pk", ordering)
+
     def test_parts_keep_their_printed_order_after_a_reseed(self):
         """The booklet's whole premise is the order she does things in, and an
         untied ORDER BY returns heap order — which a reseed's UPDATE can

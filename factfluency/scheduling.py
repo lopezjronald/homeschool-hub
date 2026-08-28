@@ -273,3 +273,44 @@ def _review_forms(student, level, count, rng):
     head = seen[:max(count * 3, count)]
     rng.shuffle(head)
     return head[:count]
+
+
+def portal_summary(student):
+    """A cheap snapshot for the portal tile: where she is and how far in.
+
+    Deliberately NOT unlocked_levels() — that runs a query per level, and this
+    sits on the page she opens most. Two queries: every level with its facts,
+    and every mastered state she has.
+    """
+    from .models import Level
+
+    levels = list(Level.objects.prefetch_related("facts").all())
+    if not levels:
+        return None
+
+    mastered = set(
+        StudentFactState.objects.filter(student=student, is_mastered=True)
+        .values_list("fact_id", "operation")
+    )
+
+    total_forms = 0
+    total_done = 0
+    current = None
+    previous_beaten = True
+    for level in levels:
+        forms = _forms_for_level(level)
+        done = sum(1 for f, o in forms if (f.pk, o) in mastered)
+        if not level.is_challenge:
+            total_forms += len(forms)
+            total_done += done
+        beaten = (not level.is_challenge and forms
+                  and (done / len(forms)) >= level.mastery_threshold)
+        if current is None and previous_beaten and not beaten:
+            current = {"level": level, "done": done, "of": len(forms)}
+        previous_beaten = beaten
+
+    return {
+        "current": current or {"level": levels[-1], "done": 0, "of": 0},
+        "mastered": total_done,
+        "total": total_forms,
+    }

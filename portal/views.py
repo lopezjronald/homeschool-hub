@@ -866,6 +866,28 @@ def viewable_curricula_for_student(student):
     )
 
 
+def _factdash_card(student):
+    """The Fact Dash tile, or None when it is not her programme.
+
+    Gated on having an active MATHS curriculum, the same way the spelling card
+    is gated on a placement — a child who does no maths here should not be
+    handed a times-tables game. Not gated on age: weak fact recall is just as
+    much a bottleneck in pre-algebra as in Grade 3.
+    """
+    from curricula.models import Curriculum
+    from curricula.subjects import canonical
+    from factfluency import scheduling
+
+    has_maths = any(
+        canonical(c.subject) == "math"
+        for c in Curriculum.objects.filter(
+            placements__child=student, placements__is_active=True, is_active=True)
+    )
+    if not has_maths:
+        return None
+    return scheduling.portal_summary(student)
+
+
 def portal_home(request, token):
     """The kid's 'Today' surface: one calm card per subject, one next step each."""
     from curricula.models import Lesson
@@ -888,6 +910,7 @@ def portal_home(request, token):
         "student": student,
         "token": token,
         "spelling": _spelling_card(student, today),
+        "factdash": _factdash_card(student),
         "subjects": _subject_cards(student),
         "activities": _visible_activities(student),
         "calendar_next": next_up[0] if next_up else None,

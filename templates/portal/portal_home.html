@@ -33,6 +33,21 @@
         <div class="portal-subject-go">Start ➜</div>
       </a>
     {% endif %}
+
+    {% if factdash %}
+      {# Only when maths is actually her programme — same rule as spelling. #}
+      <a href="{% url 'factfluency:home' token=token %}" class="portal-subject-card">
+        <div class="portal-subject-emoji">⚡</div>
+        <div class="portal-subject-body">
+          <div class="portal-subject-name">Fact Dash</div>
+          <div class="portal-next-line">
+            <span class="portal-next-label">{{ factdash.current.level.name }}</span>
+            {{ factdash.mastered }} of {{ factdash.total }} facts nailed
+          </div>
+        </div>
+        <div class="portal-subject-go">Play ➜</div>
+      </a>
+    {% endif %}
   </div>
 
   {% if subjects %}

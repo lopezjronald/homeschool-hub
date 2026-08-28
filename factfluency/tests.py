@@ -538,3 +538,68 @@ class MasterySpacingTests(TestCase):
                                  session_id=session.pk)
         self.assertEqual(state.leitner_box, 1)
         self.assertEqual(state.consecutive_fluent, 0)
+
+
+class PortalTileTests(TestCase):
+    """The tile on her portal home."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from curricula.models import Chapter, Curriculum, CurriculumPlacement, Lesson
+
+        cls.parent = User.objects.create_user(username="pt", email="pt@e.com", password="pw")
+        cls.family = Family.objects.create(name="PT Fam")
+        FamilyMembership.objects.create(user=cls.parent, family=cls.family, role="parent")
+        cls.mathy = Student.objects.create(
+            parent=cls.parent, first_name="Violet", grade_level="G03", family=cls.family)
+        cls.readery = Student.objects.create(
+            parent=cls.parent, first_name="Kaylin", grade_level="G07", family=cls.family)
+
+        def course(name, subject, child):
+            c = Curriculum.objects.create(parent=cls.parent, name=name, subject=subject,
+                                          family=cls.family, is_active=True)
+            ch = Chapter.objects.create(curriculum=c, number=1, title="C")
+            lesson = Lesson.objects.create(chapter=ch, order=1, number=1, title="L")
+            CurriculumPlacement.objects.create(child=child, curriculum=c,
+                                               current_lesson=lesson, is_active=True)
+            return c
+
+        course("Dimensions Math 3A", "Math", cls.mathy)
+        course("Blackbird", "Reading", cls.readery)
+
+    def _home(self, student):
+        return Client().get(reverse("portal:portal_home",
+                                    args=[make_portal_token(student)])).content.decode()
+
+    def test_a_child_doing_maths_gets_the_tile(self):
+        html = self._home(self.mathy)
+        self.assertIn("Fact Dash", html)
+        self.assertIn(reverse("factfluency:home", args=[make_portal_token(self.mathy)]),
+                      html)
+
+    def test_a_child_with_no_maths_does_not(self):
+        """A times-tables game on the portal of a child who does no maths here
+        is clutter, the same reason spelling only shows on a placement."""
+        self.assertNotIn("Fact Dash", self._home(self.readery))
+
+    def test_the_tile_names_the_level_she_is_on(self):
+        html = self._home(self.mathy)
+        self.assertIn("Ones &amp; Twos", html)
+        self.assertIn("facts nailed", html)
+
+    def test_the_tile_advances_when_she_beats_a_level(self):
+        ones = Level.objects.get(slug="ones-twos")
+        for state in scheduling.ensure_states(
+                self.mathy, scheduling._forms_for_level(ones)).values():
+            state.is_mastered = True
+            state.save()
+        html = self._home(self.mathy)
+        self.assertIn("Fives", html)
+
+    def test_the_challenge_level_is_left_out_of_the_running_total(self):
+        """Its facts are counted in the levels that introduce them; counting
+        them twice would make the total larger than the game."""
+        summary = scheduling.portal_summary(self.mathy)
+        self.assertEqual(summary["total"],
+                         sum(l.form_count() for l in Level.objects.filter(
+                             is_challenge=False)))

@@ -674,3 +674,46 @@ class DivisionFollowsMultiplicationTests(TestCase):
         div.save()
         prompts = {q["prompt"] for q in scheduling.build_round(self.child, self.fives)}
         self.assertIn(fact.prompt(Operation.DIV_A), prompts)
+
+
+class AnswerCommitTests(TestCase):
+    """Nothing auto-submits.
+
+    The first version advanced as soon as the typed digits reached the length
+    of the answer. That commits a mis-tap with no way back, and on a two-digit
+    answer the first digit alone could end the question. A structural guard,
+    because the rule lives in the client.
+    """
+
+    def _js(self):
+        from pathlib import Path
+
+        return (Path(__file__).resolve().parent / "static" / "factfluency"
+                / "factdash.js").read_text(encoding="utf-8")
+
+    def test_the_engine_never_submits_on_its_own(self):
+        js = self._js()
+        self.assertNotIn("length >= expected.length", js)
+        self.assertNotIn("auto-advance", js.lower())
+
+    def test_enter_is_the_only_thing_that_commits(self):
+        js = self._js()
+        # submit() is reached from the enter branch and nowhere else in type().
+        block = js.split("function type(ch)")[1].split("function submit()")[0]
+        self.assertEqual(block.count("submit()"), 1, "exactly one way to commit")
+        self.assertIn('ch === "enter"', block)
+
+    def test_the_clock_stops_at_the_last_digit_not_at_enter(self):
+        """Requiring Enter must not quietly make every fact look half a second
+        slower against a 3000ms threshold — confirming is not remembering."""
+        js = self._js()
+        self.assertIn("state.answeredAt = performance.now()", js)
+        self.assertIn("state.answeredAt || performance.now()", js)
+
+    def test_the_screen_tells_her_to_press_it(self):
+        from django.template.loader import render_to_string  # noqa: F401
+        from pathlib import Path
+
+        html = (Path(__file__).resolve().parent.parent / "templates" / "factfluency"
+                / "play.html").read_text(encoding="utf-8")
+        self.assertIn("press", html.lower())

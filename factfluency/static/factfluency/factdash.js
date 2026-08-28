@@ -38,6 +38,7 @@
     index: 0,
     typed: "",
     askedAt: 0,
+    answeredAt: 0,
     locked: false,
     pending: [],
     correct: 0,
@@ -142,6 +143,7 @@
   function ask() {
     var q = state.questions[state.index];
     state.typed = "";
+    state.answeredAt = 0;
     state.locked = false;
     els.prompt.textContent = q.prompt;
     els.answer.textContent = " ";
@@ -155,30 +157,33 @@
 
   function type(ch) {
     if (state.locked) return;
-    if (ch === "del") {
-      state.typed = state.typed.slice(0, -1);
-    } else if (ch === "enter") {
+    if (ch === "enter") {
       if (state.typed) submit();
       return;
+    }
+    if (ch === "del") {
+      state.typed = state.typed.slice(0, -1);
     } else if (state.typed.length < 3) {
       state.typed += ch;
     }
-    els.answer.textContent = state.typed || " ";
+    els.answer.textContent = state.typed || " ";
 
-    // Auto-advance once what she has typed can only be the answer. Saves a
-    // keystroke on nearly every question without ever cutting off a 2-digit
-    // answer she is halfway through.
-    if (state.typed && !state.locked) {
-      var expected = String(state.questions[state.index].answer);
-      if (state.typed.length >= expected.length) submit();
-    }
+    // NOTHING auto-submits. A mis-tap used to commit an answer she could not
+    // take back, and on a two-digit answer the first digit alone could end the
+    // question. She types, looks at it, then confirms.
+    //
+    // But the clock stops HERE, at the last digit — not at Enter. Confirming is
+    // not part of remembering 6x8, and counting it would quietly make every
+    // fact look half a second slower than it is, against a 3000ms threshold.
+    if (state.typed) state.answeredAt = performance.now();
   }
 
   function submit() {
     if (state.locked || !state.typed) return;
     state.locked = true;
     var q = state.questions[state.index];
-    var elapsed = Math.round(performance.now() - state.askedAt);
+    var stopped = state.answeredAt || performance.now();
+    var elapsed = Math.round(stopped - state.askedAt);
     var given = parseInt(state.typed, 10);
     var right = given === q.answer;
     if (right) state.correct += 1;

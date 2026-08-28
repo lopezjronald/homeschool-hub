@@ -19,10 +19,15 @@ HARD_CORE = {(6, 7), (6, 8), (7, 8), (4, 7), (4, 8)}
 
 # (order, slug, name, cluster, blurb, [(a, b), ...]) with a <= b throughout.
 LEVELS = [
+    # Zeros and ones are RULES, not facts — "zero groups is nothing", "times
+    # one stays the same". Three examples each is enough to meet the rule over
+    # and over; nineteen separate Leitner cards for two one-step rules was most
+    # of this level's bulk without being any of its content. The twos are the
+    # content: doubles, and their divisions.
     (1, "ones-twos", "Ones & Twos", Cluster.ONES_TWOS,
      "Anything times one is itself. Anything times two is a double.",
-     [(0, 0), (0, 1), (0, 2), (0, 3), (0, 4), (0, 5), (0, 6), (0, 7), (0, 8), (0, 9),
-      (1, 1), (1, 2), (1, 3), (1, 4), (1, 5), (1, 6), (1, 7), (1, 8), (1, 9),
+     [(0, 2), (0, 6), (0, 9),
+      (1, 3), (1, 7), (1, 9),
       (2, 2), (2, 3), (2, 4), (2, 5), (2, 6), (2, 7), (2, 8), (2, 9)]),
 
     (2, "fives", "Fives", Cluster.FIVES,

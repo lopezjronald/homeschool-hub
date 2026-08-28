@@ -59,7 +59,7 @@ class FactShapeTests(TestCase):
         self.assertEqual(seven.operations(), [Operation.MULT, Operation.DIV_A])
 
     def test_a_zero_fact_is_multiplication_only(self):
-        zero = Fact.objects.get(factor_a=0, factor_b=5)
+        zero = Fact.objects.get(factor_a=0, factor_b=6)
         self.assertEqual(zero.operations(), [Operation.MULT])
 
     def test_the_ten_levels_are_in_strategy_order(self):
@@ -434,7 +434,7 @@ class FactDashPortalTests(TestCase):
         """0 x 5 has no division form; accepting one would store a question
         that cannot be asked and mark her on it."""
         data = self._start()
-        zero = Fact.objects.get(factor_a=0, factor_b=5)
+        zero = Fact.objects.get(factor_a=0, factor_b=6)
         r = self._post(data["session_id"], [{
             "client_uuid": str(uuid.uuid4()), "fact_id": zero.pk,
             "operation": Operation.DIV_A, "answer_given": 5, "response_ms": 100}])
@@ -981,7 +981,7 @@ class AuditRegressionTests(TestCase):
 
     def test_malformed_payloads_never_500(self):
         session = self._session()
-        fact = Fact.objects.get(factor_a=1, factor_b=2)
+        fact = Fact.objects.get(factor_a=2, factor_b=3)
         cases = [
             ("[1, 2, 3]", 400),                            # top-level list
             ('"hello"', 400),                              # top-level string
@@ -1002,14 +1002,14 @@ class AuditRegressionTests(TestCase):
 
     def test_a_float_fact_id_does_not_resolve_to_the_wrong_fact(self):
         session = self._session()
-        fact = Fact.objects.get(factor_a=1, factor_b=2)
+        fact = Fact.objects.get(factor_a=2, factor_b=3)
         response = self._post(session, [self._row(fact, fact_id=fact.pk + 0.5)])
         self.assertEqual(response.json()["accepted"], 0)
 
     # -- garbage must not damage her state ----------------------------------
 
     def test_a_garbled_answer_is_skipped_not_recorded_as_a_miss(self):
-        fact = Fact.objects.get(factor_a=1, factor_b=4)
+        fact = Fact.objects.get(factor_a=2, factor_b=4)
         state = StudentFactState.objects.create(
             student=self.child, fact=fact, operation=Operation.MULT,
             leitner_box=2, consecutive_fluent=1)
@@ -1021,7 +1021,7 @@ class AuditRegressionTests(TestCase):
         self.assertEqual(Attempt.objects.count(), 0)
 
     def test_a_missing_response_time_is_not_scored_as_instant(self):
-        fact = Fact.objects.get(factor_a=1, factor_b=5)
+        fact = Fact.objects.get(factor_a=2, factor_b=5)
         session = self._session()
         for bad_ms in (None, -50, "fast"):
             row = self._row(fact, uuid="ms" + str(bad_ms))
@@ -1035,7 +1035,7 @@ class AuditRegressionTests(TestCase):
     # -- sessions close ------------------------------------------------------
 
     def test_finish_is_once(self):
-        fact = Fact.objects.get(factor_a=1, factor_b=6)
+        fact = Fact.objects.get(factor_a=2, factor_b=6)
         session = self._session()
         self._post(session, [self._row(fact)])
         url = reverse("factfluency:api_finish",
@@ -1068,7 +1068,7 @@ class AuditRegressionTests(TestCase):
         self.assertTrue(beaten, "a faster pace on a LONGER round must win")
 
     def test_a_tiny_round_cannot_set_the_time_record(self):
-        fact = Fact.objects.get(factor_a=1, factor_b=7)
+        fact = Fact.objects.get(factor_a=2, factor_b=7)
         session = self._session()
         self._post(session, [self._row(fact, response_ms=1)])
         url = reverse("factfluency:api_finish",
@@ -1081,7 +1081,7 @@ class AuditRegressionTests(TestCase):
 
     def test_pad_terminates_on_a_pool_of_identical_forms(self):
         import random
-        fact = Fact.objects.get(factor_a=1, factor_b=8)
+        fact = Fact.objects.get(factor_a=2, factor_b=8)
         form = (fact, Operation.MULT)
         out = scheduling._pad([form, form], 20, random)
         self.assertEqual(len(out), scheduling.MIN_ROUND)   # returned, not spun
@@ -1094,7 +1094,7 @@ class AuditRegressionTests(TestCase):
         other = Student.objects.create(
             parent=self.parent, first_name="Sib", grade_level="G05",
             family=self.family)
-        fact = Fact.objects.get(factor_a=1, factor_b=9)
+        fact = Fact.objects.get(factor_a=2, factor_b=9)
         session_a = self._session()
         session_b = GameSession.objects.create(student=other, level=self.level1)
         self._post(session_a, [self._row(fact, uuid="collide")])
@@ -1107,3 +1107,42 @@ class AuditRegressionTests(TestCase):
             content_type="application/json")
         self.assertEqual(response.json()["accepted"], 1,
                          "the same uuid in a DIFFERENT session is a new attempt")
+
+
+class RulesAreNotFactsTests(TestCase):
+    """ "Does it really need to be 59 facts?" (user, 2026-08-27). No: 36 of the
+    first level's 59 forms were the times-zero and times-one RULES inflated
+    into nineteen Leitner cards, seventeen of them n/1-and-n/n drills — the
+    documented confusion pair, which blurs precisely when drilled side by side.
+    """
+
+    def test_rule_facts_are_multiplication_only(self):
+        for fact in Fact.objects.filter(factor_a__in=(0, 1)):
+            self.assertEqual(fact.operations(), [Operation.MULT], str(fact))
+
+    def test_each_rule_keeps_exactly_three_examples(self):
+        self.assertEqual(Fact.objects.filter(factor_a=0).count(), 3)
+        self.assertEqual(
+            Fact.objects.filter(factor_a=1).exclude(factor_b=0).count(), 3)
+
+    def test_the_first_level_is_mostly_twos(self):
+        """The level's content is doubles. If rule cards ever outnumber the
+        twos again, the level has gone back to being about nothing."""
+        level = Level.objects.get(slug="ones-twos")
+        twos = [f for f in level.facts.all()
+                if 0 not in (f.factor_a, f.factor_b)
+                and 1 not in (f.factor_a, f.factor_b)]
+        rules = level.facts.count() - len(twos)
+        self.assertGreater(len(twos), rules)
+
+    def test_no_division_of_one_is_ever_asked(self):
+        """n/1 and n/n are reasoned, not drilled, anywhere in the game."""
+        for level in Level.objects.all():
+            for fact, operation in scheduling._forms_for_level(level):
+                if operation == Operation.MULT:
+                    continue
+                divisor = (fact.factor_a if operation == Operation.DIV_A
+                           else fact.factor_b)
+                self.assertNotEqual(divisor, 1, fact.prompt(operation))
+                self.assertNotEqual(fact.answer(operation), fact.product,
+                                    fact.prompt(operation))

@@ -106,10 +106,14 @@ class Fact(models.Model):
           "0 / 0", which is undefined, and the naive inverse would answer 5 to
           it. The other form, 0 / 5, is real but is not Grade 3 fact-family
           material and drilling it teaches nothing the multiplication did not.
+        * a fact with a ONE factor has no division forms either. n/1 and n/n
+          are RULES ("divided by one it stays"; "divided by itself, one") — and
+          they are the documented confusion pair, which blurs precisely when
+          the two are drilled side by side instead of reasoned each time.
         * a square has ONE division form: 7x7=49 gives 49/7 and nothing else.
         * everything else has both.
         """
-        if self.factor_a == 0 or self.factor_b == 0:
+        if (self.factor_a in (0, 1)) or (self.factor_b in (0, 1)):
             return [Operation.MULT]
         if self.is_square:
             return [Operation.MULT, Operation.DIV_A]

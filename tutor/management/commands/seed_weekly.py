@@ -48,6 +48,11 @@ LEVELS = {
 #: (question_set, order) is unique and a swap would collide mid-flight.
 _PARK = 10000
 
+#: What `_build` gives the second half of a two-blank question. It carries no
+#: question identity of its own, which is why blank B needs matching by
+#: position relative to its blank A rather than by prompt.
+_BLANK_B = "**Blank B**"
+
 _SEEDED_TITLE = re.compile(r"^(?:Part|Activity) (\d+(?:\.\d+)?) · ")
 
 #: Only a set with this in its title is one of ours.
@@ -535,16 +540,33 @@ purchased issue for private use.
         # the bare "**Blank B**", so a week with two of them has two identical
         # prompts and a plain dict silently collapsed them into one.
         existing = {}
+        was_at = {}
         for question in qset.questions.order_by("order"):
             existing.setdefault(question.prompt, []).append(question)
+            was_at[question.pk] = question.order
         # Park every existing row above the range we are about to assign.
         # (question_set, order) is unique, so renumbering in place collides the
         # moment two questions swap places.
         qset.questions.update(order=F("order") + _PARK)
         seen = []
+        previous = None
         for order, row in enumerate(rows, start=1):
             candidates = existing.get(row["prompt"]) or []
-            question = candidates.pop(0) if candidates else None
+            # A two-blank question emits its second half as the bare
+            # "**Blank B**", so every such question in a week looks identical
+            # here and picking the first candidate re-attributed her answer to
+            # a different word bank. Blank B is defined by what it FOLLOWS, so
+            # match it to whichever row used to sit just after the blank A we
+            # matched a moment ago.
+            question = None
+            if row["prompt"] == _BLANK_B and previous is not None:
+                wanted = was_at.get(previous.pk, 0) + 1
+                question = next(
+                    (q for q in candidates if was_at.get(q.pk) == wanted), None)
+                if question is not None:
+                    candidates.remove(question)
+            if question is None:
+                question = candidates.pop(0) if candidates else None
             if question is None:
                 question = Question.objects.create(
                     question_set=qset, order=order, **row)
@@ -553,6 +575,7 @@ purchased issue for private use.
                     setattr(question, field, value)
                 question.save()
             seen.append(question.pk)
+            previous = question
         orphans = self._prune(qset, seen)
         # Bring any kept-because-answered rows back down, after the real ones.
         for offset, pk in enumerate(orphans, start=1):

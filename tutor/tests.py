@@ -8703,3 +8703,63 @@ class StudiesWeeklyAuditTests(TestCase):
         orders = sorted(QuestionSet.objects.get().questions
                         .values_list("order", flat=True))
         self.assertEqual(orders, list(range(1, len(orders) + 1)))
+
+
+class BlankBPairingTests(TestCase):
+    """The second half of a two-blank question has no identity of its own.
+
+    `_build` gives it the bare prompt "**Blank B**", so every such question in a
+    week looks identical when matching. Picking the first candidate moved her
+    answer onto a different word bank — the headline bug, narrowed to the one
+    place it survived.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.parent = User.objects.create_user(
+            username="bb", email="bb@e.com", password="pw")
+        cls.family = Family.objects.create(name="BB Fam")
+        FamilyMembership.objects.create(user=cls.parent, family=cls.family, role="parent")
+        cls.kaylin = Student.objects.create(
+            parent=cls.parent, first_name="Kaylin", grade_level="G07",
+            family=cls.family)
+
+    def _seed(self):
+        from django.core.management import call_command
+        call_command("seed_weekly", level=7, week=1, for_user="bb", verbosity=0)
+
+    def test_week_one_really_does_have_two_of_them(self):
+        """If this stops being true the test below proves nothing."""
+        from tutor import weekly_l7w1
+
+        two_blank = [q for q in weekly_l7w1.QUESTIONS if q["kind"] == "fill_two"]
+        self.assertGreaterEqual(len(two_blank), 2)
+
+    def test_swapping_the_two_blank_questions_keeps_each_answer_on_its_bank(self):
+        from tutor.models import Question, QuestionSet, ResponseSheet
+        from tutor import weekly_l7w1
+
+        self._seed()
+        qset = QuestionSet.objects.get()
+        ResponseSheet.objects.create(
+            question_set=qset, child=self.kaylin,
+            answers={str(q.pk): "a" for q in qset.questions.all()})
+        before = {q.pk: q.passage for q in qset.questions.all()}
+
+        original = list(weekly_l7w1.QUESTIONS)
+        first = next(i for i, q in enumerate(original) if q["kind"] == "fill_two")
+        second = next(i for i, q in enumerate(original)
+                      if q["kind"] == "fill_two" and i > first)
+        swapped = list(original)
+        swapped[first], swapped[second] = swapped[second], swapped[first]
+        try:
+            weekly_l7w1.QUESTIONS = swapped
+            self._seed()
+        finally:
+            weekly_l7w1.QUESTIONS = original
+
+        moved = [pk for pk, passage in before.items()
+                 if Question.objects.filter(pk=pk).exists()
+                 and Question.objects.get(pk=pk).passage != passage]
+        self.assertEqual(moved, [],
+                         "a blank B must keep the word bank she answered")

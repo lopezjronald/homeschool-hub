@@ -43,8 +43,11 @@
   // words that merely end that way ("hundred"). Same shape as SPLIT_VOWELS,
   // and for the same reason: no rule separates them, so they are listed.
   var ED_IS_A_BEAT = Object.create(null);
-  ("sacred naked wicked crooked jagged rugged ragged wretched blessed beloved "
-   + "hundred hatred kindred aged learned cursed rugged dogged").split(" ")
+  // Only words that are ALWAYS two beats. "blessed", "learned", "aged" and
+  // "cursed" are two as adjectives and one as verbs — and the verb is what a
+  // child writes — so they are left to the general rule rather than forced.
+  ("sacred naked wicked crooked jagged rugged ragged wretched beloved "
+   + "hundred hatred kindred").split(" ")
     .forEach(function (w) { ED_IS_A_BEAT[w] = 1; });
 
   function syllables(word) {

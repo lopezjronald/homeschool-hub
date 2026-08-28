@@ -1,0 +1,216 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}Facts That Stick · Steadfast Scholars{% endblock %}
+{% block extra_css %}
+<link href="{% static 'css/teaching-guide.css' %}" rel="stylesheet">
+<link href="{% static 'css/math-facts-guide.css' %}" rel="stylesheet">
+{% endblock %}
+
+{% block content %}
+<div class="container tg">
+
+  <header class="tg-hero">
+    <p class="tg-eyebrow">Multiplication &amp; division facts</p>
+    <h1>Facts That Stick</h1>
+    <p class="tg-standfirst">
+      What to say out loud for each table, why division isn't a second table to
+      learn, and what to do at the kitchen table in five minutes. Fact Dash uses
+      exactly these strategies, in exactly this order — so what you say and what
+      the game says are the same words.
+    </p>
+  </header>
+
+  <!-- ──────────────────  THE GRID: the job is small  ────────────────── -->
+  <section class="tg-section">
+    <h2>The job is much smaller than it looks</h2>
+    <p class="tg-lede">
+      The 0–10 table has {{ tally.total }} squares. But order doesn't matter —
+      3&nbsp;×&nbsp;8 and 8&nbsp;×&nbsp;3 are the same fact — so
+      {{ tally.twins }} of them are the same fact backwards. Five whole tables
+      are one-step rules, four more are built from those, and when the dust
+      settles just <strong>{{ tally.stubborn }} facts</strong> resist every rule.
+      Show her this grid first: it turns "a hundred facts" into "six".
+    </p>
+
+    <figure class="tg-fig">
+      <div class="mf-grid-wrap">
+        <table class="mf-grid" aria-label="The multiplication table, coloured by how each fact is learned">
+          <thead>
+            <tr><th>×</th>{% for cell in grid.0 %}<th scope="col">{{ cell.b }}</th>{% endfor %}</tr>
+          </thead>
+          <tbody>
+            {% for row in grid %}
+              <tr>
+                <th scope="row">{{ row.0.a }}</th>
+                {% for cell in row %}
+                  <td class="mf-{{ cell.kind }}"
+                      title="{{ cell.a }} × {{ cell.b }} = {{ cell.product }}">{{ cell.product }}</td>
+                {% endfor %}
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <figcaption class="tg-caption-block">
+        <span class="mf-key"><i class="mf-swatch mf-twin"></i> {{ kinds.twin }} ({{ tally.counts.twin }})</span>
+        <span class="mf-key"><i class="mf-swatch mf-one_step"></i> {{ kinds.one_step }} ({{ tally.counts.one_step }})</span>
+        <span class="mf-key"><i class="mf-swatch mf-derived"></i> {{ kinds.derived }} ({{ tally.counts.derived }})</span>
+        <span class="mf-key"><i class="mf-swatch mf-square"></i> {{ kinds.square }} ({{ tally.counts.square }})</span>
+        <span class="mf-key"><i class="mf-swatch mf-stubborn"></i> {{ kinds.stubborn }} ({{ tally.counts.stubborn }})</span>
+      </figcaption>
+    </figure>
+  </section>
+
+  <!-- ──────────────────  ONE STRATEGY PER TABLE  ────────────────── -->
+  <section class="tg-section">
+    <h2>Each level is a strategy, not a table</h2>
+    <p class="tg-lede">
+      This is the order Fact Dash unlocks levels, and it isn't arbitrary — fours
+      need twos, sixes need fives, nines need tens. Each line below is the
+      sentence to say when she's stuck. The game shows her the same sentence
+      when she misses one.
+    </p>
+    <ol class="mf-strategies">
+      {% for name, tables, script in strategies %}
+        <li>
+          <span class="mf-strat-name">{{ name }}</span>
+          <span class="mf-strat-tables">{{ tables }}</span>
+          <span class="mf-strat-script">“{{ script }}”</span>
+        </li>
+      {% endfor %}
+    </ol>
+  </section>
+
+  <!-- ──────────────────  THE STUBBORN SIX  ────────────────── -->
+  <section class="tg-section tg-section--accent">
+    <h2>The stubborn six</h2>
+    <p class="tg-lede">
+      No rule reaches these, so each gets two routes: a rhyme to get it into her
+      head fast, and a derivation for when the rhyme fails. The research is
+      clear that mnemonics are strong for <em>getting</em> a fact and weak for
+      <em>keeping</em> it — the game's spaced repetition does the keeping.
+    </p>
+    <div class="mf-mnemonics">
+      {% for fact, rhyme, derive in mnemonics %}
+        <div class="mf-mnemo">
+          <span class="mf-mnemo-fact">{{ fact }}</span>
+          <span class="mf-mnemo-rhyme">{{ rhyme }}</span>
+          <span class="mf-mnemo-derive">Work it out: {{ derive }}</span>
+        </div>
+      {% endfor %}
+    </div>
+  </section>
+
+  <!-- ──────────────────  DIVISION  ────────────────── -->
+  <section class="tg-section">
+    <h2>Division is not a second table</h2>
+    <p class="tg-lede">
+      The strongest finding in the whole research pile: people who know their
+      facts don't hold a division table at all — they flip the question. The
+      sentence that unlocks every division fact is a <strong>times question with
+      a hole in it</strong>:
+    </p>
+    <p class="mf-keyline">“Eight times <em>what</em> makes forty-eight?”</p>
+    <p>
+      Say it that way round, every time. Not “forty-eight shared between
+      eight” — sharing invites her to deal objects out one by one, which is the
+      counting stage she needs to leave. And when she answers, have her say the
+      division sentence back: <em>“so 48 ÷ 8 is 6.”</em> She reasons in
+      multiplication but rehearses the division voice.
+    </p>
+
+    <h3>The shortcuts that are real (and the ones that aren't)</h3>
+    <ul class="mf-divlist">
+      {% for label, note, solid in division_shortcuts %}
+        <li class="{% if solid %}mf-div-real{% elif solid == None %}mf-div-none{% else %}mf-div-partial{% endif %}">
+          <span class="mf-div-label">{{ label }}</span> {{ note }}
+        </li>
+      {% endfor %}
+    </ul>
+    <p class="tg-note">
+      Two traps worth naming before they bite. <strong>Division cares about
+      order</strong> — after a year of “6 × 8 is the same as 8 × 6” she will
+      assume 2 ÷ 4 = 4 ÷ 2; say out loud that multiplication doesn't care and
+      division cares a lot. And <strong>zero is two different problems</strong>:
+      0 ÷ 8 is 0 (nothing shared out is nothing each), but 8 ÷ 0 has no answer
+      at all — “what times zero makes 8? Nothing does.” Same flip-it tool she
+      already uses.
+    </p>
+  </section>
+
+  <!-- ──────────────────  KITCHEN TABLE  ────────────────── -->
+  <section class="tg-section">
+    <h2>Five minutes at the kitchen table</h2>
+    <div class="tg-two">
+      <div class="tg-card">
+        <h3>Cover a corner <span class="mf-time">60 seconds, no materials</span></h3>
+        <p>
+          Draw a triangle on a napkin: <strong>48</strong> at the top,
+          <strong>6</strong> and <strong>8</strong> at the bottom corners. Cover
+          the 48 with your thumb — she says “six times eight is forty-eight”.
+          Cover the 6 — “forty-eight divided by eight is six”. Cover the 8 —
+          “forty-eight divided by six is eight”. Then go faster and cover
+          corners at random. One triangle, not three facts.
+        </p>
+      </div>
+      <div class="tg-card">
+        <h3>Rotate the rectangle <span class="mf-time">3 minutes, cereal or Lego</span></h3>
+        <p>
+          Lay out 48 of anything in 6 rows of 8. “How many eights in
+          forty-eight?” — she counts the rows: six. Now <strong>turn the whole
+          rectangle 90°</strong>. Nothing added, nothing taken away — but now
+          it's 8 rows of 6, and “how many sixes in forty-eight?” is eight. The
+          turn is the whole lesson: same total, different question. It's also
+          the cure for thinking division works both ways round.
+        </p>
+      </div>
+    </div>
+    <div class="tg-card mf-salute">
+      <h3>Salute <span class="mf-time">5 minutes, a deck of cards</span></h3>
+      <p>
+        Aces to 10s only. You hold one card face-down as yours, show her one
+        card, and announce the <strong>product</strong>. She works out your
+        hidden card — and says how: <em>“You have 8, because 6 times 8 is 48.”</em>
+        That sentence, spoken dozens of times, is the missing-factor strategy
+        practising itself without a single flashcard. To sharpen the tricky
+        ones, strip the deck to just 4s, 6s, 7s and 8s.
+      </p>
+    </div>
+  </section>
+
+  <!-- ──────────────────  THE SCRIPT  ────────────────── -->
+  <section class="tg-section">
+    <h2>A worked script: 6, 8 and 48</h2>
+    <p class="tg-lede">
+      One hard fact family, from multiplication through both divisions, the way
+      it sounds out loud. Reuse the shape on 7 × 8 = 56.
+    </p>
+    <dl class="mf-script">
+      <div><dt>You</dt><dd>Make me a rectangle — six rows, eight in each. How many altogether?</dd></div>
+      <div><dt>Her</dt><dd>Five eights is forty… one more eight… forty-eight.</dd></div>
+      <div><dt>You</dt><dd>That's exactly the move. Now — how many <em>eights</em> are in forty-eight?</dd></div>
+      <div><dt>Her</dt><dd><em>(counting rows)</em> Six.</dd></div>
+      <div><dt>You</dt><dd>So forty-eight divided by eight is six. Now watch — I'm turning the rectangle. Did I add or take anything?</dd></div>
+      <div><dt>Her</dt><dd>No. It's still forty-eight… but now it's eight rows of six.</dd></div>
+      <div><dt>You</dt><dd>So how many <em>sixes</em> in forty-eight?</dd></div>
+      <div><dt>Her</dt><dd>Eight! Forty-eight divided by six is eight.</dd></div>
+      <div><dt>You</dt><dd>Four facts, one rectangle. Last one, no rectangle: forty-eight divided by six?</dd></div>
+      <div><dt>Her</dt><dd>…eight. Because six times eight is forty-eight.</dd></div>
+    </dl>
+    <p class="tg-note">
+      When she stalls, don't give the answer — re-voice it as the times
+      question: “six times <em>what</em> makes forty-eight?” Every division is a
+      times question with a hole in it, and that's the trick she'll use forever.
+    </p>
+  </section>
+
+  <p class="tg-foot">
+    Sources: Bay-Williams &amp; Kling, <em>Math Fact Fluency</em>; Kate Snow,
+    <em>Multiplication / Division Facts That Stick</em>; NCTM position statement
+    on procedural fluency (2023); Mauro, LeFevre &amp; Morris on division-as-
+    multiplication; AMSI <em>Multiplication and Division</em> module. Fact Dash
+    implements the same sequence, thresholds and hints.
+  </p>
+
+</div>
+{% endblock %}

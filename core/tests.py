@@ -2753,19 +2753,22 @@ class TeachingGuideShelfTests(TestCase):
         """Derived, not maintained by hand — so a new course turns up on its own
         and nobody has to remember to add it."""
         html = self._get().content.decode()
-        self.assertIn("Math", html)
         self.assertIn("Science", html)
-        # Reading IS covered by the literature guide, so it is not a gap.
         gap_block = html.split("Not written yet")[1]
+        # Reading and Math ARE covered (literature guide, maths-facts guide),
+        # so neither is a gap.
         self.assertNotIn(">Reading<", gap_block)
+        self.assertNotIn(">Math<", gap_block)
 
     def test_a_subject_a_guide_claims_is_not_a_gap(self):
         from core.teaching_guides import gaps
 
         rows = gaps(Curriculum.objects.filter(family=self.family))
         labels = [r["label"] for r in rows]
-        self.assertIn("Math", labels)
+        self.assertIn("Science", labels)
         self.assertNotIn("Reading", labels)
+        # Math stopped being a gap the day the maths-facts guide claimed it.
+        self.assertNotIn("Math", labels)
 
     def test_language_arts_folds_into_the_literature_guide(self):
         """canonical() folds english / language arts into writing, so a course
@@ -2800,3 +2803,81 @@ class TeachingGuideShelfTests(TestCase):
         for guide in registry.GUIDES:
             r = c.get(reverse("core:teaching_guide", args=[guide["slug"]]))
             self.assertEqual(r.status_code, 200, guide["slug"])
+
+
+class MathFactsGuideTests(TestCase):
+    """The maths guide (HH-203): computed numbers, honest shortcuts."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.parent = User.objects.create_user(
+            username="mfg", email="mfg@e.com", password="pw")
+        cls.family = Family.objects.create(name="MFG Fam")
+        FamilyMembership.objects.create(
+            user=cls.parent, family=cls.family, role="parent")
+
+    def _get(self):
+        self.client.force_login(self.parent)
+        return self.client.get(
+            reverse("core:teaching_guide", args=["math-facts"]))
+
+    def test_the_grid_arithmetic_is_classified_correctly(self):
+        """The whole page hangs off classify(); check its claims add up."""
+        from core import math_facts
+
+        tally = math_facts.tally()
+        # Everything is counted exactly once.
+        self.assertEqual(sum(tally["counts"].values()), tally["total"])
+        # The 11x11 grid: 55 duplicate twins below the diagonal.
+        self.assertEqual(tally["twins"], 55)
+        # The famous number: after rules, six facts resist.
+        self.assertEqual(tally["stubborn"], 6)
+        # Squares that are not otherwise reachable: 3x3..9x9 minus 5x5 (a fives
+        # fact) minus the stubborn squares 7x7 and 8x8 = 4.
+        self.assertEqual(tally["counts"]["square"], 4)
+        # And each stubborn cell really has no one-step factor in it.
+        for row in math_facts.grid():
+            for cell in row:
+                if cell["kind"] == "stubborn":
+                    self.assertNotIn(cell["a"], math_facts.ONE_STEP)
+                    self.assertNotIn(cell["b"], math_facts.ONE_STEP)
+                self.assertEqual(cell["product"], cell["a"] * cell["b"])
+
+    def test_the_page_renders_the_computed_numbers(self):
+        response = self._get()
+        self.assertContains(response, "6 facts")
+        self.assertContains(response, "what</em> makes forty-eight")
+        self.assertContains(response, "5, 6, 7, 8")
+        # The division section refuses to invent a /7 trick.
+        self.assertContains(response, "Nothing at all. This one is just known.")
+
+    def test_the_shelf_shows_it_and_math_is_no_longer_a_gap(self):
+        from curricula.models import Curriculum
+
+        Curriculum.objects.create(
+            parent=self.parent, family=self.family, name="Dimensions Math 3A",
+            subject="Math", is_active=True)
+        self.client.force_login(self.parent)
+        response = self.client.get(reverse("core:teaching_guides"))
+        self.assertContains(response, "Facts That Stick")
+        gaps = [g["label"] for g in response.context["gaps"]]
+        self.assertNotIn("Math", gaps)
+
+    def test_the_strategy_scripts_match_the_games_own_hints(self):
+        """One voice: the sentence on the parent page and the sentence the game
+        shows on a miss must teach the SAME move for the same table."""
+        from core import math_facts
+        from factfluency.models import Fact, Operation
+        from factfluency import hints
+
+        strategies = dict(
+            (name, script) for name, _, script in math_facts.STRATEGIES)
+        pairs = [
+            ("Fours", (4, 7), "Double, then double again"),
+            ("Threes", (3, 7), "add one more group"),
+            ("Nines", (9, 7), "give one group back"),
+        ]
+        for name, (a, b), phrase in pairs:
+            fact = Fact.objects.get(factor_a=min(a, b), factor_b=max(a, b))
+            self.assertIn(phrase, strategies[name])
+            self.assertIn(phrase, hints.hint_for(fact, Operation.MULT))

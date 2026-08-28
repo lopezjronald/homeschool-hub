@@ -1,6 +1,8 @@
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth import login
+from importlib import import_module
+
 from django.contrib.auth.decorators import login_required
 from django.core.mail import send_mail
 from django.db.models import Q
@@ -110,7 +112,15 @@ def teaching_guide(request, slug):
            .select_related("curriculum").order_by("-created_at").first()
            if guide.get("pdf_hints") else None)
 
+    extra = {}
+    if guide.get("context"):
+        # "package.module:callable" — a guide that needs computed content brings
+        # its own, rather than this view growing a branch per guide.
+        module_path, _, attr = guide["context"].partition(":")
+        extra = getattr(import_module(module_path), attr)(request, guide)
+
     return render(request, guide["template"], {
+        **extra,
         "guide": guide,
         "pdf": pdf,
         # The guide speaks in Levels 1-3; the girls are in grades. Map it once

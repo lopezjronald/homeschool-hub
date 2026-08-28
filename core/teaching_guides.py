@@ -35,6 +35,25 @@ GUIDES = [
         # Titles that mean "this household's copy of the teacher guide".
         "pdf_hints": ["teacher help", "teacher guide"],
     },
+    {
+        "slug": "math-facts",
+        "title": "Facts That Stick",
+        "publisher": "Strategy first, then spaced practice",
+        "blurb": (
+            "Why the times tables are a much smaller job than they look, the "
+            "rule to say out loud for each one, why division is not a second "
+            "table to learn — and what to do at the kitchen table in five "
+            "minutes."
+        ),
+        "template": "core/guides/math_facts.html",
+        "emoji": "✖️",
+        "subjects": ["math", "mathematics", "maths", "arithmetic"],
+        "pdf_hints": [],
+        # Guides may carry their own data. The shelf stays a registry of pages;
+        # a page that needs computed content says so here rather than the view
+        # growing a branch per guide.
+        "context": "core.math_facts:page_context",
+    },
 ]
 
 

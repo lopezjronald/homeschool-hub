@@ -1,0 +1,101 @@
+/* The maths-facts teaching guide (HH-203). Rides on teaching-guide.css; this
+   file is only what is particular to this page: the coloured grid, the strategy
+   list, the mnemonic cards, and the dialogue script. */
+
+/* ---- the grid ----------------------------------------------------------- */
+
+.mf-grid-wrap { overflow-x: auto; }
+.mf-grid { border-collapse: collapse; margin: 0 auto; font-variant-numeric: tabular-nums; }
+.mf-grid th, .mf-grid td {
+  width: 2.2rem; height: 2.2rem; text-align: center; font-size: .82rem;
+  border: 1px solid #fffdf8;
+}
+.mf-grid th { font-weight: 800; color: #4a453c; background: transparent; }
+.mf-grid td { font-weight: 600; border-radius: 4px; }
+
+/* The classes come from math_facts.classify(); the palette makes the STORY
+   visible at a glance: most of the grid barely counts, six squares are work. */
+.mf-twin     { background: #efece4; color: #a49c8d; }
+.mf-one_step { background: #dcefe6; color: #1E5A3E; }
+.mf-derived  { background: #d8e6f4; color: #244d75; }
+.mf-square   { background: #efe3c8; color: #6d5310; }
+.mf-stubborn { background: #f6d9d4; color: #8c2f24; font-weight: 800; }
+
+.tg-caption-block {
+  display: flex; flex-wrap: wrap; gap: .5rem 1.1rem; justify-content: center;
+  margin-top: .9rem; font-size: .85rem; color: #4a453c;
+}
+.mf-key { display: inline-flex; align-items: center; gap: .4rem; }
+.mf-swatch { width: .9rem; height: .9rem; border-radius: 3px; display: inline-block; }
+
+/* ---- one strategy per table --------------------------------------------- */
+
+.mf-strategies { list-style: none; counter-reset: strat; margin: 0; padding: 0; display: grid; gap: .55rem; }
+.mf-strategies li {
+  counter-increment: strat;
+  display: grid; grid-template-columns: auto auto 1fr; gap: .3rem .8rem;
+  align-items: baseline; background: #fff; border: 1px solid #e3ddd2;
+  border-radius: 12px; padding: .7rem 1rem .7rem 3rem; position: relative;
+}
+.mf-strategies li::before {
+  content: counter(strat); position: absolute; left: .8rem; top: 50%;
+  transform: translateY(-50%);
+  width: 1.6rem; height: 1.6rem; border-radius: 50%; display: grid;
+  place-items: center; background: #0A5C63; color: #fff;
+  font-weight: 800; font-size: .85rem;
+}
+.mf-strat-name { font-weight: 800; }
+.mf-strat-tables { color: #6b6459; font-size: .85rem; }
+.mf-strat-script { grid-column: 1 / -1; color: #4a453c; }
+@media (min-width: 700px) {
+  .mf-strategies li { grid-template-columns: 11rem 4.5rem 1fr; }
+  .mf-strat-script { grid-column: auto; }
+}
+
+/* ---- the stubborn six --------------------------------------------------- */
+
+.mf-mnemonics { display: grid; gap: .7rem; grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr)); }
+.mf-mnemo {
+  background: #fff; border: 1px solid #e3ddd2; border-left: 4px solid #8c2f24;
+  border-radius: 12px; padding: .8rem 1rem; display: grid; gap: .3rem;
+}
+.mf-mnemo-fact { font-weight: 800; font-size: 1.1rem; font-variant-numeric: tabular-nums; }
+.mf-mnemo-rhyme { color: #4a453c; }
+.mf-mnemo-derive { color: #6b6459; font-size: .88rem; }
+
+/* ---- division ----------------------------------------------------------- */
+
+.mf-keyline {
+  text-align: center; font-size: clamp(1.3rem, 4vw, 1.7rem); font-weight: 800;
+  color: #0A5C63; margin: 1.1rem 0;
+}
+.mf-divlist { list-style: none; margin: .8rem 0 0; padding: 0; display: grid; gap: .45rem; }
+.mf-divlist li {
+  background: #fff; border: 1px solid #e3ddd2; border-radius: 10px;
+  padding: .55rem .9rem;
+}
+.mf-div-real { border-left: 4px solid #1E7A50; }
+.mf-div-partial { border-left: 4px solid #b98c1d; }
+.mf-div-none { border-left: 4px solid #b9b2a6; color: #4a453c; }
+.mf-div-label { font-weight: 800; margin-right: .35rem; font-variant-numeric: tabular-nums; }
+
+/* ---- kitchen table + script --------------------------------------------- */
+
+.mf-time { font-weight: 600; font-size: .8rem; color: #6b6459; margin-left: .5rem; }
+.mf-salute { margin-top: .9rem; }
+
+.mf-script { margin: 0; display: grid; gap: .45rem; }
+.mf-script > div {
+  display: grid; grid-template-columns: 3.2rem 1fr; gap: .8rem;
+  align-items: start;
+}
+.mf-script dt {
+  font-weight: 800; font-size: .85rem; text-align: right; padding-top: .45rem;
+  color: #0A5C63;
+}
+.mf-script > div:nth-child(even) dt { color: #8c2f24; }
+.mf-script dd {
+  margin: 0; background: #fff; border: 1px solid #e3ddd2; border-radius: 12px;
+  padding: .5rem .9rem;
+}
+.mf-script > div:nth-child(even) dd { background: #faf6ee; }

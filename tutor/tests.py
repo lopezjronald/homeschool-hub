@@ -7904,7 +7904,9 @@ class StudiesWeeklyUnitOneTests(TestCase):
         from django.contrib.staticfiles import finders
         from tutor import weekly, weekly_l7w2, weekly_l7w3
 
-        for mod in (weekly_l7w2, weekly_l7w3):
+        from tutor import weekly_l3w2, weekly_l3w3
+
+        for mod in (weekly_l7w2, weekly_l7w3, weekly_l3w2, weekly_l3w3):
             parts = weekly.parts_of(mod)
             self.assertEqual(len(parts), 2, mod.__name__)
             seen = []
@@ -7921,14 +7923,16 @@ class StudiesWeeklyUnitOneTests(TestCase):
         from django.contrib.staticfiles import finders
         from tutor import weekly_l7w2, weekly_l7w3
 
+        from tutor import weekly_l3w2, weekly_l3w3
+
         found = 0
-        for mod in (weekly_l7w2, weekly_l7w3):
+        for mod in (weekly_l7w2, weekly_l7w3, weekly_l3w2, weekly_l3w3):
             for q in mod.QUESTIONS:
                 path = q.get("figure")
                 if path:
                     self.assertIsNotNone(finders.find(path), path)
                     found += 1
-        self.assertEqual(found, 4, "the four figures the printed checks need")
+        self.assertEqual(found, 5, "the figures the printed checks need")
 
     def test_the_films_are_named_and_plausible(self):
         """Each id was checked against YouTube's oEmbed endpoint by hand — the
@@ -7936,8 +7940,10 @@ class StudiesWeeklyUnitOneTests(TestCase):
         entirely. This guards the shape, not the network."""
         from tutor import weekly, weekly_l7w2, weekly_l7w3
 
+        from tutor import weekly_l3w2, weekly_l3w3
+
         ids = set()
-        for mod in (weekly_l7w2, weekly_l7w3):
+        for mod in (weekly_l7w2, weekly_l7w3, weekly_l3w2, weekly_l3w3):
             for spec in weekly.parts_of(mod):
                 watch = spec["watch"]
                 if watch is None:
@@ -7951,7 +7957,7 @@ class StudiesWeeklyUnitOneTests(TestCase):
                 # A film she is not asked anything about is a break, not a lesson.
                 self.assertTrue(watch["question"].strip(), watch["video_title"])
                 ids.add(watch["youtube_id"])
-        self.assertEqual(len(ids), 3, "three distinct films, none reused")
+        self.assertEqual(len(ids), 5, "one film per reading part, none reused")
 
     def test_a_video_id_with_a_space_is_refused(self):
         from tutor.weekly import video
@@ -7970,7 +7976,9 @@ class StudiesWeeklyUnitOneTests(TestCase):
     def test_the_checks_have_a_correct_answer_for_every_closed_question(self):
         from tutor import weekly_l7w2, weekly_l7w3
 
-        for mod in (weekly_l7w2, weekly_l7w3):
+        from tutor import weekly_l3w2, weekly_l3w3
+
+        for mod in (weekly_l7w2, weekly_l7w3, weekly_l3w2, weekly_l3w3):
             for q in mod.QUESTIONS:
                 if q["kind"] != "choice":
                     continue
@@ -8196,3 +8204,76 @@ class FlatWeekReseedTests(TestCase):
             title="Something a parent added", skill_type=Material.SKILL_LESSON)
         self._seed(1)
         self.assertTrue(Material.objects.filter(pk=mine.pk).exists())
+
+
+class VioletWeek2And3SeedTests(TestCase):
+    """Violet's Unit 1 weeks 2 and 3, seeded end to end."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.parent = User.objects.create_user(
+            username="vw", email="vw@e.com", password="pw")
+        cls.fam = Family.objects.create(name="VW Fam")
+        FamilyMembership.objects.create(user=cls.parent, family=cls.fam, role="parent")
+        cls.violet = Student.objects.create(
+            parent=cls.parent, first_name="Violet", grade_level="G03",
+            family=cls.fam)
+
+    def _seed(self, week):
+        from django.core.management import call_command
+        call_command("seed_weekly", level=3, week=week, for_user="vw",
+                     verbosity=0)
+
+    def test_both_weeks_seed_a_reading_part_and_an_activity(self):
+        from tutor.models import LessonBlock, Material
+
+        self._seed(2)
+        self._seed(3)
+        titles = sorted(Material.objects.values_list("title", flat=True))
+        self.assertEqual(titles, [
+            "Activity 2.2 · Life for Children in the 1920s",
+            "Activity 3.2 · Searching for Answers",
+            "Part 2.1 · Sources",
+            "Part 3.1 · Examining Evidence and Communicating Conclusions",
+        ])
+        watched = Material.objects.filter(
+            blocks__kind=LessonBlock.KIND_WATCH).values_list("title", flat=True)
+        # The film opens the READING, not the make.
+        self.assertEqual(sorted(watched), [
+            "Part 2.1 · Sources",
+            "Part 3.1 · Examining Evidence and Communicating Conclusions",
+        ])
+
+    def test_the_open_questions_stay_open(self):
+        """Weeks 3's questions 4 and 6 have no single right answer in the
+        teacher edition — it gives a sample. Recording them as multiple choice
+        would invent an answer the publisher declined to give."""
+        from tutor.models import Question
+
+        self._seed(3)
+        text = Question.objects.filter(response_type=Question.TYPE_TEXT)
+        prompts = [q.prompt for q in text]
+        self.assertEqual(len(prompts), 3)   # 4, 6, and our reflection
+        self.assertTrue(any("evidence supports the claim" in p for p in prompts))
+        self.assertTrue(any("help of teachers and parents" in p for p in prompts))
+
+    def test_the_grader_is_told_the_samples_are_only_samples(self):
+        from tutor.models import QuestionSet
+
+        self._seed(3)
+        rubric = QuestionSet.objects.get().rubric
+        self.assertIn("samples", rubric.lower())
+
+    def test_violet_and_kaylin_are_on_the_same_unit_at_their_own_levels(self):
+        """Both girls hit sources and perspective the same fortnight. Worth
+        asserting, because it is the reason to teach them together."""
+        from tutor import weekly_l3w2, weekly_l7w2
+
+        self.assertEqual(weekly_l3w2.UNIT, weekly_l7w2.UNIT)
+        self.assertEqual(weekly_l3w2.LEVEL, 3)
+        self.assertEqual(weekly_l7w2.LEVEL, 7)
+        for mod in (weekly_l3w2, weekly_l7w2):
+            words = " ".join(
+                t for p in mod.PARTS for t, _d in p["vocabulary"]).lower()
+            self.assertIn("primary sources", words, mod.__name__)
+            self.assertIn("secondary sources", words, mod.__name__)

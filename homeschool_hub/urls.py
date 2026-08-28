@@ -78,6 +78,9 @@ urlpatterns = [
     path("worklog/", include(("worklog.urls", "worklog"), namespace="worklog")),
     path("tutor/", include(("tutor.urls", "tutor"), namespace="tutor")),
     path("portal/", include(("portal.urls", "portal"), namespace="portal")),
+    # Fact Dash sits inside the portal path so the child's token works the same
+    # way it does everywhere else (HH-203).
+    path("portal/", include(("factfluency.urls", "factfluency"), namespace="factfluency")),
     path("activities/", include(("activities.urls", "activities"), namespace="activities")),
     path("calendar/", include(("family_calendar.urls", "family_calendar"), namespace="family_calendar")),
     path("core/", include(("core.urls", "core"), namespace="core")),

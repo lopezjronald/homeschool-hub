@@ -1,0 +1,58 @@
+{% extends "portal/base_portal.html" %}
+{% load static %}
+{% block title %}Fact Dash · Steadfast Scholars{% endblock %}
+{% block extra_css %}<link href="{% static 'factfluency/factdash.css' %}" rel="stylesheet">{% endblock %}
+
+{% block content %}
+<div class="fd">
+
+  <a href="{% url 'portal:portal_home' token=token %}" class="fd-back">← Back to my portal</a>
+
+  <header class="fd-hero">
+    <h1>⚡ Fact Dash</h1>
+    <p>Beat your own best, {{ student.first_name }}.</p>
+  </header>
+
+  <ul class="fd-levels">
+    {% for row in rows %}
+      <li class="fd-level{% if not row.unlocked %} is-locked{% endif %}{% if row.beaten %} is-beaten{% endif %}">
+        {% if row.unlocked %}
+          <a href="{% url 'factfluency:play' token=token slug=row.level.slug %}">
+        {% else %}
+          <div class="fd-level-inner" aria-disabled="true">
+        {% endif %}
+
+          <span class="fd-num">{{ row.level.order }}</span>
+          <span class="fd-body">
+            <span class="fd-name">
+              {{ row.level.name }}
+              {% if row.beaten %}<span class="fd-star" title="Beaten">★</span>{% endif %}
+              {% if not row.unlocked %}<span class="fd-lock" aria-hidden="true">🔒</span>{% endif %}
+            </span>
+            <span class="fd-blurb">{{ row.level.blurb }}</span>
+
+            <span class="fd-bar" role="img"
+                  aria-label="{{ row.mastered }} of {{ row.total }} mastered">
+              <span class="fd-bar-fill" style="width: {{ row.pct }}%"></span>
+            </span>
+            <span class="fd-count">{{ row.mastered }} / {{ row.total }} facts nailed</span>
+
+            {% if row.records %}
+              <span class="fd-records">
+                {% for kind, rec in row.records.items %}
+                  <span class="fd-rec">
+                    {% if kind == 'best_time' %}⏱ {{ rec.value|floatformat:0 }}ms
+                    {% elif kind == 'best_accuracy' %}🎯 {{ rec.value|floatformat:0 }}%
+                    {% else %}🔥 {{ rec.value|floatformat:0 }}{% endif %}
+                  </span>
+                {% endfor %}
+              </span>
+            {% endif %}
+          </span>
+
+        {% if row.unlocked %}</a>{% else %}</div>{% endif %}
+      </li>
+    {% endfor %}
+  </ul>
+</div>
+{% endblock %}

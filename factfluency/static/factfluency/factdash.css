@@ -1,0 +1,121 @@
+/* Fact Dash (HH-203). Big targets, high contrast, nothing that ticks down. */
+
+.fd { max-width: 44rem; margin: 0 auto; padding: 0 1rem 3rem; }
+.fd-back { display: inline-block; margin: 1rem 0; font-size: .95rem; }
+
+.fd-hero { text-align: center; margin: .5rem 0 1.6rem; }
+.fd-hero h1 { font-size: clamp(2rem, 7vw, 2.8rem); font-weight: 800; margin: 0 0 .3rem; }
+.fd-hero p { margin: 0; color: #6b6459; }
+
+/* ---- level map ---------------------------------------------------------- */
+
+.fd-levels { list-style: none; margin: 0; padding: 0; display: grid; gap: .7rem; }
+.fd-level a, .fd-level-inner {
+  display: grid; grid-template-columns: 3rem 1fr; gap: .9rem; align-items: start;
+  background: #fff; border: 2px solid #e3ddd2; border-radius: 14px;
+  padding: 1rem 1.1rem; text-decoration: none; color: inherit;
+}
+.fd-level a:hover, .fd-level a:focus-visible { border-color: #1E7A50; }
+.fd-level.is-locked .fd-level-inner { opacity: .5; background: #f4f1ea; }
+.fd-level.is-beaten a { border-color: #1E7A50; background: #f2f9f5; }
+
+.fd-num {
+  display: grid; place-items: center; width: 3rem; height: 3rem; border-radius: 50%;
+  background: #1E7A50; color: #fff; font-weight: 800; font-size: 1.2rem;
+}
+.fd-level.is-locked .fd-num { background: #b9b2a6; }
+.fd-body { display: grid; gap: .3rem; min-width: 0; }
+.fd-name { font-weight: 800; font-size: 1.15rem; }
+.fd-star { color: #E8B93B; }
+.fd-blurb { color: #6b6459; font-size: .9rem; }
+
+.fd-bar { display: block; height: 9px; border-radius: 999px; background: #e9e4da; overflow: hidden; }
+.fd-bar-fill { display: block; height: 100%; background: #1E7A50; border-radius: 999px; }
+.fd-count { font-size: .82rem; color: #6b6459; }
+.fd-records { display: flex; flex-wrap: wrap; gap: .4rem; margin-top: .2rem; }
+.fd-rec {
+  font-size: .8rem; font-weight: 700; background: #f4f1ea;
+  border-radius: 999px; padding: .15rem .6rem;
+}
+
+/* ---- the round ---------------------------------------------------------- */
+
+.fd-playhead { text-align: center; margin-bottom: 1.2rem; }
+.fd-playhead h1 { font-size: 1.7rem; font-weight: 800; margin: 0 0 .2rem; }
+.fd-playhead p { margin: 0; color: #6b6459; font-size: .95rem; }
+
+.fd-screen { text-align: center; }
+.fd-ready { font-size: 1.3rem; margin: 2rem 0 1rem; }
+.fd-go {
+  border: none; border-radius: 999px; cursor: pointer;
+  background: #1E7A50; color: #fff; font-weight: 800;
+  font-size: 1.3rem; padding: .9rem 2.6rem; min-height: 56px;
+}
+.fd-go:hover, .fd-go:focus-visible { filter: brightness(1.08); }
+.fd-hint { color: #6b6459; font-size: .9rem; margin-top: 1rem; }
+.fd-secondary { display: inline-block; margin-left: 1rem; }
+
+/* A progress bar, NOT a countdown: it fills as she works forward rather than
+   draining as time runs out. Same pixels, opposite feeling. */
+.fd-progress { height: 8px; background: #e9e4da; border-radius: 999px; overflow: hidden; }
+.fd-progress-fill { display: block; height: 100%; width: 0; background: #2F6FB3; transition: width .25s ease; }
+.fd-qcount { font-size: .82rem; color: #6b6459; margin: .4rem 0 1.2rem; }
+
+.fd-question {
+  font-size: clamp(2.6rem, 12vw, 4rem); font-weight: 800;
+  font-variant-numeric: tabular-nums; letter-spacing: .02em;
+}
+.fd-answer {
+  font-size: clamp(2.2rem, 10vw, 3.2rem); font-weight: 800; color: #2F6FB3;
+  font-variant-numeric: tabular-nums; min-height: 1.3em;
+  border-bottom: 4px solid #e3ddd2; width: 5rem; margin: .4rem auto .2rem;
+}
+.fd-mark { font-size: 2rem; font-weight: 800; min-height: 1.4em; }
+.fd-mark.is-right { color: #1E7A50; }
+.fd-mark.is-wrong { color: #b03a3a; animation: fd-shake .3s; }
+@keyframes fd-shake {
+  0%,100% { transform: translateX(0); }
+  25% { transform: translateX(-6px); }
+  75% { transform: translateX(6px); }
+}
+
+.fd-pad {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: .55rem;
+  max-width: 22rem; margin: 1rem auto 0;
+}
+.fd-key {
+  border: 2px solid #e3ddd2; background: #fff; border-radius: 12px;
+  font-size: 1.5rem; font-weight: 700; padding: .7rem 0; min-height: 56px;
+  cursor: pointer;
+}
+.fd-key:active { background: #f4f1ea; }
+.fd-key--go { background: #1E7A50; color: #fff; border-color: #1E7A50; }
+.fd-key--wide { background: #f4f1ea; }
+
+/* ---- done --------------------------------------------------------------- */
+
+.fd-done h2 { font-size: 1.9rem; font-weight: 800; margin: 1.5rem 0 .4rem; }
+.fd-tally { color: #6b6459; margin: 0 0 1rem; }
+.fd-beaten { list-style: none; padding: 0; margin: 0 0 1.4rem; display: grid; gap: .4rem; }
+.fd-beaten li {
+  background: #f2f9f5; border: 1px solid #1E7A50; border-radius: 999px;
+  padding: .4rem 1rem; font-weight: 700; display: inline-block; justify-self: center;
+}
+.fd-againrow { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: .6rem; }
+
+/* ---- confetti, sparingly ------------------------------------------------ */
+
+.fd-confetti { position: fixed; inset: 0; pointer-events: none; overflow: hidden; z-index: 50; }
+.fd-confetti i {
+  position: absolute; top: -12px; width: 9px; height: 14px; border-radius: 2px;
+  background: #1E7A50; animation: fd-fall 1.8s ease-in forwards;
+}
+.fd-confetti i:nth-child(3n)   { background: #E8B93B; }
+.fd-confetti i:nth-child(3n+1) { background: #2F6FB3; }
+@keyframes fd-fall {
+  to { transform: translate(var(--drift, 0), 105vh) rotate(540deg); opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .fd-confetti { display: none; }
+  .fd-mark.is-wrong { animation: none; }
+}

@@ -119,7 +119,8 @@ INSTALLED_APPS = [
     "family_calendar",  # Family calendar: events, mission due dates, history, birthdays
     "inbox",  # Parent action inbox (aggregates items needing the parent)
     "lingua",  # Spanish acquisition module (extractable; see lingua/SPEC.md)
-    "spelling",  # Spelling OS: pattern-based spelling with spaced review
+    "spelling",
+    "factfluency",  # Spelling OS: pattern-based spelling with spaced review
     "storages",  # django-storages for R2/S3
     "django.contrib.admin",
     "django.contrib.auth",

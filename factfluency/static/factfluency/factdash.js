@@ -131,7 +131,23 @@
       });
     });
     return chain.then(function (last) {
-      writeQueue(failed);
+      // MERGE, do not overwrite: another flush may have run while this one was
+      // in flight, and blindly writing our leftovers would drop its. Rows we
+      // delivered are removed; duplicates are harmless — the server dedups on
+      // uuid — but rows must never be lost.
+      var delivered = {};
+      queued.forEach(function (row) { delivered[row.client_uuid] = 1; });
+      failed.forEach(function (row) { delete delivered[row.client_uuid]; });
+      var seen = {};
+      var merged = readQueue().filter(function (row) {
+        if (delivered[row.client_uuid] || seen[row.client_uuid]) return false;
+        seen[row.client_uuid] = 1;
+        return true;
+      });
+      failed.forEach(function (row) {
+        if (!seen[row.client_uuid]) { seen[row.client_uuid] = 1; merged.push(row); }
+      });
+      writeQueue(merged);
       return last;
     });
   }
@@ -190,7 +206,7 @@
   }
 
   function type(ch) {
-    if (state.locked) return;
+    if (state.locked || !state.questions.length) return;
     if (ch === "enter") {
       if (state.typed) submit();
       return;

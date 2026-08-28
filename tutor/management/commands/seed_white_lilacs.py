@@ -16,15 +16,23 @@ questions are the publisher's printed wording, and `answer_key` is deliberately
 EMPTY rather than filled with something invented. Joyce marks this one from the
 book.
 
-PRINTED AS PRINTED. The guide has a handful of slips and they are reproduced
-verbatim, because Kaylin is answering the page in front of her and a silent
-correction makes the app and the book disagree:
+PRINTED AS PRINTED. Kaylin is answering the page in front of her, so a silent
+correction makes the app and the book disagree. This list is COMPLETE — every
+slip the guide contains is below, and every one of them is deliberate here. If
+you are about to fix one, it is in the book:
 
   * Section 1 discussion 2 — "Mrs Bell" (no full stop) and "How does She
     describe them?" (capital S mid-sentence).
+  * Section 1 recollect 12 and 13 — "Miss. Firth" (a period that should not be
+    there), twice.
   * Section 2 recollect 8 — "show here thoughtlessness" (for "her").
+  * Section 2 recollect 13 — "fiance" (unaccented).
   * Section 2 writing option 1 — "detail the law and it's intent" (for "its").
+  * Section 2 discussion 10 — "argue to his parent" (singular).
   * Section 3 recollect 12 — "wanting to cry for the school having burned down".
+  * Section 4 discussion 4 — "the aspersions, hopes, and dreams" (for
+    "aspirations"). This is the one most likely to be "corrected" by someone
+    skim-reading, which is why it is named here.
 
 THE BOOK IS ABOUT A REAL ERASURE. White Lilacs is Quakertown, in Denton, Texas:
 a Black community bought out and cleared in 1921 to make a city park. The guide

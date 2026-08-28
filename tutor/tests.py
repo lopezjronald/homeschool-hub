@@ -8873,6 +8873,13 @@ class WhiteLilacsSeedTests(TestCase):
         self.assertIn("How does She describe them?", discussion2)
         self.assertIn("show here thoughtlessness", s2["recollect"][7])
         self.assertIn("it's intent", s2["writing_prompt"])
+        # The rest of the printed slips, pinned so a skim-read "fix" fails.
+        self.assertIn("Miss. Firth", s1["recollect"][11])
+        self.assertIn("Miss. Firth", s1["recollect"][12])
+        self.assertIn("fiance", s2["recollect"][12])
+        self.assertIn("to his parent", s2["discussion"][9][1])
+        self.assertIn("having burned down", m.SECTIONS[2]["recollect"][11])
+        self.assertIn("aspersions", m.SECTIONS[3]["discussion"][3][1])
 
     def test_the_characters_named_are_the_ones_the_guide_names(self):
         from tutor.models import Question, QuestionSet

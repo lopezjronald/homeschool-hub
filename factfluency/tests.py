@@ -160,8 +160,12 @@ class SchedulerTests(TestCase):
         self.assertGreater(state.leitner_box, 1)
         scheduling.apply_attempt(state, is_correct=False, response_ms=800)
         self.assertEqual(state.leitner_box, 1)
-        self.assertFalse(state.is_mastered)
         self.assertLessEqual(state.due_at, timezone.now())
+        # Mastery survives ONE miss (a typo is not forgetting — see GrazeTests);
+        # it clears on the second miss before repair.
+        self.assertTrue(state.is_mastered)
+        scheduling.apply_attempt(state, is_correct=False, response_ms=800)
+        self.assertFalse(state.is_mastered)
 
     def test_mastery_is_a_streak_not_a_box(self):
         """Gating on box 5 would unlock levels on the calendar — the boxes are
@@ -1146,3 +1150,70 @@ class RulesAreNotFactsTests(TestCase):
                 self.assertNotEqual(divisor, 1, fact.prompt(operation))
                 self.assertNotEqual(fact.answer(operation), fact.product,
                                     fact.prompt(operation))
+
+
+class GrazeTests(TestCase):
+    """One typo on a long-mastered fact must not erase the mastery.
+
+    The real case: 1x9 fluent ten sessions running, then "96" submitted while
+    reaching for Done — box 5 to box 1, mastery gone, 29/29 stuck at 28/29.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.parent = User.objects.create_user(
+            username="gz", email="gz@e.com", password="pw")
+        cls.family = Family.objects.create(name="Gz Fam")
+        FamilyMembership.objects.create(user=cls.parent, family=cls.family, role="parent")
+        cls.child = Student.objects.create(
+            parent=cls.parent, first_name="Gz", grade_level="G03", family=cls.family)
+        cls.fact = Fact.objects.get(factor_a=2, factor_b=9)
+
+    def _mastered_state(self):
+        return StudentFactState.objects.create(
+            student=self.child, fact=self.fact, operation=Operation.MULT,
+            leitner_box=5, consecutive_fluent=3, is_mastered=True,
+            total_attempts=10, total_correct=10)
+
+    def test_one_miss_on_a_mastered_fact_keeps_the_mastery(self):
+        state = self._mastered_state()
+        scheduling.apply_attempt(state, is_correct=False, response_ms=856)
+        self.assertTrue(state.is_mastered, "a typo is not forgetting")
+        # …but it still comes straight back for repair.
+        self.assertEqual(state.leitner_box, 1)
+        self.assertEqual(state.consecutive_fluent, 0)
+        self.assertLessEqual(state.due_at, timezone.now())
+
+    def test_a_second_miss_before_repair_does_clear_it(self):
+        state = self._mastered_state()
+        scheduling.apply_attempt(state, is_correct=False, response_ms=800)
+        scheduling.apply_attempt(state, is_correct=False, response_ms=800)
+        self.assertFalse(state.is_mastered, "missing twice IS forgetting")
+
+    def test_a_repaired_fact_survives_a_later_isolated_miss(self):
+        state = self._mastered_state()
+        s1 = GameSession.objects.create(
+            student=self.child, level=Level.objects.get(slug="ones-twos"))
+        scheduling.apply_attempt(state, is_correct=False, response_ms=800)
+        scheduling.apply_attempt(state, is_correct=True, response_ms=700,
+                                 session_id=s1.pk)      # repaired: box 2
+        scheduling.apply_attempt(state, is_correct=False, response_ms=800)
+        self.assertTrue(state.is_mastered,
+                        "an isolated miss after repair is a fresh graze")
+
+    def test_an_unmastered_fact_still_resets_hard(self):
+        state = StudentFactState.objects.create(
+            student=self.child, fact=self.fact, operation=Operation.MULT,
+            leitner_box=3, consecutive_fluent=2)
+        scheduling.apply_attempt(state, is_correct=False, response_ms=800)
+        self.assertFalse(state.is_mastered)
+        self.assertEqual(state.leitner_box, 1)
+        self.assertEqual(state.consecutive_fluent, 0)
+
+    def test_the_level_count_does_not_yo_yo_on_a_graze(self):
+        state = self._mastered_state()
+        level = Level.objects.get(slug="ones-twos")
+        before, total = scheduling.level_progress(self.child, level)
+        scheduling.apply_attempt(state, is_correct=False, response_ms=800)
+        after, _ = scheduling.level_progress(self.child, level)
+        self.assertEqual(after, before)

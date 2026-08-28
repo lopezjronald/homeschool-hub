@@ -65,9 +65,22 @@ def apply_attempt(state, *, is_correct, response_ms, threshold=FLUENCY_THRESHOLD
     state.last_response_ms = response_ms
 
     if not is_correct:
+        # A miss on a MASTERED fact is a graze, not a catastrophe. TestRun had
+        # 1x9 fluent ten sessions running, typo'd "96" reaching for Done, and
+        # a long-known fact fell from box 5 to box 1 un-mastered — 29/29 became
+        # 28/29 with the repair parked days out. Same philosophy as the slow
+        # branch below: one bad moment is a bad moment, not a regression.
+        #
+        # So the fact still drops to box 1 and comes back IMMEDIATELY for
+        # repair, but keeps its mastery — unless she misses it again before
+        # re-proving it. A mastered fact only ever has box 1 if a miss put it
+        # there (mastery takes three counted promotions, which land it at box
+        # 4+), so box 1 here means "already grazed and never repaired".
+        missed_twice = state.is_mastered and state.leitner_box == 1
         state.leitner_box = 1
         state.consecutive_fluent = 0
-        state.is_mastered = False          # a fact she just missed is not mastered
+        if not state.is_mastered or missed_twice:
+            state.is_mastered = False
         state.due_at = now
     elif fluent:
         # ONCE PER SESSION. A round drills its small new set several times over,

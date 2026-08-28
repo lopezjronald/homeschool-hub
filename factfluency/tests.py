@@ -867,3 +867,47 @@ class HintTests(TestCase):
               / "factdash.js").read_text(encoding="utf-8")
         reveal = js.split("if (!right) {")[1].split("}")[0]
         self.assertIn("els.tip.hidden = false", reveal)
+
+
+class TemplateCommentLeakTests(TestCase):
+    """Multi-line {# #} comments render as page text — this has now bitten the
+    project FOUR times (three in lingua, once pushing Fact Dash's Done key
+    238px below the fold with two invisible walls of leaked prose)."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.parent = User.objects.create_user(
+            username="leak", email="leak@e.com", password="pw")
+        cls.family = Family.objects.create(name="Leak Fam")
+        FamilyMembership.objects.create(
+            user=cls.parent, family=cls.family, role="parent")
+        cls.child = Student.objects.create(
+            parent=cls.parent, first_name="Leak", grade_level="G03",
+            family=cls.family)
+
+    def test_no_template_comment_reaches_the_page(self):
+        from portal.tokens import make_portal_token
+        from .models import Level
+
+        token = make_portal_token(self.child)
+        for name in ("factfluency:home", "factfluency:play"):
+            kwargs = {"token": token}
+            if name.endswith("play"):
+                kwargs["slug"] = Level.objects.order_by("order").first().slug
+            html = self.client.get(reverse(name, kwargs=kwargs)).content.decode()
+            self.assertNotIn("{#", html, name)
+            self.assertNotIn("#}", html, name)
+
+    def test_no_source_template_carries_a_multiline_hash_comment(self):
+        """Catch it at the source too, so a leak cannot hide behind an {% if %}
+        branch the render above did not take."""
+        import re
+        from pathlib import Path
+
+        root = Path(__file__).resolve().parent.parent / "templates" / "factfluency"
+        for path in root.glob("*.html"):
+            text = path.read_text(encoding="utf-8")
+            for match in re.finditer(r"\{#(.*?)#\}", text, flags=re.S):
+                self.assertNotIn("\n", match.group(1),
+                                 "%s: multi-line {# #} comment leaks to the page"
+                                 % path.name)

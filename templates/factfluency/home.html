@@ -28,8 +28,8 @@
             <span class="fd-name">
               {{ row.level.name }}
               {% if row.beaten %}<span class="fd-star" title="Beaten">★</span>{% endif %}
-              {# The word matters: the padlock was aria-hidden, so a screen
-                 reader announced a locked level as if it were playable. #}
+              {% comment %} The word matters: the padlock was aria-hidden, so a screen
+                 reader announced a locked level as if it were playable. {% endcomment %}
               {% if not row.unlocked %}<span class="fd-lock"><span aria-hidden="true">🔒</span> Locked</span>{% endif %}
             </span>
             <span class="fd-blurb">{{ row.level.blurb }}</span>

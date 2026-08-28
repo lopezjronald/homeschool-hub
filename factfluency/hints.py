@@ -87,7 +87,9 @@ def multiplication_hint(fact):
     mnemonic = MNEMONICS.get((min(a, b), max(a, b)))
     if mnemonic:
         return mnemonic
-    if fact.is_square:
+    # Zero and one outrank the square framing: 0 x 0 is the zero rule, not
+    # "a real square", and 1 x 1 is the times-one rule.
+    if fact.is_square and a not in (0, 1):
         return "A square — a number times itself. %d × %d is %d." % (a, a, fact.product)
     # Apply the better of the two rules to the other factor.
     anchor, other = (a, b) if _rank(a) <= _rank(b) else (b, a)

@@ -11,9 +11,9 @@
      data-home-url="{% url 'factfluency:home' token=token %}"
      data-csrf="{{ csrf_token }}">
 
-  {# Both of these are hidden while a round is running (.is-playing). On a phone
+  {% comment %} Both of these are hidden while a round is running (.is-playing). On a phone
      they cost 120px of chrome she does not need mid-round, and that 120px was
-     pushing the Done key below the fold. #}
+     pushing the Done key below the fold. {% endcomment %}
   <a href="{% url 'factfluency:home' token=token %}" class="fd-back">← All levels</a>
 
   <header class="fd-playhead">
@@ -40,13 +40,13 @@
     <div class="fd-answer" data-answer aria-live="polite" aria-atomic="true"
          aria-label="Your answer">&nbsp;</div>
     <div class="fd-mark" data-mark aria-live="assertive"></div>
-    {# The strategy, shown ONLY after a miss. Offering it up front would turn a
-       recall game into a reading exercise. #}
+    {% comment %} The strategy, shown ONLY after a miss. Offering it up front would turn a
+       recall game into a reading exercise. {% endcomment %}
     <p class="fd-tip" data-tip hidden></p>
 
-    {# 3 wide, like every calculator and phone she has ever picked up. Undo and
+    {% comment %} 3 wide, like every calculator and phone she has ever picked up. Undo and
        Done own the bottom row and are worded, not glyphs — "↵" means nothing to
-       a nine-year-old, and she now has to press it on every single question. #}
+       a nine-year-old, and she now has to press it on every single question. {% endcomment %}
     <div class="fd-pad">
       {% for n in "123456789" %}
         <button type="button" class="fd-key" data-key="{{ n }}">{{ n }}</button>

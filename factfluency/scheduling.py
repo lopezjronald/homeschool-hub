@@ -22,6 +22,7 @@ from datetime import timedelta
 
 from . import hints
 from .models import (
+    threshold_for,
     BOX_INTERVALS, FLUENCY_THRESHOLD_MS, MASTERY_STREAK, MAX_BOX,
     NEW_FACTS_PER_ROUND,
     Fact, Operation, StudentFactState,
@@ -45,24 +46,37 @@ def _interval(box):
     return timedelta(days=BOX_INTERVALS.get(box, BOX_INTERVALS[MAX_BOX]))
 
 
-def apply_attempt(state, *, is_correct, response_ms, threshold=FLUENCY_THRESHOLD_MS,
+def apply_attempt(state, *, is_correct, response_ms, threshold=None,
                   now=None, session_id=None):
     """Move one fact's state on by one attempt. Returns True if it just mastered.
 
     Three outcomes, and the middle one is the point of the whole system:
 
       correct + fluent  -> promote a box, due later, streak grows
-      correct + slow    -> HOLD the box, due again soon, streak resets
+      correct + slow    -> HOLD the box, due again soon, streak steps back one
       incorrect         -> back to box 1, due immediately
     """
     now = now or timezone.now()
     was_mastered = state.is_mastered
+    if threshold is None:
+        threshold = threshold_for(state.fact.answer(state.operation))
     fluent = is_fluent(is_correct, response_ms, threshold)
 
     state.total_attempts += 1
     if is_correct:
         state.total_correct += 1
     state.last_response_ms = response_ms
+
+    # Has this sitting already judged this fact? A round deliberately drills its
+    # small set several times over, so a repeat is not independent evidence.
+    #
+    # A MISS is exempt and always bites: getting it wrong is unambiguous, and
+    # she could otherwise get one right early and miss it five times after.
+    # But being SLOW on a repeat was wiping the streak the first ask had just
+    # earned — promotion was gated on the sitting and demotion was not, so one
+    # round could both promote and demote the same fact.
+    already_judged = (session_id is not None
+                      and (state.last_counted_session or 0) >= session_id)
 
     if not is_correct:
         # A miss on a MASTERED fact is a graze, not a catastrophe. TestRun had
@@ -82,30 +96,38 @@ def apply_attempt(state, *, is_correct, response_ms, threshold=FLUENCY_THRESHOLD
         if not state.is_mastered or missed_twice:
             state.is_mastered = False
         state.due_at = now
+    elif already_judged:
+        # This sitting has had its say. Record the attempt, change nothing else.
+        state.save()
+        return False
     elif fluent:
-        # ONCE PER SESSION. A round drills its small new set several times over,
-        # which is the point — but three fluent hits half a minute apart is not
-        # recall, it is short-term memory. Counting only the first keeps mastery
-        # meaning three separate sittings.
         # STRICTLY NEWER, not merely different: with two rounds open in two
         # tabs, alternating a hit between them made every hit "first this
         # session" and mastered a fact in two sittings instead of three.
-        first_this_session = (session_id is None
-                              or (state.last_counted_session or 0) < session_id)
-        if first_this_session:
-            state.leitner_box = min(state.leitner_box + 1, MAX_BOX)
-            state.consecutive_fluent += 1
-            state.last_counted_session = session_id
-            state.due_at = now + _interval(state.leitner_box)
-            # Mastery is the STREAK, not the box — see MASTERY_STREAK. Gating on
-            # box 5 would make every level take a fortnight regardless of skill.
-            if state.consecutive_fluent >= MASTERY_STREAK:
-                state.is_mastered = True
+        state.last_counted_session = session_id
+        state.leitner_box = min(state.leitner_box + 1, MAX_BOX)
+        state.consecutive_fluent += 1
+        state.due_at = now + _interval(state.leitner_box)
+        # Mastery is the STREAK, not the box — see MASTERY_STREAK. Gating on
+        # box 5 would make every level take a fortnight regardless of skill.
+        if state.consecutive_fluent >= MASTERY_STREAK:
+            state.is_mastered = True
     else:
-        # Right but slow: hold the box, come back to it today. Deliberately does
-        # NOT clear is_mastered — a single sluggish answer on a long-known fact
-        # is a bad day, not a regression.
-        state.consecutive_fluent = 0
+        # Right but slow: hold the box, come back to it today, and step the
+        # streak DOWN BY ONE rather than to zero.
+        #
+        # Zeroing is what stuck Violet. She needs three fluent sittings in a
+        # row, she is nine and still deriving half of these, and her fluency
+        # rate is around 55% — so a streak of two was wiped by one thoughtful
+        # answer, over and over. Twenty-two attempts at 2x6 and a streak of 1.
+        # This branch's own comment already said a sluggish answer is "a bad
+        # day, not a regression"; it just never implemented it for the number
+        # that actually gates mastery.
+        #
+        # Alternating fluent/slow still never masters — the streak hovers — so
+        # the bar has not been lowered, only made survivable.
+        state.last_counted_session = session_id
+        state.consecutive_fluent = max(0, state.consecutive_fluent - 1)
         state.due_at = now + timedelta(minutes=10)
 
     state.save()

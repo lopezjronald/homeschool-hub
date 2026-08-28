@@ -25,6 +25,20 @@ from django.utils import timezone
 # Tighten toward 2500 and 2000 as recall speeds up.
 FLUENCY_THRESHOLD_MS = 3000
 
+#: Added per digit AFTER the first, because the clock measures until her last
+#: keystroke and a two-digit answer costs an extra deliberate tap. The 3-second
+#: figure in the literature is for PRODUCING a fact, not for producing it and
+#: then typing it on a touch keypad. Violet's numbers made the gap plain: 63%
+#: of her one-digit answers landed inside 3000ms and only 24% of her two-digit
+#: ones did. Some of that is that two-digit answers are the harder facts — this
+#: allowance covers the motor time only, and is deliberately modest.
+TYPING_ALLOWANCE_MS = 600
+
+
+def threshold_for(answer, base=FLUENCY_THRESHOLD_MS):
+    """The fluency bar for an answer of this many digits."""
+    return base + TYPING_ALLOWANCE_MS * (len(str(abs(int(answer)))) - 1)
+
 # At most this many never-seen facts enter one round. Small sets are the whole
 # finding behind incremental rehearsal — a wall of new facts is how a child
 # learns that practice feels bad.

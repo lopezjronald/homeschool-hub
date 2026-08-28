@@ -1322,3 +1322,215 @@ class LearningTierTests(TestCase):
         # that "you got every one right" would be worse than saying nothing.
         block = js.split("if (els.speed) {")[1].split("// A clean round")[0]
         self.assertIn("clean &&", block)
+
+
+class StuckAtThirteenTests(TestCase):
+    """ "She has been stuck on 13 of 29 for the longest time."
+
+    Three mechanisms were holding her there. All are about the streak that
+    gates mastery, and all of them punished a nine-year-old for thinking.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.parent = User.objects.create_user(
+            username="s13", email="s13@e.com", password="pw")
+        cls.family = Family.objects.create(name="S13 Fam")
+        FamilyMembership.objects.create(user=cls.parent, family=cls.family, role="parent")
+        cls.child = Student.objects.create(
+            parent=cls.parent, first_name="Violet", grade_level="G03",
+            family=cls.family)
+        cls.level = Level.objects.get(slug="ones-twos")
+
+    def _state(self, a=2, b=6):
+        return StudentFactState.objects.create(
+            student=self.child, fact=Fact.objects.get(factor_a=a, factor_b=b),
+            operation=Operation.MULT)
+
+    def _session(self):
+        return GameSession.objects.create(student=self.child, level=self.level)
+
+    # -- 1. a slow REPEAT no longer wipes what the first ask earned ----------
+
+    def test_being_slow_on_a_repeat_does_not_undo_the_first_ask(self):
+        state = self._state()
+        session = self._session()
+        scheduling.apply_attempt(state, is_correct=True, response_ms=700,
+                                 session_id=session.pk)
+        self.assertEqual(state.consecutive_fluent, 1)
+        # The round asks it again — padding does this on purpose — and she
+        # thinks about it. That used to zero the streak she had just earned.
+        scheduling.apply_attempt(state, is_correct=True, response_ms=9000,
+                                 session_id=session.pk)
+        self.assertEqual(state.consecutive_fluent, 1, "one verdict per sitting")
+        self.assertEqual(state.leitner_box, 2)
+
+    def test_a_miss_on_a_repeat_still_bites(self):
+        """Deliberately NOT gated — a wrong answer is unambiguous evidence."""
+        state = self._state()
+        session = self._session()
+        scheduling.apply_attempt(state, is_correct=True, response_ms=700,
+                                 session_id=session.pk)
+        scheduling.apply_attempt(state, is_correct=False, response_ms=700,
+                                 session_id=session.pk)
+        self.assertEqual(state.leitner_box, 1)
+        self.assertEqual(state.consecutive_fluent, 0)
+
+    # -- 2. one thoughtful answer costs one step, not everything -------------
+
+    def test_a_slow_answer_steps_the_streak_back_by_one(self):
+        state = self._state()
+        for _ in range(2):
+            scheduling.apply_attempt(state, is_correct=True, response_ms=700,
+                                     session_id=self._session().pk)
+        self.assertEqual(state.consecutive_fluent, 2)
+        scheduling.apply_attempt(state, is_correct=True, response_ms=9000,
+                                 session_id=self._session().pk)
+        self.assertEqual(state.consecutive_fluent, 1,
+                         "a bad day is one step back, not back to nothing")
+
+    def test_the_bar_is_not_lowered_alternating_never_masters(self):
+        """The streak survives a wobble; it does not survive not knowing it."""
+        state = self._state()
+        for i in range(12):
+            scheduling.apply_attempt(
+                state, is_correct=True,
+                response_ms=700 if i % 2 == 0 else 9000,
+                session_id=self._session().pk)
+        self.assertFalse(state.is_mastered)
+        self.assertLessEqual(state.consecutive_fluent, 1)
+
+    def test_a_realistic_run_now_actually_masters(self):
+        """Fluent, fluent, one slow, fluent, fluent — which used to be four
+        sittings of progress thrown away twice over."""
+        state = self._state()
+        for ms in (700, 700, 9000, 700, 700):
+            scheduling.apply_attempt(state, is_correct=True, response_ms=ms,
+                                     session_id=self._session().pk)
+        self.assertTrue(state.is_mastered)
+
+    # -- 3. the clock includes her typing ------------------------------------
+
+    def test_a_two_digit_answer_gets_the_extra_tap_it_costs(self):
+        from .models import threshold_for
+
+        self.assertEqual(threshold_for(8), FLUENCY_THRESHOLD_MS)
+        self.assertEqual(threshold_for(48), FLUENCY_THRESHOLD_MS + 600)
+        self.assertEqual(threshold_for(100), FLUENCY_THRESHOLD_MS + 1200)
+
+    def test_the_allowance_is_applied_by_the_endpoint_not_just_available(self):
+        """3200ms on a two-digit answer is fluent; on a one-digit answer it is
+        not. The API has to make that distinction, not just the helper."""
+        from portal.tokens import make_portal_token
+
+        session = self._session()
+        two = Fact.objects.get(factor_a=2, factor_b=6)      # 12
+        one = Fact.objects.get(factor_a=2, factor_b=3)      # 6
+        token = make_portal_token(self.child)
+        self.client.post(
+            reverse("factfluency:api_attempts",
+                    kwargs={"token": token, "session_id": session.pk}),
+            data=json.dumps({"attempts": [
+                {"client_uuid": "two", "fact_id": two.pk, "operation": "mult",
+                 "answer_given": 12, "response_ms": 3200},
+                {"client_uuid": "one", "fact_id": one.pk, "operation": "mult",
+                 "answer_given": 6, "response_ms": 3200},
+            ]}), content_type="application/json")
+        self.assertTrue(Attempt.objects.get(client_uuid="two").was_fluent)
+        self.assertFalse(Attempt.objects.get(client_uuid="one").was_fluent)
+
+
+class RebuildFactStatesTests(TestCase):
+    """The repair that gives back progress a fixed bug had eaten."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.parent = User.objects.create_user(
+            username="rb", email="rb@e.com", password="pw")
+        cls.family = Family.objects.create(name="RB Fam")
+        FamilyMembership.objects.create(user=cls.parent, family=cls.family, role="parent")
+        cls.child = Student.objects.create(
+            parent=cls.parent, first_name="Violet", grade_level="G03",
+            family=cls.family)
+        cls.level = Level.objects.get(slug="ones-twos")
+        cls.fact = Fact.objects.get(factor_a=2, factor_b=3)
+
+    def _play(self, *rounds):
+        """Each round is a list of (is_correct, response_ms)."""
+        for n, answers in enumerate(rounds):
+            session = GameSession.objects.create(
+                student=self.child, level=self.level)
+            for i, (ok, ms) in enumerate(answers):
+                Attempt.objects.create(
+                    session=session, fact=self.fact, operation=Operation.MULT,
+                    answer_given=6 if ok else 0, is_correct=ok,
+                    response_ms=ms, was_fluent=ok and ms <= 3000,
+                    client_uuid="rb-%d-%d" % (n, i))
+
+    def _run(self, **kw):
+        from django.core.management import call_command
+        from io import StringIO
+
+        out = StringIO()
+        call_command("rebuild_fact_states", child="Violet", stdout=out, **kw)
+        return out.getvalue()
+
+    def test_it_gives_back_a_streak_the_old_rules_had_wiped(self):
+        # Three good sittings, each with a slow repeat that used to zero it.
+        self._play([(True, 700), (True, 9000)],
+                   [(True, 700), (True, 9000)],
+                   [(True, 700), (True, 9000)])
+        StudentFactState.objects.create(
+            student=self.child, fact=self.fact, operation=Operation.MULT,
+            leitner_box=1, consecutive_fluent=0, is_mastered=False)
+        self._run()
+        state = StudentFactState.objects.get(student=self.child, fact=self.fact)
+        self.assertEqual(state.consecutive_fluent, 3)
+        self.assertTrue(state.is_mastered)
+
+    def test_a_dry_run_writes_nothing(self):
+        self._play([(True, 700)], [(True, 700)], [(True, 700)])
+        StudentFactState.objects.create(
+            student=self.child, fact=self.fact, operation=Operation.MULT)
+        out = self._run(dry_run=True)
+        self.assertIn("dry run", out)
+        state = StudentFactState.objects.get(student=self.child, fact=self.fact)
+        self.assertEqual(state.consecutive_fluent, 0, "unchanged")
+
+    def test_it_is_idempotent(self):
+        self._play([(True, 700)], [(True, 700)], [(True, 700)])
+        self._run()
+        first = StudentFactState.objects.get(student=self.child, fact=self.fact)
+        snapshot = (first.leitner_box, first.consecutive_fluent,
+                    first.is_mastered, first.total_attempts, first.due_at)
+        self._run()
+        again = StudentFactState.objects.get(student=self.child, fact=self.fact)
+        self.assertEqual(
+            (again.leitner_box, again.consecutive_fluent, again.is_mastered,
+             again.total_attempts, again.due_at), snapshot)
+
+    def test_it_does_not_destroy_the_attempts_it_replays(self):
+        """The states cascade from Fact and Student; a delete-and-recreate
+        would have taken the history with it."""
+        self._play([(True, 700)], [(True, 700)])
+        before = Attempt.objects.count()
+        self._run()
+        self.assertEqual(Attempt.objects.count(), before)
+
+    def test_the_due_dates_land_when_the_answers_happened(self):
+        """Replaying with now=timezone.now() would stack every fact she has
+        ever answered onto today and flood her next round with all of them."""
+        from datetime import timedelta
+
+        self._play([(True, 700)])
+        long_ago = timezone.now() - timedelta(days=30)
+        Attempt.objects.update(created_at=long_ago)
+        self._run()
+        state = StudentFactState.objects.get(student=self.child, fact=self.fact)
+        # Answered a month ago and promoted to box 2 (a 2-day interval), so it
+        # fell due 28 days ago — not two days from now.
+        self.assertLess(state.due_at, timezone.now(),
+                        "the replay must use when the answer happened")
+        self.assertAlmostEqual(
+            (state.due_at - long_ago).total_seconds(),
+            timedelta(days=2).total_seconds(), delta=60)

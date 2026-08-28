@@ -22,7 +22,7 @@ from portal.tokens import student_from_token
 from . import scheduling
 from .models import (
     FLUENCY_THRESHOLD_MS, Attempt, Fact, GameSession, Level, Operation,
-    PersonalRecord, RecordType,
+    PersonalRecord, RecordType, threshold_for,
 )
 
 
@@ -200,7 +200,11 @@ def api_attempts(request, token, session_id):
 
         # The verdict is ours, not the client's.
         is_correct = given == fact.answer(operation)
-        fluent = scheduling.is_fluent(is_correct, response_ms)
+        # Per-digit bar: the clock runs to her last keystroke, so a
+        # two-digit answer is charged an extra tap the 3s benchmark
+        # never included.
+        bar = threshold_for(fact.answer(operation))
+        fluent = scheduling.is_fluent(is_correct, response_ms, bar)
 
         try:
             with transaction.atomic():
@@ -214,6 +218,7 @@ def api_attempts(request, token, session_id):
                     (fact.pk, operation)]
                 if scheduling.apply_attempt(state, is_correct=is_correct,
                                             response_ms=response_ms,
+                                            threshold=bar,
                                             session_id=session.pk):
                     newly_mastered.append(fact.prompt(operation))
         except IntegrityError:

@@ -1742,3 +1742,20 @@ button.portal-subject-card {
 .photo-or::before, .photo-or::after {
   content: ""; flex: 1 1 auto; height: 1px; background: #ded8cd;
 }
+
+/* The way from the subject outline into a unit's booklet. Sits above the
+   lessons because the booklet is the reading order and the outline is the map. */
+.portal-booklet-link {
+  display: inline-block;
+  margin: 0 0 .9rem;
+  padding: .55rem .95rem;
+  border: 1px solid #0A5C63;
+  border-radius: 999px;
+  background: #f2f8f8;
+  color: #0A5C63;
+  font-weight: 700;
+  font-size: .92rem;
+  text-decoration: none;
+}
+.portal-booklet-link:hover,
+.portal-booklet-link:focus-visible { background: #e4f1f1; color: #083f45; }

@@ -1,0 +1,149 @@
+/* One Studies Weekly unit, read as a booklet (HH-208).
+
+   The subject outline is a course-management view. This is the reading order:
+   a cover, then watch → read → check, in the sequence the publisher printed. */
+
+.bk { max-width: 44rem; }
+
+/* ---- the cover ---------------------------------------------------------- */
+
+.bk-cover {
+  margin: .6rem 0 1.6rem;
+  padding: 1.4rem 1.5rem 1.5rem;
+  border-radius: 16px;
+  color: #fff;
+  background: linear-gradient(135deg, #0A5C63 0%, #123B52 100%);
+}
+.bk-kicker {
+  margin: 0 0 .2rem;
+  font-size: .78rem;
+  font-weight: 800;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, .72);
+}
+.bk-cover h1 {
+  margin: 0;
+  font-size: clamp(1.7rem, 6vw, 2.4rem);
+  font-weight: 800;
+  line-height: 1.15;
+}
+.bk-eq {
+  margin: 1rem 0 0;
+  padding: .7rem .9rem;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, .13);
+  font-size: 1.02rem;
+  line-height: 1.45;
+}
+.bk-eq span {
+  display: block;
+  font-size: .72rem;
+  font-weight: 800;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, .7);
+  margin-bottom: .2rem;
+}
+.bk-count {
+  margin: .8rem 0 0;
+  font-size: .85rem;
+  color: rgba(255, 255, 255, .75);
+}
+
+/* ---- a lesson ----------------------------------------------------------- */
+
+.bk-lesson { margin-bottom: 1.6rem; }
+.bk-lesson-head {
+  display: flex;
+  align-items: center;
+  gap: .6rem;
+  margin: 0 0 .6rem;
+  font-size: 1.15rem;
+  font-weight: 800;
+}
+.bk-lesson-n {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 1.9rem;
+  height: 1.9rem;
+  border-radius: 50%;
+  background: #0A5C63;
+  color: #fff;
+  font-size: .95rem;
+}
+.bk-lesson.is-done .bk-lesson-n { background: #1E7A50; }
+.bk-done { color: #1E7A50; }
+
+.bk-steps { list-style: none; margin: 0; padding: 0; display: grid; gap: .5rem; }
+.bk-step { display: grid; gap: .5rem; }
+
+/* Every step is a card: same shape, so the sequence reads as a sequence. */
+.bk-watch,
+.bk-read,
+.bk-check {
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+  padding: .75rem .9rem;
+  border: 1px solid #e3ddd2;
+  border-radius: 12px;
+  background: #fff;
+  text-decoration: none;
+  color: inherit;
+  min-height: 56px;
+  transition: transform .12s ease, box-shadow .12s ease, border-color .12s ease;
+}
+.bk-watch:hover, .bk-read:hover, .bk-check:hover,
+.bk-watch:focus-visible, .bk-read:focus-visible, .bk-check:focus-visible {
+  border-color: #0A5C63;
+  transform: translateY(-1px);
+  box-shadow: 0 5px 12px rgba(18, 59, 82, .10);
+}
+.bk-watch:focus-visible, .bk-read:focus-visible, .bk-check:focus-visible {
+  outline: 3px solid #14484f;
+  outline-offset: 2px;
+}
+
+.bk-step-kind {
+  display: block;
+  font-size: .68rem;
+  font-weight: 800;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: #6b6459;
+}
+
+/* The film. Warmer than the rest so it reads as the way IN, not as homework. */
+.bk-watch { background: #fdf6ec; border-color: #e7d3b3; }
+.bk-watch-icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 2.4rem;
+  height: 2.4rem;
+  border-radius: 50%;
+  background: #C2571A;
+  color: #fff;
+  font-size: .9rem;
+  padding-left: 2px;                /* optical centring of the triangle */
+}
+.bk-watch-body { min-width: 0; }
+.bk-watch-title { display: block; font-weight: 700; line-height: 1.25; }
+.bk-watch-meta { display: block; font-size: .8rem; color: #6b6459; }
+
+.bk-read-title { flex: 1; min-width: 0; font-weight: 700; }
+.bk-read .bk-step-kind, .bk-check .bk-step-kind { flex: none; width: 3.4rem; }
+.bk-go { flex: none; color: #0A5C63; font-weight: 800; }
+
+.bk-check { background: #f7faf8; }
+.bk-check.is-done { border-color: #1E7A50; background: #f2f9f5; }
+.bk-check.is-done .bk-go { color: #1E7A50; }
+
+.bk-empty { color: #6b6459; font-style: italic; }
+
+@media (prefers-reduced-motion: reduce) {
+  .bk-watch, .bk-read, .bk-check { transition: none; }
+  .bk-watch:hover, .bk-read:hover, .bk-check:hover { transform: none; }
+}

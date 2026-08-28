@@ -1,0 +1,76 @@
+{% extends "portal/base_portal.html" %}
+{% load static %}
+{% block title %}{{ chapter.title }} · {{ student.first_name }}{% endblock %}
+{% block extra_css %}<link href="{% static 'css/unit-booklet.css' %}" rel="stylesheet">{% endblock %}
+
+{% block content %}
+<div class="container portal-narrow bk">
+
+  <a href="{% url 'portal:portal_subject' token=token curriculum_id=curriculum.pk %}"
+     class="portal-back">← {{ curriculum.name }}</a>
+
+  {% comment %} The cover. One unit, one question, and how much of it there is —
+     so she can see the shape of the whole thing before starting any of it.
+  {% endcomment %}
+  <header class="bk-cover">
+    <p class="bk-kicker">Unit {{ chapter.number }}</p>
+    <h1>{{ unit_name }}</h1>
+    {% if essential_question %}
+      <p class="bk-eq"><span>The big question</span>{{ essential_question }}</p>
+    {% endif %}
+    <p class="bk-count">
+      {{ lessons|length }} lesson{{ lessons|length|pluralize }}{% if films %} ·
+      {{ films }} short film{{ films|pluralize }}{% endif %}
+    </p>
+  </header>
+
+  {% for les in lessons %}
+    <section class="bk-lesson{% if les.done %} is-done{% endif %}">
+      <h2 class="bk-lesson-head">
+        <span class="bk-lesson-n">{{ forloop.counter }}</span>
+        {{ les.lesson.title }}
+        {% if les.done %}<span class="bk-done" title="Finished">✓</span>{% endif %}
+      </h2>
+
+      <ol class="bk-steps">
+        {% for p in les.parts %}
+          <li class="bk-step">
+            {% if p.watch %}
+              {% comment %} The film is listed as its own step, above the read.
+                 It is the reason a part gets opened at all, and burying it
+                 inside the page made it look optional. {% endcomment %}
+              <a class="bk-watch" href="{% url 'portal:portal_material' token=token pk=p.material.pk %}">
+                <span class="bk-watch-icon" aria-hidden="true">▶</span>
+                <span class="bk-watch-body">
+                  <span class="bk-step-kind">Watch</span>
+                  <span class="bk-watch-title">{{ p.watch.video_title }}</span>
+                  <span class="bk-watch-meta">{{ p.watch.channel }}{% if p.watch.length %} · about {{ p.watch.length }}{% endif %}</span>
+                </span>
+              </a>
+            {% endif %}
+            <a class="bk-read" href="{% url 'portal:portal_material' token=token pk=p.material.pk %}">
+              <span class="bk-step-kind">{% if "Activity" in p.material.title %}Make{% else %}Read{% endif %}</span>
+              <span class="bk-read-title">{{ p.material.title }}</span>
+              <span class="bk-go" aria-hidden="true">→</span>
+            </a>
+          </li>
+        {% endfor %}
+
+        {% for c in les.checks %}
+          <li class="bk-step">
+            <a class="bk-check{% if c.done %} is-done{% endif %}"
+               href="{% url 'portal:portal_questions' token=token set_pk=c.set.pk %}">
+              <span class="bk-step-kind">Check</span>
+              <span class="bk-read-title">{{ c.set.title }}</span>
+              <span class="bk-go" aria-hidden="true">{% if c.done %}✓{% else %}→{% endif %}</span>
+            </a>
+          </li>
+        {% endfor %}
+      </ol>
+    </section>
+  {% empty %}
+    <p class="bk-empty">Nothing in this unit yet.</p>
+  {% endfor %}
+
+</div>
+{% endblock %}

@@ -37,6 +37,12 @@ LEVELS = {
 }
 
 
+def _unit_title(mod):
+    """"Unit 1 — Historical Thinking Skills", or just "Unit 1" if unnamed."""
+    named = getattr(mod, "UNIT_TITLE", "")
+    return "Unit %s — %s" % (mod.UNIT, named) if named else "Unit %s" % mod.UNIT
+
+
 # What to say to the grader when a week does not say it itself.
 _DEFAULT_GRADER_NOTE = (
     "Look for whether she points at something the issue actually shows, rather "
@@ -155,10 +161,12 @@ class Command(BaseCommand):
             for kind, prompt in built["preview"]:
                 self.stdout.write("  %-9s %s" % (kind, prompt[:66]))
             self.stdout.write(self.style.WARNING(
-                "Dry run — nothing written. Would seed Level %d Week %d for %s: "
-                "%d questions, %d vocabulary, %d article page(s)."
-                % (level, week, child.first_name, built["count"],
-                   len(mod.VOCABULARY), len(mod.PAGES))))
+                "Dry run — nothing written. Would seed Level %d Unit %s "
+                "Lesson %s for %s: %d part(s), %d questions, %d article "
+                "page(s)."
+                % (level, mod.UNIT, getattr(mod, "LESSON", week),
+                   child.first_name, len(weekly.parts_of(mod)),
+                   built["count"], len(mod.PAGES))))
             return
 
         family = get_active_family(user)
@@ -171,16 +179,22 @@ class Command(BaseCommand):
                           % ("Created" if created else "Using", curriculum.pk))
         chapter, _ = Chapter.objects.get_or_create(
             curriculum=curriculum, number=mod.UNIT,
-            defaults={"title": "Unit %d" % mod.UNIT},
+            defaults={"title": _unit_title(mod)},
         )
+        # A unit that has since been given a name should get it on a reseed;
+        # get_or_create only writes defaults when it creates.
+        if chapter.title != _unit_title(mod):
+            chapter.title = _unit_title(mod)
+            chapter.save(update_fields=["title"])
         lesson, _ = Lesson.objects.update_or_create(
             chapter=chapter, order=week,
             defaults={"number": week,
-                      "title": "Week %d · %s" % (week, mod.TITLE),
+                      "title": "Lesson %s · %s"
+                               % (getattr(mod, "LESSON", week), mod.TITLE),
                       "objectives": mod.ESSENTIAL_QUESTION},
         )
 
-        self._material(lesson, child, family, mod)
+        self._materials(lesson, child, family, mod)
         qset = self._question_set(lesson, family, mod)
         n = self._fill(qset, built["rows"])
 
@@ -194,51 +208,82 @@ class Command(BaseCommand):
 
     # -- the week's reading -------------------------------------------------
 
-    def _material(self, lesson, child, family, mod):
-        """The issue itself, as its own pages, plus the vocabulary as blocks."""
-        title = "%s — the issue" % mod.TITLE
-        # A reseed must not un-approve a week a parent has already approved:
+    def _materials(self, lesson, child, family, mod):
+        """One Material per SUB-UNIT — the 2.1 and 2.2 of a lesson.
+
+        The publisher prints a lesson in numbered parts and the parts are
+        genuinely different things: 3.1 is an article to read, 3.2 is a poster
+        to build. Collapsing them into one page made the reading a wall of eight
+        scans and gave the activity nowhere to live. A week with no PARTS still
+        produces exactly one material, which is what the flat weeks were.
+        """
+        parts = weekly.parts_of(mod)
+        made = []
+        for index, spec in enumerate(parts, start=1):
+            made.append(self._part_material(lesson, child, family, mod, spec,
+                                            index, len(parts)))
+        # A lesson that lost a part on a reseed should not keep its orphan page.
+        Material.objects.filter(lesson=lesson).exclude(
+            pk__in=[m.pk for m in made]).delete()
+        return made
+
+    def _part_material(self, lesson, child, family, mod, spec, index, total):
+        label = "%s %s" % ("Activity" if spec["activity"] else "Part",
+                           spec["number"])
+        title = "%s · %s" % (label, spec["title"])
+        # A reseed must not un-approve a part a parent has already approved:
         # the portal only shows APPROVED materials, so forcing DRAFT here would
         # make the reading vanish from the child's page mid-week. New ones still
         # start as drafts.
         existing = Material.objects.filter(lesson=lesson, title=title).first()
+        pages = spec["pages"]
+        if spec["activity"]:
+            doing = "Work through the pages below, then build it."
+        else:
+            doing = ("Read %s below, then answer the questions."
+                     % ("both pages" if len(pages) == 2
+                        else "all %d pages" % len(pages)))
+        intro = " ".join(x for x in (spec["intro"].strip(), doing,
+                                     getattr(mod, "STUDENT_NOTE", "").strip())
+                         if x)
         material, _ = Material.objects.update_or_create(
             lesson=lesson, title=title,
             defaults={
                 "child": child, "family": family,
                 "skill_type": Material.SKILL_LESSON,
-                "student_intro": (
-                    "This week's issue. Read %s below, then answer the "
-                    "questions. %s"
-                    % ("both pages" if len(mod.PAGES) == 2
-                       else "all %d pages" % len(mod.PAGES),
-                       getattr(mod, "STUDENT_NOTE", "").strip())).strip(),
+                "student_intro": intro,
                 "student_content": "",
-                "parent_content": self._parent_guide(mod),
+                # The parent guide belongs on the FIRST part only. Repeating the
+                # whole week's guidance under every part trains a parent to
+                # scroll past it.
+                "parent_content": self._parent_guide(mod) if index == 1 else "",
                 "status": existing.status if existing else Material.DRAFT,
             },
         )
         blocks = [
             (LessonBlock.KIND_MASTHEAD, {
-                "eyebrow": "%s · Unit %d · Lesson %s"
-                           % (mod.PUBLICATION, mod.UNIT, mod.LESSON),
-                "title": mod.SUBTITLE,
+                "eyebrow": "%s · Unit %s · Lesson %s"
+                           % (mod.PUBLICATION, mod.UNIT,
+                              getattr(mod, "LESSON", mod.WEEK)),
+                "title": "%s  %s" % (spec["number"], spec["title"]),
                 "thesis": "**Essential question:** " + mod.ESSENTIAL_QUESTION,
             }),
-            # The pages come BEFORE the word list: the intro says "read the
-            # pages below", and until this block existed it said that about
-            # scans the app never put on screen.
-            (LessonBlock.KIND_PAGES, {
-                "title": "This week's issue",
-                "intro": "Tap a page to open it big enough to read.",
-                "images": list(mod.PAGES),
-            }),
-            (LessonBlock.KIND_TRANSLATION, {
-                "title": "Words this week",
-                "rows": [{"symbol": t, "plain": d, "example": ""}
-                         for t, d in mod.VOCABULARY],
-            }),
         ]
+        # The film goes FIRST, ahead of the reading it is there to set up.
+        if spec["watch"]:
+            blocks.append((LessonBlock.KIND_WATCH, dict(
+                spec["watch"], title="Watch this first")))
+        blocks.append((LessonBlock.KIND_PAGES, {
+            "title": "%s in the issue" % label,
+            "intro": "Tap a page to open it big enough to read.",
+            "images": list(pages),
+        }))
+        if spec["vocabulary"]:
+            blocks.append((LessonBlock.KIND_TRANSLATION, {
+                "title": "Words in this part",
+                "rows": [{"symbol": t, "plain": d, "example": ""}
+                         for t, d in spec["vocabulary"]],
+            }))
         LessonBlock.objects.filter(material=material).delete()
         for i, (kind, payload) in enumerate(blocks, start=1):
             LessonBlock.objects.create(material=material, order=i, kind=kind,
@@ -298,13 +343,24 @@ purchased issue for private use.
                  pictures=(" Some questions have a picture printed with them — "
                            "tap it to make it bigger."
                            if any(q.get("figure") for q in mod.QUESTIONS) else ""))
-        qset, _ = QuestionSet.objects.update_or_create(
-            lesson=lesson, title="Week %d · %s — Comprehension Check"
-                                 % (mod.WEEK, mod.TITLE),
-            defaults={"family": family, "intro": intro, "rubric": _rubric(mod),
-                      "status": QuestionSet.APPROVED, "reading": "",
-                      "mode": QuestionSet.MODE_STUDENT},
-        )
+        # Named for the LESSON, which is what the printed check is called
+        # ("Lesson 2 Comprehension Check") and what she will be looking for.
+        # The old "Week 2 ·" was our word, not the publisher's.
+        title = ("Lesson %s · %s — Comprehension Check"
+                 % (getattr(mod, "LESSON", mod.WEEK), mod.TITLE))
+        fields = {"family": family, "intro": intro, "rubric": _rubric(mod),
+                  "status": QuestionSet.APPROVED, "reading": "",
+                  "mode": QuestionSet.MODE_STUDENT}
+        # Matched on the LESSON, not on the title. A lesson has exactly one
+        # check, and keying on the title meant renaming one would silently
+        # create a second set beside it — orphaning every answer already
+        # submitted against the old name.
+        qset = QuestionSet.objects.filter(lesson=lesson).order_by("pk").first()
+        if qset is None:
+            return QuestionSet.objects.create(lesson=lesson, title=title, **fields)
+        for field, value in dict(fields, title=title).items():
+            setattr(qset, field, value)
+        qset.save()
         return qset
 
     def _build(self, mod):
@@ -371,7 +427,10 @@ purchased issue for private use.
                 rows.append(dict(
                     response_type=Question.TYPE_TEXT, category="writing",
                     prompt=q["prompt"], hint=q["hint"],
-                    passage=json.dumps({"answer_mode": q.get("answer_mode", True)}),
+                    passage=json.dumps({
+                        "answer_mode": q.get("answer_mode", True),
+                        "figure": q.get("figure", ""),
+                        "figure_caption": q.get("figure_caption", "")}),
                 ))
                 preview.append(("written", q["prompt"]))
         return {"rows": rows, "preview": preview, "count": len(rows)}

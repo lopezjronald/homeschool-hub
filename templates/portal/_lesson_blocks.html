@@ -199,6 +199,34 @@
       </ul>
     </section>
 
+  {% elif b.kind == "watch" %}
+    {% comment %} The film that sets the lesson up, before any reading. It is
+       the FIRST block on purpose: a five-minute story about why the question
+       matters buys attention that a page of newsprint has to earn cold.
+
+       youtube-nocookie.com, and no autoplay: she chooses to start it, and the
+       privacy-enhanced host does not write a tracking cookie for a twelve-
+       year-old before she has pressed anything. {% endcomment %}
+    <section class="lesson-section lesson-section--watch">
+      <h2>{{ b.data.title|default:"Watch this first" }}</h2>
+      {% if b.data.why %}<p class="watch-why">{{ b.data.why|markdownify_inline }}</p>{% endif %}
+      <div class="watch-frame">
+        <iframe src="https://www.youtube-nocookie.com/embed/{{ b.data.youtube_id }}?rel=0"
+                title="{{ b.data.video_title }}"
+                loading="lazy" allowfullscreen
+                referrerpolicy="strict-origin-when-cross-origin"></iframe>
+      </div>
+      <p class="watch-credit">
+        {{ b.data.video_title }}{% if b.data.channel %} · {{ b.data.channel }}{% endif %}{% if b.data.length %} · about {{ b.data.length }}{% endif %}
+        &middot;
+        <a href="https://www.youtube.com/watch?v={{ b.data.youtube_id }}"
+           target="_blank" rel="noopener">open on YouTube</a>
+      </p>
+      {% if b.data.question %}
+        <p class="watch-question">{{ b.data.question|markdownify_inline }}</p>
+      {% endif %}
+    </section>
+
   {% elif b.kind == "pages" %}
     {% comment %} The real printed pages of a Studies Weekly issue. The layout
        IS the lesson in a newspaper — the tinted boxes, the illustrated panels,

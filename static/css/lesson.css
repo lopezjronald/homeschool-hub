@@ -385,6 +385,46 @@
   accent-color: var(--lesson-move, #C2571A);
 }
 
+/* The short film that opens a lesson.
+
+   Sits first, before the reading. A 16:9 frame that holds its shape while the
+   iframe loads, so the page does not jump under her thumb mid-tap. */
+.lesson-section--watch { border-left-color: var(--lesson-move, #C2571A); }
+.watch-why { margin: 0 0 0.7rem; }
+.watch-frame {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #14231C;
+  box-shadow: 2px 2px 0 rgba(30, 42, 36, 0.10);
+}
+.watch-frame iframe {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+.watch-credit {
+  margin: 0.45rem 0 0;
+  font-size: 0.82rem;
+  color: #5a6b62;
+}
+.watch-question {
+  margin: 0.6rem 0 0;
+  padding: 0.55rem 0.8rem;
+  border-left: 3px solid var(--lesson-move, #C2571A);
+  background: rgba(194, 87, 26, 0.06);
+  border-radius: 0 8px 8px 0;
+  font-weight: 600;
+}
+
+@media print {
+  /* A video cannot print; the question it asks still can. */
+  .watch-frame { display: none; }
+}
+
 /* The printed source pages of an issue (Studies Weekly), as scans.
 
    One column, full width, tap to open full size. A newspaper page is only

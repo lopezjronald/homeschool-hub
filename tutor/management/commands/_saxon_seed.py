@@ -39,6 +39,9 @@ REQUIRED_KEYS = {
     LessonBlock.KIND_TOOL: ("widget", "config"),
     LessonBlock.KIND_RECAP: ("items",),
     LessonBlock.KIND_PAGES: ("images",),
+    # A watch block with no id renders an empty player, which is worse than no
+    # block at all: the page still says "watch this first".
+    LessonBlock.KIND_WATCH: ("youtube_id", "video_title"),
 }
 
 KNOWN_WIDGETS = {"grid", "ratiobar", "scislide", "chart", "binary", "triangle"}

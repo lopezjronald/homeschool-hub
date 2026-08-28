@@ -962,6 +962,15 @@ def portal_subject(request, token, curriculum_id):
     else:
         current_chapter = None
 
+    from tutor.models import LessonBlock
+
+    booklet_chapters = set(
+        LessonBlock.objects
+        .filter(kind=LessonBlock.KIND_WATCH,
+                material__lesson__chapter__curriculum=curriculum)
+        .values_list("material__lesson__chapter_id", flat=True)
+    )
+
     chapters = []
     db_chapters = (
         Chapter.objects.filter(curriculum=curriculum)
@@ -1007,6 +1016,10 @@ def portal_subject(request, token, curriculum_id):
             "pk": chapter.pk,
             "number": chapter.number,
             "title": chapter.title,
+            # A unit reads as a booklet when it has films to open its parts
+            # with. Maths chapters do not, and offering them a cover page with
+            # nothing on it would be a dead link.
+            "has_booklet": chapter.pk in booklet_chapters,
             "lessons": lessons_out,
             "done": done,
             "total": total,
@@ -1064,6 +1077,84 @@ def _booklets_for(student, curriculum_id):
             .exclude(student_file="")
             .exclude(student_pages="")
             .order_by("title"))
+
+
+def portal_unit_booklet(request, token, curriculum_id, unit):
+    """One unit of a Studies Weekly course, read as a booklet (HH-208).
+
+    The subject outline is a course-management view — "CH 1, L2", a progress
+    counter, every chapter at once. A unit is a different thing: a cover, one
+    essential question, and then the lesson parts IN THE ORDER SHE DOES THEM —
+    watch, read, check. This page is that, and it exists because a publisher
+    that prints 2.1 and 2.2 is telling you the order.
+    """
+    from collections import defaultdict
+
+    from curricula.models import Chapter
+    from tutor.models import LessonBlock
+
+    student = _resolve_student(token)
+    placement = (
+        CurriculumPlacement.objects
+        .filter(child=student, curriculum_id=curriculum_id, is_active=True,
+                curriculum__is_active=True)
+        .select_related("curriculum")
+        .first()
+    )
+    if placement is None:
+        raise Http404
+    chapter = get_object_or_404(
+        Chapter, curriculum=placement.curriculum, number=unit)
+
+    materials_by_lesson = defaultdict(list)
+    for m in _visible_materials(student):
+        if m.lesson.chapter_id == chapter.pk:
+            materials_by_lesson[m.lesson_id].append(m)
+    sets_by_lesson = defaultdict(list)
+    for qs in _annotated_question_sets(student):
+        if qs.lesson.chapter_id == chapter.pk:
+            sets_by_lesson[qs.lesson_id].append(qs)
+
+    # One query for every film in the unit, rather than one per part.
+    watch_by_material = {
+        b.material_id: b.data
+        for b in LessonBlock.objects.filter(
+            kind=LessonBlock.KIND_WATCH,
+            material__lesson__chapter=chapter).order_by("order")
+    }
+
+    _, resolved = placement.resolved_lesson_ids()
+    lessons, essential = [], ""
+    for lesson in chapter.lessons.order_by("order"):
+        parts = materials_by_lesson.get(lesson.pk, [])
+        checks = sets_by_lesson.get(lesson.pk, [])
+        if not parts and not checks:
+            continue
+        essential = essential or (lesson.objectives or "")
+        lessons.append({
+            "lesson": lesson,
+            "parts": [{"material": m, "watch": watch_by_material.get(m.pk)}
+                      for m in parts],
+            "checks": [{"set": qs, "done": _set_is_done(qs)} for qs in checks],
+            "done": lesson.pk in resolved,
+        })
+
+    films = sum(1 for les in lessons for p in les["parts"] if p["watch"])
+    # Chapters are titled "Unit 1 — Historical Thinking Skills"; the cover
+    # already says "Unit 1" in its own type, so show only the name. Done here
+    # rather than with a chain of |cut filters, which would mangle any title
+    # that happened to contain the same characters.
+    _, _, named = chapter.title.partition("—")
+    return render(request, "portal/portal_unit_booklet.html", {
+        "token": token,
+        "student": student,
+        "curriculum": placement.curriculum,
+        "chapter": chapter,
+        "unit_name": named.strip() or chapter.title,
+        "lessons": lessons,
+        "essential_question": essential,
+        "films": films,
+    })
 
 
 @xframe_options_sameorigin

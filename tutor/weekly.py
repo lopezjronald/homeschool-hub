@@ -140,10 +140,18 @@ def order(prompt, steps, correct, *, hint="", standard=""):
             "correct": correct, "hint": hint, "standard": standard}
 
 
-def written(prompt, *, hint="", standard="", answer_mode=True):
-    """An open answer. `answer_mode` offers her the type-it/write-it picker."""
+def written(prompt, *, hint="", standard="", answer_mode=True, figure=None,
+            figure_caption=""):
+    """An open answer. `answer_mode` offers her the type-it/write-it picker.
+
+    Takes a `figure` for the same reason the choice questions do: the printed
+    check asks several open questions ABOUT a picture ("study the image", "study
+    sources A and B"), and without it those arrive as a wall of words asking her
+    to look at something that is not there.
+    """
     return {"kind": "written", "prompt": prompt, "hint": hint,
-            "standard": standard, "answer_mode": answer_mode}
+            "standard": standard, "answer_mode": answer_mode,
+            "figure": figure or "", "figure_caption": figure_caption}
 
 
 def step(do, where=VOICE):
@@ -181,3 +189,57 @@ def week_module(level, week):
             "own module; copy the nearest one and work from the issue."
             % (level, week, name.replace(".", "/"))
         ) from exc
+
+
+# ---------------------------------------------------------------------------
+# Units, sub-units and the film that opens one.
+#
+# A Studies Weekly unit is not a flat run of weeks: Unit 1 is Lesson 1, Lesson 2
+# (printed as 2.1 and 2.2) and Lesson 3 (3.1 and an activity, 3.2), with one
+# comprehension check per LESSON and one assessment per UNIT. A week module
+# therefore describes one lesson and lists its parts, and the booklet page reads
+# that structure back out.
+# ---------------------------------------------------------------------------
+
+def video(youtube_id, title, *, channel, length, why, question=""):
+    """A short film that sets a part up, played before any reading.
+
+    `length` is written as a human string ("about 5 minutes") rather than a
+    number of seconds: YouTube does not publish a duration we can read without
+    an API key, so a precise figure here would be invented. `question` is what
+    she should be able to answer afterwards — a video nobody has to think about
+    is a break, not a lesson.
+    """
+    if not youtube_id or " " in youtube_id:
+        raise ValueError("video(): %r is not a YouTube id" % (youtube_id,))
+    return {"youtube_id": youtube_id, "video_title": title, "channel": channel,
+            "length": length, "why": why, "question": question}
+
+
+def part(number, title, *, pages, watch=None, vocabulary=(), intro="",
+         activity=False):
+    """One sub-unit — the "2.1" of Unit 1, Lesson 2.
+
+    `pages` are its printed pages, in order. `watch` is an optional video()
+    shown before them. `activity` marks a part that is something to DO rather
+    than something to read, so the booklet can say so.
+    """
+    return {"number": str(number), "title": title, "pages": list(pages),
+            "watch": watch, "vocabulary": list(vocabulary), "intro": intro,
+            "activity": bool(activity)}
+
+
+def parts_of(mod):
+    """A module's parts, or one implicit part for the older flat weeks.
+
+    Level 3 and the first Level 7 issue were written before units had sub-units,
+    and they still seed and still render — a week with no PARTS is a lesson with
+    exactly one part, which is what those are.
+    """
+    declared = getattr(mod, "PARTS", None)
+    if declared:
+        return list(declared)
+    return [part(getattr(mod, "LESSON", "1"), mod.TITLE, pages=mod.PAGES,
+                 watch=getattr(mod, "WATCH", None),
+                 vocabulary=getattr(mod, "VOCABULARY", ()),
+                 intro=getattr(mod, "STUDENT_NOTE", ""))]

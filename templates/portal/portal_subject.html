@@ -63,6 +63,15 @@
           </button>
           <div id="chapter{{ ch.pk }}" class="collapse {% if ch.is_current %}show{% endif %}">
             <div class="portal-chapter-body">
+              {% if ch.has_booklet %}
+                {% comment %} This outline is the map; the booklet is the
+                   reading order. Only offered where a unit actually has one —
+                   a maths chapter has no cover and no films. {% endcomment %}
+                <a class="portal-booklet-link"
+                   href="{% url 'portal:portal_unit_booklet' token=token curriculum_id=curriculum.pk unit=ch.number %}">
+                  📖 Read this unit as a booklet
+                </a>
+              {% endif %}
               {% for les in ch.lessons %}
                 <div class="portal-lesson-block {% if les.is_current %}is-current{% endif %}">
                   <div class="portal-lesson-head">

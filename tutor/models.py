@@ -255,6 +255,7 @@ class LessonBlock(models.Model):
     KIND_TOOL = "tool"                  # an interactive widget
     KIND_RECAP = "recap"                # the closing rule
     KIND_PAGES = "pages"                # the printed source pages, as scans
+    KIND_WATCH = "watch"                # a short film that sets the lesson up
 
     KIND_CHOICES = [
         (KIND_MASTHEAD, "Masthead"),
@@ -272,6 +273,7 @@ class LessonBlock(models.Model):
         (KIND_TOOL, "Interactive tool"),
         (KIND_RECAP, "Recap"),
         (KIND_PAGES, "Source pages"),
+        (KIND_WATCH, "Watch first"),
     ]
 
     material = models.ForeignKey(

@@ -7888,3 +7888,233 @@ class RetireSupersededGleanTests(TestCase):
 
         self.assertEqual(glean_handson.retire_superseded(
             self.lesson, "Section 5 · Glean: The David Museum (hands-on)"), [])
+
+
+class StudiesWeeklyUnitOneTests(TestCase):
+    """Unit 1 of Level 7: sub-units, the films that open them, and the booklet.
+
+    Lesson 2 is printed as 2.1 + 2.2 with ONE comprehension check; Lesson 3 is
+    an article plus an activity. The structure is the publisher's, so it is
+    asserted rather than assumed.
+    """
+
+    def test_every_part_declares_pages_that_exist_on_disk(self):
+        """Under ManifestStaticFilesStorage a missing scan does not degrade —
+        it raises, and takes the whole lesson page down with it."""
+        from django.contrib.staticfiles import finders
+        from tutor import weekly, weekly_l7w2, weekly_l7w3
+
+        for mod in (weekly_l7w2, weekly_l7w3):
+            parts = weekly.parts_of(mod)
+            self.assertEqual(len(parts), 2, mod.__name__)
+            seen = []
+            for spec in parts:
+                self.assertTrue(spec["pages"], "%s %s has no pages"
+                                % (mod.__name__, spec["number"]))
+                for path in spec["pages"]:
+                    self.assertIsNotNone(finders.find(path), path)
+                    seen.append(path)
+            # The parts between them cover the whole issue, in order, once.
+            self.assertEqual(seen, list(mod.PAGES), mod.__name__)
+
+    def test_every_question_figure_exists_on_disk(self):
+        from django.contrib.staticfiles import finders
+        from tutor import weekly_l7w2, weekly_l7w3
+
+        found = 0
+        for mod in (weekly_l7w2, weekly_l7w3):
+            for q in mod.QUESTIONS:
+                path = q.get("figure")
+                if path:
+                    self.assertIsNotNone(finders.find(path), path)
+                    found += 1
+        self.assertEqual(found, 4, "the four figures the printed checks need")
+
+    def test_the_films_are_named_and_plausible(self):
+        """Each id was checked against YouTube's oEmbed endpoint by hand — the
+        first candidate for 2.1 turned out to be a different TED-Ed lesson
+        entirely. This guards the shape, not the network."""
+        from tutor import weekly, weekly_l7w2, weekly_l7w3
+
+        ids = set()
+        for mod in (weekly_l7w2, weekly_l7w3):
+            for spec in weekly.parts_of(mod):
+                watch = spec["watch"]
+                if watch is None:
+                    self.assertTrue(spec["activity"],
+                                    "only an activity may have no film")
+                    continue
+                self.assertRegex(watch["youtube_id"], r"^[A-Za-z0-9_-]{11}$")
+                self.assertTrue(watch["video_title"].strip())
+                self.assertTrue(watch["channel"].strip())
+                self.assertTrue(watch["why"].strip())
+                # A film she is not asked anything about is a break, not a lesson.
+                self.assertTrue(watch["question"].strip(), watch["video_title"])
+                ids.add(watch["youtube_id"])
+        self.assertEqual(len(ids), 3, "three distinct films, none reused")
+
+    def test_a_video_id_with_a_space_is_refused(self):
+        from tutor.weekly import video
+
+        with self.assertRaises(ValueError):
+            video("not an id", "T", channel="c", length="5 minutes", why="w")
+
+    def test_the_activity_is_marked_as_a_make_not_a_read(self):
+        from tutor import weekly, weekly_l7w3
+
+        poster = weekly.parts_of(weekly_l7w3)[1]
+        self.assertEqual(poster["number"], "3.2")
+        self.assertTrue(poster["activity"])
+        self.assertIsNone(poster["watch"])
+
+    def test_the_checks_have_a_correct_answer_for_every_closed_question(self):
+        from tutor import weekly_l7w2, weekly_l7w3
+
+        for mod in (weekly_l7w2, weekly_l7w3):
+            for q in mod.QUESTIONS:
+                if q["kind"] != "choice":
+                    continue
+                keys = {o["key"] for o in q["options"]}
+                self.assertTrue(q["correct"], q["prompt"][:40])
+                for key in q["correct"]:
+                    self.assertIn(key, keys, q["prompt"][:40])
+                if not q["multi"]:
+                    self.assertEqual(len(q["correct"]), 1, q["prompt"][:40])
+
+    def test_a_flat_week_still_has_exactly_one_part(self):
+        """Level 3 and Level 7 week 1 predate sub-units and must keep working."""
+        from tutor import weekly, weekly_l3w1, weekly_l7w1
+
+        for mod in (weekly_l3w1, weekly_l7w1):
+            parts = weekly.parts_of(mod)
+            self.assertEqual(len(parts), 1, mod.__name__)
+            self.assertEqual(parts[0]["pages"], list(mod.PAGES))
+
+
+class StudiesWeeklySeedUnitTests(TestCase):
+    """What the seeder builds from a lesson with parts."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.parent = User.objects.create_user(
+            username="swu", email="swu@e.com", password="pw")
+        cls.fam = Family.objects.create(name="SWU Fam")
+        FamilyMembership.objects.create(user=cls.parent, family=cls.fam, role="parent")
+        cls.kaylin = Student.objects.create(
+            parent=cls.parent, first_name="Kaylin", grade_level="G07",
+            family=cls.fam)
+
+    def _seed(self, week):
+        from django.core.management import call_command
+        call_command("seed_weekly", level=7, week=week, for_user="swu",
+                     verbosity=0)
+
+    def test_a_lesson_with_parts_seeds_one_material_each(self):
+        from tutor.models import LessonBlock, Material
+
+        self._seed(2)
+        titles = sorted(Material.objects.values_list("title", flat=True))
+        self.assertEqual(titles, [
+            "Part 2.1 · Thinking Like a Time Traveler",
+            "Part 2.2 · Seeing History Through Different Eyes",
+        ])
+        for material in Material.objects.all():
+            kinds = list(LessonBlock.objects.filter(material=material)
+                         .order_by("order").values_list("kind", flat=True))
+            # The film comes FIRST, ahead of the reading it sets up.
+            self.assertEqual(kinds[0], LessonBlock.KIND_MASTHEAD, material.title)
+            self.assertEqual(kinds[1], LessonBlock.KIND_WATCH, material.title)
+            self.assertIn(LessonBlock.KIND_PAGES, kinds, material.title)
+
+    def test_the_unit_is_named_and_the_check_is_named_for_its_lesson(self):
+        from curricula.models import Chapter
+        from tutor.models import QuestionSet
+
+        self._seed(2)
+        self.assertEqual(Chapter.objects.get().title,
+                         "Unit 1 — Historical Thinking Skills")
+        self.assertEqual(QuestionSet.objects.get().title,
+                         "Lesson 2 · Historical Thinking Skills — Comprehension Check")
+
+    def test_reseeding_renames_the_check_instead_of_duplicating_it(self):
+        """Keying the set on its TITLE meant a rename created a second set and
+        orphaned every answer already submitted against the old one."""
+        from tutor.models import QuestionSet
+
+        self._seed(2)
+        qset = QuestionSet.objects.get()
+        qset.title = "Week 2 · something older"
+        qset.save()
+        self._seed(2)
+        self.assertEqual(QuestionSet.objects.count(), 1)
+        self.assertEqual(QuestionSet.objects.get().pk, qset.pk)
+
+    def test_an_open_question_carries_its_figure_to_the_page(self):
+        """Two of the printed open questions are ABOUT a picture ("study the
+        image", "study sources A and B") and were arriving without it."""
+        from tutor.models import Question
+
+        self._seed(2)
+        with_figures = [q for q in Question.objects.all() if q.figure]
+        self.assertEqual(len(with_figures), 3)
+        open_with_figure = [q for q in with_figures
+                            if q.response_type == Question.TYPE_TEXT]
+        self.assertEqual(len(open_with_figure), 2)
+
+    def test_a_dropped_part_does_not_leave_an_orphan_page(self):
+        from tutor.models import Material
+
+        self._seed(2)
+        Material.objects.create(
+            lesson=Material.objects.first().lesson, child=self.kaylin,
+            family=self.fam, title="Part 2.9 · a part that no longer exists",
+            skill_type=Material.SKILL_LESSON, status=Material.APPROVED)
+        self._seed(2)
+        self.assertEqual(Material.objects.count(), 2)
+        self.assertNotIn("Part 2.9 · a part that no longer exists",
+                         Material.objects.values_list("title", flat=True))
+
+    def test_the_booklet_lists_watch_read_check_in_order(self):
+        from portal.tokens import make_portal_token
+
+        self._seed(2)
+        self._seed(3)
+        from tutor.models import Material
+        Material.objects.update(status=Material.APPROVED)
+        from curricula.models import Curriculum
+
+        curriculum = Curriculum.objects.get()
+        token = make_portal_token(self.kaylin)
+        html = self.client.get(reverse(
+            "portal:portal_unit_booklet",
+            kwargs={"token": token, "curriculum_id": curriculum.pk,
+                    "unit": 1})).content.decode()
+        self.assertIn("Historical Thinking Skills", html)
+        self.assertIn("How do we know what happened in the past?", html)
+        # The films are on the cover count and in the steps.
+        self.assertIn("3 short films", html)
+        self.assertIn("History vs. Genghis Khan", html)
+        self.assertIn("TED-Ed · about 5 minutes", html)
+        # The booklet LINKS to the part; the embed itself lives on that page,
+        # so no YouTube frame is loaded just by opening the contents.
+        self.assertNotIn("youtube", html.lower())
+        # And the activity says Make, not Read.
+        self.assertIn(">Make<", html)
+        # Watch is listed before Read, which is before Check.
+        self.assertLess(html.index("Genghis"), html.index("Part 2.2"))
+        self.assertLess(html.index("Part 2.2"),
+                        html.index("Comprehension Check"))
+
+    def test_the_embed_is_the_no_cookie_host_and_does_not_autoplay(self):
+        from portal.tokens import make_portal_token
+        from tutor.models import Material
+
+        self._seed(2)
+        Material.objects.update(status=Material.APPROVED)
+        material = Material.objects.order_by("title").first()
+        token = make_portal_token(self.kaylin)
+        html = self.client.get(reverse(
+            "portal:portal_material",
+            kwargs={"token": token, "pk": material.pk})).content.decode()
+        self.assertIn("youtube-nocookie.com/embed/A542ixwyBhc", html)
+        self.assertNotIn("autoplay=1", html)

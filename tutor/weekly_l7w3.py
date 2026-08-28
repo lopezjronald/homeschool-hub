@@ -12,7 +12,7 @@ Transcribed from the family's issue; the check is the printed wording (pp.
 1.40-1.41). Digitized from the family's purchased issue for private use.
 """
 
-from .weekly import choice, figure, part, video, written
+from .weekly import choice, figure, fill_two, part, video, written
 
 LEVEL = 7
 WEEK = 3
@@ -136,7 +136,8 @@ QUESTIONS = [
         correct=["b", "c", "d"],
         multi=True,
         hint="The article's box is headed \"Here's how supporting questions "
-             "work\" and gives exactly three: Focused, Answerable, Informative.",
+             "work\" and gives exactly three. Find that box — three of these "
+             "six are its headings, word for word.",
         standard=C3,
     ),
     choice(
@@ -184,34 +185,19 @@ QUESTIONS = [
              "whether you could actually find sources.",
         standard="%s · %s" % (C3, WHST),
     ),
-    choice(
+    # One printed sentence with two banks, so it uses the two-blank builder.
+    # Written as two hand-rolled choices, the second had to restate the sentence
+    # — and restating it meant printing the answer to the first one.
+    fill_two(
         "Choose the words that best complete the sentence. The most successful "
-        "thinkers know how to ____A____ and ____B____ their thinking if needed. "
-        "**Blank A:**",
-        options=[
-            ("a", "reflect"),
-            ("b", "build"),
-            ("c", "share"),
-            ("d", "stop"),
-        ],
-        correct="a",
+        "thinkers know how to ____A____ and ____B____ their thinking if needed.",
+        bank_a=["reflect", "build", "share", "stop"],
+        bank_b=["change", "ignore", "ponder", "withhold"],
+        correct_a="reflect",
+        correct_b="change",
         hint="This exact sentence is pulled out in big blue type on the page "
-             "about point of view.",
-        standard=HSS,
-    ),
-    choice(
-        "…and **Blank B**: The most successful thinkers know how to reflect and "
-        "____B____ their thinking if needed.",
-        options=[
-            ("a", "change"),
-            ("b", "ignore"),
-            ("c", "ponder"),
-            ("d", "withhold"),
-        ],
-        correct="a",
-        hint="The whole point of the section is that good thinkers are willing "
-             "to be wrong. Which word means you would actually do something "
-             "about it?",
+             "about point of view. The second word is the one that means you "
+             "would actually do something about being wrong.",
         standard=HSS,
     ),
     choice(

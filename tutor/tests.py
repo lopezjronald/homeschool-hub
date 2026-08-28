@@ -8118,3 +8118,81 @@ class StudiesWeeklySeedUnitTests(TestCase):
             kwargs={"token": token, "pk": material.pk})).content.decode()
         self.assertIn("youtube-nocookie.com/embed/A542ixwyBhc", html)
         self.assertNotIn("autoplay=1", html)
+
+
+class FlatWeekReseedTests(TestCase):
+    """Splitting the framework into parts must not disturb a week already live.
+
+    Kaylin's Week 1 is approved and answered on prod. The first cut of this
+    matched materials by TITLE, so renaming "… — the issue" to "Part 1.1 · …"
+    was a delete plus an insert: the new row came back DRAFT, the portal only
+    shows APPROVED, and her reading went blank.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.parent = User.objects.create_user(
+            username="rsd", email="rsd@e.com", password="pw")
+        cls.fam = Family.objects.create(name="RSD Fam")
+        FamilyMembership.objects.create(user=cls.parent, family=cls.fam, role="parent")
+        cls.kaylin = Student.objects.create(
+            parent=cls.parent, first_name="Kaylin", grade_level="G07",
+            family=cls.fam)
+
+    def _seed(self, week):
+        from django.core.management import call_command
+        call_command("seed_weekly", level=7, week=week, for_user="rsd",
+                     verbosity=0)
+
+    def test_reseeding_a_renamed_week_keeps_the_row_its_pk_and_its_approval(self):
+        from tutor.models import Material
+
+        self._seed(1)
+        material = Material.objects.get()
+        # Put it back the way prod has it: the old title, and approved.
+        material.title = "Geography and Map Skills — the issue"
+        material.status = Material.APPROVED
+        material.save()
+
+        self._seed(1)
+
+        self.assertEqual(Material.objects.count(), 1)
+        again = Material.objects.get()
+        self.assertEqual(again.pk, material.pk, "her bookmark still resolves")
+        self.assertEqual(again.status, Material.APPROVED,
+                         "an approved reading must not silently go back to draft")
+        self.assertEqual(again.title, "Part 1.1 · Geography and Map Skills")
+
+    def test_a_week_that_does_not_name_its_unit_leaves_the_name_alone(self):
+        """Week 1 has no UNIT_TITLE. Reseeding it used to walk the chapter back
+        from "Unit 1 — Historical Thinking Skills" to a bare "Unit 1"."""
+        from curricula.models import Chapter
+
+        self._seed(2)
+        self.assertEqual(Chapter.objects.get().title,
+                         "Unit 1 — Historical Thinking Skills")
+        self._seed(1)
+        self.assertEqual(Chapter.objects.get().title,
+                         "Unit 1 — Historical Thinking Skills")
+
+    def test_a_flat_week_says_its_note_once(self):
+        from tutor.models import Material
+
+        self._seed(1)
+        intro = Material.objects.get().student_intro
+        note = "The maps are the part most of the questions are about"
+        self.assertEqual(intro.count(note), 1, intro)
+
+    def test_a_parents_own_material_on_the_lesson_survives_a_reseed(self):
+        from tutor.models import Material
+
+        self._seed(1)
+        lesson = Material.objects.get().lesson
+        other = Student.objects.create(
+            parent=self.parent, first_name="Sib", grade_level="G05",
+            family=self.fam)
+        mine = Material.objects.create(
+            lesson=lesson, child=other, family=self.fam,
+            title="Something a parent added", skill_type=Material.SKILL_LESSON)
+        self._seed(1)
+        self.assertTrue(Material.objects.filter(pk=mine.pk).exists())

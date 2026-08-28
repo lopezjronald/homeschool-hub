@@ -183,7 +183,10 @@ class Command(BaseCommand):
         )
         # A unit that has since been given a name should get it on a reseed;
         # get_or_create only writes defaults when it creates.
-        if chapter.title != _unit_title(mod):
+        # Only when the module NAMES the unit. The older flat weeks do not, so
+        # an unconditional rename walked "Unit 1 — Historical Thinking Skills"
+        # back to a bare "Unit 1" every time an early week was reseeded.
+        if getattr(mod, "UNIT_TITLE", "") and chapter.title != _unit_title(mod):
             chapter.title = _unit_title(mod)
             chapter.save(update_fields=["title"])
         lesson, _ = Lesson.objects.update_or_create(
@@ -218,16 +221,27 @@ class Command(BaseCommand):
         produces exactly one material, which is what the flat weeks were.
         """
         parts = weekly.parts_of(mod)
+        # Matched by POSITION, not by title. Splitting a flat week into parts
+        # renames its material, and matching on the title made that a delete
+        # plus an insert: the new row was born DRAFT, the portal only shows
+        # APPROVED, and a week a parent had already approved went blank on the
+        # child's page — taking its /materials/<pk>/ link with it.
+        existing = list(Material.objects.filter(lesson=lesson, child=child)
+                        .order_by("pk"))
         made = []
         for index, spec in enumerate(parts, start=1):
+            reuse = existing[index - 1] if index <= len(existing) else None
             made.append(self._part_material(lesson, child, family, mod, spec,
-                                            index, len(parts)))
+                                            index, len(parts), reuse))
         # A lesson that lost a part on a reseed should not keep its orphan page.
-        Material.objects.filter(lesson=lesson).exclude(
+        # Scoped to this child: a parent may have attached their own material to
+        # the same lesson, and reseeding is not permission to bin it.
+        Material.objects.filter(lesson=lesson, child=child).exclude(
             pk__in=[m.pk for m in made]).delete()
         return made
 
-    def _part_material(self, lesson, child, family, mod, spec, index, total):
+    def _part_material(self, lesson, child, family, mod, spec, index, total,
+                       reuse=None):
         label = "%s %s" % ("Activity" if spec["activity"] else "Part",
                            spec["number"])
         title = "%s · %s" % (label, spec["title"])
@@ -235,7 +249,7 @@ class Command(BaseCommand):
         # the portal only shows APPROVED materials, so forcing DRAFT here would
         # make the reading vanish from the child's page mid-week. New ones still
         # start as drafts.
-        existing = Material.objects.filter(lesson=lesson, title=title).first()
+        existing = reuse
         pages = spec["pages"]
         if spec["activity"]:
             doing = "Work through the pages below, then build it."
@@ -243,12 +257,17 @@ class Command(BaseCommand):
             doing = ("Read %s below, then answer the questions."
                      % ("both pages" if len(pages) == 2
                         else "all %d pages" % len(pages)))
-        intro = " ".join(x for x in (spec["intro"].strip(), doing,
-                                     getattr(mod, "STUDENT_NOTE", "").strip())
-                         if x)
+        # A flat week's implicit part carries STUDENT_NOTE as its intro, so
+        # appending it again printed the same sentence twice in a row.
+        note = getattr(mod, "STUDENT_NOTE", "").strip()
+        pieces = [spec["intro"].strip(), doing]
+        if note and note != spec["intro"].strip():
+            pieces.append(note)
+        intro = " ".join(x for x in pieces if x)
         material, _ = Material.objects.update_or_create(
-            lesson=lesson, title=title,
+            pk=existing.pk if existing else None,
             defaults={
+                "lesson": lesson, "title": title,
                 "child": child, "family": family,
                 "skill_type": Material.SKILL_LESSON,
                 "student_intro": intro,

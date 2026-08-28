@@ -9,6 +9,7 @@
      data-attempts-url="{% url 'factfluency:api_attempts' token=token session_id=0 %}"
      data-finish-url="{% url 'factfluency:api_finish' token=token session_id=0 %}"
      data-home-url="{% url 'factfluency:home' token=token %}"
+     data-who="{{ student.pk }}"
      data-csrf="{{ csrf_token }}">
 
   {% comment %} Both of these are hidden while a round is running (.is-playing). On a phone

@@ -64,6 +64,10 @@ def _levels_with_state(student):
         # The second band of the bar. Right-but-slow is real progress and was
         # worth nothing on screen.
         row["learning_pct"] = int(round(100 * learning / total)) if total else 0
+        # The challenge level has no bar and no star BY DESIGN — its facts are
+        # all met in earlier levels, so it greeted her with a full bar, no star
+        # and nothing to do the moment it unlocked. It is scored on records.
+        row["show_bar"] = not row["level"].is_challenge
         row["records"] = _record_chips(records.get(row["level"].pk, {}))
     return rows
 
@@ -184,13 +188,20 @@ def api_attempts(request, token, session_id):
             continue                            # missing or already counted
         fact_id = _int_field(row.get("fact_id"), low=1, high=10**9)
         operation = row.get("operation")
+        # A list or dict here is unhashable, and the set lookup below raised
+        # TypeError straight out of the view as a 500.
+        if not isinstance(operation, str):
+            continue
         if fact_id is None or (fact_id, operation) not in allowed:
             continue                            # not a form this round could ask
         fact = Fact.objects.get(pk=fact_id)
 
         # No time reported means no fluency judgement is possible — skip, do
         # not score it as an instant (and therefore fluent) answer.
-        response_ms = _int_field(row.get("response_ms"), low=0, high=600000)
+        # low=1, not 0: the comment above has always said an unreported time
+        # must not be scored as instant-and-therefore-fluent, and a literal 0
+        # walked straight past it into a free promotion.
+        response_ms = _int_field(row.get("response_ms"), low=1, high=600000)
         if response_ms is None:
             continue
         # The keypad allows three digits; anything else is not her.

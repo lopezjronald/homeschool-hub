@@ -154,7 +154,14 @@ def _division_is_earned(fact, operation, states):
     mult = states.get((fact.pk, Operation.MULT))
     if mult is None:
         return False
-    return mult.is_mastered or mult.leitner_box >= 2
+    # Gated on KNOWING it, not on being quick at it. Box >= 2 only ever happens
+    # on a fluent answer, so a child who is reliably right but still deriving —
+    # which is most of them, for weeks — never earned a single division, and her
+    # level bar capped below the total with nothing on screen to explain why.
+    # Two correct answers is enough to meet the inverse; speed is what the rest
+    # of the system is for.
+    return (mult.is_mastered or mult.leitner_box >= 2
+            or mult.total_correct >= 2)
 
 
 def _forms_for_level(level):
@@ -250,13 +257,29 @@ def unlocked_levels(student, levels):
     The first is always open; each later one opens when the one before it is
     beaten. Beaten levels stay playable — a record is only worth having if you
     can go back and break it.
+
+    AND ONCE OPEN, IT STAYS OPEN. Unlocking used to be recomputed from current
+    mastery on every page load, so it could go backwards: review drills earlier
+    levels, two misses on one already-mastered fact un-master it, and a level
+    sitting on the 90% line falls under. The child then saw a level marked
+    "Locked" and "Beaten" at once — padlock, star and a full bar together — and
+    the play page 404'd on a level she had finished. A level she has already
+    played is a level she has played; that is not revocable by a typo.
     """
+    from .models import GameSession
+
+    played = set(
+        GameSession.objects.filter(student=student)
+        .values_list("level_id", flat=True).distinct()
+    )
     out = []
     previous_beaten = True
     for level in levels:
-        out.append({"level": level, "unlocked": previous_beaten,
-                    "beaten": is_level_beaten(student, level)})
-        previous_beaten = out[-1]["beaten"]
+        beaten = is_level_beaten(student, level)
+        out.append({"level": level,
+                    "unlocked": previous_beaten or level.pk in played,
+                    "beaten": beaten})
+        previous_beaten = beaten
     return out
 
 
@@ -285,7 +308,13 @@ def build_round(student, level, *, length=ROUND_LENGTH, now=None, rng=None):
             known.append((fact, operation))
 
     due.sort(key=lambda row: row[2])           # longest overdue first
-    chosen = [(f, o) for f, o, _ in due]
+    # Keep room for the new ones. `chosen` is truncated to `length` at the end,
+    # so a due backlog of 20+ used to eat the whole round and she met no new
+    # material at all — worst for the child struggling most, who has the longest
+    # backlog. New facts are capped at NEW_FACTS_PER_ROUND anyway; this only
+    # guarantees they get their seats.
+    room_for_due = max(0, length - min(len(fresh), NEW_FACTS_PER_ROUND))
+    chosen = [(f, o) for f, o, _ in due][:room_for_due]
 
     # New facts are capped hard. This is the acquisition-rate finding: a small
     # set among mostly-known material beats a big set every time.

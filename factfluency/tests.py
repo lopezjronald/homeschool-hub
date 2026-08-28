@@ -1534,3 +1534,161 @@ class RebuildFactStatesTests(TestCase):
         self.assertAlmostEqual(
             (state.due_at - long_ago).total_seconds(),
             timedelta(days=2).total_seconds(), delta=60)
+
+
+class AuditFollowUpTests(TestCase):
+    """Findings from the adversarial audit, ranked by what they cost a child."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.parent = User.objects.create_user(
+            username="af", email="af@e.com", password="pw")
+        cls.family = Family.objects.create(name="AF Fam")
+        FamilyMembership.objects.create(user=cls.parent, family=cls.family, role="parent")
+        cls.child = Student.objects.create(
+            parent=cls.parent, first_name="Violet", grade_level="G03",
+            family=cls.family)
+
+    def test_a_level_she_has_played_never_locks_again(self):
+        """The worst finding. Unlocking was recomputed from current mastery, so
+        two review misses could re-lock a FINISHED level: the map showed a
+        padlock and a star on the same card, and the play page 404'd."""
+        from portal.tokens import make_portal_token
+
+        ones = Level.objects.get(slug="ones-twos")
+        fives = Level.objects.get(slug="fives")
+        for state in scheduling.ensure_states(
+                self.child, scheduling._forms_for_level(ones)).values():
+            state.is_mastered = True
+            state.save()
+        GameSession.objects.create(student=self.child, level=fives)
+
+        # Now drop level 1 back under its threshold, the way review does.
+        for state in StudentFactState.objects.filter(student=self.child)[:10]:
+            state.is_mastered = False
+            state.save()
+
+        rows = {r["level"].slug: r for r in scheduling.unlocked_levels(
+            self.child, list(Level.objects.all()))}
+        self.assertFalse(rows["ones-twos"]["beaten"], "it really did fall")
+        self.assertTrue(rows["fives"]["unlocked"],
+                        "a level she has played stays playable")
+        self.assertEqual(self.client.get(reverse(
+            "factfluency:play",
+            kwargs={"token": make_portal_token(self.child),
+                    "slug": "fives"})).status_code, 200)
+
+    def test_divisions_are_earned_by_knowing_it_not_by_being_quick(self):
+        """A child reliably right but still deriving earned no division at all,
+        so her level bar capped below the total with nothing explaining why."""
+        fact = Fact.objects.get(factor_a=2, factor_b=6)
+        state = scheduling.ensure_states(
+            self.child, [(fact, Operation.MULT)])[(fact.pk, Operation.MULT)]
+        level = Level.objects.get(slug="ones-twos")
+        for _ in range(2):
+            scheduling.apply_attempt(
+                state, is_correct=True, response_ms=9000,
+                session_id=GameSession.objects.create(
+                    student=self.child, level=level).pk)
+        self.assertEqual(state.leitner_box, 1, "still never been quick")
+        self.assertTrue(scheduling._division_is_earned(
+            fact, Operation.DIV_A, {(fact.pk, Operation.MULT): state}))
+
+    def test_new_facts_get_seats_even_behind_a_long_due_backlog(self):
+        ones = Level.objects.get(slug="ones-twos")
+        states = scheduling.ensure_states(
+            self.child, scheduling._forms_for_level(ones))
+        past = timezone.now() - timedelta(days=5)
+        items = list(states.items())
+        for _key, state in items[:-2]:
+            state.total_attempts = 3
+            state.total_correct = 3
+            state.due_at = past
+            state.save()
+        questions = scheduling.build_round(self.child, ones)
+        seen = {(q["fact_id"], q["operation"]) for q in questions}
+        fresh = {k for k, s in states.items() if s.total_attempts == 0}
+        self.assertTrue(fresh & seen,
+                        "a full backlog used to eat every seat in the round")
+
+    def test_a_zero_millisecond_answer_is_not_a_free_promotion(self):
+        from portal.tokens import make_portal_token
+
+        session = GameSession.objects.create(
+            student=self.child, level=Level.objects.get(slug="ones-twos"))
+        fact = Fact.objects.get(factor_a=2, factor_b=3)
+        self.client.post(
+            reverse("factfluency:api_attempts", kwargs={
+                "token": make_portal_token(self.child),
+                "session_id": session.pk}),
+            data=json.dumps({"attempts": [{
+                "client_uuid": "zero", "fact_id": fact.pk,
+                "operation": "mult", "answer_given": 6, "response_ms": 0}]}),
+            content_type="application/json")
+        self.assertFalse(Attempt.objects.filter(client_uuid="zero").exists())
+
+    def test_an_unhashable_operation_is_refused_not_a_500(self):
+        from portal.tokens import make_portal_token
+
+        session = GameSession.objects.create(
+            student=self.child, level=Level.objects.get(slug="ones-twos"))
+        fact = Fact.objects.get(factor_a=2, factor_b=3)
+        for hostile in ([1], {"a": 1}):
+            response = self.client.post(
+                reverse("factfluency:api_attempts", kwargs={
+                    "token": make_portal_token(self.child),
+                    "session_id": session.pk}),
+                data=json.dumps({"attempts": [{
+                    "client_uuid": "h", "fact_id": fact.pk,
+                    "operation": hostile, "answer_given": 6,
+                    "response_ms": 900}]}),
+                content_type="application/json")
+            self.assertEqual(response.status_code, 200, hostile)
+            self.assertEqual(response.json()["accepted"], 0, hostile)
+
+    def test_the_offline_queue_is_scoped_to_one_child(self):
+        """Two children share this tablet. One shared localStorage key meant a
+        sibling's undelivered answers were retried against whoever opened the
+        game next — 404 forever, and able to evict good rows via the 200 cap."""
+        from pathlib import Path
+
+        js = (Path(__file__).resolve().parent / "static" / "factfluency"
+              / "factdash.js").read_text(encoding="utf-8")
+        self.assertIn("factdash:queue:", js)
+        self.assertIn("root.dataset.who", js)
+        html = (Path(__file__).resolve().parent.parent / "templates"
+                / "factfluency" / "play.html").read_text(encoding="utf-8")
+        self.assertIn("data-who=", html)
+
+    def test_the_challenge_level_shows_no_bar_it_can_never_fill(self):
+        """Its facts are all mastered in earlier levels, so it greeted her with
+        a full bar, no star and nothing to do the moment it unlocked."""
+        rows = {r["level"].slug: r for r in scheduling.unlocked_levels(
+            self.child, list(Level.objects.all()))}
+        self.assertTrue(Level.objects.get(slug="the-tricky-ones").is_challenge)
+        from factfluency.views import _levels_with_state
+
+        by_slug = {r["level"].slug: r for r in _levels_with_state(self.child)}
+        self.assertFalse(by_slug["the-tricky-ones"]["show_bar"])
+        self.assertTrue(by_slug["ones-twos"]["show_bar"])
+        del rows
+
+    def test_the_rebuild_ignores_forms_a_migration_retired(self):
+        """Replaying them re-creates rows migration 0008 deleted, and inflates
+        the very headline used to decide whether to run the repair for real."""
+        from io import StringIO
+
+        from django.core.management import call_command
+
+        zero = Fact.objects.filter(factor_a=0).first()
+        session = GameSession.objects.create(
+            student=self.child, level=Level.objects.get(slug="ones-twos"))
+        Attempt.objects.create(
+            session=session, fact=zero, operation=Operation.DIV_A,
+            answer_given=0, is_correct=True, response_ms=500,
+            was_fluent=True, client_uuid="retired")
+        out = StringIO()
+        call_command("rebuild_fact_states", child="Violet", stdout=out)
+        self.assertIn("retired forms skipped", out.getvalue())
+        self.assertFalse(StudentFactState.objects.filter(
+            student=self.child, fact=zero, operation=Operation.DIV_A).exists())

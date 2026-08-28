@@ -92,7 +92,11 @@
 
   // Attempts that failed to send wait here rather than being lost, so a flaky
   // moment mid-round costs nothing. Deduped server-side on client_uuid.
-  var QUEUE_KEY = "factdash:queue";
+  // Keyed PER CHILD. One shared key meant a sibling's undelivered answers were
+  // retried against whoever opened the game next — 404 forever, retried on
+  // every flush, and able to evict good rows through the 200-row cap. Two
+  // children share this tablet.
+  var QUEUE_KEY = "factdash:queue:" + (root.dataset.who || "anon");
 
   function readQueue() {
     try { return JSON.parse(localStorage.getItem(QUEUE_KEY) || "[]"); }

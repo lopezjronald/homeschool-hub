@@ -69,7 +69,17 @@ class Command(BaseCommand):
                 last_response_ms=None,
             )
             states = {}
+            skipped = 0
             for attempt in attempts:
+                # Migration 0008 outlawed the division forms of the zero and one
+                # facts but left their attempts behind (the facts survived, so
+                # nothing cascaded). Replaying those re-creates the very rows
+                # that migration deleted. They are invisible to every reader,
+                # but they inflate this command's own "+N mastered" headline —
+                # the number used to decide whether to run it for real.
+                if attempt.operation not in attempt.fact.operations():
+                    skipped += 1
+                    continue
                 key = (attempt.fact_id, attempt.operation)
                 if key not in states:
                     states[key] = scheduling.ensure_states(
@@ -97,8 +107,9 @@ class Command(BaseCommand):
                 if not v[2] and before.get(k, (0, 0, False))[2])
 
             self.stdout.write(
-                "%s: %d attempts replayed · mastered %d → %d (+%d, -%d)"
-                % (student.first_name, len(attempts),
+                "%s: %d attempts replayed%s · mastered %d → %d (+%d, -%d)"
+                % (student.first_name, len(attempts) - skipped,
+                   " (%d on retired forms skipped)" % skipped if skipped else "",
                    sum(1 for v in before.values() if v[2]),
                    sum(1 for v in after.values() if v[2]),
                    len(gained), len(lost)))

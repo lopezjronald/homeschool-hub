@@ -40,6 +40,7 @@
                meant four perfect rounds moved the bar by nothing, because at
                this stage she is deriving the answers and deriving is slower
                than three seconds. {% endcomment %}
+            {% if row.show_bar %}
             <span class="fd-bar" role="img"
                   aria-label="{{ row.mastered }} of {{ row.total }} mastered{% if row.learning %}, {{ row.learning }} getting there{% endif %}">
               <span class="fd-bar-fill" style="width: {{ row.pct }}%"></span>
@@ -49,6 +50,9 @@
               {{ row.mastered }} / {{ row.total }} mastered{% if row.learning %} ·
               <span class="fd-learning">{{ row.learning }} getting there</span>{% endif %}
             </span>
+            {% else %}
+            <span class="fd-count">Every tricky one, shuffled. Beat your own record.</span>
+            {% endif %}
 
             {% if row.records %}
               <span class="fd-records">

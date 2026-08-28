@@ -717,3 +717,153 @@ class AnswerCommitTests(TestCase):
         html = (Path(__file__).resolve().parent.parent / "templates" / "factfluency"
                 / "play.html").read_text(encoding="utf-8")
         self.assertIn("press", html.lower())
+
+
+class HintTests(TestCase):
+    """A hint that lies is worse than no hint at all.
+
+    Every one of these is generated from real numbers, so a slip in any rule
+    produces a sentence that is confidently wrong — and she has no way to know.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.parent = User.objects.create_user(
+            username="hint", email="hint@e.com", password="pw")
+        cls.family = Family.objects.create(name="Hint Fam")
+        FamilyMembership.objects.create(
+            user=cls.parent, family=cls.family, role="parent")
+
+    def _fact(self, a, b):
+        from .models import Fact
+        return Fact.objects.get(factor_a=min(a, b), factor_b=max(a, b))
+
+    def test_every_number_in_every_multiplication_hint_is_true(self):
+        """Pull the integers back out of each sentence and check the arithmetic.
+
+        Not a spot check: this walks the whole table, so a wrong step in the
+        double-double or take-one-group-away rule cannot hide on a fact nobody
+        thought to test.
+        """
+        import re
+
+        from .models import Fact, Operation
+        from . import hints
+
+        for fact in Fact.objects.all():
+            text = hints.hint_for(fact, Operation.MULT)
+            self.assertTrue(text, "%s has no hint" % fact)
+            numbers = [int(n) for n in re.findall(r"\d+", text)]
+            # Whatever route the hint takes, it has to arrive at the product —
+            # except the two rules that legitimately never name it.
+            if fact.factor_a in (0, 1) or fact.factor_b in (0, 1):
+                continue
+            self.assertIn(fact.product, numbers,
+                          "%s: hint never reaches %d — %r"
+                          % (fact, fact.product, text))
+
+    def test_the_derivation_steps_actually_chain(self):
+        """The intermediate numbers have to be the real intermediate numbers."""
+        from .models import Operation
+        from . import hints
+
+        cases = {
+            (4, 7): [7, 14, 28],        # double, double again
+            (4, 8): [8, 16, 32],        # double, double again
+            (3, 7): [14, 7, 21],        # double, add one more group
+            (6, 8): None,               # mnemonic — checked separately
+            (9, 7): [70, 7, 63],        # ten, give one back
+            (5, 8): [8, 80, 40],        # half of ten
+        }
+        for (a, b), expected in cases.items():
+            if expected is None:
+                continue
+            text = hints.hint_for(self._fact(a, b), Operation.MULT)
+            import re
+            numbers = [int(n) for n in re.findall(r"\d+", text)]
+            self.assertEqual(numbers, expected,
+                             "%d x %d derivation is wrong: %r" % (a, b, text))
+
+    def test_no_seven_or_eight_fact_is_left_without_a_better_route(self):
+        """The x7 and x8 rules are deliberately last in PRIORITY, which means
+        inside a 10x10 table they never fire: every 7- and 8-fact is reached
+        more cheaply through its other factor, or is one of the mnemonics.
+
+        Asserted rather than assumed, because if a future PRIORITY edit made
+        "split the 7 into a 5 and a 2" the primary hint for 7x3, she would be
+        handed the hardest available route to an easy fact.
+        """
+        from .models import Fact, Operation
+        from . import hints
+
+        for fact in Fact.objects.filter(factor_b__in=(7, 8)):
+            text = hints.hint_for(fact, Operation.MULT)
+            self.assertNotIn("Split the 7", text, str(fact))
+            self.assertNotIn("Double three times", text, str(fact))
+
+    def test_the_stubborn_facts_get_their_mnemonic(self):
+        from .models import Operation
+        from . import hints
+
+        self.assertIn("5, 6, 7, 8", hints.hint_for(self._fact(7, 8), Operation.MULT))
+        self.assertIn("date", hints.hint_for(self._fact(6, 8), Operation.MULT))
+        self.assertIn("64", hints.hint_for(self._fact(8, 8), Operation.MULT))
+
+    def test_every_division_hint_names_the_right_missing_factor(self):
+        """The whole strategy is 'what times the divisor makes the total' — if
+        the sentence names the wrong divisor it teaches the reversal error the
+        research says children already make."""
+        from .models import Fact, Operation
+        from . import hints
+
+        for fact in Fact.objects.all():
+            for operation in fact.operations():
+                if operation == Operation.MULT:
+                    continue
+                text = hints.hint_for(fact, operation)
+                divisor = (fact.factor_a if operation == Operation.DIV_A
+                           else fact.factor_b)
+                self.assertIn("what times %d makes %d? %d."
+                              % (divisor, fact.product, fact.answer(operation)),
+                              text, "%s: %r" % (fact.prompt(operation), text))
+                self.assertNotIn("None", text)
+
+    def test_halving_shortcuts_only_appear_where_they_are_real(self):
+        """No invented tricks. Dividing by 7 has no shortcut and must not
+        pretend to."""
+        from .models import Operation
+        from . import hints
+
+        by_two = hints.hint_for(self._fact(2, 9), Operation.DIV_A)
+        self.assertIn("halve", by_two)
+        by_seven = hints.hint_for(self._fact(7, 8), Operation.DIV_A)
+        self.assertNotIn("halve", by_seven)
+        self.assertNotIn("Or", by_seven)
+
+    def test_the_round_carries_the_hint_to_the_client(self):
+        from students.models import Student
+        from .models import Level
+        from . import scheduling
+
+        student = Student.objects.create(
+            parent=self.parent, first_name="Hint", grade_level="G03",
+            family=self.family)
+        level = Level.objects.order_by("order").first()
+        questions = scheduling.build_round(student, level)
+        self.assertTrue(questions)
+        for question in questions:
+            self.assertTrue(question["hint"], question["prompt"])
+
+    def test_the_hint_is_never_shown_before_she_answers(self):
+        """It lives behind `hidden` and is only revealed on a miss. Showing it
+        up front would turn a recall game into a reading exercise."""
+        from pathlib import Path
+
+        html = (Path(__file__).resolve().parent.parent / "templates" / "factfluency"
+                / "play.html").read_text(encoding="utf-8")
+        self.assertIn("data-tip hidden", html)
+
+        js = (Path(__file__).resolve().parent / "static" / "factfluency"
+              / "factdash.js").read_text(encoding="utf-8")
+        reveal = js.split("if (!right) {")[1].split("}")[0]
+        self.assertIn("els.tip.hidden = false", reveal)

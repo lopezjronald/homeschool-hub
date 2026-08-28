@@ -19,7 +19,8 @@
         {% if row.unlocked %}
           <a href="{% url 'factfluency:play' token=token slug=row.level.slug %}">
         {% else %}
-          <div class="fd-level-inner" aria-disabled="true">
+          <div class="fd-level-inner" aria-disabled="true"
+               aria-label="Locked — {{ row.level.name }}">
         {% endif %}
 
           <span class="fd-num">{{ row.level.order }}</span>
@@ -27,7 +28,9 @@
             <span class="fd-name">
               {{ row.level.name }}
               {% if row.beaten %}<span class="fd-star" title="Beaten">★</span>{% endif %}
-              {% if not row.unlocked %}<span class="fd-lock" aria-hidden="true">🔒</span>{% endif %}
+              {# The word matters: the padlock was aria-hidden, so a screen
+                 reader announced a locked level as if it were playable. #}
+              {% if not row.unlocked %}<span class="fd-lock"><span aria-hidden="true">🔒</span> Locked</span>{% endif %}
             </span>
             <span class="fd-blurb">{{ row.level.blurb }}</span>
 
@@ -39,13 +42,7 @@
 
             {% if row.records %}
               <span class="fd-records">
-                {% for kind, rec in row.records.items %}
-                  <span class="fd-rec">
-                    {% if kind == 'best_time' %}⏱ {{ rec.value|floatformat:0 }}ms
-                    {% elif kind == 'best_accuracy' %}🎯 {{ rec.value|floatformat:0 }}%
-                    {% else %}🔥 {{ rec.value|floatformat:0 }}{% endif %}
-                  </span>
-                {% endfor %}
+                {% for rec in row.records %}<span class="fd-rec">{{ rec.text }}</span>{% endfor %}
               </span>
             {% endif %}
           </span>

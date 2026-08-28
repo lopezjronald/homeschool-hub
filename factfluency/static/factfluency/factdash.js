@@ -24,12 +24,18 @@
     prompt: root.querySelector("[data-prompt]"),
     answer: root.querySelector("[data-answer]"),
     mark: root.querySelector("[data-mark]"),
+    tip: root.querySelector("[data-tip]"),
     qnow: root.querySelector("[data-qnow]"),
     qtotal: root.querySelector("[data-qtotal]"),
+    track: root.querySelector("[data-progress-track]"),
     progress: root.querySelector("[data-progress]"),
     tally: root.querySelector("[data-tally]"),
     beaten: root.querySelector("[data-beaten]"),
     doneTitle: root.querySelector("[data-done-title]"),
+    mastery: root.querySelector("[data-mastery]"),
+    masteryFill: root.querySelector("[data-mastery-fill]"),
+    masteryLabel: root.querySelector("[data-mastery-label]"),
+    again: root.querySelector('[data-action="again"]'),
   };
 
   var state = {
@@ -42,6 +48,8 @@
     locked: false,
     pending: [],
     correct: 0,
+    streak: 0,
+    bestStreak: 0,
   };
 
   // ---- plumbing -----------------------------------------------------------
@@ -50,6 +58,9 @@
     Object.keys(screens).forEach(function (key) {
       screens[key].hidden = key !== name;
     });
+    // Drives the mid-round chrome collapse in CSS. Without it the Done key sits
+    // below the fold on a phone.
+    root.classList.toggle("is-playing", name === "round");
   }
 
   function post(url, body) {
@@ -122,13 +133,19 @@
       state.questions = data.questions || [];
       state.index = 0;
       state.correct = 0;
+      state.streak = 0;
+      state.bestStreak = 0;
       state.pending = [];
       els.qtotal.textContent = String(state.questions.length);
+      // Notch the bar into one segment per question, so it reads as countable
+      // progress rather than as a timer draining.
+      els.track.style.setProperty("--steps", String(state.questions.length || 1));
       if (!state.questions.length) {
         finish();
         return;
       }
       ask();
+      els.prompt.focus();
     }).catch(function (err) {
       // Do NOT swallow this as "check the wifi" — a broken selector throws in
       // here too, and a fetch failure and a coding mistake need different
@@ -146,12 +163,16 @@
     state.answeredAt = 0;
     state.locked = false;
     els.prompt.textContent = q.prompt;
-    els.answer.textContent = " ";
+    els.answer.textContent = " ";
+    els.answer.className = "fd-answer";
     els.mark.textContent = "";
     els.mark.className = "fd-mark";
+    els.tip.hidden = true;
+    els.tip.textContent = "";
     els.qnow.textContent = String(state.index + 1);
-    els.progress.style.width =
-      Math.round((state.index / state.questions.length) * 100) + "%";
+    var pct = Math.round((state.index / state.questions.length) * 100);
+    els.progress.style.width = pct + "%";
+    els.track.setAttribute("aria-valuenow", String(pct));
     state.askedAt = performance.now();
   }
 
@@ -186,10 +207,24 @@
     var elapsed = Math.round(stopped - state.askedAt);
     var given = parseInt(state.typed, 10);
     var right = given === q.answer;
-    if (right) state.correct += 1;
+    if (right) {
+      state.correct += 1;
+      state.streak += 1;
+      state.bestStreak = Math.max(state.bestStreak, state.streak);
+    } else {
+      state.streak = 0;
+    }
 
-    els.mark.textContent = right ? "✓" : String(q.answer);
+    // On a miss, say the whole sentence. Two bare numbers stacked — her wrong
+    // one above the right one — reads as "5 4", or as a score.
+    els.mark.textContent = right ? "✓" : q.prompt + " = " + q.answer;
     els.mark.className = "fd-mark " + (right ? "is-right" : "is-wrong");
+    if (!right) {
+      els.answer.className = "fd-answer is-wrong";
+      // The strategy, at the only moment it teaches anything: she has just
+      // discovered she does not know this one.
+      if (q.hint) { els.tip.textContent = q.hint; els.tip.hidden = false; }
+    }
 
     state.pending.push({
       session_id: state.sessionId,
@@ -210,11 +245,12 @@
       state.index += 1;
       if (state.index >= state.questions.length) finish();
       else ask();
-    }, right ? 260 : 900);         // a beat longer on a miss, to read the answer
+    }, right ? 260 : 2600);        // long enough on a miss to read the strategy
   }
 
   function finish() {
     els.progress.style.width = "100%";
+    els.track.setAttribute("aria-valuenow", "100");
     var batch = state.pending.splice(0, state.pending.length);
     flush(batch).then(function () {
       return post(sessionUrl(root.dataset.finishUrl));
@@ -228,25 +264,51 @@
   function render(out) {
     show("done");
     var beaten = out.records_beaten || [];
+    var attempted = out.num_attempted || 0;
+    var clean = attempted > 0 && out.num_correct === attempted;
+
     els.doneTitle.textContent =
       out.level_beaten ? "Level complete! 🏆"
       : beaten.length ? "New record! ⭐"
+      : clean ? "Every single one! 🎉"
       : "Nice work!";
-    els.tally.textContent =
-      out.num_correct + " right out of " + out.num_attempted +
-      (out.pct !== undefined ? " · " + out.pct + "% of this level nailed" : "");
+
+    // The tally stands ALONE. It used to be glued to the mastery percentage
+    // with a middot — "10 right out of 12 · 0% of this level nailed" — which
+    // reads as "you got nothing" on the one screen that decides whether she
+    // plays again. Mastery needs repeated fast recall, so it sits at 0 for days.
+    els.tally.textContent = out.num_correct + " right out of " + attempted;
+
     els.beaten.innerHTML = "";
-    beaten.forEach(function (rec) {
-      var li = document.createElement("li");
-      li.textContent = rec.label;
-      els.beaten.appendChild(li);
-    });
-    if (out.offline) {
-      var li = document.createElement("li");
-      li.textContent = "Saved on this device — it'll sync next time.";
-      els.beaten.appendChild(li);
+    // A streak the round always earns, so the reward list is not empty on the
+    // ~6 days out of 7 when nothing is a personal best.
+    var streak = out.longest_streak !== undefined ? out.longest_streak : state.bestStreak;
+    if (streak >= 2) addChip("🔥 " + streak + " in a row");
+    beaten.forEach(function (rec) { addChip(rec.label); });
+    if (out.offline) addChip("Saved on this device — it'll sync next time.");
+
+    // Only once there is something to show. "0 of 20 mastered" on day one is
+    // just a zero with more words.
+    var mastered = out.mastered || 0;
+    if (mastered > 0 && out.total) {
+      els.mastery.hidden = false;
+      els.masteryFill.style.width = (out.pct || 0) + "%";
+      els.masteryLabel.textContent =
+        mastered + " of " + out.total + " facts mastered";
+    } else {
+      els.mastery.hidden = true;
     }
-    if (beaten.length || out.level_beaten) celebrate();
+
+    // A clean round earns confetti on its own merit. Gating the entire reward
+    // behind a personal best fired it maybe once a week.
+    if (beaten.length || out.level_beaten || clean) celebrate();
+    if (els.again) els.again.focus();
+  }
+
+  function addChip(text) {
+    var li = document.createElement("li");
+    li.textContent = text;
+    els.beaten.appendChild(li);
   }
 
   // ---- celebration --------------------------------------------------------
@@ -282,6 +344,13 @@
     if (screens.round.hidden) return;
     if (e.key >= "0" && e.key <= "9") { type(e.key); e.preventDefault(); }
     else if (e.key === "Backspace") { type("del"); e.preventDefault(); }
-    else if (e.key === "Enter") { type("enter"); e.preventDefault(); }
+    else if (e.key === "Enter") {
+      // If she has tabbed onto a keypad button, Enter belongs to that button —
+      // it should type the 7, not commit the answer. Swallowing it here meant
+      // Enter on a focused "7" submitted whatever was already in the box.
+      if (document.activeElement && document.activeElement.closest("[data-key]")) return;
+      type("enter");
+      e.preventDefault();
+    }
   });
 })();

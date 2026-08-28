@@ -1,7 +1,8 @@
 /* Fact Dash (HH-203). Big targets, high contrast, nothing that ticks down. */
 
 .fd { max-width: 44rem; margin: 0 auto; padding: 0 1rem 3rem; }
-.fd-back { display: inline-block; margin: 1rem 0; font-size: .95rem; }
+/* Padded to a 44px target — it is one of only two links a child uses here. */
+.fd-back { display: inline-block; margin: .4rem 0; padding: .7rem .25rem; font-size: .95rem; }
 
 .fd-hero { text-align: center; margin: .5rem 0 1.6rem; }
 .fd-hero h1 { font-size: clamp(2rem, 7vw, 2.8rem); font-weight: 800; margin: 0 0 .3rem; }
@@ -15,18 +16,30 @@
   background: #fff; border: 2px solid #e3ddd2; border-radius: 14px;
   padding: 1rem 1.1rem; text-decoration: none; color: inherit;
 }
-.fd-level a:hover, .fd-level a:focus-visible { border-color: #1E7A50; }
-.fd-level.is-locked .fd-level-inner { opacity: .5; background: #f4f1ea; }
+.fd-level a { transition: transform .12s ease, box-shadow .12s ease, border-color .12s ease; }
+.fd-level a:hover, .fd-level a:focus-visible {
+  border-color: #1E7A50; transform: translateY(-2px);
+  box-shadow: 0 6px 14px rgba(23,33,48,.10);
+}
+
+/* Locked cards are DESATURATED, not dimmed. A blanket opacity:.5 dropped the
+   blurb to 2.04:1 — a new player could read one card out of ten. Every colour
+   below is picked to clear 4.5:1 on the cream page. */
+.fd-level.is-locked .fd-level-inner {
+  background: #efece4; border-style: dashed; border-color: #c8c0b1;
+}
+.fd-level.is-locked .fd-num { background: #6f6858; }
+.fd-level.is-locked .fd-name { color: #4a453c; }
 .fd-level.is-beaten a { border-color: #1E7A50; background: #f2f9f5; }
+.fd-lock { font-size: .82rem; font-weight: 700; color: #6b6459; }
 
 .fd-num {
   display: grid; place-items: center; width: 3rem; height: 3rem; border-radius: 50%;
   background: #1E7A50; color: #fff; font-weight: 800; font-size: 1.2rem;
 }
-.fd-level.is-locked .fd-num { background: #b9b2a6; }
 .fd-body { display: grid; gap: .3rem; min-width: 0; }
 .fd-name { font-weight: 800; font-size: 1.15rem; }
-.fd-star { color: #E8B93B; }
+.fd-star { color: #8a6a10; }            /* #E8B93B was 1.84:1 — invisible */
 .fd-blurb { color: #6b6459; font-size: .9rem; }
 
 .fd-bar { display: block; height: 9px; border-radius: 999px; background: #e9e4da; overflow: hidden; }
@@ -34,8 +47,8 @@
 .fd-count { font-size: .82rem; color: #6b6459; }
 .fd-records { display: flex; flex-wrap: wrap; gap: .4rem; margin-top: .2rem; }
 .fd-rec {
-  font-size: .8rem; font-weight: 700; background: #f4f1ea;
-  border-radius: 999px; padding: .15rem .6rem;
+  font-size: .95rem; font-weight: 700; background: #f4f1ea;
+  border-radius: 999px; padding: .3rem .7rem;
 }
 
 /* ---- the round ---------------------------------------------------------- */
@@ -43,6 +56,13 @@
 .fd-playhead { text-align: center; margin-bottom: 1.2rem; }
 .fd-playhead h1 { font-size: 1.7rem; font-weight: 800; margin: 0 0 .2rem; }
 .fd-playhead p { margin: 0; color: #6b6459; font-size: .95rem; }
+
+/* Mid-round the chrome goes away. On a 375x667 phone the back link and this
+   header cost ~120px, which was enough to push the Done key off the bottom of
+   the screen — and the moment she scrolled to reach it, the question scrolled
+   away. She just picked the level; she does not need its name while playing. */
+.fd-play.is-playing .fd-back,
+.fd-play.is-playing .fd-playhead { display: none; }
 
 .fd-screen { text-align: center; }
 .fd-ready { font-size: 1.3rem; margin: 2rem 0 1rem; }
@@ -53,54 +73,108 @@
 }
 .fd-go:hover, .fd-go:focus-visible { filter: brightness(1.08); }
 .fd-hint { color: #6b6459; font-size: .9rem; margin-top: 1rem; }
-.fd-secondary { display: inline-block; margin-left: 1rem; }
+.fd-hint--round { margin-top: .7rem; }
+.fd-secondary {
+  display: inline-block; min-height: 44px; line-height: 44px;
+  padding: 0 1rem; margin-left: 1.5rem;
+}
 
 /* A progress bar, NOT a countdown: it fills as she works forward rather than
-   draining as time runs out. Same pixels, opposite feeling. */
-.fd-progress { height: 8px; background: #e9e4da; border-radius: 999px; overflow: hidden; }
+   draining as time runs out. Same pixels, opposite feeling. The notches make it
+   countable, so it cannot be mistaken for a timer draining. */
+.fd-progress {
+  position: relative; height: 10px; background: #e9e4da;
+  border-radius: 999px; overflow: hidden;
+}
 .fd-progress-fill { display: block; height: 100%; width: 0; background: #2F6FB3; transition: width .25s ease; }
-.fd-qcount { font-size: .82rem; color: #6b6459; margin: .4rem 0 1.2rem; }
+.fd-progress::after {
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  background: repeating-linear-gradient(90deg,
+    transparent 0 calc(100% / var(--steps, 12) - 3px),
+    #fffdf8 calc(100% / var(--steps, 12) - 3px) calc(100% / var(--steps, 12)));
+}
+.fd-qcount { font-size: .82rem; color: #6b6459; margin: .4rem 0 1rem; }
 
 .fd-question {
-  font-size: clamp(2.6rem, 12vw, 4rem); font-weight: 800;
+  font-size: clamp(2.2rem, 9vw, 4rem); font-weight: 800;
   font-variant-numeric: tabular-nums; letter-spacing: .02em;
 }
+.fd-question:focus { outline: none; }
 .fd-answer {
-  font-size: clamp(2.2rem, 10vw, 3.2rem); font-weight: 800; color: #2F6FB3;
+  font-size: clamp(2rem, 8vw, 3.2rem); font-weight: 800; color: #2F6FB3;
   font-variant-numeric: tabular-nums; min-height: 1.3em;
-  border-bottom: 4px solid #e3ddd2; width: 5rem; margin: .4rem auto .2rem;
+  border-bottom: 4px solid #e3ddd2;
+  width: auto; min-width: 5rem; max-width: 9rem; padding: 0 .3rem;
+  margin: .3rem auto .2rem;
 }
-.fd-mark { font-size: 2rem; font-weight: 800; min-height: 1.4em; }
-.fd-mark.is-right { color: #1E7A50; }
-.fd-mark.is-wrong { color: #b03a3a; animation: fd-shake .3s; }
+/* On a miss the shake belongs on HER answer — the thing that was wrong — not on
+   the correct answer, which is the thing she is being asked to read. */
+.fd-answer.is-wrong { color: #9b958a; animation: fd-shake .3s; }
+
+.fd-mark {
+  font-size: clamp(1.6rem, 6vw, 2.2rem); font-weight: 800; min-height: 1.6em;
+  font-variant-numeric: tabular-nums;
+}
+.fd-mark.is-right { color: #1E7A50; font-size: clamp(2.2rem, 9vw, 3rem); }
+.fd-mark.is-wrong { color: #b03a3a; }
 @keyframes fd-shake {
   0%,100% { transform: translateX(0); }
   25% { transform: translateX(-6px); }
   75% { transform: translateX(6px); }
 }
 
+/* The strategy line after a miss. Deliberately quiet — she should read it, not
+   be told off by it. */
+.fd-tip {
+  max-width: 26rem; margin: .2rem auto 0; padding: .55rem .8rem;
+  background: #f4f1ea; border-left: 4px solid #1E7A50; border-radius: 8px;
+  color: #4a453c; font-size: .98rem; line-height: 1.4; text-align: left;
+}
+
 .fd-pad {
-  display: grid; grid-template-columns: repeat(4, 1fr); gap: .55rem;
-  max-width: 22rem; margin: 1rem auto 0;
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: .55rem;
+  max-width: 22rem; margin: .8rem auto 0;
 }
 .fd-key {
   border: 2px solid #e3ddd2; background: #fff; border-radius: 12px;
-  font-size: 1.5rem; font-weight: 700; padding: .7rem 0; min-height: 56px;
+  font-size: 1.6rem; font-weight: 700; padding: .6rem 0; min-height: 56px;
   cursor: pointer;
+  /* A speed round IS rapid tapping in a small area, which on iOS is the double-
+     tap-zoom gesture and a text selection on the glyph. */
+  touch-action: manipulation; -webkit-user-select: none; user-select: none;
+  -webkit-tap-highlight-color: transparent;
 }
+.fd-key:hover { background: #f9f7f2; border-color: #c8c0b1; }
 .fd-key:active { background: #f4f1ea; }
-.fd-key--go { background: #1E7A50; color: #fff; border-color: #1E7A50; }
-.fd-key--wide { background: #f4f1ea; }
+/* Undo and Done are consequential and sit next to each other, so they get their
+   own colour AND their own words. #f4f1ea on #fff was 1.13:1 — no difference at
+   all to look at. */
+.fd-key--go { background: #1E7A50; color: #fff; border-color: #14603d; font-size: 1.15rem; }
+.fd-key--undo { background: #efe7d8; border-color: #b8ab8f; font-size: 1rem; }
+
+/* The one focus ring this feature has. The inherited global is 1.76:1 against a
+   white key, well under the 3:1 that WCAG 1.4.11 asks of a focus indicator. */
+.fd-key:focus-visible, .fd-go:focus-visible,
+.fd-secondary:focus-visible, .fd-back:focus-visible,
+.fd-level a:focus-visible { outline: 3px solid #14484f; outline-offset: 3px; }
+
+@media (min-width: 700px) {
+  .fd-pad { max-width: 27rem; }
+  .fd-key { font-size: 1.9rem; min-height: 68px; }
+  .fd-key--go { font-size: 1.35rem; }
+  .fd-key--undo { font-size: 1.15rem; }
+}
 
 /* ---- done --------------------------------------------------------------- */
 
 .fd-done h2 { font-size: 1.9rem; font-weight: 800; margin: 1.5rem 0 .4rem; }
-.fd-tally { color: #6b6459; margin: 0 0 1rem; }
-.fd-beaten { list-style: none; padding: 0; margin: 0 0 1.4rem; display: grid; gap: .4rem; }
+.fd-tally { color: #4a453c; font-size: 1.15rem; font-weight: 700; margin: 0 0 1rem; }
+.fd-beaten { list-style: none; padding: 0; margin: 0 0 1rem; display: grid; gap: .4rem; }
 .fd-beaten li {
   background: #f2f9f5; border: 1px solid #1E7A50; border-radius: 999px;
   padding: .4rem 1rem; font-weight: 700; display: inline-block; justify-self: center;
 }
+.fd-mastery { max-width: 20rem; margin: 0 auto 1.4rem; display: grid; gap: .35rem; }
 .fd-againrow { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: .6rem; }
 
 /* ---- confetti, sparingly ------------------------------------------------ */
@@ -117,5 +191,8 @@
 }
 @media (prefers-reduced-motion: reduce) {
   .fd-confetti { display: none; }
-  .fd-mark.is-wrong { animation: none; }
+  .fd-answer.is-wrong { animation: none; }
+  .fd-progress-fill { transition: none; }
+  .fd-level a { transition: none; }
+  .fd-level a:hover, .fd-level a:focus-visible { transform: none; }
 }

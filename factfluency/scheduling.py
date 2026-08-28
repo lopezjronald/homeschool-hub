@@ -20,6 +20,7 @@ import random
 from django.utils import timezone
 from datetime import timedelta
 
+from . import hints
 from .models import (
     BOX_INTERVALS, FLUENCY_THRESHOLD_MS, MASTERY_STREAK, MAX_BOX,
     NEW_FACTS_PER_ROUND,
@@ -241,6 +242,9 @@ def build_round(student, level, *, length=ROUND_LENGTH, now=None, rng=None):
             "operation": operation,
             "prompt": fact.prompt(operation),
             "answer": fact.answer(operation),
+            # Sent with the round so a miss can show the strategy instantly,
+            # with no round trip. It is never shown before she answers.
+            "hint": hints.hint_for(fact, operation),
         }
         for fact, operation in chosen
     ]

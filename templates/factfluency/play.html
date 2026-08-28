@@ -11,6 +11,9 @@
      data-home-url="{% url 'factfluency:home' token=token %}"
      data-csrf="{{ csrf_token }}">
 
+  {# Both of these are hidden while a round is running (.is-playing). On a phone
+     they cost 120px of chrome she does not need mid-round, and that 120px was
+     pushing the Done key below the fold. #}
   <a href="{% url 'factfluency:home' token=token %}" class="fd-back">← All levels</a>
 
   <header class="fd-playhead">
@@ -22,25 +25,39 @@
   <section class="fd-screen fd-start" data-screen="start">
     <p class="fd-ready">Ready?</p>
     <button type="button" class="fd-go" data-action="start">Start</button>
-    <p class="fd-hint">Type your answer, then press <strong>&#8629;</strong> (or Enter). Use <strong>&#9003;</strong> if you mistype.</p>
+    <p class="fd-hint">Type your answer, then press <strong>Done</strong>. Use <strong>Undo</strong> if you mistype.</p>
   </section>
 
   {# ROUND — no countdown anywhere. The timer is invisible on purpose. #}
   <section class="fd-screen fd-round" data-screen="round" hidden>
-    <div class="fd-progress"><span class="fd-progress-fill" data-progress></span></div>
+    <div class="fd-progress" data-progress-track role="progressbar"
+         aria-label="Question progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+      <span class="fd-progress-fill" data-progress></span>
+    </div>
     <p class="fd-qcount"><span data-qnow>1</span> of <span data-qtotal>20</span></p>
 
-    <div class="fd-question" data-prompt aria-live="polite">7 × 8</div>
-    <div class="fd-answer" data-answer>&nbsp;</div>
+    <div class="fd-question" data-prompt aria-live="polite" tabindex="-1">7 × 8</div>
+    <div class="fd-answer" data-answer aria-live="polite" aria-atomic="true"
+         aria-label="Your answer">&nbsp;</div>
     <div class="fd-mark" data-mark aria-live="assertive"></div>
+    {# The strategy, shown ONLY after a miss. Offering it up front would turn a
+       recall game into a reading exercise. #}
+    <p class="fd-tip" data-tip hidden></p>
 
+    {# 3 wide, like every calculator and phone she has ever picked up. Undo and
+       Done own the bottom row and are worded, not glyphs — "↵" means nothing to
+       a nine-year-old, and she now has to press it on every single question. #}
     <div class="fd-pad">
-      {% for n in "1234567890" %}
+      {% for n in "123456789" %}
         <button type="button" class="fd-key" data-key="{{ n }}">{{ n }}</button>
       {% endfor %}
-      <button type="button" class="fd-key fd-key--wide" data-key="del">⌫</button>
-      <button type="button" class="fd-key fd-key--go" data-key="enter">↵</button>
+      <button type="button" class="fd-key fd-key--undo" data-key="del" aria-label="Undo">
+        <span aria-hidden="true">⌫</span> Undo</button>
+      <button type="button" class="fd-key" data-key="0">0</button>
+      <button type="button" class="fd-key fd-key--go" data-key="enter" aria-label="Done">Done</button>
     </div>
+
+    <p class="fd-hint fd-hint--round">Press <strong>Done</strong> when you're ready.</p>
   </section>
 
   {# DONE #}
@@ -48,6 +65,10 @@
     <h2 data-done-title>Nice work!</h2>
     <p class="fd-tally" data-tally></p>
     <ul class="fd-beaten" data-beaten></ul>
+    <div class="fd-mastery" data-mastery hidden>
+      <span class="fd-bar"><span class="fd-bar-fill" data-mastery-fill></span></span>
+      <span class="fd-count" data-mastery-label></span>
+    </div>
     <div class="fd-againrow">
       <button type="button" class="fd-go" data-action="again">Go again</button>
       <a class="fd-secondary" href="{% url 'factfluency:home' token=token %}">All levels</a>

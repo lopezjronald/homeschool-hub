@@ -34,6 +34,22 @@ def _student(token):
     return student
 
 
+#: How each personal best is worded on the map, in the order they appear.
+#: "12901ms" means nothing to a nine-year-old, and a bare "20" never said
+#: twenty of what. Ordered here because PersonalRecord has no default ordering,
+#: so the chips used to come out in whatever order the rows happened to arrive.
+RECORD_CHIPS = [
+    (RecordType.BEST_TIME, lambda v: "⏱ %.1fs fastest" % (v / 1000.0)),
+    (RecordType.BEST_ACCURACY, lambda v: "🎯 %d%% best" % round(v)),
+    (RecordType.LONGEST_STREAK, lambda v: "🔥 %d in a row" % round(v)),
+]
+
+
+def _record_chips(by_type):
+    return [{"text": word(by_type[kind].value)}
+            for kind, word in RECORD_CHIPS if kind in by_type]
+
+
 def _levels_with_state(student):
     levels = list(Level.objects.prefetch_related("facts").all())
     rows = scheduling.unlocked_levels(student, levels)
@@ -45,7 +61,7 @@ def _levels_with_state(student):
         row["mastered"] = mastered
         row["total"] = total
         row["pct"] = int(round(100 * mastered / total)) if total else 0
-        row["records"] = records.get(row["level"].pk, {})
+        row["records"] = _record_chips(records.get(row["level"].pk, {}))
     return rows
 
 

@@ -8340,3 +8340,161 @@ class VioletWeek2And3SeedTests(TestCase):
                 t for p in mod.PARTS for t, _d in p["vocabulary"]).lower()
             self.assertIn("primary sources", words, mod.__name__)
             self.assertIn("secondary sources", words, mod.__name__)
+
+
+class PoetryPageSpanTests(TestCase):
+    """The pages attached to each form must BE that form's pages.
+
+    Kaylin reported the counts were wrong. They were: nonet's last page had
+    been exported as shadorma's first, so shadorma opened on a nonet page and
+    every page of it was one out — she was reading one form's syllable table
+    under another form's heading.
+    """
+
+    def test_every_section_declares_as_many_pages_as_its_source_span(self):
+        from tutor import poetry
+
+        for section in poetry.SECTIONS:
+            first, last = poetry.SOURCE_SPANS[section["slug"]]
+            self.assertEqual(section["pages"], last - first + 1,
+                             "%s: declared pages do not match its source span"
+                             % section["slug"])
+
+    def test_the_spans_are_contiguous_and_never_overlap(self):
+        """An off-by-one at any boundary steals a page from its neighbour —
+        which is exactly how this broke."""
+        from tutor import poetry
+
+        spans = sorted(poetry.SOURCE_SPANS.values())
+        for (a_first, a_last), (b_first, _b_last) in zip(spans, spans[1:]):
+            self.assertLess(a_first, a_last + 1)
+            self.assertEqual(b_first, a_last + 1,
+                             "gap or overlap between %s and %s"
+                             % ((a_first, a_last), (b_first, _b_last)))
+
+    def test_every_declared_page_exists_on_disk(self):
+        """ManifestStaticFilesStorage raises on a missing file in production,
+        so a bad count takes the whole page down rather than degrading."""
+        from django.contrib.staticfiles import finders
+        from tutor import poetry
+
+        for section in poetry.SECTIONS:
+            for path in poetry.page_images(section):
+                self.assertIsNotNone(finders.find(path), path)
+
+    def test_no_page_file_is_orphaned(self):
+        """The other direction: a leftover p5.jpg after a section shrinks means
+        the export and the module disagree."""
+        import glob
+        import os
+
+        from tutor import poetry
+
+        for section in poetry.SECTIONS:
+            on_disk = len(glob.glob(os.path.join(
+                "static", "poetry", section["slug"], "*.jpg")))
+            self.assertEqual(on_disk, section["pages"], section["slug"])
+
+    def test_the_guides_own_shadorma_is_kept_even_though_it_is_unconventional(self):
+        """The usual shadorma is 3/5/3/3/7/5 = 26. This guide prints 4 on line
+        two and says "totaling 25". She is marked against the book in front of
+        her, so the printed form wins — pinned so nobody "corrects" it."""
+        from tutor import poetry
+
+        shadorma = poetry.section_by_number(9)
+        self.assertEqual(shadorma["pattern"], [3, 4, 3, 3, 7, 5])
+        self.assertEqual(poetry.total_syllables(shadorma), 25)
+        self.assertIn("totaling 25", shadorma["definition"])
+
+    def test_every_pattern_matches_the_total_its_definition_states(self):
+        """A form whose own definition names a total must add up to it."""
+        import re
+
+        from tutor import poetry
+
+        checked = 0
+        for section in poetry.SECTIONS:
+            match = re.search(r"total(?:ing|s|ling)?\s+(?:of\s+)?(\d+)",
+                              section["definition"])
+            if not match:
+                continue
+            checked += 1
+            self.assertEqual(poetry.total_syllables(section),
+                             int(match.group(1)), section["slug"])
+        self.assertGreaterEqual(checked, 4, "the check found nothing to check")
+
+
+class PoetrySyllableCounterTests(TestCase):
+    """The live counter under the grid, which is what she actually watches.
+
+    It was wrong on 15 of 64 ordinary poem words — every past tense ("walked"
+    counted 2), most plurals ("leaves" counted 2), and every split vowel
+    ("poem", "lion", "quiet" counted 1). Asserted here against the real JS so
+    the rules cannot rot.
+    """
+
+    def _count(self, words):
+        """Run the shipped counter under node and return {word: count}."""
+        import json
+        import subprocess
+        from pathlib import Path
+
+        js = (Path(__file__).resolve().parent.parent / "static" / "js"
+              / "poetry-grid.js").read_text(encoding="utf-8")
+        # The file is an IIFE that touches the DOM; lift just the counter out.
+        start = js.index("  var SPLIT_VOWELS")
+        end = js.index("  function countLine")
+        harness = (js[start:end]
+                   + "\nconst out = {};\n"
+                   + "%s.forEach(w => out[w] = syllables(w));\n" % json.dumps(words)
+                   + "console.log(JSON.stringify(out));\n")
+        result = subprocess.run(["node", "-e", harness], capture_output=True,
+                                text=True, timeout=60)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        return json.loads(result.stdout)
+
+    def test_it_counts_the_words_a_child_puts_in_a_nature_poem(self):
+        expected = {
+            # the basics
+            "the": 1, "sky": 1, "tree": 1, "trees": 1, "snow": 1, "moon": 1,
+            "river": 2, "water": 2, "morning": 2, "evening": 3, "shadow": 2,
+            # consonant + le keeps its beat
+            "little": 2, "gentle": 2, "purple": 2,
+            # silent -ed is NOT a beat...
+            "walked": 1, "jumped": 1, "danced": 1, "reached": 1, "watched": 1,
+            "whispered": 2, "listened": 2,
+            # ...except after t or d, where it is
+            "wanted": 2, "needed": 2, "painted": 2,
+            # silent -es is NOT a beat...
+            "leaves": 1, "makes": 1, "hopes": 1, "eyes": 1, "skies": 1,
+            # ...except after a sibilant, where it is
+            "roses": 2, "wishes": 2, "branches": 2, "houses": 2,
+            # adjacent vowels that really are two beats
+            "poem": 2, "lion": 2, "quiet": 2, "being": 2, "science": 2,
+            "violet": 3, "creation": 3,
+            # and some that are one
+            "hour": 1, "cloud": 1, "beautiful": 3, "ocean": 2, "butterfly": 3,
+        }
+        got = self._count(sorted(expected))
+        wrong = {w: (got[w], n) for w, n in expected.items() if got[w] != n}
+        self.assertEqual(wrong, {}, "got vs expected")
+
+    def test_punctuation_and_apostrophes_do_not_add_beats(self):
+        got = self._count(["little,", "shore.", "don't", "isn't", "aren't",
+                           "moon!", "wouldn't"])
+        self.assertEqual(got["little,"], 2)
+        self.assertEqual(got["shore."], 1)
+        self.assertEqual(got["moon!"], 1)
+        # Contractions come from an explicit table: no rule separates "don't"
+        # (one beat) from "isn't" (two) except the letter before the n, and
+        # "aren't" breaks even that.
+        self.assertEqual(got["don't"], 1)
+        self.assertEqual(got["aren't"], 1)
+        self.assertEqual(got["isn't"], 2)
+        self.assertEqual(got["wouldn't"], 2)
+
+    def test_no_word_ever_counts_zero(self):
+        """A zero would let a line of real words read as an empty line."""
+        got = self._count(["a", "I", "oh", "rhythm", "xyz", "the"])
+        for word, count in got.items():
+            self.assertGreaterEqual(count, 1, word)

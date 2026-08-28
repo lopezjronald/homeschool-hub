@@ -120,7 +120,7 @@ SECTIONS = [
     },
     {
         "number": 8, "slug": "nonet", "name": "nonet", "subtitle": "countdown syllables",
-        "pages": 4,
+        "pages": 5,
         "definition": "A nonet is a nine-line poem with a decreasing number of "
                       "syllables in each line. Starting with 9 syllables in line "
                       "1, and ending with 1 syllable in line 9, it has a total of "
@@ -129,7 +129,12 @@ SECTIONS = [
     },
     {
         "number": 9, "slug": "shadorma", "name": "shadorma", "subtitle": "little syllables",
-        "pages": 5,
+        "pages": 4,
+        # NOT the conventional shadorma. The usual form is 3/5/3/3/7/5 = 26;
+        # this guide prints "Line 2: 4 syllables" and "totaling 25", and the
+        # pattern below is the guide's, verbatim. She is being marked against
+        # the book in front of her, so this stays as printed — do not "correct"
+        # it to the internet's version.
         "definition": "Each stanza of a shadorma is made up of 6 lines — a sestet "
                       "— and can be repeated in as many stanzas as the poet wants. "
                       "Each line of the sestet follows the following syllabic "
@@ -193,6 +198,24 @@ def section_by_number(number):
 def total_syllables(section):
     counts = [n for n in section["pattern"] if n]
     return sum(counts) if counts else None
+
+
+#: Where each section starts and ends in the family's source PDF
+#: ("BB Poetry - Small Forms.PDF"), 1-based. Every one of these was verified by
+#: reading the printed "SECTION n" title page, after nonet and shadorma were
+#: found to be off by one: nonet's last page (folio 41) had been exported as
+#: shadorma's FIRST, so shadorma opened on a nonet page and every page of it
+#: was one out. A child reading a form's syllable table off the wrong page is
+#: being taught the wrong form.
+#:
+#: Kept as data so `pages` can never silently drift from the export again — see
+#: PoetryPageSpanTests.
+SOURCE_SPANS = {
+    "haiku": (8, 12), "tanka": (13, 17), "sijo": (18, 22), "lune": (23, 26),
+    "cinquain": (27, 30), "senryu": (31, 34), "tricube": (35, 39),
+    "nonet": (40, 44), "shadorma": (45, 48), "gogyohka": (49, 52),
+    "sevenling": (53, 57), "free-verse": (58, 61),
+}
 
 
 def page_images(section):

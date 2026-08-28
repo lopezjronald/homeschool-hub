@@ -14,17 +14,56 @@
 (function () {
   "use strict";
 
+  // Words whose adjacent vowels are TWO beats, against the rule that counts a
+  // vowel run as one. Kept as a short list rather than guessed at: "io" is two
+  // sounds in "lion" and one in "nation", and no compact rule tells them apart.
+  // Everything here is a word a child actually reaches for in a nature poem —
+  // "violet" among them, which counted 2 and is 3.
+  var SPLIT_VOWELS = ("quiet quietly poem poems poet poets poetry lion lions "
+    + "being science giant diary radio area idea violet violets cruel ruin "
+    + "fluid riot trial dial dying lying flying crying trying drying frying "
+    + "prior real really create creates creating creation piano serial genius "
+    + "medium").split(" ");
+  var SPLIT = {};
+  SPLIT_VOWELS.forEach(function (w) { SPLIT[w] = 1; });
+
+  // Contractions, which no rule gets right: "don't" is one beat and "isn't" is
+  // two, and the only difference is whether the letter before the n is a vowel.
+  // Written out rather than reasoned about — "aren't" is one beat and breaks
+  // every rule that gets the rest of them right.
+  var EXACT = {
+    dont: 1, cant: 1, wont: 1, arent: 1, werent: 1, im: 1, ive: 1, ill: 1,
+    id: 1, its: 1, thats: 1, whats: 1, hes: 1, shes: 1, theyre: 1, youre: 1,
+    isnt: 2, wasnt: 2, hasnt: 2, havent: 2, doesnt: 2, didnt: 2, couldnt: 2,
+    wouldnt: 2, shouldnt: 2, wouldve: 2, couldve: 2, shouldve: 2,
+  };
+
   function syllables(word) {
-    var w = word.toLowerCase().replace(/[^a-z]/g, "");
+    // Apostrophes are dropped, not treated as a break: "don't" is one beat.
+    var w = word.toLowerCase().replace(/[^a-z']/g, "").replace(/'/g, "");
     if (!w) return 0;
-    if (w.length <= 2) return 1;
+    if (EXACT[w]) return EXACT[w];
+    var bonus = SPLIT[w] ? 1 : 0;
+    if (w.length <= 2) return 1 + bonus;
+
+    // Silent "-ed": walked, danced, reached are ONE beat. Not after t or d
+    // ("wanted", "needed"), where the ending is its own beat. This was the
+    // single biggest error — past tense is everywhere in a poem, and every one
+    // of them was counted a syllable long.
+    if (/[^td]ed$/.test(w)) w = w.slice(0, -2) + "d";
+    // Silent "-es": leaves, makes, hopes are ONE beat. Not after a sibilant
+    // ("roses", "wishes", "branches"), where it is a beat of its own.
+    else if (/es$/.test(w) && !/(s|x|z|ch|sh|c|g|i)es$/.test(w)) {
+      w = w.slice(0, -2) + "s";
+    }
+
     // Trailing silent e ("time", "shore") — but not "-le" ("little") which
     // carries its own syllable. Test the CLEANED word: testing the raw token
     // meant "little," (with punctuation) failed the -le check and lost a
     // syllable — and poems put punctuation exactly where -le words land.
     if (!/[^aeiouy]le$/.test(w)) w = w.replace(/e$/, "");
     var groups = w.match(/[aeiouy]+/g);
-    return groups ? Math.max(1, groups.length) : 1;
+    return Math.max(1, groups ? groups.length : 1) + bonus;
   }
 
   function countLine(text) {

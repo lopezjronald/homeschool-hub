@@ -14,6 +14,7 @@ the real issue before answering — the layout is the lesson in a newspaper.
 """
 
 import json
+import re
 
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
@@ -35,6 +36,19 @@ LEVELS = {
         "name": "Studies Weekly 7 — World History and Geography",
         "subject": "Social Studies"},
 }
+
+
+_SEEDED_TITLE = re.compile(r"^(Part|Activity) \d")
+
+
+def _is_seeded(title, mod):
+    """Was this material written by this command?
+
+    Matches the current naming, plus the one legacy title the flat weeks used
+    before lessons had parts — that row must still be found and renamed rather
+    than left behind beside its own replacement.
+    """
+    return bool(_SEEDED_TITLE.match(title)) or title == "%s — the issue" % mod.TITLE
 
 
 def _unit_title(mod):
@@ -226,18 +240,22 @@ class Command(BaseCommand):
         # plus an insert: the new row was born DRAFT, the portal only shows
         # APPROVED, and a week a parent had already approved went blank on the
         # child's page — taking its /materials/<pk>/ link with it.
-        existing = list(Material.objects.filter(lesson=lesson, child=child)
-                        .order_by("pk"))
+        # Only rows THIS COMMAND made. Reusing — and later deleting — any
+        # material on the lesson meant a worksheet a parent added for the same
+        # child could be renamed into "Part 2.1" and then swept away on the next
+        # reseed. Reseeding is not permission to bin a parent's own work.
+        mine = [m for m in Material.objects.filter(lesson=lesson, child=child)
+                                           .order_by("pk")
+                if _is_seeded(m.title, mod)]
         made = []
         for index, spec in enumerate(parts, start=1):
-            reuse = existing[index - 1] if index <= len(existing) else None
+            reuse = mine[index - 1] if index <= len(mine) else None
             made.append(self._part_material(lesson, child, family, mod, spec,
                                             index, len(parts), reuse))
         # A lesson that lost a part on a reseed should not keep its orphan page.
-        # Scoped to this child: a parent may have attached their own material to
-        # the same lesson, and reseeding is not permission to bin it.
-        Material.objects.filter(lesson=lesson, child=child).exclude(
-            pk__in=[m.pk for m in made]).delete()
+        kept = {m.pk for m in made}
+        Material.objects.filter(
+            pk__in=[m.pk for m in mine if m.pk not in kept]).delete()
         return made
 
     def _part_material(self, lesson, child, family, mod, spec, index, total,

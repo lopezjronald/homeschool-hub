@@ -962,11 +962,16 @@ def portal_subject(request, token, curriculum_id):
     else:
         current_chapter = None
 
-    from tutor.models import LessonBlock
+    from tutor.models import LessonBlock, Material
 
+    # Approved, and hers. Unfiltered, the chip appeared the moment a unit was
+    # seeded — offering her a booklet whose Read cards were all still drafts,
+    # so it listed comprehension checks for reading she could not open.
     booklet_chapters = set(
         LessonBlock.objects
         .filter(kind=LessonBlock.KIND_WATCH,
+                material__status=Material.APPROVED,
+                material__child=student,
                 material__lesson__chapter__curriculum=curriculum)
         .values_list("material__lesson__chapter_id", flat=True)
     )

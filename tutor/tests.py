@@ -8192,18 +8192,68 @@ class FlatWeekReseedTests(TestCase):
         self.assertEqual(intro.count(note), 1, intro)
 
     def test_a_parents_own_material_on_the_lesson_survives_a_reseed(self):
+        """For the SAME child, which is the case that actually happens.
+
+        The first version of this test attached the material to a sibling, so
+        it passed against a sweep that would still have binned a worksheet the
+        parent added for the child whose lesson it was.
+        """
         from tutor.models import Material
 
         self._seed(1)
         lesson = Material.objects.get().lesson
-        other = Student.objects.create(
-            parent=self.parent, first_name="Sib", grade_level="G05",
-            family=self.fam)
         mine = Material.objects.create(
-            lesson=lesson, child=other, family=self.fam,
-            title="Something a parent added", skill_type=Material.SKILL_LESSON)
+            lesson=lesson, child=self.kaylin, family=self.fam,
+            title="Mum's extra map worksheet", status=Material.APPROVED,
+            skill_type=Material.SKILL_LESSON)
         self._seed(1)
-        self.assertTrue(Material.objects.filter(pk=mine.pk).exists())
+        self.assertTrue(Material.objects.filter(pk=mine.pk).exists(),
+                        "reseeding is not permission to bin a parent's work")
+        # …and it must not have been hijacked into being "Part 1.1" either.
+        mine.refresh_from_db()
+        self.assertEqual(mine.title, "Mum's extra map worksheet")
+        self.assertEqual(
+            Material.objects.get(title="Part 1.1 · Geography and Map Skills").child,
+            self.kaylin)
+
+    def test_parts_keep_their_printed_order_after_a_reseed(self):
+        """The booklet's whole premise is the order she does things in, and an
+        untied ORDER BY returns heap order — which a reseed's UPDATE can
+        shuffle."""
+        from portal.tokens import make_portal_token
+        from tutor.models import Material
+
+        self._seed(2)
+        # Touch part 1's row so a heap-ordered scan would return it last.
+        first = Material.objects.get(title__startswith="Part 2.1")
+        first.save()
+        self._seed(2)
+        Material.objects.update(status=Material.APPROVED)
+
+        from curricula.models import Curriculum
+        html = self.client.get(reverse(
+            "portal:portal_unit_booklet",
+            kwargs={"token": make_portal_token(self.kaylin),
+                    "curriculum_id": Curriculum.objects.get().pk,
+                    "unit": 1})).content.decode()
+        self.assertLess(html.index("Part 2.1"), html.index("Part 2.2"))
+
+    def test_the_booklet_chip_waits_until_the_reading_is_approved(self):
+        """Offered too early it invited her into a unit whose Read cards were
+        all drafts — a page of comprehension checks for reading she could not
+        open."""
+        from portal.tokens import make_portal_token
+        from curricula.models import Curriculum
+        from tutor.models import Material
+
+        self._seed(2)
+        token = make_portal_token(self.kaylin)
+        url = reverse("portal:portal_subject",
+                      kwargs={"token": token,
+                              "curriculum_id": Curriculum.objects.get().pk})
+        self.assertNotContains(self.client.get(url), "as a booklet")
+        Material.objects.update(status=Material.APPROVED)
+        self.assertContains(self.client.get(url), "as a booklet")
 
 
 class VioletWeek2And3SeedTests(TestCase):

@@ -150,6 +150,9 @@
                     {% if row.question.prompt %}
                       <div class="ss-qa-prompt">{{ row.question.order }}. {{ row.question.prompt|markdownify_inline }}</div>
                     {% endif %}
+                    {% comment %}The map or picture the question is ABOUT. "Study
+                    the map" with no map is a transcript, not the assessment.{% endcomment %}
+                    {% include "worklog/_question_figure.html" with question=row.question %}
                     {% if row.photos %}
                       {% comment %}Work she built with her hands. The photograph
                       is the work; the count is not.{% endcomment %}

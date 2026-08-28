@@ -1,4 +1,6 @@
 {% extends "base.html" %}
+{% load static %}
+{% load tutor_extras %}
 {% block title %}{{ entry.subject }} · Work Log{% endblock %}
 
 {% block content %}
@@ -21,8 +23,15 @@
             <dt class="col-sm-3">Curriculum</dt>
             <dd class="col-sm-9">{{ entry.curriculum.name|default:"—" }}</dd>
 
-            <dt class="col-sm-3">Notes</dt>
-            <dd class="col-sm-9">{{ entry.description|linebreaksbr|default:"—" }}</dd>
+            {% comment %}A portal submission writes a plain-text transcript
+            into the notes. When the sheet itself is on this page (below), the
+            transcript is a worse copy of the same thing — raw ** markers,
+            "study the map" with no map — so it collapses behind a details
+            toggle instead of leading the card.{% endcomment %}
+            {% if not item.sheet %}
+              <dt class="col-sm-3">Notes</dt>
+              <dd class="col-sm-9">{{ entry.description|linebreaksbr|default:"—" }}</dd>
+            {% endif %}
 
             {% if entry.minutes %}
             <dt class="col-sm-3">Time</dt>
@@ -59,6 +68,49 @@
           {% endif %}
         </div>
       </div>
+
+      {% if item.sheet %}
+        <div class="card mt-4 ss-detail-sheet">
+          <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">{{ item.title }}</h5>
+            <span class="text-muted small">as she saw it</span>
+          </div>
+          <div class="card-body">
+            {% for row in item.qa_rows %}
+              <div class="ss-qa">
+                {% if row.question.prompt %}
+                  <div class="ss-qa-prompt">{{ row.question.order }}. {{ row.question.prompt|markdownify_inline }}</div>
+                {% endif %}
+                {% include "worklog/_question_figure.html" with question=row.question %}
+                {% if row.photos %}
+                  <div class="ss-photo-row">
+                    {% for p in row.photos %}
+                      <img src="{{ p.image.url }}" alt="Work made by hand" class="ss-photo">
+                    {% endfor %}
+                  </div>
+                {% elif row.replay %}
+                  {% include "tutor/_markup_replay.html" with replay=row.replay %}
+                {% else %}
+                  {% if row.question.is_markup %}
+                    <p class="ss-qa-sentence">“{{ row.question.passage }}”</p>
+                  {% endif %}
+                  {% if row.answered %}
+                    <div class="ss-answer-block">{{ row.answer }}</div>
+                  {% else %}
+                    <div class="text-muted fst-italic">No answer.</div>
+                  {% endif %}
+                {% endif %}
+              </div>
+            {% endfor %}
+            {% if entry.description %}
+              <details class="mt-3">
+                <summary class="text-muted small">Plain-text transcript</summary>
+                <div class="small text-muted mt-2">{{ entry.description|linebreaksbr }}</div>
+              </details>
+            {% endif %}
+          </div>
+        </div>
+      {% endif %}
 
       {% with assessments=entry.assessments.all %}
       {% if assessments %}

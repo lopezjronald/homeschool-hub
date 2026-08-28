@@ -1114,3 +1114,92 @@ class PaperCopyCompletionTests(TestCase):
         resp = self.client.get(
             reverse("portal:portal_autosave", args=[self.token, self.qset.pk]))
         self.assertEqual(resp.status_code, 405)
+
+
+class AssessmentSnapshotTests(TestCase):
+    """A quiz about a map has to SHOW the map (user report, 2026-08-27).
+
+    Kaylin's Studies Weekly Week 1 check reached the work log as a text
+    transcript: raw ** markers in the notes, and "Study the map" questions with
+    no map anywhere. Three surfaces now render the actual assessment — the
+    entry detail page, the completion report, and the charter report.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.parent = User.objects.create_user(
+            username="figp", email="figp@e.com", password="pw")
+        cls.fam = Family.objects.create(name="Fig Fam")
+        FamilyMembership.objects.create(user=cls.parent, family=cls.fam, role="parent")
+        cls.kaylin = Student.objects.create(
+            parent=cls.parent, first_name="Kaylin", grade_level="G07", family=cls.fam)
+        cls.today = timezone.localdate()
+
+        cur = Curriculum.objects.create(
+            parent=cls.parent, name="Studies Weekly 7", subject="Social Studies",
+            family=cls.fam)
+        ch = Chapter.objects.create(curriculum=cur, number=1, title="Week 1")
+        lesson = Lesson.objects.create(chapter=ch, order=1, number=1, title="W1")
+        cls.qset = QuestionSet.objects.create(
+            lesson=lesson, title="Week 1 · Geography — Comprehension Check",
+            family=cls.fam, status=QuestionSet.APPROVED, rubric="Check.")
+        cls.map_q = Question.objects.create(
+            question_set=cls.qset, order=1, category="reading",
+            response_type=Question.TYPE_CHOICE,
+            prompt="Study the map. What is the largest east-west distance?",
+            passage=json.dumps({
+                "options": [{"key": "a", "text": "1,000"}, {"key": "c", "text": "2,200"}],
+                "correct": "c",
+                "figure": "weekly/l7w1/q5-source-a.jpg",
+                "figure_caption": "The Eastern biome",
+            }))
+        cls.entry = WorkLogEntry.objects.create(
+            parent=cls.parent, child=cls.kaylin, subject="Social Studies",
+            family=cls.fam, date=cls.today,
+            description="Q1 [reading]: **Blank A** raw transcript text")
+        cls.sheet = ResponseSheet.objects.create(
+            question_set=cls.qset, child=cls.kaylin,
+            answers={str(cls.map_q.pk): "c"},
+            status=ResponseSheet.SUBMITTED, work_entry=cls.entry,
+            submitted_at=timezone.now())
+
+    def _get(self, url):
+        self.client.login(username="figp", password="pw")
+        return self.client.get(url).content.decode()
+
+    def test_the_reports_show_the_map_the_question_is_about(self):
+        for name in ("worklog:worklog_report", "worklog:charter_report"):
+            html = self._get(reverse(name))
+            self.assertIn("l7w1/q5-source-a", html, name)
+            self.assertIn("The Eastern biome", html, name)
+
+    def test_the_detail_page_renders_the_assessment_not_the_transcript(self):
+        html = self._get(reverse("worklog:worklog_detail", args=[self.entry.pk]))
+        # The real thing: question, map, her answer.
+        self.assertIn("Study the map.", html)
+        self.assertIn("l7w1/q5-source-a", html)
+        self.assertIn("as she saw it", html)
+        # The transcript no longer leads the card with its raw ** markers; it
+        # survives only inside the collapsed details block.
+        self.assertIn("<details", html)
+        before_details = html.split("<details")[0]
+        self.assertNotIn("**Blank A**", before_details)
+
+    def test_an_entry_without_a_sheet_still_shows_its_notes(self):
+        plain = WorkLogEntry.objects.create(
+            parent=self.parent, child=self.kaylin, subject="PE",
+            family=self.fam, date=self.today, description="Ran a mile.")
+        html = self._get(reverse("worklog:worklog_detail", args=[plain.pk]))
+        self.assertIn("Ran a mile.", html)
+
+    def test_a_question_without_a_figure_adds_no_broken_image(self):
+        plain_q = Question.objects.create(
+            question_set=self.qset, order=2, category="reading",
+            response_type=Question.TYPE_TEXT, prompt="Name the two branches.")
+        self.sheet.answers[str(plain_q.pk)] = "physical and human"
+        self.sheet.save()
+        html = self._get(reverse("worklog:worklog_detail", args=[self.entry.pk]))
+        self.assertIn("Name the two branches.", html)
+        # Exactly one figure block — the map question's, and nothing empty for
+        # the text question.
+        self.assertEqual(html.count('<figure class="ss-qfig">'), 1)

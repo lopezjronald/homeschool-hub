@@ -600,15 +600,25 @@ def worklog_create(request):
 
 @login_required
 def worklog_detail(request, pk):
-    """View a single work log entry."""
+    """View a single work log entry.
+
+    A portal submission gets the ACTUAL assessment — the questions with their
+    maps and pictures, her answers against them — not the text transcript the
+    submission wrote into the notes. "Study the map" with no map underneath is
+    a quiz nobody can review.
+    """
+    from tutor import mastery
+
     entry = get_object_or_404(
         viewable_queryset(WorkLogEntry.objects.all(), request.user).select_related(
             "child", "curriculum", "created_by",
         ),
         pk=pk,
     )
+    item = _report_item(entry, mastery)
     return render(request, "worklog/worklog_detail.html", {
         "entry": entry,
+        "item": item,
         "can_edit": can_edit_family_or_global(request.user, entry.family),
     })
 

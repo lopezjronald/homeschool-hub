@@ -872,6 +872,15 @@ a:focus-visible > .hub-tile {
 
 /* ===== Photographed work in the reports (HH-199) ========================== */
 
+/* The map or picture a report question is about, sized to be readable without
+   swallowing the page, and kept with its question when printed. */
+.ss-qfig { margin: .4rem 0 .6rem; break-inside: avoid; page-break-inside: avoid; }
+.ss-qfig img {
+  display: block; max-width: 100%; max-height: 22rem;
+  border: 1px solid #e3ddd2; border-radius: 8px; background: #fff;
+}
+.ss-qfig figcaption { font-size: .8rem; color: #6b6459; margin-top: .25rem; }
+
 .ss-photo-row { display: flex; flex-wrap: wrap; gap: .5rem; margin: .35rem 0 .5rem; }
 .ss-photo {
   max-width: 260px; max-height: 260px;

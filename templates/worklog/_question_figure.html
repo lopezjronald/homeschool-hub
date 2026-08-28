@@ -1,0 +1,8 @@
+{% load static %}{% if question.figure %}
+<figure class="ss-qfig">
+  <img src="{% static question.figure %}"
+       alt="{{ question.figure_caption|default:'The map or picture this question is about' }}"
+       loading="lazy">
+  {% if question.figure_caption %}<figcaption>{{ question.figure_caption }}</figcaption>{% endif %}
+</figure>
+{% endif %}

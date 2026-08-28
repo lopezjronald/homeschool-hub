@@ -129,6 +129,7 @@
                     <span class="text-muted small">Question {{ row.question.order }}</span>
                   </div>
                   {% if row.question.prompt %}<div class="ss-qa-prompt">{{ row.question.prompt|markdownify_inline }}</div>{% endif %}
+                  {% include "worklog/_question_figure.html" with question=row.question %}
                   {% if row.photos %}
                     {% comment %}She built something. A photograph of it IS the
                     work sample — the charter cannot be shown the word "3".{% endcomment %}

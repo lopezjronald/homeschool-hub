@@ -8763,3 +8763,162 @@ class BlankBPairingTests(TestCase):
                  and Question.objects.get(pk=pk).passage != passage]
         self.assertEqual(moved, [],
                          "a blank B must keep the word bank she answered")
+
+
+class WhiteLilacsSeedTests(TestCase):
+    """Kaylin's Blackbird guide for White Lilacs.
+
+    Transcribed from a 59-page scan with NO text layer and NO teacher edition,
+    so these guard the shape and the things a transcription gets wrong.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.parent = User.objects.create_user(
+            username="wl", email="wl@e.com", password="pw")
+        cls.family = Family.objects.create(name="WL Fam")
+        FamilyMembership.objects.create(user=cls.parent, family=cls.family, role="parent")
+        cls.kaylin = Student.objects.create(
+            parent=cls.parent, first_name="Kaylin", grade_level="G07",
+            family=cls.family)
+
+    def _seed(self):
+        from django.core.management import call_command
+        call_command("seed_white_lilacs", for_user="wl", verbosity=0)
+        from curricula.models import Curriculum
+        return Curriculum.objects.get(name__startswith="White Lilacs")
+
+    def test_the_guides_own_shape(self):
+        """Four reading sections plus Glean, with the guide's chapter splits."""
+        curriculum = self._seed()
+        # Chapter 900 is the literature standard's anchor — numbered high on
+        # purpose so the Socratic seminar sorts after the book itself.
+        chapters = [c for c in curriculum.chapters.order_by("number")
+                    if c.number < 900]
+        self.assertEqual([c.number for c in chapters], [1, 2, 3, 4, 5])
+        self.assertEqual(
+            [c.title for c in chapters[:4]],
+            ["Section 1: Chapters 1–5", "Section 2: Chapters 6–10",
+             "Section 3: Chapters 11–15", "Section 4: Chapters 16–19"])
+        self.assertIn("Glean", chapters[4].title)
+
+    def test_every_section_carries_the_five_elements(self):
+        from tutor.models import QuestionSet
+
+        curriculum = self._seed()
+        for n in (1, 2, 3, 4):
+            titles = set(QuestionSet.objects.filter(
+                lesson__chapter__curriculum=curriculum,
+                lesson__chapter__number=n).values_list("title", flat=True))
+            for element in ("Journal", "Acquire: Vocabulary",
+                            "Recollect: Comprehension", "Explore: Writing",
+                            "Explore: Discussion"):
+                self.assertIn("Section %d · %s" % (n, element), titles)
+
+    def test_the_printed_counts(self):
+        """14 comprehension questions and 6 vocabulary words in every section,
+        and the discussion counts the guide actually prints."""
+        from tutor.models import QuestionSet
+
+        curriculum = self._seed()
+
+        def count(n, element):
+            return QuestionSet.objects.get(
+                lesson__chapter__curriculum=curriculum,
+                title="Section %d · %s" % (n, element)).questions.count()
+
+        for n in (1, 2, 3, 4):
+            self.assertEqual(count(n, "Recollect: Comprehension"), 14, n)
+            self.assertEqual(count(n, "Acquire: Vocabulary"), 6, n)
+            self.assertEqual(count(n, "Explore: Writing"), 1, n)
+        self.assertEqual([count(n, "Explore: Discussion") for n in (1, 2, 3, 4)],
+                         [8, 10, 7, 9])
+        self.assertEqual(QuestionSet.objects.get(
+            lesson__chapter__curriculum=curriculum,
+            title__contains="Glean").questions.count(), 9)
+
+    def test_discussion_is_oral_and_the_rest_is_written(self):
+        from tutor.models import QuestionSet
+
+        curriculum = self._seed()
+        for qset in QuestionSet.objects.filter(
+                lesson__chapter__curriculum=curriculum):
+            oral = ("Discussion" in qset.title or "Seminar" in qset.title
+                    or "Toolbox" in qset.title)
+            self.assertEqual(qset.mode == QuestionSet.MODE_DISCUSSION, oral,
+                             qset.title)
+
+    def test_no_answer_key_is_invented(self):
+        """The family's copy is the STUDENT workbook — there is no published
+        key. An empty answer_key is the honest state; a filled one would be
+        something we made up and marked her against."""
+        from tutor.models import QuestionSet
+
+        curriculum = self._seed()
+        for qset in QuestionSet.objects.filter(
+                lesson__chapter__curriculum=curriculum,
+                title__contains="Recollect"):
+            self.assertEqual((qset.answer_key or "").strip(), "")
+            self.assertIn("no publisher answer key", qset.rubric)
+
+    def test_the_printed_slips_are_reproduced_not_corrected(self):
+        """She answers the page in front of her. Silently fixing the guide
+        makes the app and the book disagree."""
+        from tutor.management.commands import seed_white_lilacs as m
+
+        s1 = m.SECTIONS[0]
+        s2 = m.SECTIONS[1]
+        discussion2 = s1["discussion"][1][1]
+        self.assertIn("Mrs Bell tries to explain", discussion2)
+        self.assertIn("How does She describe them?", discussion2)
+        self.assertIn("show here thoughtlessness", s2["recollect"][7])
+        self.assertIn("it's intent", s2["writing_prompt"])
+
+    def test_the_characters_named_are_the_ones_the_guide_names(self):
+        from tutor.models import Question, QuestionSet
+
+        curriculum = self._seed()
+        boxes = {}
+        for qset in QuestionSet.objects.filter(
+                lesson__chapter__curriculum=curriculum, title__contains="Journal"):
+            question = qset.questions.get(response_type=Question.TYPE_CHARACTERS)
+            boxes[qset.title] = question.passage
+        self.assertIn("Grandfather Jim Williams", boxes["Section 1 · Journal"])
+        self.assertIn("Catherine Jane Bell", boxes["Section 1 · Journal"])
+        self.assertIn("Aunt Susannah", boxes["Section 2 · Journal"])
+        self.assertIn("Henry Jefferson", boxes["Section 3 · Journal"])
+
+    def test_the_literature_standard_is_attached(self):
+        from tutor.models import QuestionSet
+
+        curriculum = self._seed()
+        titles = set(QuestionSet.objects.filter(
+            lesson__chapter__curriculum=curriculum).values_list("title", flat=True))
+        self.assertIn("Story-Grammar Seminar", titles)
+        self.assertIn("Literary Toolbox", titles)
+
+    def test_reseeding_changes_nothing(self):
+        from tutor.models import Question, QuestionSet
+
+        curriculum = self._seed()
+        before = sorted(QuestionSet.objects.filter(
+            lesson__chapter__curriculum=curriculum
+        ).values_list("pk", "title", "mode"))
+        q_before = Question.objects.filter(
+            question_set__lesson__chapter__curriculum=curriculum).count()
+        self._seed()
+        after = sorted(QuestionSet.objects.filter(
+            lesson__chapter__curriculum=curriculum
+        ).values_list("pk", "title", "mode"))
+        self.assertEqual(before, after)
+        self.assertEqual(Question.objects.filter(
+            question_set__lesson__chapter__curriculum=curriculum).count(),
+            q_before)
+
+    def test_it_refuses_a_child_who_is_not_there(self):
+        from django.core.management import call_command
+        from django.core.management.base import CommandError
+
+        with self.assertRaises(CommandError):
+            call_command("seed_white_lilacs", for_user="wl",
+                         child_name="Nobody", verbosity=0)

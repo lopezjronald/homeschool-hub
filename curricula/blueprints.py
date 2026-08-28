@@ -365,6 +365,37 @@ BLACKBIRD_THE_FOLK_KEEPER = {
 }
 
 
+BLACKBIRD_WHITE_LILACS = {
+    "slug": "blackbird_white_lilacs",
+    "name": "White Lilacs — Literature Discovery",
+    "subject": "Literature",
+    "grade_level": "G07",
+    "source": "Blackbird & Company Educational Press — Literature Discovery "
+              "Guide: White Lilacs by Carolyn Meyer. Family-owned guide; "
+              "content follows the workbook for private family use.",
+    "chapters": [
+        _bb_section(1, "1–5"),
+        _bb_section(2, "6–10"),
+        _bb_section(3, "11–15"),
+        _bb_section(4, "16–19"),
+        {
+            "number": 5,
+            "title": "Section 5: Glean — Final Project",
+            "lessons": [
+                _ls(1, 1, "Glean: Final Project",
+                    "Complete one or more of the guide's assignment options: an "
+                    "illustrated timeline of the Suffragist movement, a sketchbook "
+                    "of your neighbourhood, an interview with a grandparent, a "
+                    "Civil Rights timeline, a poster on Booker T. Washington or "
+                    "Frederick Douglass, an essay on W. E. B. DuBois and the "
+                    "NAACP, research into Quakertown in Denton, Texas, a paper "
+                    "album quilt, or a diorama of a favourite scene."),
+            ],
+        },
+    ],
+}
+
+
 BLACKBIRD_A_MOUSE_CALLED_WOLF = {
     "slug": "blackbird_a_mouse_called_wolf",
     "name": "A Mouse Called Wolf — Literature Discovery",
@@ -1072,6 +1103,7 @@ BLUEPRINTS = {
     SCIENCE_G7["slug"]: SCIENCE_G7,
     BLACKBIRD_I_AM_DAVID["slug"]: BLACKBIRD_I_AM_DAVID,
     BLACKBIRD_THE_FOLK_KEEPER["slug"]: BLACKBIRD_THE_FOLK_KEEPER,
+    BLACKBIRD_WHITE_LILACS["slug"]: BLACKBIRD_WHITE_LILACS,
     BLACKBIRD_A_MOUSE_CALLED_WOLF["slug"]: BLACKBIRD_A_MOUSE_CALLED_WOLF,
     BLACKBIRD_RICKSHAW_GIRL["slug"]: BLACKBIRD_RICKSHAW_GIRL,
     BLACKBIRD_HUNDRED_DRESSES["slug"]: BLACKBIRD_HUNDRED_DRESSES,

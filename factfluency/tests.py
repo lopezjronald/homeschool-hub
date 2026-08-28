@@ -603,3 +603,74 @@ class PortalTileTests(TestCase):
         self.assertEqual(summary["total"],
                          sum(l.form_count() for l in Level.objects.filter(
                              is_challenge=False)))
+
+
+class DivisionFollowsMultiplicationTests(TestCase):
+    """Division is DERIVED from multiplication, so it cannot come first.
+
+    A child who does not yet know 5x7=35 cannot recall 35/7 — she can only
+    count up, which by our own rule is not fluent, so the form would churn in
+    box 1 teaching her nothing. Before this gate, a first round of the fives
+    could be three divisions out of four.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.parent = User.objects.create_user(username="dm", email="dm@e.com", password="pw")
+        cls.family = Family.objects.create(name="DM Fam")
+        cls.child = Student.objects.create(
+            parent=cls.parent, first_name="Violet", grade_level="G03", family=cls.family)
+        cls.fives = Level.objects.get(slug="fives")
+
+    def _prompts(self):
+        return {q["prompt"] for q in scheduling.build_round(self.child, self.fives)}
+
+    def test_the_very_first_round_is_all_multiplication(self):
+        for prompt in self._prompts():
+            self.assertNotIn("÷", prompt, prompt)
+
+    def test_no_level_opens_with_a_division(self):
+        for level in Level.objects.all():
+            StudentFactState.objects.filter(student=self.child).delete()
+            for q in scheduling.build_round(self.child, level):
+                self.assertNotIn("÷", q["prompt"], "%s: %s" % (level.slug, q["prompt"]))
+
+    def test_a_division_unlocks_once_its_multiplication_is_fluent(self):
+        fact = Fact.objects.get(factor_a=5, factor_b=7)
+        states = scheduling.ensure_states(
+            self.child, [(fact, Operation.MULT), (fact, Operation.DIV_A)])
+        mult = states[(fact.pk, Operation.MULT)]
+
+        self.assertFalse(scheduling._division_is_earned(fact, Operation.DIV_A, states))
+        scheduling.apply_attempt(mult, is_correct=True, response_ms=800, session_id=1)
+        self.assertTrue(scheduling._division_is_earned(fact, Operation.DIV_A, states))
+
+    def test_a_slow_multiplication_does_not_unlock_its_division(self):
+        """Right-but-slow is derivation, not recall — the same standard that
+        stops it promoting stops it opening the division."""
+        fact = Fact.objects.get(factor_a=5, factor_b=7)
+        states = scheduling.ensure_states(
+            self.child, [(fact, Operation.MULT), (fact, Operation.DIV_A)])
+        scheduling.apply_attempt(states[(fact.pk, Operation.MULT)],
+                                 is_correct=True, response_ms=5000, session_id=1)
+        self.assertFalse(scheduling._division_is_earned(fact, Operation.DIV_A, states))
+
+    def test_a_division_already_in_play_is_not_taken_away_again(self):
+        """The gate is on INTRODUCTION. Fumbling the multiplication later must
+        not yank a division she is already working on out of her rounds."""
+        fact = Fact.objects.get(factor_a=5, factor_b=7)
+        forms = [(fact, Operation.MULT), (fact, Operation.DIV_A)]
+        states = scheduling.ensure_states(self.child, forms)
+        scheduling.apply_attempt(states[(fact.pk, Operation.MULT)],
+                                 is_correct=True, response_ms=800, session_id=1)
+        div = states[(fact.pk, Operation.DIV_A)]
+        scheduling.apply_attempt(div, is_correct=True, response_ms=800, session_id=1)
+
+        # now she blows the multiplication
+        scheduling.apply_attempt(states[(fact.pk, Operation.MULT)],
+                                 is_correct=False, response_ms=800, session_id=2)
+        div.refresh_from_db()
+        div.due_at = timezone.now() - timedelta(days=1)
+        div.save()
+        prompts = {q["prompt"] for q in scheduling.build_round(self.child, self.fives)}
+        self.assertIn(fact.prompt(Operation.DIV_A), prompts)

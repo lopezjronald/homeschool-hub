@@ -95,6 +95,29 @@ def apply_attempt(state, *, is_correct, response_ms, threshold=FLUENCY_THRESHOLD
     return state.is_mastered and not was_mastered
 
 
+def _division_is_earned(fact, operation, states):
+    """May this form be INTRODUCED yet?
+
+    Multiplication always. A division only once its own multiplication has been
+    answered fluently at least once — because division is derived from it. A
+    child who does not yet know 5x7=35 cannot recall 35/7, she can only count
+    up, which by our own rule is not fluent, so the fact would churn in box 1
+    while she gets nothing from it.
+
+    "Fluently at least once" is leitner_box >= 2: the box only ever advances on
+    a fluent answer, so being out of box 1 IS the record of having recalled it.
+    The gate is on INTRODUCTION only — once a division is in play it schedules
+    like anything else, and a later fumble on the multiplication does not take
+    it away again.
+    """
+    if operation == Operation.MULT:
+        return True
+    mult = states.get((fact.pk, Operation.MULT))
+    if mult is None:
+        return False
+    return mult.is_mastered or mult.leitner_box >= 2
+
+
 def _forms_for_level(level):
     """Every (fact, operation) pair in a level, in a stable order."""
     out = []
@@ -185,7 +208,8 @@ def build_round(student, level, *, length=ROUND_LENGTH, now=None, rng=None):
     for fact, operation in forms:
         state = states[(fact.pk, operation)]
         if state.total_attempts == 0:
-            fresh.append((fact, operation))
+            if _division_is_earned(fact, operation, states):
+                fresh.append((fact, operation))
         elif state.due_at <= now:
             due.append((fact, operation, state.due_at))
         else:

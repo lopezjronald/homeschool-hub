@@ -24,19 +24,28 @@
     + "fluid riot trial dial dying lying flying crying trying drying frying "
     + "prior real really create creates creating creation piano serial genius "
     + "medium").split(" ");
-  var SPLIT = {};
+  var SPLIT = Object.create(null);
   SPLIT_VOWELS.forEach(function (w) { SPLIT[w] = 1; });
 
   // Contractions, which no rule gets right: "don't" is one beat and "isn't" is
   // two, and the only difference is whether the letter before the n is a vowel.
   // Written out rather than reasoned about — "aren't" is one beat and breaks
   // every rule that gets the rest of them right.
-  var EXACT = {
+  var EXACT = Object.assign(Object.create(null), {
     dont: 1, cant: 1, wont: 1, arent: 1, werent: 1, im: 1, ive: 1, ill: 1,
     id: 1, its: 1, thats: 1, whats: 1, hes: 1, shes: 1, theyre: 1, youre: 1,
     isnt: 2, wasnt: 2, hasnt: 2, havent: 2, doesnt: 2, didnt: 2, couldnt: 2,
     wouldnt: 2, shouldnt: 2, wouldve: 2, couldve: 2, shouldve: 2,
-  };
+  });
+
+  // "-ed" that is still a beat. The silent-e rule below is right for verbs
+  // ("walked", "danced") and wrong for adjectives ("wicked", "sacred") and for
+  // words that merely end that way ("hundred"). Same shape as SPLIT_VOWELS,
+  // and for the same reason: no rule separates them, so they are listed.
+  var ED_IS_A_BEAT = Object.create(null);
+  ("sacred naked wicked crooked jagged rugged ragged wretched blessed beloved "
+   + "hundred hatred kindred aged learned cursed rugged dogged").split(" ")
+    .forEach(function (w) { ED_IS_A_BEAT[w] = 1; });
 
   function syllables(word) {
     // Apostrophes are dropped, not treated as a break: "don't" is one beat.
@@ -50,7 +59,7 @@
     // ("wanted", "needed"), where the ending is its own beat. This was the
     // single biggest error — past tense is everywhere in a poem, and every one
     // of them was counted a syllable long.
-    if (/[^td]ed$/.test(w)) w = w.slice(0, -2) + "d";
+    if (/[^td]ed$/.test(w) && !ED_IS_A_BEAT[w]) w = w.slice(0, -2) + "d";
     // Silent "-es": leaves, makes, hopes are ONE beat. Not after a sibilant
     // ("roses", "wishes", "branches"), where it is a beat of its own.
     else if (/es$/.test(w) && !/(s|x|z|ch|sh|c|g|i)es$/.test(w)) {

@@ -18,6 +18,7 @@ import re
 
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
+from django.db.models import F
 
 from core.utils import get_active_family
 from curricula.models import Chapter, Curriculum, CurriculumPlacement, Lesson
@@ -38,7 +39,19 @@ LEVELS = {
 }
 
 
-_SEEDED_TITLE = re.compile(r"^(Part|Activity) \d")
+#: The exact shape this command writes: "Part 2.1 · Thinking Like a Time
+#: Traveler". The separator is load-bearing — without it the pattern also
+#: claimed "Part 3 worksheet", a title a parent might reasonably use, and the
+#: orphan sweep then deleted their work. Titles are not identity, but this is
+#: the closest thing available without a migration.
+#: Questions are renumbered by parking them above this offset first —
+#: (question_set, order) is unique and a swap would collide mid-flight.
+_PARK = 10000
+
+_SEEDED_TITLE = re.compile(r"^(?:Part|Activity) (\d+(?:\.\d+)?) · ")
+
+#: Only a set with this in its title is one of ours.
+_COMPREHENSION_CHECK = re.compile(r"Comprehension Check$")
 
 
 def _is_seeded(title, mod):
@@ -247,9 +260,22 @@ class Command(BaseCommand):
         mine = [m for m in Material.objects.filter(lesson=lesson, child=child)
                                            .order_by("pk")
                 if _is_seeded(m.title, mod)]
+        # Keyed on the PART NUMBER in the title, not on position. Position
+        # survived a rename but not a shrink: dropping 3.2 and adding it back
+        # later returned it as a NEW row, born DRAFT — invisible in the portal
+        # until re-approved, with its old /materials/<pk>/ link dead. A week
+        # transcribed in instalments does exactly that.
+        by_number = {}
+        for material in mine:
+            match = _SEEDED_TITLE.match(material.title)
+            if match:
+                by_number.setdefault(match.group(1), material)
+        legacy = [m for m in mine if not _SEEDED_TITLE.match(m.title)]
         made = []
         for index, spec in enumerate(parts, start=1):
-            reuse = mine[index - 1] if index <= len(mine) else None
+            reuse = by_number.get(spec["number"])
+            if reuse is None and index == 1 and legacy:
+                reuse = legacy[0]      # the pre-parts row, adopted and renamed
             made.append(self._part_material(lesson, child, family, mod, spec,
                                             index, len(parts), reuse))
         # A lesson that lost a part on a reseed should not keep its orphan page.
@@ -396,11 +422,20 @@ purchased issue for private use.
         fields = {"family": family, "intro": intro, "rubric": _rubric(mod),
                   "status": QuestionSet.APPROVED, "reading": "",
                   "mode": QuestionSet.MODE_STUDENT}
-        # Matched on the LESSON, not on the title. A lesson has exactly one
-        # check, and keying on the title meant renaming one would silently
-        # create a second set beside it — orphaning every answer already
-        # submitted against the old name.
-        qset = QuestionSet.objects.filter(lesson=lesson).order_by("pk").first()
+        # Matched on the LESSON, not on the title — keying on the title meant
+        # renaming one silently created a second set beside it and orphaned
+        # every answer already submitted against the old name.
+        #
+        # But only a set THIS COMMAND could have made. Taking the lowest-pk set
+        # on the lesson adopted whatever was there: a teacher-led discussion a
+        # parent had written was converted in place into the Studies Weekly
+        # check — title, rubric and mode all overwritten, which also flipped it
+        # from `discussion` to `student` and pushed it into the child's portal.
+        qset = next(
+            (q for q in QuestionSet.objects.filter(lesson=lesson).order_by("pk")
+             if q.mode == QuestionSet.MODE_STUDENT
+             and _COMPREHENSION_CHECK.search(q.title or "")),
+            None)
         if qset is None:
             return QuestionSet.objects.create(lesson=lesson, title=title, **fields)
         for field, value in dict(fields, title=title).items():
@@ -481,17 +516,68 @@ purchased issue for private use.
         return {"rows": rows, "preview": preview, "count": len(rows)}
 
     def _fill(self, qset, rows):
+        """Write the rows, matching an existing question on its PROMPT.
+
+        NOT on its position. Question rows were keyed on `order` while her
+        answers are keyed on the question's PK, so deleting or inserting one
+        question in a week module rewrote the CONTENT of every row after it and
+        left her answers sitting on questions she never saw. Nine of thirteen
+        answers moved in the reproduction, silently, with a success line
+        printed. These modules are transcriptions of a printed check and they
+        openly invite corrections, so that edit is the ordinary case.
+
+        Matching on the prompt means a question keeps its pk — and therefore her
+        answer — wherever it moves to, a corrected ANSWER stays attached, and
+        only genuinely new wording gets a new row.
+        """
+        # Prompt -> the rows carrying it, oldest first. A LIST, because prompts
+        # are not unique: every two-blank question emits a row whose prompt is
+        # the bare "**Blank B**", so a week with two of them has two identical
+        # prompts and a plain dict silently collapsed them into one.
+        existing = {}
+        for question in qset.questions.order_by("order"):
+            existing.setdefault(question.prompt, []).append(question)
+        # Park every existing row above the range we are about to assign.
+        # (question_set, order) is unique, so renumbering in place collides the
+        # moment two questions swap places.
+        qset.questions.update(order=F("order") + _PARK)
+        seen = []
         for order, row in enumerate(rows, start=1):
-            Question.objects.update_or_create(
-                question_set=qset, order=order, defaults=row)
-        self._prune(qset, len(rows))
+            candidates = existing.get(row["prompt"]) or []
+            question = candidates.pop(0) if candidates else None
+            if question is None:
+                question = Question.objects.create(
+                    question_set=qset, order=order, **row)
+            else:
+                for field, value in dict(row, order=order).items():
+                    setattr(question, field, value)
+                question.save()
+            seen.append(question.pk)
+        orphans = self._prune(qset, seen)
+        # Bring any kept-because-answered rows back down, after the real ones.
+        for offset, pk in enumerate(orphans, start=1):
+            Question.objects.filter(pk=pk).update(order=len(rows) + offset)
+        if orphans:
+            self.stdout.write(self.style.WARNING(
+                "  %d question(s) no longer in the module were KEPT because she "
+                "has answered them — her check is longer than the module says."
+                % len(orphans)))
         return len(rows)
 
     @staticmethod
-    def _prune(qset, keep_through):
-        stale = qset.questions.filter(order__gt=keep_through)
+    def _prune(qset, keep_pks):
+        """Drop rows the module no longer declares — unless she answered them.
+
+        Takes the PKs that survived this seed rather than a count, because
+        questions are now matched on their prompt and so no longer arrive in
+        `order` order. Answered rows are kept deliberately: deleting one would
+        erase work she did.
+        """
+        stale = qset.questions.exclude(pk__in=keep_pks)
         answered = set()
         for sheet in ResponseSheet.objects.filter(question_set=qset):
             answered |= {int(k) for k, v in (sheet.answers or {}).items()
                          if str(v).strip() and k.isdigit()}
+        kept = stale.filter(pk__in=answered)
         stale.exclude(pk__in=answered).delete()
+        return list(kept.values_list("pk", flat=True))

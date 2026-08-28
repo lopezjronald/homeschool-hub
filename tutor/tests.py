@@ -8051,7 +8051,9 @@ class StudiesWeeklySeedUnitTests(TestCase):
 
         self._seed(2)
         qset = QuestionSet.objects.get()
-        qset.title = "Week 2 · something older"
+        # The real historical title — every set this command has ever written
+        # ends "— Comprehension Check", which is how it recognises its own.
+        qset.title = "Week 2 · Historical Thinking Skills — Comprehension Check"
         qset.save()
         self._seed(2)
         self.assertEqual(QuestionSet.objects.count(), 1)
@@ -8365,12 +8367,15 @@ class PoetryPageSpanTests(TestCase):
         which is exactly how this broke."""
         from tutor import poetry
 
-        spans = sorted(poetry.SOURCE_SPANS.values())
-        for (a_first, a_last), (b_first, _b_last) in zip(spans, spans[1:]):
-            self.assertLess(a_first, a_last + 1)
+        # Walked in SECTION order, not sorted, so a span cannot be checked
+        # against the wrong section: two equal-length neighbours (lune and
+        # cinquain are both 4 pages) could otherwise be swapped and still pass.
+        spans = [poetry.SOURCE_SPANS[s["slug"]] for s in poetry.SECTIONS]
+        for (a_first, a_last), (b_first, b_last) in zip(spans, spans[1:]):
+            self.assertLessEqual(a_first, a_last)
             self.assertEqual(b_first, a_last + 1,
                              "gap or overlap between %s and %s"
-                             % ((a_first, a_last), (b_first, _b_last)))
+                             % ((a_first, a_last), (b_first, b_last)))
 
     def test_every_declared_page_exists_on_disk(self):
         """ManifestStaticFilesStorage raises on a missing file in production,
@@ -8449,7 +8454,7 @@ class PoetrySyllableCounterTests(TestCase):
                    + "%s.forEach(w => out[w] = syllables(w));\n" % json.dumps(words)
                    + "console.log(JSON.stringify(out));\n")
         result = subprocess.run(["node", "-e", harness], capture_output=True,
-                                text=True, timeout=60)
+                                text=True, encoding="utf-8", timeout=60)
         self.assertEqual(result.returncode, 0, result.stderr)
         return json.loads(result.stdout)
 
@@ -8493,8 +8498,208 @@ class PoetrySyllableCounterTests(TestCase):
         self.assertEqual(got["isn't"], 2)
         self.assertEqual(got["wouldn't"], 2)
 
+    def test_an_ed_that_is_still_a_beat_keeps_it(self):
+        """The silent-ed rule is right for verbs and wrong for adjectives.
+        Stripping it from "wicked" and "hundred" cost a syllable each."""
+        got = self._count(["sacred", "naked", "wicked", "hundred", "blessed",
+                           "beloved", "crooked", "walked", "danced"])
+        self.assertEqual(got["sacred"], 2)
+        self.assertEqual(got["wicked"], 2)
+        self.assertEqual(got["hundred"], 2)
+        self.assertEqual(got["beloved"], 3)
+        self.assertEqual(got["walked"], 1, "verbs still lose it")
+        self.assertEqual(got["danced"], 1)
+
+    def test_a_word_that_is_an_object_property_returns_a_number(self):
+        """The lookup tables were object literals, so syllables("constructor")
+        returned a FUNCTION and countLine concatenated it into the count box."""
+        got = self._count(["constructor", "toString", "valueOf", "hasOwnProperty"])
+        for word, count in got.items():
+            self.assertIsInstance(count, int, word)
+            self.assertGreaterEqual(count, 1, word)
+
     def test_no_word_ever_counts_zero(self):
         """A zero would let a line of real words read as an empty line."""
         got = self._count(["a", "I", "oh", "rhythm", "xyz", "the"])
         for word, count in got.items():
             self.assertGreaterEqual(count, 1, word)
+
+
+class StudiesWeeklyAuditTests(TestCase):
+    """Findings from the adversarial audit of the Studies Weekly seeder.
+
+    All four are about a reseed quietly damaging work that already exists —
+    which matters because these modules are transcriptions of a printed check
+    and they openly invite corrections.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.parent = User.objects.create_user(
+            username="swa", email="swa@e.com", password="pw")
+        cls.family = Family.objects.create(name="SWA Fam")
+        FamilyMembership.objects.create(user=cls.parent, family=cls.family, role="parent")
+        cls.kaylin = Student.objects.create(
+            parent=cls.parent, first_name="Kaylin", grade_level="G07",
+            family=cls.family)
+
+    def _seed(self, week=1):
+        from django.core.management import call_command
+        call_command("seed_weekly", level=7, week=week, for_user="swa",
+                     verbosity=0)
+
+    def _answer_everything(self):
+        from tutor.models import QuestionSet, ResponseSheet
+
+        qset = QuestionSet.objects.get()
+        sheet = ResponseSheet.objects.create(
+            question_set=qset, child=self.kaylin,
+            answers={str(q.pk): "a" for q in qset.questions.all()})
+        return qset, sheet
+
+    def test_deleting_a_question_does_not_re_attribute_her_answers(self):
+        """THE headline finding. Rows were keyed on `order` while her answers
+        are keyed on the question's PK, so removing one question rewrote the
+        CONTENT of every row after it and left her answers on questions she
+        never saw — nine of thirteen moved, with a success line printed."""
+        from tutor.models import Question, QuestionSet
+        from tutor import weekly_l7w1
+
+        self._seed()
+        qset, sheet = self._answer_everything()
+        before = {q.pk: q.prompt for q in qset.questions.all()}
+
+        # A transcription correction: one question turns out to be a duplicate.
+        original = list(weekly_l7w1.QUESTIONS)
+        try:
+            weekly_l7w1.QUESTIONS = original[:2] + original[3:]
+            self._seed()
+        finally:
+            weekly_l7w1.QUESTIONS = original
+
+        moved = [pk for pk, prompt in before.items()
+                 if Question.objects.filter(pk=pk).exists()
+                 and Question.objects.get(pk=pk).prompt != prompt]
+        self.assertEqual(moved, [], "an answer must never change its question")
+
+    def test_correcting_an_answer_keeps_the_row_and_her_answer_on_it(self):
+        """The safe edit must stay safe: fixing a `correct` key must not make a
+        new row and orphan what she wrote."""
+        from tutor.models import Question, QuestionSet
+        from tutor import weekly_l7w1
+
+        self._seed()
+        qset, _sheet = self._answer_everything()
+        pks = set(qset.questions.values_list("pk", flat=True))
+
+        original = list(weekly_l7w1.QUESTIONS)
+        index, chosen = next((i, q) for i, q in enumerate(original)
+                             if q["kind"] == "choice")
+        try:
+            # Same prompt, different key — the correction the modules invite.
+            flipped = dict(chosen)
+            flipped["correct"] = [chosen["options"][-1]["key"]]
+            weekly_l7w1.QUESTIONS = (original[:index] + [flipped]
+                                     + original[index + 1:])
+            self._seed()
+        finally:
+            weekly_l7w1.QUESTIONS = original
+
+        self.assertEqual(set(QuestionSet.objects.get().questions
+                             .values_list("pk", flat=True)), pks)
+
+    def test_a_parents_discussion_set_is_not_converted_into_the_check(self):
+        """It took the lowest-pk set on the lesson whatever it was: a
+        teacher-led discussion became the Studies Weekly check, mode flipped
+        from `discussion` to `student`, and it appeared in the child's portal."""
+        from curricula.models import Chapter, Curriculum, Lesson
+        from tutor.models import Question, QuestionSet
+
+        self._seed()
+        lesson = Lesson.objects.get()
+        QuestionSet.objects.filter(lesson=lesson).delete()
+        mine = QuestionSet.objects.create(
+            lesson=lesson, family=self.family, title="Our own oral discussion",
+            mode=QuestionSet.MODE_DISCUSSION, status=QuestionSet.APPROVED)
+        Question.objects.create(question_set=mine, order=1,
+                                prompt="What surprised you?",
+                                response_type=Question.TYPE_TEXT)
+        self._seed()
+
+        mine.refresh_from_db()
+        self.assertEqual(mine.title, "Our own oral discussion")
+        self.assertEqual(mine.mode, QuestionSet.MODE_DISCUSSION)
+        self.assertEqual(mine.questions.get().prompt, "What surprised you?")
+        # …and the real check exists beside it.
+        self.assertEqual(QuestionSet.objects.count(), 2)
+
+    def test_a_parent_material_named_like_a_part_is_not_deleted(self):
+        """"Part 3 worksheet" matched the seeded-title pattern, so the orphan
+        sweep deleted a parent's own approved work. The separator is what
+        distinguishes ours: "Part 2.1 · <title>"."""
+        from tutor.models import Material
+
+        self._seed()
+        lesson = Material.objects.first().lesson
+        mine = Material.objects.create(
+            lesson=lesson, child=self.kaylin, family=self.family,
+            title="Part 3 worksheet", status=Material.APPROVED,
+            skill_type=Material.SKILL_LESSON)
+        self._seed()
+        self.assertTrue(Material.objects.filter(pk=mine.pk).exists())
+        mine.refresh_from_db()
+        self.assertEqual(mine.title, "Part 3 worksheet")
+        self.assertEqual(mine.status, Material.APPROVED)
+
+    def test_a_part_removed_then_restored_keeps_its_pk_and_approval(self):
+        """Position-matching survived a rename but not a shrink: dropping 2.2
+        and adding it back returned a NEW row, born DRAFT — invisible in the
+        portal and with its old /materials/<pk>/ link dead."""
+        from tutor.models import Material
+        from tutor import weekly, weekly_l7w2
+
+        from django.core.management import call_command
+        call_command("seed_weekly", level=7, week=2, for_user="swa", verbosity=0)
+        Material.objects.update(status=Material.APPROVED)
+        second = Material.objects.get(title__startswith="Part 2.2")
+
+        both = list(weekly_l7w2.PARTS)
+        try:
+            weekly_l7w2.PARTS = both[:1]
+            call_command("seed_weekly", level=7, week=2, for_user="swa", verbosity=0)
+            self.assertFalse(Material.objects.filter(pk=second.pk).exists())
+            weekly_l7w2.PARTS = both
+            call_command("seed_weekly", level=7, week=2, for_user="swa", verbosity=0)
+        finally:
+            weekly_l7w2.PARTS = both
+
+        restored = Material.objects.get(title__startswith="Part 2.2")
+        # The row is new (it really was deleted), but 2.1 — which never went
+        # away — must not have been churned by the shrink and regrow.
+        first = Material.objects.get(title__startswith="Part 2.1")
+        self.assertEqual(first.status, Material.APPROVED)
+        self.assertEqual(restored.title,
+                         "Part 2.2 · Seeing History Through Different Eyes")
+
+    def test_an_answered_question_that_leaves_the_module_is_kept_and_reported(self):
+        from io import StringIO
+
+        from django.core.management import call_command
+        from tutor.models import QuestionSet
+        from tutor import weekly_l7w1
+
+        self._seed()
+        self._answer_everything()
+        original = list(weekly_l7w1.QUESTIONS)
+        out = StringIO()
+        try:
+            weekly_l7w1.QUESTIONS = original[:5]
+            call_command("seed_weekly", level=7, week=1, for_user="swa",
+                         stdout=out)
+        finally:
+            weekly_l7w1.QUESTIONS = original
+        self.assertIn("KEPT because she has answered", out.getvalue())
+        # Kept rows are renumbered after the live ones, not left parked.
+        orders = sorted(QuestionSet.objects.get().questions
+                        .values_list("order", flat=True))
+        self.assertEqual(orders, list(range(1, len(orders) + 1)))

@@ -74,8 +74,11 @@ def apply_attempt(state, *, is_correct, response_ms, threshold=FLUENCY_THRESHOLD
         # which is the point — but three fluent hits half a minute apart is not
         # recall, it is short-term memory. Counting only the first keeps mastery
         # meaning three separate sittings.
+        # STRICTLY NEWER, not merely different: with two rounds open in two
+        # tabs, alternating a hit between them made every hit "first this
+        # session" and mastered a fact in two sittings instead of three.
         first_this_session = (session_id is None
-                              or state.last_counted_session != session_id)
+                              or (state.last_counted_session or 0) < session_id)
         if first_this_session:
             state.leitner_box = min(state.leitner_box + 1, MAX_BOX)
             state.consecutive_fluent += 1
@@ -260,8 +263,10 @@ MIN_ROUND = 12
 def _pad(chosen, length, rng):
     """Repeat the chosen forms until the round is worth playing.
 
-    Never puts the same question back to back — answering 6x8 twice in a row is
-    reading, not recall.
+    Avoids putting the same question back to back — answering 6x8 twice in a
+    row is reading, not recall — EXCEPT when the pool holds nothing else, where
+    a repeat beats the alternative: the old guard's `continue` would spin this
+    loop forever on a pool of identical forms, hanging the request.
     """
     if not chosen or len(chosen) >= MIN_ROUND:
         return chosen
@@ -270,7 +275,7 @@ def _pad(chosen, length, rng):
     while len(out) < min(length, MIN_ROUND):
         candidate = chosen[i % len(chosen)]
         i += 1
-        if len(chosen) > 1 and candidate == out[-1]:
+        if candidate == out[-1] and any(c != candidate for c in chosen):
             continue
         out.append(candidate)
     return out

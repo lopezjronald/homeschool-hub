@@ -572,10 +572,14 @@ class PortalTileTests(TestCase):
                                     args=[make_portal_token(student)])).content.decode()
 
     def test_a_child_doing_maths_gets_the_tile(self):
-        html = self._home(self.mathy)
+        # One token minted once: the signed token embeds a second-resolution
+        # timestamp, so minting a second one for the assertion made this flaky
+        # whenever the render crossed a second boundary.
+        token = make_portal_token(self.mathy)
+        html = Client().get(reverse("portal:portal_home", args=[token])
+                            ).content.decode()
         self.assertIn("Fact Dash", html)
-        self.assertIn(reverse("factfluency:home", args=[make_portal_token(self.mathy)]),
-                      html)
+        self.assertIn(reverse("factfluency:home", args=[token]), html)
 
     def test_a_child_with_no_maths_does_not(self):
         """A times-tables game on the portal of a child who does no maths here
@@ -911,3 +915,195 @@ class TemplateCommentLeakTests(TestCase):
                 self.assertNotIn("\n", match.group(1),
                                  "%s: multi-line {# #} comment leaks to the page"
                                  % path.name)
+
+
+class AuditRegressionTests(TestCase):
+    """Every finding from the adversarial audit, pinned so it stays fixed."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.parent = User.objects.create_user(
+            username="aud", email="aud@e.com", password="pw")
+        cls.family = Family.objects.create(name="Aud Fam")
+        FamilyMembership.objects.create(
+            user=cls.parent, family=cls.family, role="parent")
+        cls.child = Student.objects.create(
+            parent=cls.parent, first_name="Aud", grade_level="G03",
+            family=cls.family)
+        cls.level1 = Level.objects.get(slug="ones-twos")
+
+    def setUp(self):
+        from portal.tokens import make_portal_token
+        self.token = make_portal_token(self.child)
+
+    def _session(self):
+        return GameSession.objects.create(student=self.child, level=self.level1)
+
+    def _post(self, session, rows, raw=None):
+        import json as _json
+        url = reverse("factfluency:api_attempts",
+                      kwargs={"token": self.token, "session_id": session.pk})
+        body = raw if raw is not None else _json.dumps({"attempts": rows})
+        return self.client.post(url, body, content_type="application/json")
+
+    def _row(self, fact, operation="mult", **over):
+        row = {"client_uuid": str(over.pop("uuid", fact.pk)) + "-" + operation,
+               "fact_id": fact.pk, "operation": operation,
+               "answer_given": fact.answer(operation), "response_ms": 900}
+        row.update(over)
+        return row
+
+    # -- the two-tab mastery exploit ----------------------------------------
+
+    def test_alternating_two_open_sessions_cannot_fake_three_sittings(self):
+        fact = Fact.objects.get(factor_a=1, factor_b=3)
+        state = StudentFactState.objects.create(
+            student=self.child, fact=fact, operation=Operation.MULT)
+        s1, s2 = self._session(), self._session()
+        # s2 counts; bouncing back to the OLDER s1 must not, and returning to
+        # s2 must not count twice.
+        for sid in (s2.pk, s1.pk, s2.pk, s1.pk, s2.pk):
+            scheduling.apply_attempt(state, is_correct=True, response_ms=500,
+                                     session_id=sid)
+        self.assertEqual(state.consecutive_fluent, 1)
+        self.assertFalse(state.is_mastered)
+
+    # -- the any-fact-from-any-level exploit --------------------------------
+
+    def test_a_locked_levels_fact_is_refused(self):
+        hard = Fact.objects.get(factor_a=7, factor_b=8)   # level 9 material
+        session = self._session()                          # a level-1 round
+        response = self._post(session, [self._row(hard)])
+        self.assertEqual(response.json()["accepted"], 0)
+        self.assertEqual(Attempt.objects.count(), 0)
+
+    # -- the five 500s -------------------------------------------------------
+
+    def test_malformed_payloads_never_500(self):
+        session = self._session()
+        fact = Fact.objects.get(factor_a=1, factor_b=2)
+        cases = [
+            ("[1, 2, 3]", 400),                            # top-level list
+            ('"hello"', 400),                              # top-level string
+            ('{"attempts": [{"client_uuid": "a", "fact_id": "abc"}]}', 200),
+            ('{"attempts": [{"client_uuid": "b", "fact_id": [1]}]}', 200),
+            ('{"attempts": [{"client_uuid": "c", "fact_id": %d, "operation": "mult",'
+             ' "answer_given": 2, "response_ms": Infinity}]}' % fact.pk, 200),
+            ('{"attempts": [{"client_uuid": "d", "fact_id": %d, "operation": "mult",'
+             ' "answer_given": Infinity, "response_ms": 5}]}' % fact.pk, 200),
+            ('{"attempts": [{"client_uuid": "e", "fact_id": %d, "operation": "mult",'
+             ' "answer_given": 10000000000000000000, "response_ms": 5}]}' % fact.pk,
+             200),
+        ]
+        for raw, expected in cases:
+            response = self._post(session, None, raw=raw)
+            self.assertEqual(response.status_code, expected, raw)
+        self.assertEqual(Attempt.objects.count(), 0)       # all skipped, none stored
+
+    def test_a_float_fact_id_does_not_resolve_to_the_wrong_fact(self):
+        session = self._session()
+        fact = Fact.objects.get(factor_a=1, factor_b=2)
+        response = self._post(session, [self._row(fact, fact_id=fact.pk + 0.5)])
+        self.assertEqual(response.json()["accepted"], 0)
+
+    # -- garbage must not damage her state ----------------------------------
+
+    def test_a_garbled_answer_is_skipped_not_recorded_as_a_miss(self):
+        fact = Fact.objects.get(factor_a=1, factor_b=4)
+        state = StudentFactState.objects.create(
+            student=self.child, fact=fact, operation=Operation.MULT,
+            leitner_box=2, consecutive_fluent=1)
+        session = self._session()
+        for bad in ({"oops": 1}, [6], None, "six", True):
+            self._post(session, [self._row(fact, answer_given=bad, uuid=str(bad))])
+        state.refresh_from_db()
+        self.assertEqual(state.leitner_box, 2)             # untouched
+        self.assertEqual(Attempt.objects.count(), 0)
+
+    def test_a_missing_response_time_is_not_scored_as_instant(self):
+        fact = Fact.objects.get(factor_a=1, factor_b=5)
+        session = self._session()
+        for bad_ms in (None, -50, "fast"):
+            row = self._row(fact, uuid="ms" + str(bad_ms))
+            if bad_ms is None:
+                row.pop("response_ms")
+            else:
+                row["response_ms"] = bad_ms
+            self._post(session, [row])
+        self.assertEqual(Attempt.objects.count(), 0)
+
+    # -- sessions close ------------------------------------------------------
+
+    def test_finish_is_once(self):
+        fact = Fact.objects.get(factor_a=1, factor_b=6)
+        session = self._session()
+        self._post(session, [self._row(fact)])
+        url = reverse("factfluency:api_finish",
+                      kwargs={"token": self.token, "session_id": session.pk})
+        first = self.client.post(url).json()
+        self.assertEqual(first["num_attempted"], 1)
+        # More answers after the end, then finish again: the stored summary
+        # must not be re-totalled.
+        self._post(session, [self._row(fact, uuid="late")])
+        second = self.client.post(url).json()
+        self.assertEqual(second["num_attempted"], 1)
+        self.assertEqual(second["records_beaten"], [])
+
+    # -- the record that could never be beaten again ------------------------
+
+    def test_best_time_is_per_question_so_a_longer_round_can_beat_it(self):
+        from factfluency.views import _maybe_record
+
+        s1, s2 = self._session(), self._session()
+        for session, n, ms in ((s1, 12, 1000), (s2, 20, 900)):
+            session.num_attempted = n
+            session.num_correct = n
+            session.duration_ms = n * ms
+            session.save()
+        first = _maybe_record(s1, RecordType.BEST_TIME,
+                              round(s1.duration_ms / s1.num_attempted))
+        self.assertTrue(first)                              # 1000ms/q stands
+        beaten = _maybe_record(s2, RecordType.BEST_TIME,
+                               round(s2.duration_ms / s2.num_attempted))
+        self.assertTrue(beaten, "a faster pace on a LONGER round must win")
+
+    def test_a_tiny_round_cannot_set_the_time_record(self):
+        fact = Fact.objects.get(factor_a=1, factor_b=7)
+        session = self._session()
+        self._post(session, [self._row(fact, response_ms=1)])
+        url = reverse("factfluency:api_finish",
+                      kwargs={"token": self.token, "session_id": session.pk})
+        out = self.client.post(url).json()
+        kinds = [r["type"] for r in out["records_beaten"]]
+        self.assertNotIn("best_time", kinds)
+
+    # -- _pad can no longer hang the request ---------------------------------
+
+    def test_pad_terminates_on_a_pool_of_identical_forms(self):
+        import random
+        fact = Fact.objects.get(factor_a=1, factor_b=8)
+        form = (fact, Operation.MULT)
+        out = scheduling._pad([form, form], 20, random)
+        self.assertEqual(len(out), scheduling.MIN_ROUND)   # returned, not spun
+
+    # -- client_uuid is per session ------------------------------------------
+
+    def test_one_childs_uuid_cannot_mute_anothers_attempt(self):
+        from portal.tokens import make_portal_token
+
+        other = Student.objects.create(
+            parent=self.parent, first_name="Sib", grade_level="G05",
+            family=self.family)
+        fact = Fact.objects.get(factor_a=1, factor_b=9)
+        session_a = self._session()
+        session_b = GameSession.objects.create(student=other, level=self.level1)
+        self._post(session_a, [self._row(fact, uuid="collide")])
+        url = reverse("factfluency:api_attempts",
+                      kwargs={"token": make_portal_token(other),
+                              "session_id": session_b.pk})
+        import json as _json
+        response = self.client.post(
+            url, _json.dumps({"attempts": [self._row(fact, uuid="collide")]}),
+            content_type="application/json")
+        self.assertEqual(response.json()["accepted"], 1,
+                         "the same uuid in a DIFFERENT session is a new attempt")

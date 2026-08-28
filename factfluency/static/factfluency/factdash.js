@@ -105,21 +105,34 @@
   function flush(attempts) {
     var queued = readQueue().concat(attempts || []);
     if (!queued.length) return Promise.resolve({});
-    var mine = queued.filter(function (row) { return row.session_id === state.sessionId; });
-    var theirs = queued.filter(function (row) { return row.session_id !== state.sessionId; });
-    if (!mine.length) { writeQueue(theirs); return Promise.resolve({}); }
-    return post(sessionUrl(root.dataset.attemptsUrl), {
-      attempts: mine.map(function (row) {
-        var copy = Object.assign({}, row);
-        delete copy.session_id;
-        return copy;
-      }),
-    }).then(function (data) {
-      writeQueue(theirs);
-      return data;
-    }).catch(function () {
-      writeQueue(queued);          // keep them; try again at the end of the round
-      return {};
+    // Group by session and post EVERY group to its own URL. The first version
+    // only ever sent the current session's rows and wrote the rest back — but
+    // session ids never repeat, so an offline round's answers sat in the queue
+    // forever while the done screen promised "it'll sync next time".
+    var groups = {};
+    queued.forEach(function (row) {
+      (groups[row.session_id] = groups[row.session_id] || []).push(row);
+    });
+    var failed = [];
+    var chain = Promise.resolve({});
+    Object.keys(groups).forEach(function (id) {
+      chain = chain.then(function (last) {
+        var url = root.dataset.attemptsUrl.replace(/\/0\//, "/" + id + "/");
+        return post(url, {
+          attempts: groups[id].map(function (row) {
+            var copy = Object.assign({}, row);
+            delete copy.session_id;
+            return copy;
+          }),
+        }).catch(function () {
+          failed = failed.concat(groups[id]);   // keep; try again next flush
+          return last;
+        });
+      });
+    });
+    return chain.then(function (last) {
+      writeQueue(failed);
+      return last;
     });
   }
 

@@ -237,12 +237,18 @@ class Attempt(models.Model):
     response_ms = models.PositiveIntegerField()
     was_fluent = models.BooleanField()
     # The client may retry a failed POST after a flaky moment; without this a
-    # retry would count the same question twice and inflate her record.
-    client_uuid = models.CharField(max_length=64, unique=True)
+    # retry would count the same question twice and inflate her record. Scoped
+    # to the session: globally-unique meant one child posting a colliding uuid
+    # could silently mute another child's genuine attempt.
+    client_uuid = models.CharField(max_length=64)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         ordering = ["created_at", "id"]
+        constraints = [
+            models.UniqueConstraint(fields=["session", "client_uuid"],
+                                    name="unique_attempt_per_session"),
+        ]
 
     def __str__(self):
         return "%s = %s" % (self.fact.prompt(self.operation), self.answer_given)

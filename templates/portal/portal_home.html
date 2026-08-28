@@ -42,7 +42,8 @@
           <div class="portal-subject-name">Fact Dash</div>
           <div class="portal-next-line">
             <span class="portal-next-label">{{ factdash.current.level.name }}</span>
-            {{ factdash.mastered }} of {{ factdash.total }} facts nailed
+            {{ factdash.mastered }} of {{ factdash.total }} mastered{% if factdash.learning %} ·
+            {{ factdash.learning }} getting there{% endif %}
           </div>
         </div>
         <div class="portal-subject-go">Play ➜</div>

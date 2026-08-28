@@ -52,8 +52,12 @@
 .fd-bar-fill { display: block; height: 100%; background: #1E7A50; }
 .fd-bar-learning {
   display: block; height: 100%;
+  /* Both stripes clear 3:1 on the empty track (#e9e4da). The first pass used
+     #9ecdb4/#b9dcc8 — 1.41:1 and 1.17:1 — i.e. lighter than the #E8B93B this
+     very file rejected on line 42 as invisible, on the one band the whole
+     change exists to show. */
   background: repeating-linear-gradient(45deg,
-    #9ecdb4 0 4px, #b9dcc8 4px 8px);
+    #4f9070 0 4px, #74ac8e 4px 8px);
 }
 .fd-learning { color: #2f6b4f; font-weight: 700; }
 .fd-count { font-size: .82rem; color: #6b6459; }

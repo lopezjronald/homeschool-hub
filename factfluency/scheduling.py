@@ -364,29 +364,43 @@ def portal_summary(student):
     if not levels:
         return None
 
-    mastered = set(
-        StudentFactState.objects.filter(student=student, is_mastered=True)
-        .values_list("fact_id", "operation")
-    )
+    # Mastered AND getting-there, in one pass. The tile used to count only the
+    # first, so the page she opens most said "1 of 29 facts nailed" on a morning
+    # she got 49 answers out of 52 right — the same omission the level map had.
+    mastered, learning = set(), set()
+    for fact_id, operation, done, correct in (
+            StudentFactState.objects
+            .filter(student=student)
+            .values_list("fact_id", "operation", "is_mastered", "total_correct")):
+        if done:
+            mastered.add((fact_id, operation))
+        elif correct:
+            learning.add((fact_id, operation))
 
     total_forms = 0
     total_done = 0
+    total_learning = 0
     current = None
     previous_beaten = True
     for level in levels:
         forms = _forms_for_level(level)
         done = sum(1 for f, o in forms if (f.pk, o) in mastered)
+        coming = sum(1 for f, o in forms if (f.pk, o) in learning)
         if not level.is_challenge:
             total_forms += len(forms)
             total_done += done
+            total_learning += coming
         beaten = (not level.is_challenge and forms
                   and (done / len(forms)) >= level.mastery_threshold)
         if current is None and previous_beaten and not beaten:
-            current = {"level": level, "done": done, "of": len(forms)}
+            current = {"level": level, "done": done, "of": len(forms),
+                       "learning": coming}
         previous_beaten = beaten
 
     return {
-        "current": current or {"level": levels[-1], "done": 0, "of": 0},
+        "current": current or {"level": levels[-1], "done": 0, "of": 0,
+                               "learning": 0},
         "mastered": total_done,
+        "learning": total_learning,
         "total": total_forms,
     }

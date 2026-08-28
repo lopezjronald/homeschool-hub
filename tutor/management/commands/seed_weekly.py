@@ -344,14 +344,21 @@ class Command(BaseCommand):
             by_standard.setdefault(standard, []).append(label)
         rows = "\n".join("| %s | %s |" % (standard, ", ".join(labels))
                          for standard, labels in by_standard.items())
+        # Some issues ship a teacher edition and some do not, and a parent
+        # deciding whether to mark an answer wrong needs to know which.
+        answers = ("Its answers are the teacher edition's own."
+                   if getattr(mod, "ANSWER_KEY", True)
+                   else "**Its answers are ours, not the publisher's** — this "
+                        "issue came without a teacher edition, so they are "
+                        "derived from the article.")
         return """## Week {week}: {title}
 
 **Essential question:** {eq}
 
-The comprehension check is the issue's own, in its printed order and wording,
-and its answers are the teacher edition's. Right answers are marked
-automatically, so the only thing needing your eye is the written question at the
-end — and whether she actually read the issue.
+The comprehension check is the issue's own, in its printed order and wording.
+{answers} Right answers are marked automatically, so the only thing needing your
+eye is the written question at the end — and whether she actually read the
+issue.
 
 {note}
 {routine}
@@ -362,7 +369,8 @@ end — and whether she actually read the issue.
 
 Source: {pub}, Unit {unit}, Lesson {lesson}. Digitized from the family's
 purchased issue for private use.
-""".format(week=mod.WEEK, title=mod.TITLE, eq=mod.ESSENTIAL_QUESTION,
+""".format(answers=answers,
+           week=mod.WEEK, title=mod.TITLE, eq=mod.ESSENTIAL_QUESTION,
            note=getattr(mod, "PARENT_NOTE", "").strip(),
            routine=_routine_section(mod),
            rows=rows, pub=mod.PUBLICATION, unit=mod.UNIT, lesson=mod.LESSON)

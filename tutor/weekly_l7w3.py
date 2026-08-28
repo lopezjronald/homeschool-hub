@@ -35,6 +35,9 @@ SUBTITLE = "Becoming a History Detective"
 ESSENTIAL_QUESTION = "How do we know what happened in the past?"
 PUBLICATION = "California Studies Weekly: Medieval and Early Modern Times"
 
+#: No teacher edition came with this unit; the answers are derived.
+ANSWER_KEY = False
+
 
 def F(name):
     return figure(LEVEL, WEEK, name)

@@ -593,7 +593,22 @@ class PortalTileTests(TestCase):
     def test_the_tile_names_the_level_she_is_on(self):
         html = self._home(self.mathy)
         self.assertIn("Ones &amp; Twos", html)
-        self.assertIn("facts nailed", html)
+        self.assertIn("mastered", html)
+
+    def test_the_tile_counts_right_but_slow_too(self):
+        """This is the page she opens most, and it said "1 of 29 facts nailed"
+        on a morning she answered 49 of 52 correctly — mastery needs speed she
+        has not got yet, so the only number shown was the one that barely
+        moves."""
+        ones = Level.objects.get(slug="ones-twos")
+        forms = scheduling._forms_for_level(ones)[:3]
+        for state in scheduling.ensure_states(self.mathy, forms).values():
+            scheduling.apply_attempt(state, is_correct=True,
+                                     response_ms=FLUENCY_THRESHOLD_MS + 2000)
+        summary = scheduling.portal_summary(self.mathy)
+        self.assertEqual(summary["mastered"], 0)
+        self.assertEqual(summary["learning"], 3)
+        self.assertIn("3 getting there", self._home(self.mathy))
 
     def test_the_tile_advances_when_she_beats_a_level(self):
         ones = Level.objects.get(slug="ones-twos")

@@ -13,6 +13,16 @@ printed wording. Where the printed check depends on a figure (the time-period
 arrows, the communication timeline, the artifacts) the figure is cropped from
 the page it was printed on — a substitute would make the question unanswerable.
 
+WHERE THESE ANSWERS COME FROM — read this before marking anything wrong.
+The Grade 7 material the family has for this unit is the STUDENT edition only:
+there is no teacher edition and no marked key, unlike week 1 (which had one) and
+unlike both of Violet's weeks (whose keys are printed in red in her lesson
+plan). So the questions and options below are the publisher's printed wording,
+but the ANSWERS ARE DERIVED — worked out from the article by us, not read off a
+key. Every one is directly supported by a sentence or a picture in the issue,
+and each hint points at where. But if she argues with one, she may be right:
+check the issue, not this file.
+
 Digitized from the family's purchased Studies Weekly issue for private use.
 """
 
@@ -122,7 +132,9 @@ PARTS = [
 
 STUDENT_NOTE = ("Watch the short film at the top of each part before you read "
                 "it — it is the quickest way in.")
-PARENT_NOTE = """**The two films are the hook, not decoration.** 2.1 opens with
+PARENT_NOTE = """**The answers here are ours, not the publisher's.** This unit came without a teacher edition, so they are derived from the article rather than read off a key. Each hint points at the sentence or picture it came from. If she disputes one, check the issue — she may be right.
+
+**The two films are the hook, not decoration.** 2.1 opens with
 Herodotus inventing the idea of checking a story; 2.2 puts Genghis Khan on trial
 so she watches two people build opposite pictures out of the same true facts.
 Each one asks her a question underneath — that question is the lesson, and it is

@@ -177,6 +177,36 @@ def level_progress(student, level):
     return hits, total
 
 
+def level_breakdown(student, level):
+    """(mastered, learning, total) forms in this level.
+
+    "Learning" is a fact she has answered CORRECTLY at least once and has not
+    mastered — she knows it, she is just still working it out rather than
+    recalling it. That is Baroody's deriving phase, and it is most of what a
+    child is doing for weeks.
+
+    It exists because `level_progress` alone made the map lie by omission.
+    Violet answered 16 out of 16 correctly and the bar moved by nothing, because
+    her median answer took 4.1 seconds against a 3-second fluency bar. Right but
+    slow was worth zero pixels, so four perfect rounds looked like failure.
+    """
+    forms = _forms_for_level(level)
+    total = len(forms)
+    if not total:
+        return 0, 0, 0
+    wanted = {(f.pk, o) for f, o in forms}
+    mastered = learning = 0
+    for state in StudentFactState.objects.filter(
+            student=student, fact__in={f for f, _ in forms}):
+        if (state.fact_id, state.operation) not in wanted:
+            continue
+        if state.is_mastered:
+            mastered += 1
+        elif state.total_correct:
+            learning += 1
+    return mastered, learning, total
+
+
 def is_level_beaten(student, level):
     """Has she cleared this level's facts?
 

@@ -42,8 +42,20 @@
 .fd-star { color: #8a6a10; }            /* #E8B93B was 1.84:1 — invisible */
 .fd-blurb { color: #6b6459; font-size: .9rem; }
 
-.fd-bar { display: block; height: 9px; border-radius: 999px; background: #e9e4da; overflow: hidden; }
-.fd-bar-fill { display: block; height: 100%; background: #1E7A50; border-radius: 999px; }
+/* Two bands in one track: solid = mastered, hatched = getting there. They sit
+   side by side, so the bar reads as "this much is done, this much is under
+   way" rather than as one number that barely moves. */
+.fd-bar {
+  display: flex; height: 9px; border-radius: 999px;
+  background: #e9e4da; overflow: hidden;
+}
+.fd-bar-fill { display: block; height: 100%; background: #1E7A50; }
+.fd-bar-learning {
+  display: block; height: 100%;
+  background: repeating-linear-gradient(45deg,
+    #9ecdb4 0 4px, #b9dcc8 4px 8px);
+}
+.fd-learning { color: #2f6b4f; font-weight: 700; }
 .fd-count { font-size: .82rem; color: #6b6459; }
 .fd-records { display: flex; flex-wrap: wrap; gap: .4rem; margin-top: .2rem; }
 .fd-rec {
@@ -174,6 +186,12 @@
   background: #f2f9f5; border: 1px solid #1E7A50; border-radius: 999px;
   padding: .4rem 1rem; font-weight: 700; display: inline-block; justify-self: center;
 }
+.fd-speed {
+  max-width: 24rem; margin: 0 auto 1rem; padding: .6rem .9rem;
+  background: #f2f9f5; border-radius: 10px;
+  color: #2f6b4f; font-size: .95rem; line-height: 1.45;
+}
+
 .fd-mastery { max-width: 20rem; margin: 0 auto 1.4rem; display: grid; gap: .35rem; }
 .fd-againrow { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: .6rem; }
 

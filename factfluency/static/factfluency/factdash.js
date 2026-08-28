@@ -34,6 +34,8 @@
     doneTitle: root.querySelector("[data-done-title]"),
     mastery: root.querySelector("[data-mastery]"),
     masteryFill: root.querySelector("[data-mastery-fill]"),
+    masteryLearning: root.querySelector("[data-mastery-learning]"),
+    speed: root.querySelector("[data-speed]"),
     masteryLabel: root.querySelector("[data-mastery-label]"),
     again: root.querySelector('[data-action="again"]'),
   };
@@ -316,16 +318,40 @@
     beaten.forEach(function (rec) { addChip(rec.label); });
     if (out.offline) addChip("Saved on this device — it'll sync next time.");
 
-    // Only once there is something to show. "0 of 20 mastered" on day one is
-    // just a zero with more words.
+    // Mastered AND getting-there. Violet answered 16 of 16 correctly and this
+    // line said "1 of 29 facts mastered", because mastery needs the answer
+    // under three seconds and she is still working them out — her median was
+    // 4.1s. Right-but-slow is the whole of the deriving phase and it was
+    // invisible, so four perfect rounds read as a flat bar.
     var mastered = out.mastered || 0;
-    if (mastered > 0 && out.total) {
+    var learning = out.learning || 0;
+    if ((mastered || learning) && out.total) {
       els.mastery.hidden = false;
       els.masteryFill.style.width = (out.pct || 0) + "%";
+      els.masteryLearning.style.width = (out.learning_pct || 0) + "%";
       els.masteryLabel.textContent =
-        mastered + " of " + out.total + " facts mastered";
+        mastered + " of " + out.total + " mastered"
+        + (learning ? " · " + learning + " getting there" : "");
     } else {
       els.mastery.hidden = true;
+    }
+
+    // Say the quiet part kindly. Getting them all right while few were quick is
+    // exactly what the middle of learning looks like, and a child deserves to
+    // be told that rather than left to infer she failed.
+    var fluent = out.num_fluent === undefined ? null : out.num_fluent;
+    if (els.speed) {
+      if (clean && fluent !== null && fluent < attempted) {
+        els.speed.textContent = fluent
+          ? "You got every one right. " + fluent + " were quick as a flash — "
+            + "the rest you worked out, which is exactly how it starts. Speed "
+            + "comes after knowing it."
+          : "You got every one right. None were quick yet — that is fine. "
+            + "Knowing it comes first; fast comes after.";
+        els.speed.hidden = false;
+      } else {
+        els.speed.hidden = true;
+      }
     }
 
     // A clean round earns confetti on its own merit. Gating the entire reward

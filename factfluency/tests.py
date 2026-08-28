@@ -1217,3 +1217,93 @@ class GrazeTests(TestCase):
         scheduling.apply_attempt(state, is_correct=False, response_ms=800)
         after, _ = scheduling.level_progress(self.child, level)
         self.assertEqual(after, before)
+
+
+class LearningTierTests(TestCase):
+    """ "She went 3 rounds this morning, why is it 1 of 29 mastered?"
+
+    Because mastery is fast AND right, three sittings running, and Violet's
+    median correct answer took 4.1 seconds against a 3-second bar. She was
+    right 49 times out of 52 and the map showed almost nothing, because
+    right-but-slow was worth zero pixels. It is worth a band of its own now.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.parent = User.objects.create_user(
+            username="lt", email="lt@e.com", password="pw")
+        cls.family = Family.objects.create(name="LT Fam")
+        FamilyMembership.objects.create(user=cls.parent, family=cls.family, role="parent")
+        cls.child = Student.objects.create(
+            parent=cls.parent, first_name="Violet", grade_level="G03",
+            family=cls.family)
+        cls.level = Level.objects.get(slug="ones-twos")
+
+    def _state(self, fact, **kw):
+        return StudentFactState.objects.create(
+            student=self.child, fact=fact, operation=Operation.MULT, **kw)
+
+    def test_right_but_slow_counts_as_getting_there(self):
+        fact = Fact.objects.get(factor_a=2, factor_b=3)
+        state = self._state(fact)
+        scheduling.apply_attempt(state, is_correct=True,
+                                 response_ms=FLUENCY_THRESHOLD_MS + 1500)
+        mastered, learning, total = scheduling.level_breakdown(self.child, self.level)
+        self.assertEqual(mastered, 0, "slow is not mastered")
+        self.assertEqual(learning, 1, "but it is not nothing either")
+        self.assertGreater(total, 1)
+
+    def test_a_fact_she_has_never_got_right_is_not_counted(self):
+        fact = Fact.objects.get(factor_a=2, factor_b=4)
+        state = self._state(fact)
+        scheduling.apply_attempt(state, is_correct=False, response_ms=900)
+        _, learning, _ = scheduling.level_breakdown(self.child, self.level)
+        self.assertEqual(learning, 0)
+
+    def test_mastered_facts_are_not_double_counted(self):
+        fact = Fact.objects.get(factor_a=2, factor_b=5)
+        state = self._state(fact, is_mastered=True, leitner_box=4,
+                            total_attempts=3, total_correct=3)
+        mastered, learning, _ = scheduling.level_breakdown(self.child, self.level)
+        self.assertEqual((mastered, learning), (1, 0), str(state))
+
+    def test_the_round_that_started_this_reports_both_numbers(self):
+        """Sixteen right, two fast — the exact shape of her fourth round."""
+        from portal.tokens import make_portal_token
+
+        session = GameSession.objects.create(student=self.child, level=self.level)
+        forms = scheduling._forms_for_level(self.level)[:16]
+        states = scheduling.ensure_states(self.child, forms)
+        for i, (fact, operation) in enumerate(forms):
+            ms = 1400 if i < 2 else 4600          # 2 fluent, 14 right but slow
+            Attempt.objects.create(
+                session=session, fact=fact, operation=operation,
+                answer_given=fact.answer(operation), is_correct=True,
+                response_ms=ms, was_fluent=ms <= FLUENCY_THRESHOLD_MS,
+                client_uuid="lt-%d" % i)
+            scheduling.apply_attempt(states[(fact.pk, operation)],
+                                     is_correct=True, response_ms=ms,
+                                     session_id=session.pk)
+
+        token = make_portal_token(self.child)
+        data = self.client.post(reverse("factfluency:api_finish", kwargs={
+            "token": token, "session_id": session.pk})).json()
+        self.assertEqual(data["num_correct"], 16)
+        self.assertEqual(data["num_fluent"], 2)
+        # The point: the screen has something true and positive to show.
+        self.assertEqual(data["learning"], 16)
+        self.assertGreater(data["learning_pct"], 0)
+
+    def test_the_screen_says_so_rather_than_leaving_her_to_infer_failure(self):
+        from pathlib import Path
+
+        js = (Path(__file__).resolve().parent / "static" / "factfluency"
+              / "factdash.js").read_text(encoding="utf-8")
+        # Both branches: some were quick, and none were quick yet.
+        self.assertIn("which is exactly how it starts", js)
+        self.assertIn("Knowing it comes first; fast comes after", js)
+        self.assertIn("getting there", js)
+        # And it only fires on a clean round — telling a child who got six wrong
+        # that "you got every one right" would be worse than saying nothing.
+        block = js.split("if (els.speed) {")[1].split("// A clean round")[0]
+        self.assertIn("clean &&", block)

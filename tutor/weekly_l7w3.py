@@ -9,7 +9,18 @@ never heard of it. The activity is marked as such so the booklet can say "make"
 rather than "read", and so nobody expects a comprehension check to cover it.
 
 Transcribed from the family's issue; the check is the printed wording (pp.
-1.40-1.41). Digitized from the family's purchased issue for private use.
+1.40-1.41).
+
+WHERE THESE ANSWERS COME FROM — read this before marking anything wrong.
+The Grade 7 material the family has for this unit is the STUDENT edition only:
+no teacher edition, no marked key — unlike week 1, and unlike both of Violet's
+weeks, whose keys are printed in red in her lesson plan. The questions and
+options are the publisher's printed wording; the ANSWERS ARE DERIVED, worked out
+from the article rather than read off a key. Each is supported by a sentence in
+the issue and each hint points at where. If she argues with one, check the
+issue — she may be right.
+
+Digitized from the family's purchased issue for private use.
 """
 
 from .weekly import choice, figure, fill_two, part, video, written
@@ -71,7 +82,9 @@ PARTS = [
 
 STUDENT_NOTE = ("Part 3.2 is a make, not a read — you are building a poster, so "
                 "give yourself space and something to draw on.")
-PARENT_NOTE = """**The film is doing real work here.** The Library of Alexandria
+PARENT_NOTE = """**The answers here are ours, not the publisher's.** No teacher edition came with this unit, so they are derived from the article. If she disputes one, check the issue before marking it wrong.
+
+**The film is doing real work here.** The Library of Alexandria
 is the rare famous story where the honest answer is "we are not sure", and the
 lesson she is about to read is entirely about questions that do not have one
 clean answer. Ask her the question under the video before she reads anything.

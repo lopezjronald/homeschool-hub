@@ -34,11 +34,21 @@
             </span>
             <span class="fd-blurb">{{ row.level.blurb }}</span>
 
+            {% comment %} TWO bands. Mastered is fast-and-right three sittings
+               running, which takes weeks; "getting there" is a fact she has
+               answered correctly at least once. Showing only the first band
+               meant four perfect rounds moved the bar by nothing, because at
+               this stage she is deriving the answers and deriving is slower
+               than three seconds. {% endcomment %}
             <span class="fd-bar" role="img"
-                  aria-label="{{ row.mastered }} of {{ row.total }} mastered">
+                  aria-label="{{ row.mastered }} of {{ row.total }} mastered{% if row.learning %}, {{ row.learning }} getting there{% endif %}">
               <span class="fd-bar-fill" style="width: {{ row.pct }}%"></span>
+              <span class="fd-bar-learning" style="width: {{ row.learning_pct }}%"></span>
             </span>
-            <span class="fd-count">{{ row.mastered }} / {{ row.total }} facts nailed</span>
+            <span class="fd-count">
+              {{ row.mastered }} / {{ row.total }} mastered{% if row.learning %} ·
+              <span class="fd-learning">{{ row.learning }} getting there</span>{% endif %}
+            </span>
 
             {% if row.records %}
               <span class="fd-records">

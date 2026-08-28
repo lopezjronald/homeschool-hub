@@ -56,10 +56,14 @@ def _levels_with_state(student):
     for record in PersonalRecord.objects.filter(student=student):
         records.setdefault(record.level_id, {})[record.record_type] = record
     for row in rows:
-        mastered, total = scheduling.level_progress(student, row["level"])
+        mastered, learning, total = scheduling.level_breakdown(student, row["level"])
         row["mastered"] = mastered
+        row["learning"] = learning
         row["total"] = total
         row["pct"] = int(round(100 * mastered / total)) if total else 0
+        # The second band of the bar. Right-but-slow is real progress and was
+        # worth nothing on screen.
+        row["learning_pct"] = int(round(100 * learning / total)) if total else 0
         row["records"] = _record_chips(records.get(row["level"].pk, {}))
     return rows
 
@@ -272,13 +276,16 @@ def api_finish(request, token, session_id):
 
 
 def _finish_response(session, beaten, best):
-    mastered, total = scheduling.level_progress(session.student, session.level)
+    mastered, learning, total = scheduling.level_breakdown(
+        session.student, session.level)
     return JsonResponse({
         "records_beaten": beaten,
         "level_beaten": scheduling.is_level_beaten(session.student, session.level),
         "mastered": mastered,
+        "learning": learning,
         "total": total,
         "pct": int(round(100 * mastered / total)) if total else 0,
+        "learning_pct": int(round(100 * learning / total)) if total else 0,
         "num_correct": session.num_correct,
         "num_attempted": session.num_attempted,
         "num_fluent": session.num_fluent,

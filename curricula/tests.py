@@ -1803,3 +1803,98 @@ class LessonWorkUploadTests(TestCase):
         r = self._c().post(self._url(), {"file": self._photo(), "caption": "x" * 500})
         self.assertEqual(r.status_code, 302)
         self.assertEqual(len(LessonWork.objects.get().caption), 200)
+
+
+class DeclaredDependencyTests(SimpleTestCase):
+    """Everything the app and its tests import must be in requirements.txt.
+
+    CI was red for eight days because the booklet feature (HH-193) started
+    importing PyMuPDF and nobody added it: the venv here already had it, so the
+    suite was green locally and died on every push. Production never had it
+    either — `ingest_booklet` would have raised ImportError the first time it
+    was run on the dyno.
+    """
+
+    # Scripts and spikes are developer tools that are never imported by the
+    # app or the suite, so their imports cannot break CI or the dyno.
+    SKIP_DIRS = {".venv", ".git", "node_modules", "staticfiles", "__pycache__",
+                 "scratchpad", "spikes", "scripts", "migrations"}
+
+    def _root(self):
+        import pathlib
+        return pathlib.Path(__file__).resolve().parent.parent
+
+    def _imports(self):
+        """{top-level module: {files that import it}} for third-party modules."""
+        import ast
+        import os
+        import sys
+
+        root = self._root()
+        first_party = {p.name for p in root.iterdir()
+                       if p.is_dir() and (p / "__init__.py").exists()}
+        first_party |= {p.stem for p in root.glob("*.py")}
+        stdlib = set(sys.stdlib_module_names)
+
+        found = {}
+        for dirpath, dirnames, filenames in os.walk(root):
+            dirnames[:] = [d for d in dirnames
+                           if d not in self.SKIP_DIRS and not d.startswith(".")]
+            for name in filenames:
+                if not name.endswith(".py"):
+                    continue
+                path = os.path.join(dirpath, name)
+                try:
+                    with open(path, encoding="utf-8") as fh:
+                        tree = ast.parse(fh.read())
+                except (SyntaxError, UnicodeDecodeError):   # pragma: no cover
+                    continue
+                for node in ast.walk(tree):
+                    if isinstance(node, ast.Import):
+                        mods = [a.name.split(".")[0] for a in node.names]
+                    elif isinstance(node, ast.ImportFrom):
+                        if node.level:          # relative: first-party
+                            continue
+                        mods = [(node.module or "").split(".")[0]]
+                    else:
+                        continue
+                    for m in mods:
+                        if m and m not in stdlib and m not in first_party:
+                            found.setdefault(m, set()).add(
+                                os.path.relpath(path, root))
+        return found
+
+    def _declared(self):
+        with open(self._root() / "requirements.txt", encoding="utf-8") as fh:
+            out = set()
+            for line in fh:
+                line = line.split("#")[0].strip()
+                if line:
+                    out.add(line.split("==")[0].split(">")[0].split("[")[0]
+                            .lower().replace("-", "_"))
+            return out
+
+    def test_every_imported_package_is_declared(self):
+        import importlib.metadata as md
+
+        # The import name is often not the package name — fitz is PyMuPDF, PIL
+        # is pillow, jwt is PyJWT — so resolve it rather than string-matching.
+        dists = md.packages_distributions()
+        declared = self._declared()
+        undeclared = {}
+        for module, files in self._imports().items():
+            names = {d.lower().replace("-", "_") for d in dists.get(module, ())}
+            if not (names or declared) or not ((names or {module.lower()}) & declared):
+                undeclared[module] = sorted(files)[:3]
+        self.assertEqual(
+            undeclared, {},
+            "imported but not in requirements.txt — this passes locally and "
+            "fails on CI and on the dyno")
+
+    def test_the_check_can_actually_fail(self):
+        """The scan must really be reading the tree: if it finds no third-party
+        imports at all, the assertion above is vacuous."""
+        found = self._imports()
+        self.assertGreater(len(found), 5, found)
+        self.assertIn("fitz", found)          # the import that started this
+        self.assertIn("django", found)

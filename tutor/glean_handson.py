@@ -506,10 +506,10 @@ WHITE_LILACS = {
     "title": "What Travelled to the Flats",
     "intro": (
         "## 🌱 What Travelled to the Flats\n\n"
-        "They took the whole town. Not the people only — the houses, the "
-        "church, the school, the gardens. Grandfather did not argue about it; "
-        "he went and dug things up and carried them, because a garden can be "
-        "carried and a town cannot.\n\n"
+        "They took the whole town: the church, the school, the gardens, the "
+        "houses. Grandfather did not argue about it; he went and dug things "
+        "up and carried them, because a garden can be carried and a town "
+        "cannot."
         "Make the things that travelled. Nothing here is written, and only one "
         "of them is drawn. " + _ON_PAPER
     ),
@@ -545,10 +545,12 @@ WHITE_LILACS = {
             "first — the first pull is always too wet."),
         _photo(
             "**A house that has to go.** Go and find out from the book what "
-            "actually happened to the houses of Freedomtown. Then build one, "
-            "out of card and sticks, caught in the middle of it happening.",
-            "Build it mid-move, not before and not after. A house sitting "
-            "still is a model; a house halfway is the whole book."),
+            "actually happened to the houses of Freedomtown when the town was "
+            "taken. Then build one out of card and sticks, showing what you "
+            "found.",
+            "The answer is in the book and it is not what most people guess. "
+            "Do not build it until you have read it — the whole point of this "
+            "step is the thing you did not expect."),
         _drawing(
             "**Her last picture.** Rose Lee draws Freedomtown all the way "
             "through this book. Find the last picture she draws of it, and draw "
@@ -579,9 +581,9 @@ WHITE_LILACS = {
         "way: a finished project, done with care, that could not have been made "
         "without reading the book.\n\n"
         "**This is not the easier option.** Six things get made, one of them "
-        "has to stay alive for a fortnight, and three of them cannot be "
-        "started until she has gone back into the book for an answer. Mark it "
-        "as hard as you would mark the essay.\n\n"
+        "has to still be alive a week or two after she starts, and four of "
+        "them cannot be finished until she has gone back into the book for an "
+        "answer. Mark it as hard as you would mark the essay.\n\n"
         "**Why it exists even though the printed options are good.** Four of "
         "the guide's nine already avoid an essay, so this is not rescuing her "
         "from writing. It is the book's own subject done as objects: White "
@@ -596,9 +598,11 @@ WHITE_LILACS = {
         "is whether she looked at a real one before she started.\n"
         "- *The quilt square* has no fixed subject on purpose. Ask her why she "
         "chose what she chose; that answer is the assessment.\n"
-        "- *The house* is the comprehension check. What happened to those "
-        "houses is in the book and it surprises people. A model of a house "
-        "standing still means she has not looked it up.\n"
+        "- *The house* is the comprehension check, and the prompt deliberately "
+        "does not say what she will find. The houses were moved whole, not "
+        "pulled down, which surprises people. If she has built a house sitting "
+        "quietly on a lawn she has not looked it up — send her back rather "
+        "than telling her.\n"
         "- *Her last picture* is in the book too. If she has drawn something of "
         "her own instead, that is a re-read, not a lower mark for drawing.\n\n"
         "**A word before she starts.** This book does not soften 1921 and "

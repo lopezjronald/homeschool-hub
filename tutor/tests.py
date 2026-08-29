@@ -8936,9 +8936,61 @@ class WhiteLilacsSeedTests(TestCase):
         banned = ("write about", "write a paragraph", "a few sentences",
                   "write a sentence", "in your own words")
         for question in hands_on.questions.all():
-            lowered = question.prompt.lower()
+            # The hint is text she reads too, so it has to obey the same rule.
+            lowered = (question.prompt + " " + question.hint).lower()
             for phrase in banned:
                 self.assertNotIn(phrase, lowered, question.prompt[:50])
+
+    def test_trimming_a_step_never_deletes_a_photograph_she_uploaded(self):
+        """The prune read ResponseSheet.answers, but a photo answer lives in
+        AnswerPhoto — so a step she had photographed looked unanswered, and the
+        question went, taking the image with it on CASCADE. The hands-on Glean
+        option is almost entirely photo steps."""
+        from tutor.models import AnswerPhoto, Question, QuestionSet, ResponseSheet
+        from tutor import glean_handson
+
+        curriculum = self._seed()
+        hands_on = QuestionSet.objects.get(
+            lesson__chapter__curriculum=curriculum, title__contains="hands-on")
+        last = hands_on.questions.order_by("-order").first()
+        sheet = ResponseSheet.objects.create(
+            question_set=hands_on, child=self.kaylin,
+            answers={})          # she photographed it; she typed nothing
+        photo = AnswerPhoto.objects.create(
+            question=last, sheet=sheet, image="uploads/lilac.jpg")
+
+        original = glean_handson.BOOKS["white_lilacs"]["steps"]
+        try:
+            glean_handson.BOOKS["white_lilacs"]["steps"] = original[:2]
+            self._seed()
+        finally:
+            glean_handson.BOOKS["white_lilacs"]["steps"] = original
+
+        self.assertTrue(Question.objects.filter(pk=last.pk).exists(),
+                        "a photographed step was deleted")
+        self.assertTrue(AnswerPhoto.objects.filter(pk=photo.pk).exists(),
+                        "her photograph was cascade-deleted with it")
+
+    def test_the_house_step_does_not_hand_her_the_answer(self):
+        """That step IS the comprehension check — the rubric tells the parent to
+        mark it as one. A prompt that states what happened to the houses lets
+        her build the right model without opening the book."""
+        from tutor import glean_handson
+
+        for category, prompt, hint, _extra in glean_handson.questions(
+                "white_lilacs"):
+            if "house that has to go" not in prompt.lower():
+                continue
+            text = (prompt + " " + hint).lower()
+            for giveaway in ("mid-move", "middle of it happening", "moved whole",
+                             "halfway", "on rollers", "not pulled down"):
+                self.assertNotIn(giveaway, text, giveaway)
+            break
+        else:
+            self.fail("the house step is gone")
+        # The parent's copy still says it, because the parent has to mark it.
+        self.assertIn("moved whole",
+                      glean_handson.BOOKS["white_lilacs"]["rubric"])
 
     def test_the_literature_standard_is_attached(self):
         from tutor.models import QuestionSet

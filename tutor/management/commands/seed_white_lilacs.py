@@ -49,7 +49,8 @@ from core.utils import get_active_family
 from curricula.models import Curriculum, CurriculumPlacement, Lesson
 from curricula.services import apply_blueprint, get_blueprint
 from students.models import Student
-from tutor.models import Question, QuestionSet, ResponseSheet
+from tutor.models import (AnswerPhoto, Question, QuestionSet,
+                          ResponseSheet)
 
 
 MASTERY_NOTE = (
@@ -615,5 +616,10 @@ class Command(BaseCommand):
         for sheet in ResponseSheet.objects.filter(question_set=qset):
             answered |= {int(k) for k, v in (sheet.answers or {}).items()
                          if str(v).strip() and str(k).isdecimal()}
+        # A photograph she uploaded is an answer too, and it lives in its own
+        # table rather than in the sheet JSON — invisible here until asked
+        # for, and cascade-deleted with the question if we get this wrong.
+        answered |= set(AnswerPhoto.objects.filter(
+            question__question_set=qset).values_list("question_id", flat=True))
         stale.exclude(pk__in=answered).delete()
         return 1, count

@@ -492,12 +492,134 @@ HUNDRED_DRESSES = {
 }
 
 
+# ---------------------------------------------------------------------------
+# White Lilacs — Carolyn Meyer. Kaylin, 12. A whole Black town is bought out
+# and moved so the white town can build a park where it stood, and the girl who
+# lives there is the only one making a record of it.
+#
+# The book is about what survives being moved, so the project is the things
+# that travel: something living, the flower it is named after, a quilt square,
+# a house caught halfway. Rose Lee's own record is the one drawing.
+# ---------------------------------------------------------------------------
+
+WHITE_LILACS = {
+    "title": "What Travelled to the Flats",
+    "intro": (
+        "## 🌱 What Travelled to the Flats\n\n"
+        "They took the whole town. Not the people only — the houses, the "
+        "church, the school, the gardens. Grandfather did not argue about it; "
+        "he went and dug things up and carried them, because a garden can be "
+        "carried and a town cannot.\n\n"
+        "Make the things that travelled. Nothing here is written, and only one "
+        "of them is drawn. " + _ON_PAPER
+    ),
+    "steps": [
+        _photo(
+            "**Something living.** Plant something for real — a cutting off a "
+            "houseplant, a bulb, seeds, whatever will actually take — in a pot "
+            "you have painted yourself. This is the one piece that has to still "
+            "be alive at the end. Photograph it the day you plant it, then "
+            "again a week or two later, and put both photos on this step.",
+            "Grandfather is not being sentimental about the plants. Find what "
+            "he does with them when the family has to move, and what that ends "
+            "up doing for the people at the Flats — then make yours the kind of "
+            "thing that would survive the trip."),
+        _photo(
+            "**The white lilac.** Build the flower the book is named after, at "
+            "life size, out of wire and paper. Look at a photograph of a real "
+            "lilac first: it is not one flower, it is a whole cone of tiny "
+            "four-petalled ones, and getting that crowding right is the job. "
+            "Tint the paper yourself rather than starting from white paper.",
+            "Make a lot of little florets and wire them on in bunches. It looks "
+            "wrong until suddenly there are enough of them, and then it looks "
+            "like a lilac."),
+        _photo(
+            "**A square for the album quilt.** An album quilt turns up in this "
+            "book — find who sent it, who it went to, and what that kind of "
+            "quilt is for. Then make ONE square of your own, for something in "
+            "the book worth remembering. Cut a stamp out of a potato or an "
+            "eraser, print it onto cloth or paper, and sew or glue your square "
+            "together.",
+            "An album quilt is made of squares by different hands, so yours "
+            "only has to be one of them. Print the stamp a few times on scrap "
+            "first — the first pull is always too wet."),
+        _photo(
+            "**A house that has to go.** Go and find out from the book what "
+            "actually happened to the houses of Freedomtown. Then build one, "
+            "out of card and sticks, caught in the middle of it happening.",
+            "Build it mid-move, not before and not after. A house sitting "
+            "still is a model; a house halfway is the whole book."),
+        _drawing(
+            "**Her last picture.** Rose Lee draws Freedomtown all the way "
+            "through this book. Find the last picture she draws of it, and draw "
+            "that one — hers, not yours. No words anywhere on it.",
+            "It is in the book; do not guess. Once you have found it, think "
+            "about why the author chose that one to be the last.",
+            620),
+        _photo(
+            "**Load the wagon.** Put everything you have made together as one "
+            "load, the way a family would pack to go to the Flats — the pot, "
+            "the lilac, the square, the house, the picture. Hand-letter one "
+            "small tag for each thing: what it is. Photograph the whole load "
+            "from low down, with one lamp off to the side.",
+            "Pack it as though it has to survive the trip, not as though it is "
+            "going in a shop window. What you decide to put where says "
+            "something."),
+        _self_eval([
+            "My plant is still alive",
+            "My lilac reads as a lilac and not as a blob of paper",
+            "I went back to the book for what happened to the houses",
+            "The last picture is the one Rose Lee really drew",
+            "I am proud of at least one of these",
+        ]),
+    ],
+    "rubric": (
+        "## Teacher notes — Glean, hands-on option (20 points)\n"
+        "The same 20 points as the guide's printed options, earned the same "
+        "way: a finished project, done with care, that could not have been made "
+        "without reading the book.\n\n"
+        "**This is not the easier option.** Six things get made, one of them "
+        "has to stay alive for a fortnight, and three of them cannot be "
+        "started until she has gone back into the book for an answer. Mark it "
+        "as hard as you would mark the essay.\n\n"
+        "**Why it exists even though the printed options are good.** Four of "
+        "the guide's nine already avoid an essay, so this is not rescuing her "
+        "from writing. It is the book's own subject done as objects: White "
+        "Lilacs is about what can and cannot be carried when a place is taken "
+        "away, and that argument is easier to make in your hands than in a "
+        "paragraph.\n\n"
+        "**What to look at**\n"
+        "- *Something living* is the only step with a clock on it — it has to "
+        "be alive at the end. If it dies, let her start again rather than "
+        "marking it down. That is what Grandfather would have done.\n"
+        "- *The lilac* is a craft problem, not a comprehension one. The measure "
+        "is whether she looked at a real one before she started.\n"
+        "- *The quilt square* has no fixed subject on purpose. Ask her why she "
+        "chose what she chose; that answer is the assessment.\n"
+        "- *The house* is the comprehension check. What happened to those "
+        "houses is in the book and it surprises people. A model of a house "
+        "standing still means she has not looked it up.\n"
+        "- *Her last picture* is in the book too. If she has drawn something of "
+        "her own instead, that is a re-read, not a lower mark for drawing.\n\n"
+        "**A word before she starts.** This book does not soften 1921 and "
+        "neither should the project. If she wants to make something about what "
+        "happens to Henry, let her — but that is a conversation to have first, "
+        "not a surprise to come across in the photographs.\n\n"
+        "**Materials**: a pot and something that will grow; florist wire and "
+        "tissue or crepe paper; a scrap of cloth, a potato or eraser for the "
+        "stamp, a needle or glue; card and skewers or lolly sticks for the "
+        "house."
+    ),
+}
+
+
 BOOKS = {
     "i_am_david": I_AM_DAVID,
     "folk_keeper": FOLK_KEEPER,
     "rickshaw_girl": RICKSHAW_GIRL,
     "miss_agnes": MISS_AGNES,
     "hundred_dresses": HUNDRED_DRESSES,
+    "white_lilacs": WHITE_LILACS,
 }
 
 

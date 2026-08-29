@@ -543,6 +543,24 @@ class Command(BaseCommand):
         )
         sets += s; questions += q
 
+        # One more Glean option beside the guide's nine: the same thing she
+        # MAKES rather than writes. The guide's own options are kept exactly as
+        # printed, so the record still shows the purchased guide followed — she
+        # picks.
+        from tutor import glean_handson
+
+        hands_on = glean_handson.hands_on_title("white_lilacs")
+        glean_handson.retire_superseded(glean, hands_on)
+        s, q = self._seed_set(
+            glean, family,
+            title=hands_on,
+            reading="",
+            intro=glean_handson.BOOKS["white_lilacs"]["intro"],
+            rubric=glean_handson.BOOKS["white_lilacs"]["rubric"],
+            questions=glean_handson.questions("white_lilacs"),
+        )
+        sets += s; questions += q
+
         # The house literature standard: a Socratic story-grammar seminar and
         # the literary toolbox, both oral, both scaled to her grade. Every other
         # Blackbird book here carries them, and `apply_literature_standard`

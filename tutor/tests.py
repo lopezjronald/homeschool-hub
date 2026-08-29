@@ -7701,8 +7701,8 @@ class HandsOnGleanContentTests(SimpleTestCase):
         return glean_handson.BOOKS
 
     def test_every_book_has_one(self):
-        """Six Blackbird guides, six hands-on options."""
-        self.assertEqual(len(self._books()), 5)   # Wolf's lives in glean_wolf
+        """Seven Blackbird guides, seven hands-on options."""
+        self.assertEqual(len(self._books()), 6)   # Wolf's lives in glean_wolf
         for key, book in self._books().items():
             self.assertTrue(book["title"], key)
             self.assertTrue(book["steps"], key)
@@ -8833,9 +8833,10 @@ class WhiteLilacsSeedTests(TestCase):
             self.assertEqual(count(n, "Explore: Writing"), 1, n)
         self.assertEqual([count(n, "Explore: Discussion") for n in (1, 2, 3, 4)],
                          [8, 10, 7, 9])
+        # The guide's own Glean, beside which the hands-on option is seeded.
         self.assertEqual(QuestionSet.objects.get(
             lesson__chapter__curriculum=curriculum,
-            title__contains="Glean").questions.count(), 9)
+            title="Section 5 · Glean: Final Project").questions.count(), 9)
 
     def test_discussion_is_oral_and_the_rest_is_written(self):
         from tutor.models import QuestionSet
@@ -8894,6 +8895,50 @@ class WhiteLilacsSeedTests(TestCase):
         self.assertIn("Catherine Jane Bell", boxes["Section 1 · Journal"])
         self.assertIn("Aunt Susannah", boxes["Section 2 · Journal"])
         self.assertIn("Henry Jefferson", boxes["Section 3 · Journal"])
+
+    def test_the_hands_on_glean_option_sits_beside_the_printed_nine(self):
+        """The guide's own options stay exactly as printed — the record has to
+        show the purchased guide followed. She gets one more, and picks."""
+        from tutor.models import Question, QuestionSet
+
+        curriculum = self._seed()
+        glean_sets = QuestionSet.objects.filter(
+            lesson__chapter__curriculum=curriculum,
+            lesson__chapter__number=5)
+        titles = sorted(glean_sets.values_list("title", flat=True))
+        self.assertEqual(titles, [
+            "Section 5 · Glean: Final Project",
+            "Section 5 · Glean: What Travelled to the Flats (hands-on)",
+        ])
+        # The printed nine are untouched.
+        self.assertEqual(glean_sets.get(
+            title="Section 5 · Glean: Final Project").questions.count(), 9)
+
+        hands_on = glean_sets.get(title__contains="hands-on")
+        kinds = list(hands_on.questions.order_by("order")
+                     .values_list("response_type", flat=True))
+        # Exactly one drawing step, the rest made and photographed, then the
+        # self-check. That ratio is the whole point of these projects.
+        self.assertEqual(kinds.count(Question.TYPE_DRAWING), 1)
+        self.assertEqual(kinds.count(Question.TYPE_SELF_EVAL), 1)
+        self.assertGreaterEqual(kinds.count(Question.TYPE_PHOTO), 4)
+
+    def test_the_hands_on_project_asks_for_no_writing(self):
+        """The rule the module is built on. A prompt that asks her to write a
+        sentence has smuggled the essay back in."""
+        from tutor.models import Question, QuestionSet
+
+        curriculum = self._seed()
+        hands_on = QuestionSet.objects.get(
+            lesson__chapter__curriculum=curriculum, title__contains="hands-on")
+        self.assertFalse(
+            hands_on.questions.filter(response_type=Question.TYPE_TEXT).exists())
+        banned = ("write about", "write a paragraph", "a few sentences",
+                  "write a sentence", "in your own words")
+        for question in hands_on.questions.all():
+            lowered = question.prompt.lower()
+            for phrase in banned:
+                self.assertNotIn(phrase, lowered, question.prompt[:50])
 
     def test_the_literature_standard_is_attached(self):
         from tutor.models import QuestionSet

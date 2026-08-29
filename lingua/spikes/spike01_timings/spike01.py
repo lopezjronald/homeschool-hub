@@ -9,6 +9,11 @@ naive text[start:end] drifts after the first accent. We build a byte->char map a
 store CHARACTER offsets (what JS strings use). edge-tts gives spoken-word text + audio
 offset (100ns ticks) but NO source offsets, so we align spoken words to source tokens.
 
+Dependencies: the Polly arm needs only boto3 (a real dependency of this repo).
+The edge-tts arm needs `edge-tts`, which is declared in requirements-dev.txt and
+is deliberately NOT a runtime dependency — nothing the app or the test suite
+imports touches it.  pip install -r requirements-dev.txt
+
 Usage (each provider needs its own venv):
   # free credential/connectivity + es-MX voice check (no synthesis, no cost):
   <hub .venv>/python spike01.py check

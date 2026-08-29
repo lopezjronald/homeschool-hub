@@ -11,8 +11,10 @@ Writes one .txt per lesson, named by the lesson number found in the PDF, plus an
 index. Output is meant to be gitignored: it is a digitisation of the family's
 purchased guide ((c) DIVE, LLC) for private use, not something to publish.
 
-Needs pypdf (already a dependency of the PDF work in this repo). If it is
-missing, this says so plainly rather than half-working.
+Reads PDFs with PyMuPDF, the same library the rest of the repo's PDF work
+uses (`curricula/management/commands/ingest_booklet.py`) — it is declared in
+requirements.txt, so this needs nothing extra. If it is missing, this says so
+plainly rather than half-working.
 """
 
 import argparse
@@ -29,12 +31,12 @@ def lesson_number(text, fallback):
 
 def extract(path):
     try:
-        from pypdf import PdfReader
-    except ImportError:
-        sys.exit("pypdf is not installed:  pip install pypdf")
-    reader = PdfReader(path)
-    pages = [(i + 1, (p.extract_text() or "").strip())
-             for i, p in enumerate(reader.pages)]
+        import pymupdf
+    except ImportError:                                      # pragma: no cover
+        sys.exit("PyMuPDF is not installed:  pip install -r requirements.txt")
+    with pymupdf.open(path) as doc:
+        pages = [(i + 1, (page.get_text() or "").strip())
+                 for i, page in enumerate(doc)]
     body = "\n\n".join(f"--- page {n} ---\n{t}" for n, t in pages if t)
     return body, len(pages)
 

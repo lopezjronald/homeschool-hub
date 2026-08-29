@@ -1,0 +1,13 @@
+# Developer-only dependencies. NOT installed on Heroku and NOT installed by CI:
+# the buildpack and .github/workflows/ci.yml both read requirements.txt alone.
+#
+# Anything listed here must be imported only by tooling that the app and the
+# test suite never import — scripts/ and lingua/spikes/. If a runtime or test
+# module starts needing one of these, move it to requirements.txt instead;
+# curricula.tests.DeclaredDependencyTests enforces that split.
+#
+#   pip install -r requirements-dev.txt
+
+# lingua/spikes/spike01_timings/spike01.py — the edge-tts arm of the word-timing
+# spike (LGA-23). The Polly arm needs only boto3, which is a real dependency.
+edge-tts==7.2.8

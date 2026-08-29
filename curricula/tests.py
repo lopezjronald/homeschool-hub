@@ -1,3 +1,4 @@
+import os
 import tempfile
 
 from django.contrib.auth import get_user_model
@@ -1815,11 +1816,18 @@ class DeclaredDependencyTests(SimpleTestCase):
     was run on the dyno.
     """
 
-    # Scripts and spikes are developer tools that are never imported by the
-    # app or the suite, so their imports cannot break CI or the dyno.
+    # Scripts and spikes are developer tools, so what they import belongs in
+    # requirements-dev.txt rather than requirements.txt — but it still has to be
+    # written down somewhere, which is why they are scanned rather than skipped.
+    # Migrations ARE scanned: the release phase runs `migrate`, which makes them
+    # the most deploy-fatal place for an undeclared import.
     SKIP_DIRS = {".venv", "venv", ".git", "node_modules", "staticfiles",
-                 "__pycache__", "scratchpad", "spikes", "scripts",
-                 "migrations", "media"}
+                 "__pycache__", "scratchpad", "media"}
+
+    # Directories whose imports may be satisfied by requirements-dev.txt. Any
+    # other file must be covered by requirements.txt alone, because CI and the
+    # dyno install only that one.
+    DEV_ONLY = ("scripts" + os.sep, os.path.join("lingua", "spikes") + os.sep)
 
     def _root(self):
         import pathlib
@@ -1865,11 +1873,14 @@ class DeclaredDependencyTests(SimpleTestCase):
                                 os.path.relpath(path, root))
         return found
 
-    def _declared(self):
+    def _declared(self, filename="requirements.txt"):
         import re
 
-        with open(self._root() / "requirements.txt", encoding="utf-8") as fh:
-            out = set()
+        out = set()
+        path = self._root() / filename
+        if not path.exists():
+            return out
+        with open(path, encoding="utf-8") as fh:
             for line in fh:
                 line = line.split("#")[0].strip()
                 if not line or line.startswith("-"):
@@ -1879,7 +1890,7 @@ class DeclaredDependencyTests(SimpleTestCase):
                 match = re.match(r"[A-Za-z0-9._-]+", line)
                 if match:
                     out.add(match.group(0).lower().replace("-", "_"))
-            return out
+        return out
 
     def test_every_imported_package_is_declared(self):
         import importlib.metadata as md
@@ -1887,16 +1898,23 @@ class DeclaredDependencyTests(SimpleTestCase):
         # The import name is often not the package name — fitz is PyMuPDF, PIL
         # is pillow, jwt is PyJWT — so resolve it rather than string-matching.
         dists = md.packages_distributions()
-        declared = self._declared()
+        runtime = self._declared()
+        dev = self._declared("requirements-dev.txt")
         undeclared = {}
         for module, files in self._imports().items():
             names = {d.lower().replace("-", "_") for d in dists.get(module, ())}
-            if not ((names or {module.lower()}) & declared):
-                undeclared[module] = sorted(files)[:3]
+            names = names or {module.lower()}
+            if names & runtime:
+                continue
+            # A dev-only package is acceptable ONLY if every file that imports
+            # it is itself dev-only. One runtime import of it and CI dies.
+            if names & dev and all(f.startswith(self.DEV_ONLY) for f in files):
+                continue
+            undeclared[module] = sorted(files)[:3]
         self.assertEqual(
             undeclared, {},
-            "imported but not in requirements.txt — this passes locally and "
-            "fails on CI and on the dyno")
+            "imported but not declared — requirements.txt for anything the app "
+            "or the suite touches, requirements-dev.txt for scripts and spikes")
 
     def test_packages_named_only_in_settings_are_declared_too(self):
         """The scan above can only see `import` statements. crispy_bootstrap5,
@@ -1941,3 +1959,8 @@ class DeclaredDependencyTests(SimpleTestCase):
         self.assertGreater(len(found), 5, found)
         self.assertIn("pymupdf", found)       # the import that started this
         self.assertIn("django", found)
+        # The scan reaches the developer directories, not just the app.
+        self.assertIn("edge_tts", found)
+        self.assertTrue(
+            any(f.startswith(self.DEV_ONLY) for f in found["edge_tts"]),
+            found["edge_tts"])

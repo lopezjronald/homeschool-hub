@@ -1817,8 +1817,9 @@ class DeclaredDependencyTests(SimpleTestCase):
 
     # Scripts and spikes are developer tools that are never imported by the
     # app or the suite, so their imports cannot break CI or the dyno.
-    SKIP_DIRS = {".venv", ".git", "node_modules", "staticfiles", "__pycache__",
-                 "scratchpad", "spikes", "scripts", "migrations"}
+    SKIP_DIRS = {".venv", "venv", ".git", "node_modules", "staticfiles",
+                 "__pycache__", "scratchpad", "spikes", "scripts",
+                 "migrations", "media"}
 
     def _root(self):
         import pathlib
@@ -1865,13 +1866,19 @@ class DeclaredDependencyTests(SimpleTestCase):
         return found
 
     def _declared(self):
+        import re
+
         with open(self._root() / "requirements.txt", encoding="utf-8") as fh:
             out = set()
             for line in fh:
                 line = line.split("#")[0].strip()
-                if line:
-                    out.add(line.split("==")[0].split(">")[0].split("[")[0]
-                            .lower().replace("-", "_"))
+                if not line or line.startswith("-"):
+                    continue
+                # Stop at the first character that cannot be part of a name, so
+                # ==, ~=, <, >=, extras and trailing spaces all behave.
+                match = re.match(r"[A-Za-z0-9._-]+", line)
+                if match:
+                    out.add(match.group(0).lower().replace("-", "_"))
             return out
 
     def test_every_imported_package_is_declared(self):
@@ -1884,17 +1891,53 @@ class DeclaredDependencyTests(SimpleTestCase):
         undeclared = {}
         for module, files in self._imports().items():
             names = {d.lower().replace("-", "_") for d in dists.get(module, ())}
-            if not (names or declared) or not ((names or {module.lower()}) & declared):
+            if not ((names or {module.lower()}) & declared):
                 undeclared[module] = sorted(files)[:3]
         self.assertEqual(
             undeclared, {},
             "imported but not in requirements.txt — this passes locally and "
             "fails on CI and on the dyno")
 
+    def test_packages_named_only_in_settings_are_declared_too(self):
+        """The scan above can only see `import` statements. crispy_bootstrap5,
+        whitenoise and storages are reached by NAME from settings and never
+        imported by us — drop one from requirements.txt and the suite stays
+        green while the dyno fails to boot. That is how PyMuPDF got in."""
+        import importlib.metadata as md
+        import sys
+
+        from django.conf import settings
+
+        root = self._root()
+        first_party = {p.name for p in root.iterdir()
+                       if p.is_dir() and (p / "__init__.py").exists()}
+        dists = md.packages_distributions()
+        declared = self._declared()
+
+        named = set()
+        for entry in list(settings.INSTALLED_APPS) + list(settings.MIDDLEWARE):
+            top = entry.split(".")[0]
+            if (top not in first_party and top not in sys.stdlib_module_names
+                    and top != "django"):
+                named.add(top)
+        for storage in getattr(settings, "STORAGES", {}).values():
+            top = str(storage.get("BACKEND", "")).split(".")[0]
+            if top and top not in first_party and top != "django":
+                named.add(top)
+
+        self.assertGreaterEqual(len(named), 3, named)   # not vacuous
+        undeclared = {}
+        for module in named:
+            names = {d.lower().replace("-", "_") for d in dists.get(module, ())}
+            if not ((names or {module.lower()}) & declared):
+                undeclared[module] = "named in settings"
+        self.assertEqual(undeclared, {},
+                         "named in settings but not in requirements.txt")
+
     def test_the_check_can_actually_fail(self):
         """The scan must really be reading the tree: if it finds no third-party
         imports at all, the assertion above is vacuous."""
         found = self._imports()
         self.assertGreater(len(found), 5, found)
-        self.assertIn("fitz", found)          # the import that started this
+        self.assertIn("pymupdf", found)       # the import that started this
         self.assertIn("django", found)

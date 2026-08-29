@@ -44,7 +44,10 @@ class Command(BaseCommand):
             raise CommandError("Google Calendar is not configured.")
 
         configured = google_api.calendar_ids()
-        if calendar_id in configured:
+        # Case-folded deliberately: calendar ids are email addresses, and
+        # matching exactly here while the ORM also matches exactly would mean
+        # two accidents standing in for one check.
+        if calendar_id.casefold() in {c.casefold() for c in configured}:
             raise CommandError(
                 "%s is still in GOOGLE_CALENDAR_IDS, so the next push would put "
                 "everything back. Remove it from that config var first:\n"

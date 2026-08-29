@@ -1900,10 +1900,15 @@ class GoogleCalendarPruneTests(TestCase):
 
         deleted = [c for c in request.call_args_list if c.args[0] == "DELETE"]
         self.assertEqual(len(deleted), 3)
+        prefix = "/calendars/dropped%40group.calendar.example.com/events/"
         for call in deleted:
-            # It must delete from the DROPPED calendar, never the kept one.
-            self.assertIn("dropped", call.args[1])
-            self.assertNotIn("keep-", call.args[1])
+            # The CALENDAR segment is the thing that matters: asserting only on
+            # the event id passes even when every delete is aimed at the kept
+            # calendar, because "dropped-0" contains "dropped".
+            self.assertTrue(call.args[1].startswith(prefix), call.args[1])
+        self.assertEqual(
+            sorted(c.args[1][len(prefix):] for c in deleted),
+            ["dropped-0", "dropped-1", "dropped-2"])
         self.assertIn("Deleted 3", output)
         # The kept calendar's links survive untouched.
         self.assertEqual(
@@ -1924,9 +1929,30 @@ class GoogleCalendarPruneTests(TestCase):
 
         deleted = [c for c in request.call_args_list if c.args[0] == "DELETE"]
         self.assertEqual(len(deleted), 1)
-        self.assertIn("dropped-1", deleted[0].args[1])
+        self.assertEqual(
+            deleted[0].args[1],
+            "/calendars/dropped%40group.calendar.example.com/events/dropped-1")
         self.assertTrue(CalendarEvent.objects.filter(pk=mine.pk).exists())
         self.assertEqual(GoogleCalendarLink.objects.count(), 0)
+
+    def test_only_the_named_calendar_is_touched(self):
+        """Three calendars, one named. The other two keep every link row, so a
+        prune can never widen beyond the id it was given."""
+        from family_calendar.models import GoogleCalendarLink
+
+        event = self._event()
+        self._pushed(event, self.DROPPED, "dropped-1")
+        self._pushed(event, "keep@example.com", "keep-1")
+        self._pushed(event, "third@example.com", "third-1")
+
+        with mock.patch.object(google_api_mod(), "request") as request:
+            self._run("--calendar", self.DROPPED, "--yes")
+
+        deleted = [c for c in request.call_args_list if c.args[0] == "DELETE"]
+        self.assertEqual(len(deleted), 1)
+        self.assertEqual(
+            sorted(GoogleCalendarLink.objects.values_list("calendar_id", flat=True)),
+            ["keep@example.com", "third@example.com"])
 
     def test_the_local_events_themselves_are_kept(self):
         """This clears a Google calendar, not the family's own diary. The

@@ -1823,3 +1823,143 @@ class GoogleCalendarDeleteCommandTests(TestCase):
         path = req.call_args_list[1].args[1]
         self.assertIn("primary%40example.com", path)
         self.assertNotIn("@", path)
+
+
+@override_settings(GOOGLE_CALENDAR_SA_KEY_JSON=FAKE_SA,
+                   GOOGLE_CALENDAR_IDS="keep@example.com")
+class GoogleCalendarPruneTests(TestCase):
+    """Clearing the app's events off a calendar it no longer pushes to.
+
+    Two calendars were configured at once, so every event was pushed to both and
+    showed twice — 84 soccer practices, each on both. Taking one out of
+    GOOGLE_CALENDAR_IDS stops the pushing but strands what is already there:
+    nothing ever revisits a calendar that is not configured.
+    """
+
+    DROPPED = "dropped@group.calendar.example.com"
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.parent = User.objects.create_user(
+            username="pr", email="pr@e.com", password="pw")
+
+    def _event(self, title="Soccer"):
+        return CalendarEvent.objects.create(
+            parent=self.parent, title=title,
+            event_type=CalendarEvent.TYPE_ACTIVITY, date=date(2026, 8, 11))
+
+    def _pushed(self, event, calendar_id, google_id="g-1"):
+        from family_calendar.models import GoogleCalendarLink
+        return GoogleCalendarLink.objects.create(
+            event=event, calendar_id=calendar_id, google_event_id=google_id)
+
+    def _run(self, *args, **kwargs):
+        from io import StringIO
+
+        from django.core.management import call_command
+        out = StringIO()
+        call_command("google_calendar_prune", *args, stdout=out, **kwargs)
+        return out.getvalue()
+
+    def test_it_refuses_a_calendar_that_is_still_configured(self):
+        """Pruning a live calendar would be undone by the next push, and would
+        leave the link rows lying about a calendar since repopulated. The
+        message has to name the step that actually stops the duplication."""
+        from django.core.management.base import CommandError
+
+        event = self._event()
+        link = self._pushed(event, "keep@example.com")
+        with self.assertRaises(CommandError) as caught:
+            self._run("--calendar", "keep@example.com", "--yes")
+        self.assertIn("GOOGLE_CALENDAR_IDS", str(caught.exception))
+        # And it changed nothing.
+        self.assertTrue(type(link).objects.filter(pk=link.pk).exists())
+
+    def test_a_dry_run_deletes_nothing(self):
+        from family_calendar.models import GoogleCalendarLink
+
+        event = self._event()
+        self._pushed(event, self.DROPPED)
+        with mock.patch.object(google_api_mod(), "request") as request:
+            output = self._run("--calendar", self.DROPPED)
+        request.assert_not_called()
+        self.assertIn("Dry run", output)
+        self.assertEqual(GoogleCalendarLink.objects.count(), 1)
+
+    def test_yes_deletes_the_copies_and_forgets_them(self):
+        from family_calendar.models import GoogleCalendarLink
+
+        events = [self._event("Soccer %d" % i) for i in range(3)]
+        for i, event in enumerate(events):
+            self._pushed(event, self.DROPPED, "dropped-%d" % i)
+            # The same events also live on the calendar we are keeping.
+            self._pushed(event, "keep@example.com", "keep-%d" % i)
+
+        with mock.patch.object(google_api_mod(), "request") as request:
+            output = self._run("--calendar", self.DROPPED, "--yes")
+
+        deleted = [c for c in request.call_args_list if c.args[0] == "DELETE"]
+        self.assertEqual(len(deleted), 3)
+        for call in deleted:
+            # It must delete from the DROPPED calendar, never the kept one.
+            self.assertIn("dropped", call.args[1])
+            self.assertNotIn("keep-", call.args[1])
+        self.assertIn("Deleted 3", output)
+        # The kept calendar's links survive untouched.
+        self.assertEqual(
+            sorted(GoogleCalendarLink.objects.values_list("calendar_id", flat=True)),
+            ["keep@example.com"] * 3)
+
+    def test_it_never_touches_an_event_the_app_did_not_push(self):
+        """A hand-made entry has no link row. The prune works only from link
+        rows, so somebody's own calendar entries are invisible to it."""
+        from family_calendar.models import GoogleCalendarLink
+
+        mine = self._event("Violet - AWAY Soccer Game")     # no link row at all
+        theirs = self._event("Soccer")
+        self._pushed(theirs, self.DROPPED, "dropped-1")
+
+        with mock.patch.object(google_api_mod(), "request") as request:
+            self._run("--calendar", self.DROPPED, "--yes")
+
+        deleted = [c for c in request.call_args_list if c.args[0] == "DELETE"]
+        self.assertEqual(len(deleted), 1)
+        self.assertIn("dropped-1", deleted[0].args[1])
+        self.assertTrue(CalendarEvent.objects.filter(pk=mine.pk).exists())
+        self.assertEqual(GoogleCalendarLink.objects.count(), 0)
+
+    def test_the_local_events_themselves_are_kept(self):
+        """This clears a Google calendar, not the family's own diary. The
+        events must still be in the app, and still on the kept calendar."""
+        event = self._event()
+        self._pushed(event, self.DROPPED)
+        with mock.patch.object(google_api_mod(), "request"):
+            self._run("--calendar", self.DROPPED, "--yes")
+        self.assertTrue(CalendarEvent.objects.filter(pk=event.pk).exists())
+
+    def test_an_event_already_gone_from_google_is_not_a_failure(self):
+        """404 means somebody deleted it by hand — the outcome we wanted."""
+        from family_calendar.models import GoogleCalendarLink
+
+        event = self._event()
+        self._pushed(event, self.DROPPED)
+        error = google_api_mod().GoogleCalendarError("gone", status=404)
+        with mock.patch.object(google_api_mod(), "request", side_effect=error):
+            output = self._run("--calendar", self.DROPPED, "--yes")
+        self.assertIn("Deleted 1", output)
+        self.assertEqual(GoogleCalendarLink.objects.count(), 0)
+
+    def test_a_failure_keeps_the_link_so_a_rerun_retries_it(self):
+        from family_calendar.models import GoogleCalendarLink
+
+        event = self._event()
+        self._pushed(event, self.DROPPED)
+        error = google_api_mod().GoogleCalendarError("boom", status=500)
+        with mock.patch.object(google_api_mod(), "request", side_effect=error):
+            output = self._run("--calendar", self.DROPPED, "--yes")
+        self.assertIn("failed", output)
+        self.assertEqual(GoogleCalendarLink.objects.count(), 1)
+
+    def test_nothing_to_do_says_so(self):
+        output = self._run("--calendar", "never-used@example.com")
+        self.assertIn("no record of pushing", output)

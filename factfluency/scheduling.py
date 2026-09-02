@@ -22,11 +22,10 @@ from datetime import timedelta
 
 from . import hints
 from .models import (
-    threshold_for,
-    BOX_INTERVALS, FLUENCY_THRESHOLD_MS, MASTERY_STREAK, MAX_BOX,
-    NEW_FACTS_PER_ROUND,
+    BOX_INTERVALS, LEVEL_GATE_PCT, MASTERY_STREAK, MAX_BOX,
     Fact, Operation, StudentFactState,
 )
+from .policy import policy_for, threshold_for
 
 # How long a round is. Short enough to fit the 5-10 minutes of daily practice
 # the research favours, long enough to be a real run at a record.
@@ -36,9 +35,20 @@ ROUND_LENGTH = 20
 # old facts stay warm instead of decaying the moment a level is finished.
 REVIEW_SHARE = 0.2
 
+# ...but never fewer than this many review seats when there is review to be
+# had, however long the list of forms she is still working on. Two is enough
+# to keep an earlier level warm; the seats above it go to the forms that still
+# need a verdict.
+REVIEW_FLOOR = 2
 
-def is_fluent(is_correct, response_ms, threshold=FLUENCY_THRESHOLD_MS):
-    """Fast AND right. Either alone is not fluency."""
+
+def is_fluent(is_correct, response_ms, threshold):
+    """Fast AND right. Either alone is not fluency.
+
+    `threshold` is required on purpose: the bar depends on the child's grade
+    band (policy.py), and a default here would be one child's clock applied to
+    another.
+    """
     return bool(is_correct) and response_ms is not None and response_ms <= threshold
 
 
@@ -59,7 +69,8 @@ def apply_attempt(state, *, is_correct, response_ms, threshold=None,
     now = now or timezone.now()
     was_mastered = state.is_mastered
     if threshold is None:
-        threshold = threshold_for(state.fact.answer(state.operation))
+        threshold = threshold_for(state.fact.answer(state.operation),
+                                  policy_for(state.student))
     fluent = is_fluent(is_correct, response_ms, threshold)
 
     state.total_attempts += 1
@@ -236,6 +247,37 @@ def level_breakdown(student, level):
     return mastered, learning, total
 
 
+def forms_allowed_unmastered(total):
+    """How many of a level's forms may still be un-mastered when it is beaten.
+
+    A COUNT, never a ratio. `mastered / total >= 0.9` rounded up on the small
+    levels: nines (9 forms), sixes (6) and sevens (3) all demanded 100%, so one
+    stubborn fact — or one twice-grazed one — held a level forever.
+    """
+    return max(1, total * (100 - LEVEL_GATE_PCT) // 100)
+
+
+def forms_needed(total):
+    """How many forms must be mastered to beat a level of this size."""
+    return total - forms_allowed_unmastered(total)
+
+
+def _gate_met(mastered, learning, total):
+    """The one rule both the map and the portal tile read.
+
+    Beaten when all but a few forms are mastered AND every form has been
+    answered right at least once. `learning` is "not mastered, answered right
+    at least once" (level_breakdown), so `mastered + learning == total` is
+    exactly "no form she has never got right" — a never-asked form counts
+    against her, which is the point: a level is not beaten by not being asked
+    the last division.
+    """
+    if not total:
+        return False
+    return ((total - mastered) <= forms_allowed_unmastered(total)
+            and (mastered + learning) == total)
+
+
 def is_level_beaten(student, level):
     """Has she cleared this level's facts?
 
@@ -245,10 +287,7 @@ def is_level_beaten(student, level):
     """
     if level.is_challenge:
         return False
-    mastered, total = level_progress(student, level)
-    if not total:
-        return False
-    return (mastered / total) >= level.mastery_threshold
+    return _gate_met(*level_breakdown(student, level))
 
 
 def unlocked_levels(student, levels):
@@ -308,30 +347,62 @@ def build_round(student, level, *, length=ROUND_LENGTH, now=None, rng=None):
             known.append((fact, operation))
 
     due.sort(key=lambda row: row[2])           # longest overdue first
+    # How many never-seen forms a round may introduce depends on her grade band:
+    # four for a nine-year-old (the acquisition-rate finding — a small set among
+    # mostly-known material beats a big set every time), eight for a
+    # twelve-year-old who plainly knows the level and was spending 39 of 57
+    # rounds just being SHOWN it.
+    cap = policy_for(student).new_facts_per_round
     # Keep room for the new ones. `chosen` is truncated to `length` at the end,
     # so a due backlog of 20+ used to eat the whole round and she met no new
     # material at all — worst for the child struggling most, who has the longest
-    # backlog. New facts are capped at NEW_FACTS_PER_ROUND anyway; this only
-    # guarantees they get their seats.
-    room_for_due = max(0, length - min(len(fresh), NEW_FACTS_PER_ROUND))
+    # backlog. New facts are capped anyway; this only guarantees their seats.
+    room_for_due = max(0, length - min(len(fresh), cap))
     chosen = [(f, o) for f, o, _ in due][:room_for_due]
 
-    # New facts are capped hard. This is the acquisition-rate finding: a small
-    # set among mostly-known material beats a big set every time.
     rng.shuffle(fresh)
-    chosen += fresh[:NEW_FACTS_PER_ROUND]
+    chosen += fresh[:cap]
 
     # Keep earlier levels warm.
+    review = []
     review_target = int(length * REVIEW_SHARE)
     if review_target and len(chosen) < length:
-        chosen += _review_forms(student, level, review_target, rng)
+        review = _review_forms(student, level, review_target, rng)
 
-    if len(chosen) < length:
-        rng.shuffle(known)
-        chosen += known[:length - len(chosen)]
+    # The rest of the round is NOT a lottery. It used to be `known[:remaining]`
+    # after a shuffle, so an already-mastered form took a seat as readily as
+    # one still waiting for a verdict — Violet's four stuck forms were asked in
+    # only 45, 28, 29 and 24 of the rounds since she met them, i.e. roughly one
+    # round in three she played did not even ask the fact she was stuck on.
+    # Unmastered first, and among those the ones a single verdict from mastery
+    # first; then review keeps its floor; mastered forms fill what is left.
+    rng.shuffle(known)                        # ties broken at random, still
+    known.sort(key=lambda fo: (states[(fo[0].pk, fo[1])].is_mastered,
+                               -states[(fo[0].pk, fo[1])].consecutive_fluent))
+    unmastered = [fo for fo in known if not states[(fo[0].pk, fo[1])].is_mastered]
+    mastered_known = [fo for fo in known if states[(fo[0].pk, fo[1])].is_mastered]
+
+    floor = min(REVIEW_FLOOR, len(review))
+    chosen += unmastered[:max(0, length - len(chosen) - floor)]
+    chosen += review[:max(0, length - len(chosen))]
+    chosen += mastered_known[:max(0, length - len(chosen))]
 
     chosen = chosen[:length]
     rng.shuffle(chosen)
+
+    # Warm start. Question 1 of a round was a cold start — Violet's first
+    # answers ran 3.2s / 46% fluent against 1.7-2.4s / 66-73% for the next
+    # four, and 7 of Kaylin's 13 slow-correct answers EVER were question 1 —
+    # and with twenty distinct forms it was that form's only verdict for the
+    # round. So the opener is a form she already holds when one is in the
+    # round: a slow answer there only nudges a streak, it costs no mastery.
+    warm = ({(f.pk, o) for f, o in review}
+            | {(f.pk, o) for f, o in mastered_known})
+    for i, (f, o) in enumerate(chosen):
+        if (f.pk, o) in warm:
+            if i:
+                chosen[0], chosen[i] = chosen[i], chosen[0]
+            break
     chosen = _pad(chosen, length, rng)
     return [
         {
@@ -441,8 +512,9 @@ def portal_summary(student):
             total_forms += len(forms)
             total_done += done
             total_learning += coming
-        beaten = (not level.is_challenge and forms
-                  and (done / len(forms)) >= level.mastery_threshold)
+        # The SAME rule as is_level_beaten — the tile and the map used to
+        # carry two copies of the gate and could disagree.
+        beaten = not level.is_challenge and _gate_met(done, coming, len(forms))
         if current is None and previous_beaten and not beaten:
             current = {"level": level, "done": done, "of": len(forms),
                        "learning": coming}

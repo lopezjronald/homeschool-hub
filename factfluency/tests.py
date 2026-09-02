@@ -19,10 +19,11 @@ from students.models import Student
 from accounts.models import CustomUser as User
 
 from .models import (
-    FLUENCY_THRESHOLD_MS, MASTERY_STREAK, Attempt, Fact, GameSession, Level,
+    MASTERY_STREAK, Attempt, Fact, GameSession, Level,
     Operation, PersonalRecord, RecordType, StudentFactState,
 )
 from . import scheduling
+from .policy import BANDS, policy_for, threshold_for
 
 
 class FactShapeTests(TestCase):
@@ -121,13 +122,15 @@ class SchedulerTests(TestCase):
             student=self.child, fact=self.fact, operation=Operation.MULT)
 
     def test_fast_and_right_is_fluent(self):
-        self.assertTrue(scheduling.is_fluent(True, FLUENCY_THRESHOLD_MS - 1))
+        bar = policy_for(self.child).base_ms
+        self.assertTrue(scheduling.is_fluent(True, bar - 1, bar))
 
     def test_right_but_slow_is_not_fluent(self):
-        self.assertFalse(scheduling.is_fluent(True, FLUENCY_THRESHOLD_MS + 1))
+        bar = policy_for(self.child).base_ms
+        self.assertFalse(scheduling.is_fluent(True, bar + 1, bar))
 
     def test_fast_but_wrong_is_not_fluent(self):
-        self.assertFalse(scheduling.is_fluent(False, 200))
+        self.assertFalse(scheduling.is_fluent(False, 200, 3000))
 
     def test_a_fluent_answer_promotes_a_box_and_pushes_the_review_out(self):
         state = self._state()
@@ -138,19 +141,19 @@ class SchedulerTests(TestCase):
         self.assertGreater(state.due_at, before)
 
     def test_right_but_slow_HOLDS_the_box(self):
-        """The rule the whole design rests on. A correct answer after five
+        """The rule the whole design rests on. A correct answer after nine
         seconds was derived, not recalled — promoting it would push a slow fact
         out to a long interval and quietly stop practising it."""
         state = self._state()
         scheduling.apply_attempt(state, is_correct=True, response_ms=900)
         self.assertEqual(state.leitner_box, 2)
-        scheduling.apply_attempt(state, is_correct=True, response_ms=5000)
+        scheduling.apply_attempt(state, is_correct=True, response_ms=9000)
         self.assertEqual(state.leitner_box, 2, "a slow answer must not promote")
         self.assertEqual(state.consecutive_fluent, 0, "and it breaks the streak")
 
     def test_a_slow_answer_brings_the_fact_back_soon(self):
         state = self._state()
-        scheduling.apply_attempt(state, is_correct=True, response_ms=5000)
+        scheduling.apply_attempt(state, is_correct=True, response_ms=9000)
         self.assertLess(state.due_at, timezone.now() + timedelta(hours=1))
 
     def test_a_wrong_answer_drops_to_box_one_and_is_due_at_once(self):
@@ -209,12 +212,11 @@ class RoundBuildingTests(TestCase):
 
         Counts DISTINCT facts, not questions — the round repeats its small set
         to be worth playing, which is the drill, not extra material."""
-        from .models import NEW_FACTS_PER_ROUND
-
         questions = scheduling.build_round(self.child, self.fives)
         self.assertTrue(questions)
         distinct = {(q["fact_id"], q["operation"]) for q in questions}
-        self.assertLessEqual(len(distinct), NEW_FACTS_PER_ROUND)
+        self.assertLessEqual(len(distinct),
+                             policy_for(self.child).new_facts_per_round)
 
     def test_a_round_never_asks_a_question_the_fact_cannot_be_asked(self):
         for level in Level.objects.all():
@@ -471,12 +473,11 @@ class RoundLengthTests(TestCase):
         self.assertGreaterEqual(len(questions), scheduling.MIN_ROUND)
 
     def test_padding_repeats_the_new_facts_rather_than_inventing_any(self):
-        from .models import NEW_FACTS_PER_ROUND
-
         questions = scheduling.build_round(
             self.child, Level.objects.get(slug="fives"))
         distinct = {(q["fact_id"], q["operation"]) for q in questions}
-        self.assertLessEqual(len(distinct), NEW_FACTS_PER_ROUND)
+        self.assertLessEqual(len(distinct),
+                             policy_for(self.child).new_facts_per_round)
 
     def test_the_same_question_never_comes_twice_in_a_row(self):
         """Answering 6x8 immediately after 6x8 is reading, not recall."""
@@ -604,7 +605,7 @@ class PortalTileTests(TestCase):
         forms = scheduling._forms_for_level(ones)[:3]
         for state in scheduling.ensure_states(self.mathy, forms).values():
             scheduling.apply_attempt(state, is_correct=True,
-                                     response_ms=FLUENCY_THRESHOLD_MS + 2000)
+                                     response_ms=9000)
         summary = scheduling.portal_summary(self.mathy)
         self.assertEqual(summary["mastered"], 0)
         self.assertEqual(summary["learning"], 3)
@@ -675,7 +676,7 @@ class DivisionFollowsMultiplicationTests(TestCase):
         states = scheduling.ensure_states(
             self.child, [(fact, Operation.MULT), (fact, Operation.DIV_A)])
         scheduling.apply_attempt(states[(fact.pk, Operation.MULT)],
-                                 is_correct=True, response_ms=5000, session_id=1)
+                                 is_correct=True, response_ms=9000, session_id=1)
         self.assertFalse(scheduling._division_is_earned(fact, Operation.DIV_A, states))
 
     def test_a_division_already_in_play_is_not_taken_away_again(self):
@@ -1262,7 +1263,7 @@ class LearningTierTests(TestCase):
         fact = Fact.objects.get(factor_a=2, factor_b=3)
         state = self._state(fact)
         scheduling.apply_attempt(state, is_correct=True,
-                                 response_ms=FLUENCY_THRESHOLD_MS + 1500)
+                                 response_ms=9000)
         mastered, learning, total = scheduling.level_breakdown(self.child, self.level)
         self.assertEqual(mastered, 0, "slow is not mastered")
         self.assertEqual(learning, 1, "but it is not nothing either")
@@ -1290,11 +1291,12 @@ class LearningTierTests(TestCase):
         forms = scheduling._forms_for_level(self.level)[:16]
         states = scheduling.ensure_states(self.child, forms)
         for i, (fact, operation) in enumerate(forms):
-            ms = 1400 if i < 2 else 4600          # 2 fluent, 14 right but slow
+            ms = 1400 if i < 2 else 9000          # 2 fluent, 14 right but slow
+            bar = threshold_for(fact.answer(operation), policy_for(self.child))
             Attempt.objects.create(
                 session=session, fact=fact, operation=operation,
                 answer_given=fact.answer(operation), is_correct=True,
-                response_ms=ms, was_fluent=ms <= FLUENCY_THRESHOLD_MS,
+                response_ms=ms, was_fluent=ms <= bar,
                 client_uuid="lt-%d" % i)
             scheduling.apply_attempt(states[(fact.pk, operation)],
                                      is_correct=True, response_ms=ms,
@@ -1412,15 +1414,22 @@ class StuckAtThirteenTests(TestCase):
     # -- 3. the clock includes her typing ------------------------------------
 
     def test_a_two_digit_answer_gets_the_extra_tap_it_costs(self):
-        from .models import threshold_for
-
-        self.assertEqual(threshold_for(8), FLUENCY_THRESHOLD_MS)
-        self.assertEqual(threshold_for(48), FLUENCY_THRESHOLD_MS + 600)
-        self.assertEqual(threshold_for(100), FLUENCY_THRESHOLD_MS + 1200)
+        """Per band: a nine-year-old's second tap costs a full second, a
+        twelve-year-old's the 600ms the original benchmark allowed."""
+        g3 = policy_for(Student(grade_level="G03"))
+        g7 = policy_for(Student(grade_level="G07"))
+        self.assertEqual([threshold_for(n, g3) for n in (8, 48, 100)],
+                         [4000, 5000, 6000])
+        self.assertEqual([threshold_for(n, g7) for n in (8, 48, 100)],
+                         [3000, 3600, 4200])
+        k = policy_for(Student(grade_level="K"))
+        self.assertEqual([threshold_for(n, k) for n in (8, 48, 100)],
+                         [5000, 6000, 7000])
 
     def test_the_allowance_is_applied_by_the_endpoint_not_just_available(self):
-        """3200ms on a two-digit answer is fluent; on a one-digit answer it is
-        not. The API has to make that distinction, not just the helper."""
+        """For a G03 child 4500ms on a two-digit answer (bar 5000) is fluent;
+        on a one-digit answer (bar 4000) it is not. The API has to make that
+        distinction, not just the helper."""
         from portal.tokens import make_portal_token
 
         session = self._session()
@@ -1432,9 +1441,9 @@ class StuckAtThirteenTests(TestCase):
                     kwargs={"token": token, "session_id": session.pk}),
             data=json.dumps({"attempts": [
                 {"client_uuid": "two", "fact_id": two.pk, "operation": "mult",
-                 "answer_given": 12, "response_ms": 3200},
+                 "answer_given": 12, "response_ms": 4500},
                 {"client_uuid": "one", "fact_id": one.pk, "operation": "mult",
-                 "answer_given": 6, "response_ms": 3200},
+                 "answer_given": 6, "response_ms": 4500},
             ]}), content_type="application/json")
         self.assertTrue(Attempt.objects.get(client_uuid="two").was_fluent)
         self.assertFalse(Attempt.objects.get(client_uuid="one").was_fluent)
@@ -1692,3 +1701,406 @@ class AuditFollowUpTests(TestCase):
         self.assertIn("retired forms skipped", out.getvalue())
         self.assertFalse(StudentFactState.objects.filter(
             student=self.child, fact=zero, operation=Operation.DIV_A).exists())
+
+
+# ---------------------------------------------------------------------------
+# HH-203: the bar is a function of her age, the gate is a count, and a round
+# asks the facts she is stuck on.
+# ---------------------------------------------------------------------------
+
+def _make_child(username, first_name, grade):
+    parent = User.objects.create_user(
+        username=username, email=username + "@e.com", password="pw")
+    family = Family.objects.create(name=username + " Fam")
+    FamilyMembership.objects.create(user=parent, family=family, role="parent")
+    return Student.objects.create(
+        parent=parent, first_name=first_name, grade_level=grade, family=family)
+
+
+class PolicyTableTests(TestCase):
+    """The per-grade table is the ONLY home for the developmental numbers."""
+
+    def test_every_level_choice_maps_to_exactly_one_band(self):
+        seen = {}
+        for grades, _policy in BANDS:
+            for grade in grades:
+                self.assertNotIn(grade, seen, "a grade in two bands")
+                seen[grade] = True
+        for code, _label in Student.LEVEL_CHOICES:
+            self.assertIn(code, seen, code)
+        # Blank or nonsense gets the CCSS grade for this content, never the
+        # strictest band.
+        self.assertEqual(policy_for(Student(grade_level="")), policy_for(Student(grade_level="G03")))
+        self.assertEqual(policy_for(Student(grade_level="G99")), policy_for(Student(grade_level="G03")))
+
+    def test_the_table_is_monotone_and_inside_the_research_range(self):
+        order = [code for code, _ in Student.LEVEL_CHOICES]
+        policies = [policy_for(Student(grade_level=g)) for g in order]
+        for earlier, later in zip(policies, policies[1:]):
+            self.assertGreaterEqual(earlier.base_ms, later.base_ms)
+            self.assertGreaterEqual(earlier.per_digit_ms, later.per_digit_ms)
+            self.assertLessEqual(earlier.new_facts_per_round, later.new_facts_per_round)
+        for p in policies:
+            self.assertTrue(3000 <= p.base_ms <= 5000, p)
+        self.assertEqual(policy_for(Student(grade_level="G07"))[:2], (3000, 600))
+
+    def test_the_same_answer_has_a_different_bar_at_nine_and_twelve(self):
+        g3 = policy_for(Student(grade_level="G03"))
+        g7 = policy_for(Student(grade_level="G07"))
+        self.assertEqual(threshold_for(48, g3), 5000)
+        self.assertEqual(threshold_for(48, g7), 3600)
+        self.assertEqual(threshold_for(6, g3), 4000)
+        self.assertEqual(threshold_for(6, g7), 3000)
+
+    def test_a_skip_count_is_still_not_fluent_at_grade_three(self):
+        """4.8s on 2x4 is "2, 4, 6, 8" — derived. It would pass a 5s bar; the
+        Monte Carlo on Violet's own 4-6s answers beat Level 1 in 100% of runs
+        at 5000 and 0% at 4000. This pins the 4000."""
+        g3 = policy_for(Student(grade_level="G03"))
+        self.assertFalse(scheduling.is_fluent(True, 4800, threshold_for(8, g3)))
+        self.assertTrue(scheduling.is_fluent(True, 3900, threshold_for(8, g3)))
+
+
+class LevelGateTests(TestCase):
+    """The gate is a COUNT of forms she may still be working on."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.child = _make_child("gate", "Violet", "G03")
+        cls.ones = Level.objects.get(slug="ones-twos")
+        cls.fives = Level.objects.get(slug="fives")
+
+    def _set(self, level, mastered, learning=None, never=()):
+        """Master the first `mastered` forms, mark the rest learning except
+        the `never` prompts, which get no state row at all."""
+        forms = scheduling._forms_for_level(level)
+        StudentFactState.objects.filter(
+            student=self.child, fact__in={f for f, _ in forms}).delete()
+        done = 0
+        for fact, operation in forms:
+            if fact.prompt(operation) in never:
+                continue
+            is_mastered = done < mastered
+            done += 1 if is_mastered else 0
+            StudentFactState.objects.create(
+                student=self.child, fact=fact, operation=operation,
+                is_mastered=is_mastered, total_attempts=3, total_correct=2,
+                consecutive_fluent=3 if is_mastered else 1,
+                leitner_box=4 if is_mastered else 2)
+
+    def test_the_gate_arithmetic_is_exact_on_every_level(self):
+        need = {}
+        for level in Level.objects.filter(is_challenge=False):
+            need[level.slug] = scheduling.forms_needed(
+                len(scheduling._forms_for_level(level)))
+        self.assertEqual(need, {
+            "ones-twos": 24, "fives": 16, "tens": 21, "squares": 10,
+            "threes": 12, "fours": 10, "nines": 8, "sixes": 5, "sevens": 2})
+        # The (1 - 0.8) * 20 = 3.999 trap: fives needs 16, not 17.
+        self.assertEqual(scheduling.forms_allowed_unmastered(20), 4)
+
+    def test_violets_real_standing_beats_level_one(self):
+        """25 of 29 mastered, the other four right-but-slow — her exact state
+        after sixty-five rounds. Under the old 90% ratio she needed 27."""
+        self._set(self.ones, mastered=25)
+        self.assertTrue(scheduling.is_level_beaten(self.child, self.ones))
+        rows = scheduling.unlocked_levels(self.child, list(Level.objects.all()))
+        self.assertTrue(rows[1]["unlocked"], "fives opens")
+        self._set(self.ones, mastered=23)
+        self.assertFalse(scheduling.is_level_beaten(self.child, self.ones))
+
+    def test_a_form_never_answered_right_blocks_the_level(self):
+        """The 64/8 shape: everything else mastered, one division never asked.
+        Not beaten — a level is not cleared by not being asked its last form."""
+        self._set(self.ones, mastered=24, never={"14 ÷ 2"})
+        self.assertFalse(scheduling.is_level_beaten(self.child, self.ones))
+        fact = Fact.objects.get(factor_a=2, factor_b=7)
+        StudentFactState.objects.create(
+            student=self.child, fact=fact, operation=Operation.DIV_A,
+            total_attempts=1, total_correct=1)
+        self.assertTrue(scheduling.is_level_beaten(self.child, self.ones))
+
+    def test_the_small_levels_no_longer_demand_perfection(self):
+        sevens = Level.objects.get(slug="sevens")       # 3 forms
+        sixes = Level.objects.get(slug="sixes")         # 6 forms
+        nines = Level.objects.get(slug="nines")         # 9 forms
+        self._set(sevens, mastered=2)
+        self.assertTrue(scheduling.is_level_beaten(self.child, sevens))
+        self._set(sevens, mastered=1)
+        self.assertFalse(scheduling.is_level_beaten(self.child, sevens))
+        self._set(sixes, mastered=5)
+        self.assertTrue(scheduling.is_level_beaten(self.child, sixes))
+        self._set(sixes, mastered=4)
+        self.assertFalse(scheduling.is_level_beaten(self.child, sixes))
+        self._set(nines, mastered=8)
+        self.assertTrue(scheduling.is_level_beaten(self.child, nines))
+
+    def test_the_tile_and_the_map_agree(self):
+        """One helper, two readers. The stored Level.mastery_threshold is no
+        longer consulted by either."""
+        self._set(self.ones, mastered=24)
+        self.assertTrue(scheduling.is_level_beaten(self.child, self.ones))
+        self.assertEqual(scheduling.portal_summary(self.child)["current"]["level"], self.fives)
+        self._set(self.ones, mastered=23)
+        self.assertFalse(scheduling.is_level_beaten(self.child, self.ones))
+        self.assertEqual(scheduling.portal_summary(self.child)["current"]["level"], self.ones)
+        Level.objects.filter(pk=self.ones.pk).update(mastery_threshold=1.0)
+        self._set(self.ones, mastered=24)
+        self.assertTrue(scheduling.is_level_beaten(self.child, self.ones))
+        self.assertEqual(scheduling.portal_summary(self.child)["current"]["level"], self.fives)
+
+
+class RoundOrderTests(TestCase):
+    """A round asks the facts she is stuck on, and opens on one she holds."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.child = _make_child("order", "Violet", "G03")
+        cls.ones = Level.objects.get(slug="ones-twos")
+        cls.fives = Level.objects.get(slug="fives")
+
+    def _stuck_on_four(self):
+        """25 mastered, 4 un-mastered, nothing due — Violet's state."""
+        import random
+
+        later = timezone.now() + timedelta(days=30)
+        forms = scheduling._forms_for_level(self.ones)
+        stuck = set()
+        for i, (fact, operation) in enumerate(forms):
+            is_mastered = i >= 4
+            if not is_mastered:
+                stuck.add((fact.pk, operation))
+            StudentFactState.objects.create(
+                student=self.child, fact=fact, operation=operation,
+                is_mastered=is_mastered, total_attempts=5, total_correct=4,
+                consecutive_fluent=3 if is_mastered else 1, due_at=later,
+                leitner_box=4 if is_mastered else 2)
+        return stuck, random.Random(7)
+
+    def test_unmastered_forms_take_seats_before_mastered_ones(self):
+        stuck, rng = self._stuck_on_four()
+        for _ in range(20):
+            asked = {(q["fact_id"], q["operation"])
+                     for q in scheduling.build_round(self.child, self.ones, rng=rng)}
+            self.assertTrue(stuck <= asked, "a round skipped a stuck form")
+
+    def test_the_first_question_is_a_warm_one_when_any_exists(self):
+        stuck, rng = self._stuck_on_four()
+        for _ in range(20):
+            questions = scheduling.build_round(self.child, self.ones, rng=rng)
+            first = (questions[0]["fact_id"], questions[0]["operation"])
+            self.assertNotIn(first, stuck, "question 1 must be a form she holds")
+            for a, b in zip(questions, questions[1:]):
+                self.assertNotEqual((a["fact_id"], a["operation"]),
+                                    (b["fact_id"], b["operation"]))
+
+    def test_review_keeps_two_seats_behind_a_long_learning_list(self):
+        """Fives all seen and un-mastered, ones-twos beaten: the round is
+        eighteen fives and exactly two review forms — not four, not none."""
+        import random
+
+        later = timezone.now() + timedelta(days=30)
+        for level, mastered in ((self.ones, True), (self.fives, False)):
+            for fact, operation in scheduling._forms_for_level(level):
+                StudentFactState.objects.create(
+                    student=self.child, fact=fact, operation=operation,
+                    is_mastered=mastered, total_attempts=3, total_correct=3,
+                    consecutive_fluent=3 if mastered else 1, due_at=later)
+        ones_ids = {f.pk for f in self.ones.facts.all()}
+        questions = scheduling.build_round(self.child, self.fives,
+                                           rng=random.Random(3))
+        review = sum(1 for q in questions if q["fact_id"] in ones_ids)
+        self.assertEqual(review, 2)
+        self.assertEqual(len(questions), scheduling.ROUND_LENGTH)
+
+    def test_the_cap_follows_the_band(self):
+        squares = Level.objects.get(slug="squares")
+        older = _make_child("older", "Kaylin", "G07")
+        seen_older = {(q["fact_id"], q["operation"])
+                      for q in scheduling.build_round(older, squares)}
+        seen_young = {(q["fact_id"], q["operation"])
+                      for q in scheduling.build_round(self.child, squares)}
+        self.assertEqual(len(seen_older), 6, "all six multiplications")
+        self.assertEqual(len(seen_young), 4)
+        for q in scheduling.build_round(older, squares):
+            self.assertNotIn("÷", q["prompt"])
+
+
+class ControlTests(TestCase):
+    """Who the leniency must NOT let through. Seeded, so the runs are exact."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.child = _make_child("ctrl", "Violet", "G03")
+        cls.ones = Level.objects.get(slug="ones-twos")
+
+    def _play(self, rounds, *, right, ms, seed=1):
+        import random
+
+        rng = random.Random(seed)
+        now = timezone.now() - timedelta(days=10)
+        for _ in range(rounds):
+            session = GameSession.objects.create(student=self.child, level=self.ones)
+            questions = scheduling.build_round(self.child, self.ones, now=now, rng=rng)
+            forms = [(Fact.objects.get(pk=q["fact_id"]), q["operation"]) for q in questions]
+            states = scheduling.ensure_states(self.child, forms)
+            for fact, operation in forms:
+                scheduling.apply_attempt(
+                    states[(fact.pk, operation)],
+                    is_correct=rng.random() < right, response_ms=ms(rng),
+                    now=now, session_id=session.pk)
+            now += timedelta(minutes=3)
+
+    def test_a_seeded_guesser_does_not_beat_the_ones_and_twos(self):
+        """60% right, fast. This is the reason the streak stays at three."""
+        self._play(40, right=0.6, ms=lambda r: r.randint(800, 2000))
+        self.assertFalse(scheduling.is_level_beaten(self.child, self.ones))
+        mastered, _learning, total = scheduling.level_breakdown(self.child, self.ones)
+        self.assertLess(mastered, scheduling.forms_needed(total))
+
+    def test_a_seeded_skip_counter_does_not_beat_the_ones_and_twos(self):
+        """97% right at 4.1-6s — Violet's own deriving speed. A 5s bar would
+        master every one-digit form here; the 4s bar masters none of them."""
+        self._play(40, right=0.97, ms=lambda r: r.randint(4100, 6000))
+        self.assertFalse(scheduling.is_level_beaten(self.child, self.ones))
+        for state in StudentFactState.objects.filter(student=self.child, is_mastered=True):
+            self.assertGreaterEqual(state.fact.answer(state.operation), 10,
+                                    "a one-digit answer mastered at skip-count speed")
+
+    def test_a_seeded_deriver_masters_nothing(self):
+        self._play(40, right=0.97, ms=lambda r: 7500)
+        mastered, learning, _total = scheduling.level_breakdown(self.child, self.ones)
+        self.assertEqual(mastered, 0)
+        self.assertGreater(learning, 0)
+        self.assertFalse(scheduling.is_level_beaten(self.child, self.ones))
+
+
+class EndpointBandTests(TestCase):
+    """The API judges each child by HER band, not by one site-wide clock."""
+
+    def test_the_endpoint_applies_the_childs_own_band(self):
+        from portal.tokens import make_portal_token
+
+        ones = Level.objects.get(slug="ones-twos")
+        fact = Fact.objects.get(factor_a=2, factor_b=3)          # 6
+        verdicts = {}
+        for username, grade in (("nine", "G03"), ("twelve", "G07")):
+            child = _make_child(username, username, grade)
+            session = GameSession.objects.create(student=child, level=ones)
+            self.client.post(
+                reverse("factfluency:api_attempts",
+                        kwargs={"token": make_portal_token(child),
+                                "session_id": session.pk}),
+                data=json.dumps({"attempts": [
+                    {"client_uuid": "a", "fact_id": fact.pk, "operation": "mult",
+                     "answer_given": 6, "response_ms": 3500}]}),
+                content_type="application/json")
+            state = StudentFactState.objects.get(student=child, fact=fact)
+            verdicts[grade] = (Attempt.objects.get(session=session).was_fluent,
+                               state.consecutive_fluent)
+        self.assertEqual(verdicts, {"G03": (True, 1), "G07": (False, 0)})
+
+    def test_no_threshold_is_sent_to_the_page(self):
+        from portal.tokens import make_portal_token
+
+        child = _make_child("noclock", "V", "G03")
+        data = self.client.post(reverse(
+            "factfluency:api_start",
+            kwargs={"token": make_portal_token(child), "slug": "ones-twos"})).json()
+        self.assertNotIn("threshold_ms", data)
+        self.assertIn("questions", data)
+
+
+class RebuildBandTests(TestCase):
+    """The replay judges history by the child's current band."""
+
+    def _child(self, name, grade):
+        return _make_child("rb_" + name, name, grade)
+
+    def _play(self, child, ms, rounds=3, fact=None):
+        ones = Level.objects.get(slug="ones-twos")
+        fact = fact or Fact.objects.get(factor_a=2, factor_b=3)
+        sessions = []
+        for n in range(rounds):
+            session = GameSession.objects.create(
+                student=child, level=ones, ended_at=timezone.now(),
+                num_attempted=1, num_correct=1, num_fluent=0)
+            Attempt.objects.create(
+                session=session, fact=fact, operation=Operation.MULT,
+                answer_given=6, is_correct=True, response_ms=ms,
+                was_fluent=False, client_uuid="rb-%d" % n)
+            sessions.append(session)
+        StudentFactState.objects.get_or_create(
+            student=child, fact=fact, operation=Operation.MULT)
+        return fact, sessions
+
+    def _run(self, child, **kw):
+        from io import StringIO
+
+        from django.core.management import call_command
+        out = StringIO()
+        call_command("rebuild_fact_states", child=child.first_name, stdout=out, **kw)
+        return out.getvalue()
+
+    def test_the_replay_uses_the_childs_own_band(self):
+        nine = self._child("Nine", "G03")
+        twelve = self._child("Twelve", "G07")
+        fact, _ = self._play(nine, 3500)
+        self._play(twelve, 3500)
+        self._run(nine)
+        self._run(twelve)
+        self.assertTrue(StudentFactState.objects.get(student=nine, fact=fact).is_mastered)
+        self.assertFalse(StudentFactState.objects.get(student=twelve, fact=fact).is_mastered)
+
+    def test_changing_the_grade_and_rebuilding_changes_the_verdict(self):
+        child = self._child("Mover", "G03")
+        fact, _ = self._play(child, 3500)
+        self._run(child)
+        self.assertTrue(StudentFactState.objects.get(student=child, fact=fact).is_mastered)
+        child.grade_level = "G07"
+        child.save()
+        out = self._run(child)
+        self.assertFalse(StudentFactState.objects.get(student=child, fact=fact).is_mastered)
+        self.assertIn("lost mastery", out)
+        child.grade_level = "G03"
+        child.save()
+        self._run(child)
+        self.assertTrue(StudentFactState.objects.get(student=child, fact=fact).is_mastered)
+
+    def test_the_rebuild_rewrites_was_fluent_and_the_session_tallies(self):
+        child = self._child("Flags", "G03")
+        _fact, sessions = self._play(child, 3500)
+        self._run(child)
+        for session in sessions:
+            session.refresh_from_db()
+            self.assertEqual(session.num_fluent, 1)
+            self.assertEqual(session.longest_streak, 1)
+        self.assertTrue(all(Attempt.objects.filter(session__student=child)
+                            .values_list("was_fluent", flat=True)))
+
+    def test_report_lists_the_standing_without_writing(self):
+        child = self._child("Report", "G03")
+        fact, _ = self._play(child, 9000)
+        out = self._run(child, dry_run=True, report=True)
+        self.assertIn("need 24", out)
+        self.assertIn(fact.prompt(Operation.MULT), out)
+        self.assertIn("nothing written", out)
+        self.assertEqual(StudentFactState.objects.get(student=child, fact=fact)
+                         .consecutive_fluent, 0)
+
+
+class MapCopyTests(TestCase):
+    """The map explains the rule; it never shows a clock."""
+
+    def test_the_map_explains_the_rule_without_a_number(self):
+        import re
+
+        from portal.tokens import make_portal_token
+
+        child = _make_child("copy", "Violet", "G03")
+        html = self.client.get(reverse(
+            "factfluency:home", kwargs={"token": make_portal_token(child)})).content.decode()
+        self.assertIn("three separate rounds", html)
+        self.assertIn("all but a few", html)
+        seconds = re.compile(r"\b\d+(\.\d+)?\s*(s|sec|secs|second|seconds)\b", re.I)
+        self.assertIsNone(seconds.search(html), seconds.search(html))

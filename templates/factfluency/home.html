@@ -34,12 +34,12 @@
             </span>
             <span class="fd-blurb">{{ row.level.blurb }}</span>
 
-            {% comment %} TWO bands. Mastered is fast-and-right three sittings
-               running, which takes weeks; "getting there" is a fact she has
-               answered correctly at least once. Showing only the first band
-               meant four perfect rounds moved the bar by nothing, because at
-               this stage she is deriving the answers and deriving is slower
-               than three seconds. {% endcomment %}
+            {% comment %} TWO bands. Mastered is fast-and-right in three separate
+               rounds — fast for HER grade band (factfluency/policy.py); "getting
+               there" is a fact she has answered correctly at least once. Showing
+               only the first band meant four perfect rounds moved the bar by
+               nothing, because at this stage she is deriving the answers and
+               deriving is slower than the bar. {% endcomment %}
             {% if row.show_bar %}
             <span class="fd-bar" role="img"
                   aria-label="{{ row.mastered }} of {{ row.total }} mastered{% if row.learning %}, {{ row.learning }} getting there{% endif %}">
@@ -65,5 +65,20 @@
       </li>
     {% endfor %}
   </ul>
+
+  {% comment %} How the map decides — in words a parent can read over her
+     shoulder, with NO seconds on it: this page must never show a clock. The
+     numbers live in the Facts That Stick parent guide. {% endcomment %}
+  <p class="fd-rule">
+    A fact counts as mastered when {{ student.first_name }} gets it right
+    <strong>and</strong> quickly — quick for her school year, with a moment
+    allowed for each extra digit — in three separate rounds. Right-but-slow
+    still counts as “getting there”: she knows it and is working it out.
+  </p>
+  <p class="fd-rule">
+    A level is beaten once all but a few of its facts are mastered and every
+    fact has been answered right at least once, so one stubborn fact never
+    holds her back — the slow ones keep coming round until they are quick too.
+  </p>
 </div>
 {% endblock %}

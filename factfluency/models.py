@@ -19,30 +19,12 @@ keyed to request.user would be unreachable by the only person meant to play it.
 from django.db import models
 from django.utils import timezone
 
-# A correct answer inside this many milliseconds counts as fluent. 3000 is the
-# day-one default because the fact has to be READ before it can be answered; the
-# literature's 2-3 second recall benchmark assumes the fact was spoken aloud.
-# Tighten toward 2500 and 2000 as recall speeds up.
-FLUENCY_THRESHOLD_MS = 3000
-
-#: Added per digit AFTER the first, because the clock measures until her last
-#: keystroke and a two-digit answer costs an extra deliberate tap. The 3-second
-#: figure in the literature is for PRODUCING a fact, not for producing it and
-#: then typing it on a touch keypad. Violet's numbers made the gap plain: 63%
-#: of her one-digit answers landed inside 3000ms and only 24% of her two-digit
-#: ones did. Some of that is that two-digit answers are the harder facts — this
-#: allowance covers the motor time only, and is deliberately modest.
-TYPING_ALLOWANCE_MS = 600
-
-
-def threshold_for(answer, base=FLUENCY_THRESHOLD_MS):
-    """The fluency bar for an answer of this many digits."""
-    return base + TYPING_ALLOWANCE_MS * (len(str(abs(int(answer)))) - 1)
-
-# At most this many never-seen facts enter one round. Small sets are the whole
-# finding behind incremental rehearsal — a wall of new facts is how a child
-# learns that practice feels bad.
-NEW_FACTS_PER_ROUND = 4
+# The fluency bar — how quickly a correct answer must come to count as recall
+# rather than derivation — is a DEVELOPMENTAL number, so it is not a constant
+# here at all. It lives in policy.py, keyed to the child's grade band, with the
+# per-extra-digit typing allowance and how many new facts a round may
+# introduce. The numbers below are not developmental: they are the
+# anti-guesser controls, and they are the same for every child.
 
 # Leitner intervals in days, by box. These schedule REVIEW — they say when a
 # fact comes back, not whether it is known.
@@ -53,9 +35,26 @@ MAX_BOX = 5
 # looks. Reaching box 5 takes 1+2+4+8 days of waiting, so gating a level on it
 # would unlock the next one on the calendar rather than on skill — she could be
 # perfectly fluent at the fives on Tuesday and still be locked out of the tens
-# a fortnight later. Three fluent answers in a row is evidence; the boxes go on
-# scheduling review underneath.
+# a fortnight later. Three fluent answers in three separate rounds is
+# evidence; the boxes go on scheduling review underneath.
+#
+# Three, not two, and NOT per grade: every streak-2 variant simulated let a
+# child guessing at 60% accuracy through Level 1 (10-19% of runs at a 90% gate,
+# ~100% at 80%). Three rounds three minutes apart still qualify — the rule is
+# about independent verdicts, not the calendar.
 MASTERY_STREAK = 3
+
+# A level is beaten when all but a few of its forms are mastered — this many
+# percent of them — AND every form has been answered right at least once. It
+# is applied as a COUNT of forms she may still be working on (scheduling
+# ._gate_met), not as a ratio: the old `mastered / total >= 0.9` rounded UP
+# on the small late levels, so the nines, sixes and sevens (9, 6 and 3 forms)
+# silently demanded 100%, and one stubborn fact held a level forever.
+#
+# 80 and not 75: at 75% the simulated guesser leaked through Level 1 in 18%
+# of runs. "Partial credit" for right-but-slow was refused for the same reason
+# — it closed a level at 69% fluent.
+LEVEL_GATE_PCT = 80
 
 
 class Cluster(models.TextChoices):
@@ -157,7 +156,8 @@ class Level(models.Model):
     blurb = models.CharField(max_length=200, blank=True)
     cluster = models.CharField(max_length=16, choices=Cluster.choices)
     facts = models.ManyToManyField(Fact, related_name="levels")
-    # A level counts as beaten when this fraction of its forms are mastered.
+    # No longer read — the gate is LEVEL_GATE_PCT, applied as a count in
+    # scheduling._gate_met. Kept this release; dropped in a follow-up migration.
     mastery_threshold = models.FloatField(default=0.9)
     # A CHALLENGE level re-mixes facts already met elsewhere — the hard core,
     # which she masters in fours, sixes and sevens. Its mastery bar would
@@ -201,7 +201,8 @@ class StudentFactState(models.Model):
     # its small new set several times — that is the drill working — but three
     # fluent hits thirty seconds apart is not durable recall, so only the FIRST
     # fluent hit in a session promotes or extends the streak. Mastery therefore
-    # takes three separate sittings, which is the spacing doing its job.
+    # takes three separate ROUNDS — round ids, not the calendar: three rounds
+    # three minutes apart qualify, and should.
     last_counted_session = models.PositiveIntegerField(null=True, blank=True)
     updated_at = models.DateTimeField(auto_now=True)
 

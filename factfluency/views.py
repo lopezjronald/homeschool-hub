@@ -21,9 +21,9 @@ from portal.tokens import student_from_token
 
 from . import scheduling
 from .models import (
-    FLUENCY_THRESHOLD_MS, Attempt, Fact, GameSession, Level, Operation,
-    PersonalRecord, RecordType, threshold_for,
+    Attempt, Fact, GameSession, Level, Operation, PersonalRecord, RecordType,
 )
+from .policy import policy_for, threshold_for
 
 
 def _student(token):
@@ -116,10 +116,11 @@ def api_start(request, token, slug):
 
     questions = scheduling.build_round(student, level)
     session = GameSession.objects.create(student=student, level=level)
+    # No threshold in the payload. The client never read it, and a page that
+    # must never show a clock has no business being sent one.
     return JsonResponse({
         "session_id": session.pk,
         "questions": questions,
-        "threshold_ms": FLUENCY_THRESHOLD_MS,
     })
 
 
@@ -175,6 +176,9 @@ def api_attempts(request, token, session_id):
         return JsonResponse({"error": "attempts must be a list"}, status=400)
 
     allowed = _allowed_forms(session.level)
+    # HER bar, once per request: the same 3500ms answer is recall from a
+    # nine-year-old and derivation from a twelve-year-old.
+    policy = policy_for(student)
     newly_mastered = []
     accepted = 0
     # The client queue caps at 200 and a round adds at most ~20, so 400 covers
@@ -211,10 +215,9 @@ def api_attempts(request, token, session_id):
 
         # The verdict is ours, not the client's.
         is_correct = given == fact.answer(operation)
-        # Per-digit bar: the clock runs to her last keystroke, so a
-        # two-digit answer is charged an extra tap the 3s benchmark
-        # never included.
-        bar = threshold_for(fact.answer(operation))
+        # Per-digit bar under her band: the clock runs to her last
+        # keystroke, so a two-digit answer is charged an extra tap.
+        bar = threshold_for(fact.answer(operation), policy)
         fluent = scheduling.is_fluent(is_correct, response_ms, bar)
 
         try:

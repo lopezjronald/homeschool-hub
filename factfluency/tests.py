@@ -2104,3 +2104,59 @@ class MapCopyTests(TestCase):
         self.assertIn("all but a few", html)
         seconds = re.compile(r"\b\d+(\.\d+)?\s*(s|sec|secs|second|seconds)\b", re.I)
         self.assertIsNone(seconds.search(html), seconds.search(html))
+
+
+class MasteryStreakPinTests(TestCase):
+    """Three rounds, not two — pinned with literals, because the streak tests
+    above loop over MASTERY_STREAK and would follow a lowered constant."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.child = _make_child("pin", "Violet", "G03")
+        cls.level = Level.objects.get(slug="ones-twos")
+        cls.fact = Fact.objects.get(factor_a=2, factor_b=3)
+
+    def test_two_fluent_rounds_are_not_mastery_and_the_third_is(self):
+        state = StudentFactState.objects.create(
+            student=self.child, fact=self.fact, operation=Operation.MULT)
+        for n in range(2):
+            session = GameSession.objects.create(student=self.child, level=self.level)
+            scheduling.apply_attempt(state, is_correct=True, response_ms=800,
+                                     session_id=session.pk)
+        self.assertFalse(state.is_mastered, "two rounds is what a guesser can fake")
+        session = GameSession.objects.create(student=self.child, level=self.level)
+        scheduling.apply_attempt(state, is_correct=True, response_ms=800,
+                                 session_id=session.pk)
+        self.assertTrue(state.is_mastered)
+        self.assertEqual(MASTERY_STREAK, 3)
+
+
+class SeatTieBreakTests(TestCase):
+    """When the stuck forms outnumber the seats, the ones a single verdict
+    from mastery go first and the ones at streak zero wait."""
+
+    def test_nearly_mastered_forms_take_seats_before_streak_zero_ones(self):
+        import random
+
+        child = _make_child("tie", "Violet", "G03")
+        ones = Level.objects.get(slug="ones-twos")
+        fives = Level.objects.get(slug="fives")
+        later = timezone.now() + timedelta(days=30)
+        # Ones-twos beaten and seen, so review has something to draw on and
+        # the floor of two seats applies: 18 seats for twenty stuck forms.
+        for fact, operation in scheduling._forms_for_level(ones):
+            StudentFactState.objects.create(
+                student=child, fact=fact, operation=operation, is_mastered=True,
+                total_attempts=3, total_correct=3, consecutive_fluent=3, due_at=later)
+        forms = scheduling._forms_for_level(fives)
+        cold = {(f.pk, o) for f, o in forms[:2]}
+        for fact, operation in forms:
+            StudentFactState.objects.create(
+                student=child, fact=fact, operation=operation, is_mastered=False,
+                total_attempts=3, total_correct=3, due_at=later,
+                consecutive_fluent=0 if (fact.pk, operation) in cold else 2)
+        for seed in range(5):
+            asked = {(q["fact_id"], q["operation"])
+                     for q in scheduling.build_round(child, fives, rng=random.Random(seed))}
+            self.assertFalse(cold & asked, "a streak-zero form took a seat "
+                                           "from one a verdict away")

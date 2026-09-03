@@ -28,8 +28,8 @@ from core.utils import get_active_family
 from curricula.models import Curriculum, CurriculumPlacement, Lesson
 from curricula.services import apply_blueprint, get_blueprint
 from students.models import Student
-from tutor.models import (AnswerPhoto, Question, QuestionSet,
-                          ResponseSheet)
+from tutor import seed_sync
+from tutor.models import Question, QuestionSet
 from tutor.agnes import (
     BOOK, CURRICULUM_NAME, FINAL_PROJECT_INTRO, FINAL_PROJECT_OPTIONS,
     HOW_IT_RUNS, JOURNAL_NOTE, SECTIONS,
@@ -217,13 +217,15 @@ class Command(BaseCommand):
         }
         qset, _ = QuestionSet.objects.update_or_create(
             lesson=lesson, title=title, defaults=defaults)
-        for order, (category, prompt, hint, extra) in enumerate(questions, start=1):
-            fields = {"category": category, "prompt": prompt, "hint": hint,
-                      "response_type": Question.TYPE_TEXT, "passage": ""}
-            fields.update(extra or {})
-            Question.objects.update_or_create(
-                question_set=qset, order=order, defaults=fields)
-        self._prune(qset, len(questions))
+        # Matched on the PROMPT, not the position — see tutor/seed_sync.py.
+        # Deleting a question in the middle of a section used to rewrite every
+        # row after it in place, so her answers stayed on pks that now carried
+        # somebody else's question.
+        kept = seed_sync.sync_questions(qset, questions)
+        if kept:
+            self.stdout.write(self.style.WARNING(
+                "  %d question(s) no longer in the guide were KEPT because she "
+                "has answered them." % len(kept)))
         return 1, len(questions)
 
     def _journal(self, lesson, family, section):
@@ -442,19 +444,3 @@ class Command(BaseCommand):
                        in glean_handson.questions("miss_agnes")],
         )
 
-    @staticmethod
-    def _prune(qset, keep_through):
-        """Drop questions past the end that nobody has answered."""
-        stale = qset.questions.filter(order__gt=keep_through)
-        answered = set()
-        for sheet in ResponseSheet.objects.filter(question_set=qset):
-            answered |= {int(k) for k, v in (sheet.answers or {}).items()
-                         if str(v).strip() and k.isdigit()}
-        # A photograph she uploaded is an answer too, and it lives in its own
-        # table rather than in the sheet JSON — so a step she PHOTOGRAPHED and
-        # never typed on looked unanswered here, and trimming it deleted the
-        # question and cascade-deleted her image. The hands-on Glean option
-        # this seeder writes is almost entirely photo steps.
-        answered |= set(AnswerPhoto.objects.filter(
-            question__question_set=qset).values_list("question_id", flat=True))
-        stale.exclude(pk__in=answered).delete()

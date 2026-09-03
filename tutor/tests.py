@@ -9224,7 +9224,9 @@ class PhotoAnswerPruneTests(TestCase):
             if self.PRODUCER not in source:
                 continue                      # cannot hold a photo answer
             checked.append(path.name)
-            if "AnswerPhoto" not in source:
+            # Protected either directly, or by delegating the whole write to
+            # tutor.seed_sync (which is where the protection lives now).
+            if "AnswerPhoto" not in source and "seed_sync" not in source:
                 unprotected.append(path.name)
         self.assertEqual(unprotected, [],
                          "these seeders delete a child's photographs when a "
@@ -9236,17 +9238,31 @@ class PhotoAnswerPruneTests(TestCase):
         """A prune that protected every photo in the database would pass the
         test above while deleting nothing, and one scoped to the wrong set
         would protect the wrong rows."""
+        import pathlib
         import re
 
-        for path in self._commands():
+        wanted = re.compile(r"AnswerPhoto\.objects\.filter\(\s*"
+                            r"question__question_set=qset\s*\)")
+        sources = list(self._commands())
+        sources.append(pathlib.Path(__file__).resolve().parent / "seed_sync.py")
+        for path in sources:
             source = path.read_text(encoding="utf-8")
             if "AnswerPhoto" not in source:
                 continue
             self.assertIsNotNone(
-                re.search(r"AnswerPhoto\.objects\.filter\(\s*"
-                          r"question__question_set=qset\s*\)", source),
+                wanted.search(source),
                 "%s: photo lookup is not scoped to the set being pruned"
                 % path.name)
+
+    def test_the_shared_writer_protects_photographs(self):
+        """The seeders delegate to it, so if this stops protecting photos every
+        guide starts deleting them at once."""
+        from tutor import seed_sync
+
+        source = (__import__("pathlib").Path(seed_sync.__file__)
+                  .read_text(encoding="utf-8"))
+        self.assertIn("AnswerPhoto", source)
+        self.assertIn("question__question_set=qset", source)
 
     def test_glean_handson_really_does_write_photo_questions(self):
         """The premise of the whole guard. If the projects stopped using photo
@@ -9258,3 +9274,170 @@ class PhotoAnswerPruneTests(TestCase):
             kinds = [extra.get("response_type")
                      for _c, _p, _h, extra in glean_handson.questions(book)]
             self.assertIn(Question.TYPE_PHOTO, kinds, book)
+
+
+class MiddleStepReorderTests(TestCase):
+    """Removing a question from the MIDDLE must not move her answers.
+
+    The seeders upserted on POSITION, so deleting question 3 of 6 rewrote the
+    content of rows 3, 4 and 5 in place while their pks stayed put. Her answers
+    are keyed on the pk, so every one of them silently slid onto the next
+    question — and then printed under the wrong prompt in the charter report.
+    These modules are hand transcriptions that openly invite corrections, so
+    editing the middle is the ordinary case.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        from django.contrib.auth import get_user_model
+        from core.models import Family, FamilyMembership
+
+        User = get_user_model()
+        cls.parent = User.objects.create_user(
+            username="ms", email="ms@e.com", password="pw")
+        cls.family = Family.objects.create(name="MS Fam")
+        FamilyMembership.objects.create(
+            user=cls.parent, family=cls.family, role="parent")
+        cls.child = Student.objects.create(
+            parent=cls.parent, first_name="Violet", grade_level="G03",
+            family=cls.family)
+
+    def _qset(self, prompts):
+        from curricula.models import Chapter, Curriculum, Lesson
+        from tutor.models import QuestionSet
+        from tutor import seed_sync
+
+        curriculum = Curriculum.objects.create(
+            name="Middle Test", subject="Literature", parent=self.parent,
+            grade_level="G03")
+        chapter = Chapter.objects.create(curriculum=curriculum, number=1,
+                                         title="One")
+        lesson = Lesson.objects.create(chapter=chapter, order=1, title="One")
+        qset = QuestionSet.objects.create(
+            lesson=lesson, family=self.family, title="Section 1 · Recollect",
+            status=QuestionSet.APPROVED)
+        seed_sync.sync_questions(qset, [("recollect", p, "") for p in prompts])
+        return qset
+
+    def _answer(self, qset, mapping):
+        from tutor.models import ResponseSheet
+
+        return ResponseSheet.objects.create(
+            question_set=qset, child=self.child,
+            status=ResponseSheet.SUBMITTED,
+            answers={str(q.pk): mapping[q.prompt]
+                     for q in qset.questions.all() if q.prompt in mapping})
+
+    def test_deleting_a_middle_question_leaves_every_answer_on_its_own(self):
+        from tutor import seed_sync
+
+        prompts = ["Who is she?", "Where is it set?", "What is the quarrel?",
+                   "Who leaves?", "How does it end?"]
+        qset = self._qset(prompts)
+        mine = {p: "answer to %s" % p for p in prompts}
+        sheet = self._answer(qset, mine)
+
+        # The guide's third question turns out to be a duplicate.
+        seed_sync.sync_questions(
+            qset, [("recollect", p, "") for p in prompts if p != prompts[2]])
+
+        sheet.refresh_from_db()
+        for question in qset.questions.all():
+            stored = sheet.answers.get(str(question.pk))
+            if stored is None:
+                continue
+            self.assertEqual(
+                stored, mine[question.prompt],
+                "her answer moved: %r now sits on %r"
+                % (stored, question.prompt))
+
+    def test_the_removed_question_is_kept_because_she_answered_it(self):
+        from tutor.models import Question
+        from tutor import seed_sync
+
+        prompts = ["A", "B", "C", "D"]
+        qset = self._qset(prompts)
+        self._answer(qset, {p: "mine" for p in prompts})
+        gone = qset.questions.get(prompt="B")
+
+        seed_sync.sync_questions(
+            qset, [("recollect", p, "") for p in prompts if p != "B"])
+
+        self.assertTrue(Question.objects.filter(pk=gone.pk).exists(),
+                        "she answered it; it must not be deleted")
+        gone.refresh_from_db()
+        self.assertEqual(gone.prompt, "B", "and it must still say what she answered")
+        # Parked rows are brought back down, never left at 10000-something.
+        self.assertLessEqual(gone.order, qset.questions.count())
+
+    def test_an_unanswered_removed_question_is_deleted(self):
+        """Or "never moves an answer" would pass by never changing anything."""
+        from tutor.models import Question
+        from tutor import seed_sync
+
+        qset = self._qset(["A", "B", "C"])
+        gone = qset.questions.get(prompt="B")
+        seed_sync.sync_questions(
+            qset, [("recollect", p, "") for p in ("A", "C")])
+        self.assertFalse(Question.objects.filter(pk=gone.pk).exists())
+
+    def test_inserting_a_question_in_the_middle_moves_nothing_either(self):
+        from tutor import seed_sync
+
+        prompts = ["A", "B", "C"]
+        qset = self._qset(prompts)
+        mine = {p: "answer %s" % p for p in prompts}
+        sheet = self._answer(qset, mine)
+
+        seed_sync.sync_questions(
+            qset, [("recollect", p, "") for p in ("A", "NEW", "B", "C")])
+
+        sheet.refresh_from_db()
+        for question in qset.questions.all():
+            stored = sheet.answers.get(str(question.pk))
+            if stored is not None:
+                self.assertEqual(stored, mine[question.prompt])
+        self.assertEqual(
+            list(qset.questions.order_by("order").values_list("prompt", flat=True)),
+            ["A", "NEW", "B", "C"])
+
+    def test_a_reworded_question_keeps_its_pk_and_her_answer(self):
+        """Pass 2. Fixing a transcription typo is the other ordinary edit, and
+        prompt-matching alone would have made a new row and stranded her."""
+        from tutor import seed_sync
+
+        qset = self._qset(["A", "teh quarrel", "C"])
+        before = qset.questions.get(prompt="teh quarrel")
+        self._answer(qset, {"teh quarrel": "mine"})
+
+        seed_sync.sync_questions(
+            qset, [("recollect", p, "") for p in ("A", "the quarrel", "C")])
+
+        after = qset.questions.get(order=2)
+        self.assertEqual(after.pk, before.pk, "a typo fix must not orphan her")
+        self.assertEqual(after.prompt, "the quarrel")
+
+    def test_two_questions_with_the_same_wording_stay_separate(self):
+        """A guide can ask "What surprised you?" twice. A dict keyed on the
+        prompt would collapse them and hand one answer to the other."""
+        qset = self._qset(["What surprised you?", "B", "What surprised you?"])
+        self.assertEqual(qset.questions.count(), 3)
+        pks = list(qset.questions.order_by("order").values_list("pk", flat=True))
+
+        from tutor import seed_sync
+        seed_sync.sync_questions(qset, [
+            ("recollect", p, "")
+            for p in ("What surprised you?", "B", "What surprised you?")])
+        self.assertEqual(
+            list(qset.questions.order_by("order").values_list("pk", flat=True)),
+            pks, "a reseed must not shuffle identical prompts")
+
+    def test_a_reseed_that_changes_nothing_changes_nothing(self):
+        qset = self._qset(["A", "B", "C"])
+        before = list(qset.questions.order_by("order")
+                      .values_list("pk", "order", "prompt"))
+        from tutor import seed_sync
+        seed_sync.sync_questions(qset, [("recollect", p, "") for p in ("A", "B", "C")])
+        self.assertEqual(
+            list(qset.questions.order_by("order")
+                 .values_list("pk", "order", "prompt")), before)

@@ -28,8 +28,8 @@ from curricula.models import Curriculum, CurriculumPlacement, CurriculumResource
 from curricula.services import apply_blueprint, get_blueprint
 from core.utils import get_active_family
 from students.models import Student
-from tutor.models import (AnswerPhoto, Question, QuestionSet,
-                          ResponseSheet)
+from tutor import seed_sync
+from tutor.models import Question, QuestionSet
 
 
 MASTERY_NOTE = (
@@ -990,35 +990,13 @@ class Command(BaseCommand):
                 "mode": mode,
             },
         )
-        count = 0
-        for i, item in enumerate(questions, start=1):
-            category, prompt, hint = item[0], item[1], item[2]
-            extra = item[3] if len(item) > 3 else {}
-            Question.objects.update_or_create(
-                question_set=qset,
-                order=i,
-                defaults={
-                    "category": category, "prompt": prompt, "hint": hint,
-                    "response_type": extra.get("response_type", Question.TYPE_TEXT),
-                    "passage": extra.get("passage", ""),
-                },
-            )
-            count += 1
-        # Drop stale questions beyond the current list — but never one a child
-        # has already answered (that would orphan their saved response).
-        stale = qset.questions.filter(order__gt=len(questions))
-        answered = set()
-        for sheet in ResponseSheet.objects.filter(question_set=qset):
-            answered |= {
-                int(k) for k, v in (sheet.answers or {}).items()
-                if str(v).strip() and str(k).isdecimal()
-            }
-        # A photograph she uploaded is an answer too, and it lives in its own
-        # table rather than in the sheet JSON — so a step she PHOTOGRAPHED and
-        # never typed on looked unanswered here, and trimming it deleted the
-        # question and cascade-deleted her image. This guide's hands-on Glean
-        # option is mostly photo steps.
-        answered |= set(AnswerPhoto.objects.filter(
-            question__question_set=qset).values_list("question_id", flat=True))
-        stale.exclude(pk__in=answered).delete()
+        # Matched on the PROMPT, not the position — see tutor/seed_sync.py.
+        # Deleting a question in the middle used to rewrite every row after it
+        # in place, leaving her answers on questions she never saw.
+        kept = seed_sync.sync_questions(qset, questions)
+        count = len(questions)
+        if kept:
+            self.stdout.write(self.style.WARNING(
+                "  %d question(s) no longer in the guide were KEPT because she "
+                "has answered them." % len(kept)))
         return 1, count

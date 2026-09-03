@@ -2460,6 +2460,56 @@ class FolkKeeperSeedTests(TestCase):
     def _seed(self):
         call_command("seed_the_folk_keeper", "--for-user", "fkmom", stdout=StringIO())
 
+    def test_trimming_a_step_never_deletes_a_photograph_she_uploaded(self):
+        """Same blind spot as Rickshaw Girl and Miss Agnes: the prune read
+        ResponseSheet.answers alone, so a step she PHOTOGRAPHED and never typed
+        on looked unanswered and went, taking her image with it on CASCADE."""
+        from tutor import glean_handson
+        from tutor.models import (AnswerPhoto, Question, QuestionSet,
+                                  ResponseSheet)
+
+        self._seed()
+        curr = Curriculum.objects.get(name__startswith="The Folk Keeper")
+        hands_on = QuestionSet.objects.get(
+            lesson__chapter__curriculum=curr, title__contains="hands-on")
+        last = hands_on.questions.order_by("-order").first()
+        sheet = ResponseSheet.objects.create(
+            question_set=hands_on, child=self.kaylin,
+            status=ResponseSheet.SUBMITTED, answers={})
+        photo = AnswerPhoto.objects.create(
+            question=last, sheet=sheet, image="uploads/project.jpg")
+
+        original = glean_handson.BOOKS["folk_keeper"]["steps"]
+        try:
+            glean_handson.BOOKS["folk_keeper"]["steps"] = original[:2]
+            self._seed()
+        finally:
+            glean_handson.BOOKS["folk_keeper"]["steps"] = original
+
+        self.assertTrue(Question.objects.filter(pk=last.pk).exists(),
+                        "a photographed step was deleted")
+        self.assertTrue(AnswerPhoto.objects.filter(pk=photo.pk).exists(),
+                        "her photograph was cascade-deleted with it")
+
+    def test_a_step_nobody_touched_is_still_pruned(self):
+        """Or "never deletes" would pass by never deleting anything."""
+        from tutor import glean_handson
+        from tutor.models import Question, QuestionSet
+
+        self._seed()
+        curr = Curriculum.objects.get(name__startswith="The Folk Keeper")
+        last = (QuestionSet.objects
+                .get(lesson__chapter__curriculum=curr, title__contains="hands-on")
+                .questions.order_by("-order").first())
+        original = glean_handson.BOOKS["folk_keeper"]["steps"]
+        try:
+            glean_handson.BOOKS["folk_keeper"]["steps"] = original[:2]
+            self._seed()
+        finally:
+            glean_handson.BOOKS["folk_keeper"]["steps"] = original
+        self.assertFalse(Question.objects.filter(pk=last.pk).exists())
+
+
     def test_seeds_the_guides_own_section_divisions(self):
         from curricula.models import Chapter, CurriculumPlacement
         self._seed()
@@ -4677,6 +4727,11 @@ class RickshawGirlTests(TestCase):
         last = hands_on.questions.order_by("-order").first()
         sheet = ResponseSheet.objects.create(
             question_set=hands_on, child=self.child,
+            # SUBMITTED on purpose: a guard written against a draft sheet stays
+            # green if the lookup is ever narrowed to live work only, which
+            # would unprotect exactly the finished, handed-in projects whose
+            # photographs are worth the most.
+            status=ResponseSheet.SUBMITTED,
             answers={})          # she photographed it; she typed nothing
         photo = AnswerPhoto.objects.create(
             question=last, sheet=sheet, image="uploads/project.jpg")
@@ -5224,6 +5279,11 @@ class MissAgnesTests(TestCase):
         last = hands_on.questions.order_by("-order").first()
         sheet = ResponseSheet.objects.create(
             question_set=hands_on, child=self.child,
+            # SUBMITTED on purpose: a guard written against a draft sheet stays
+            # green if the lookup is ever narrowed to live work only, which
+            # would unprotect exactly the finished, handed-in projects whose
+            # photographs are worth the most.
+            status=ResponseSheet.SUBMITTED,
             answers={})          # she photographed it; she typed nothing
         photo = AnswerPhoto.objects.create(
             question=last, sheet=sheet, image="uploads/project.jpg")
@@ -9132,3 +9192,69 @@ class WhiteLilacsSeedTests(TestCase):
         with self.assertRaises(CommandError):
             call_command("seed_white_lilacs", for_user="wl",
                          child_name="Nobody", verbosity=0)
+
+
+class PhotoAnswerPruneTests(TestCase):
+    """Every seeder that can hold a photograph must protect one.
+
+    Five seeders carried the same blind spot: the re-seed prune read
+    ResponseSheet.answers, photo answers live in AnswerPhoto, and its question
+    FK is CASCADE — so a step a child had photographed and never typed on
+    looked unanswered, and trimming it deleted the question and her image with
+    no warning. Two of them had behavioural guards; I Am David and The Hundred
+    Dresses have no seed test class at all, and the next book will not have one
+    either. This reads the source instead, so a new guide cannot ship the bug.
+    """
+
+    #: The only producer of TYPE_PHOTO questions in the app.
+    PRODUCER = "glean_handson"
+
+    def _commands(self):
+        import pathlib
+
+        root = (pathlib.Path(__file__).resolve().parent
+                / "management" / "commands")
+        return sorted(root.glob("seed_*.py"))
+
+    def test_every_seeder_that_writes_photo_steps_protects_them(self):
+        unprotected = []
+        checked = []
+        for path in self._commands():
+            source = path.read_text(encoding="utf-8")
+            if self.PRODUCER not in source:
+                continue                      # cannot hold a photo answer
+            checked.append(path.name)
+            if "AnswerPhoto" not in source:
+                unprotected.append(path.name)
+        self.assertEqual(unprotected, [],
+                         "these seeders delete a child's photographs when a "
+                         "step is trimmed")
+        # Not vacuous: there really are photo-writing seeders to check.
+        self.assertGreaterEqual(len(checked), 5, checked)
+
+    def test_the_photo_lookup_is_scoped_to_the_set_being_pruned(self):
+        """A prune that protected every photo in the database would pass the
+        test above while deleting nothing, and one scoped to the wrong set
+        would protect the wrong rows."""
+        import re
+
+        for path in self._commands():
+            source = path.read_text(encoding="utf-8")
+            if "AnswerPhoto" not in source:
+                continue
+            self.assertIsNotNone(
+                re.search(r"AnswerPhoto\.objects\.filter\(\s*"
+                          r"question__question_set=qset\s*\)", source),
+                "%s: photo lookup is not scoped to the set being pruned"
+                % path.name)
+
+    def test_glean_handson_really_does_write_photo_questions(self):
+        """The premise of the whole guard. If the projects stopped using photo
+        steps, the test above would be guarding nothing."""
+        from tutor import glean_handson
+        from tutor.models import Question
+
+        for book in glean_handson.BOOKS:
+            kinds = [extra.get("response_type")
+                     for _c, _p, _h, extra in glean_handson.questions(book)]
+            self.assertIn(Question.TYPE_PHOTO, kinds, book)

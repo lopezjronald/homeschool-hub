@@ -28,7 +28,8 @@ from curricula.models import Curriculum, CurriculumPlacement, CurriculumResource
 from curricula.services import apply_blueprint, get_blueprint
 from core.utils import get_active_family
 from students.models import Student
-from tutor.models import Question, QuestionSet, ResponseSheet
+from tutor.models import (AnswerPhoto, Question, QuestionSet,
+                          ResponseSheet)
 
 
 MASTERY_NOTE = (
@@ -1012,5 +1013,12 @@ class Command(BaseCommand):
                 int(k) for k, v in (sheet.answers or {}).items()
                 if str(v).strip() and str(k).isdecimal()
             }
+        # A photograph she uploaded is an answer too, and it lives in its own
+        # table rather than in the sheet JSON — so a step she PHOTOGRAPHED and
+        # never typed on looked unanswered here, and trimming it deleted the
+        # question and cascade-deleted her image. This guide's hands-on Glean
+        # option is mostly photo steps.
+        answered |= set(AnswerPhoto.objects.filter(
+            question__question_set=qset).values_list("question_id", flat=True))
         stale.exclude(pk__in=answered).delete()
         return 1, count

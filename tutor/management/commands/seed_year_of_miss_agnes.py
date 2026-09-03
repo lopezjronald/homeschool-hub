@@ -28,7 +28,8 @@ from core.utils import get_active_family
 from curricula.models import Curriculum, CurriculumPlacement, Lesson
 from curricula.services import apply_blueprint, get_blueprint
 from students.models import Student
-from tutor.models import Question, QuestionSet, ResponseSheet
+from tutor.models import (AnswerPhoto, Question, QuestionSet,
+                          ResponseSheet)
 from tutor.agnes import (
     BOOK, CURRICULUM_NAME, FINAL_PROJECT_INTRO, FINAL_PROJECT_OPTIONS,
     HOW_IT_RUNS, JOURNAL_NOTE, SECTIONS,
@@ -449,4 +450,11 @@ class Command(BaseCommand):
         for sheet in ResponseSheet.objects.filter(question_set=qset):
             answered |= {int(k) for k, v in (sheet.answers or {}).items()
                          if str(v).strip() and k.isdigit()}
+        # A photograph she uploaded is an answer too, and it lives in its own
+        # table rather than in the sheet JSON — so a step she PHOTOGRAPHED and
+        # never typed on looked unanswered here, and trimming it deleted the
+        # question and cascade-deleted her image. The hands-on Glean option
+        # this seeder writes is almost entirely photo steps.
+        answered |= set(AnswerPhoto.objects.filter(
+            question__question_set=qset).values_list("question_id", flat=True))
         stale.exclude(pk__in=answered).delete()

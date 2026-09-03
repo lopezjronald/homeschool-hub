@@ -4645,6 +4645,59 @@ class RickshawGirlTests(TestCase):
             (QuestionSet.objects.count(), Question.objects.count()), before)
 
 
+    def _hands_on_set(self):
+        from tutor.rickshaw import CURRICULUM_NAME
+        from tutor.models import QuestionSet
+
+        return QuestionSet.objects.get(
+            title__contains="hands-on",
+            lesson__chapter__curriculum__name=CURRICULUM_NAME,
+            lesson__chapter__curriculum__parent=self.parent)
+
+    def _trimmed_reseed(self):
+        """Re-seed with the project cut to its first two steps."""
+        from tutor import glean_handson
+
+        original = glean_handson.BOOKS["rickshaw_girl"]["steps"]
+        try:
+            glean_handson.BOOKS["rickshaw_girl"]["steps"] = original[:2]
+            self._seed()
+        finally:
+            glean_handson.BOOKS["rickshaw_girl"]["steps"] = original
+
+    def test_trimming_a_step_never_deletes_a_photograph_she_uploaded(self):
+        """The prune read ResponseSheet.answers only, but a photo answer lives
+        in AnswerPhoto — so a step she had PHOTOGRAPHED and not typed on looked
+        unanswered, and the question went, taking her image with it on CASCADE.
+        This guide's hands-on Glean option is almost entirely photo steps."""
+        from tutor.models import AnswerPhoto, Question, ResponseSheet
+
+        self._seed()
+        hands_on = self._hands_on_set()
+        last = hands_on.questions.order_by("-order").first()
+        sheet = ResponseSheet.objects.create(
+            question_set=hands_on, child=self.child,
+            answers={})          # she photographed it; she typed nothing
+        photo = AnswerPhoto.objects.create(
+            question=last, sheet=sheet, image="uploads/project.jpg")
+
+        self._trimmed_reseed()
+
+        self.assertTrue(Question.objects.filter(pk=last.pk).exists(),
+                        "a photographed step was deleted")
+        self.assertTrue(AnswerPhoto.objects.filter(pk=photo.pk).exists(),
+                        "her photograph was cascade-deleted with it")
+
+    def test_a_step_nobody_touched_is_still_pruned(self):
+        """The other half. Without this, "never deletes" would pass by never
+        deleting anything at all."""
+        from tutor.models import Question
+
+        self._seed()
+        last = self._hands_on_set().questions.order_by("-order").first()
+        self._trimmed_reseed()
+        self.assertFalse(Question.objects.filter(pk=last.pk).exists())
+
 class RickshawContentTests(TestCase):
     """Semantic spot-checks on the transcription.
 
@@ -5138,6 +5191,59 @@ class MissAgnesTests(TestCase):
         self.assertEqual(
             (QuestionSet.objects.count(), Question.objects.count()), before)
 
+
+    def _hands_on_set(self):
+        from tutor.agnes import CURRICULUM_NAME
+        from tutor.models import QuestionSet
+
+        return QuestionSet.objects.get(
+            title__contains="hands-on",
+            lesson__chapter__curriculum__name=CURRICULUM_NAME,
+            lesson__chapter__curriculum__parent=self.parent)
+
+    def _trimmed_reseed(self):
+        """Re-seed with the project cut to its first two steps."""
+        from tutor import glean_handson
+
+        original = glean_handson.BOOKS["miss_agnes"]["steps"]
+        try:
+            glean_handson.BOOKS["miss_agnes"]["steps"] = original[:2]
+            self._seed()
+        finally:
+            glean_handson.BOOKS["miss_agnes"]["steps"] = original
+
+    def test_trimming_a_step_never_deletes_a_photograph_she_uploaded(self):
+        """The prune read ResponseSheet.answers only, but a photo answer lives
+        in AnswerPhoto — so a step she had PHOTOGRAPHED and not typed on looked
+        unanswered, and the question went, taking her image with it on CASCADE.
+        This guide's hands-on Glean option is almost entirely photo steps."""
+        from tutor.models import AnswerPhoto, Question, ResponseSheet
+
+        self._seed()
+        hands_on = self._hands_on_set()
+        last = hands_on.questions.order_by("-order").first()
+        sheet = ResponseSheet.objects.create(
+            question_set=hands_on, child=self.child,
+            answers={})          # she photographed it; she typed nothing
+        photo = AnswerPhoto.objects.create(
+            question=last, sheet=sheet, image="uploads/project.jpg")
+
+        self._trimmed_reseed()
+
+        self.assertTrue(Question.objects.filter(pk=last.pk).exists(),
+                        "a photographed step was deleted")
+        self.assertTrue(AnswerPhoto.objects.filter(pk=photo.pk).exists(),
+                        "her photograph was cascade-deleted with it")
+
+    def test_a_step_nobody_touched_is_still_pruned(self):
+        """The other half. Without this, "never deletes" would pass by never
+        deleting anything at all."""
+        from tutor.models import Question
+
+        self._seed()
+        last = self._hands_on_set().questions.order_by("-order").first()
+        self._trimmed_reseed()
+        self.assertFalse(Question.objects.filter(pk=last.pk).exists())
 
 class MissAgnesContentTests(TestCase):
     """Semantic spot-checks — a bijection survives swapping two numbers, so

@@ -108,7 +108,7 @@ PANELS = [
         ],
     },
     {
-        "order": 5, "span": MangaPanel.SPAN_NORMAL,
+        "order": 5, "span": MangaPanel.SPAN_FULL,   # drawn full: see draw_ch4_diagrams
         "alt": "On the next cartload Pawmi has stopped after only two baskets and its tin cup is heaped and overflowing with five leftover berries.",
         "scene": "A fresh cartload of berries has arrived behind the counter in the background. On the wooden "
                  "packing counter, which is wider than it is tall, sit EXACTLY TWO round baskets side by side "

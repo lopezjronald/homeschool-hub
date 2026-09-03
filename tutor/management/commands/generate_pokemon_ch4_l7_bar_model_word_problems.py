@@ -90,7 +90,7 @@ PANELS = [
         ],
     },
     {
-        "order": 5, "span": MangaPanel.SPAN_NORMAL,
+        "order": 5, "span": MangaPanel.SPAN_FULL,   # drawn full: see draw_ch4_diagrams
         "alt": "Sprigatito pounces at a butterfly, knocks over the row of full baskets, and all the berries roll into one big heap.",
         "scene": "Chaos, comic and affectionate. SPRIGATITO the grass kitten is mid-pounce after a fluttering "
                  "butterfly and has clipped the row of full wicker baskets, which tumble sideways in the lower "

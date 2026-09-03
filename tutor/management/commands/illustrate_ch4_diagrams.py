@@ -122,14 +122,16 @@ SCENES = {
         "paws clasped.",
         ["sprigatito", "pawmi"]),
 
-    ("pokemon-ch4-l7-bar-model-word-problems", 1): ("a berry orchard at dawn under open sky, low golden light; the flat ground surface "
-        "is a wide, smooth, level, bare dirt clearing, plain leafy fruit-free bushes and "
-        "trees far behind. A small EMPTY wooden hand-wagon waits "
-        "at the far LEFT edge; beside it the blue-headed duckling QUAXLY stands tall and "
-        "the grass kitten SPRIGATITO crouches. At the far RIGHT edge the red crocodile "
-        "FUECOCO stands calmly, the tiny electric mouse PAWMI bounces on its toes and the "
-        "plump piglet LECHONK dozes on the ground.",
-        ["quaxly", "sprigatito", "fuecoco", "pawmi", "lechonk"]),
+    ("pokemon-ch4-l7-bar-model-word-problems", 1): ("an orchard at dawn under open sky, low golden light; the flat ground surface "
+        "is a wide, smooth, level, bare dirt clearing. Every bush, hedge and tree behind "
+        "it is plain solid green leaf — NO dots, NO berries, NO fruit, NO flowers on any "
+        "of them, not even tiny ones. A small EMPTY wooden hand-wagon sits far back at "
+        "the LEFT edge. The blue-headed duckling QUAXLY and the grass kitten SPRIGATITO "
+        "are SMALL and tucked tight into the bottom-LEFT corner; the plump piglet LECHONK "
+        "dozes SMALL and tucked tight into the bottom-RIGHT corner. Nothing and nobody "
+        "else stands anywhere near the edges; the whole width between the two corners "
+        "is empty ground.",
+        ["quaxly", "sprigatito", "lechonk"]),
     ("pokemon-ch4-l7-bar-model-word-problems", 4): (DIRT + ". At the far LEFT edge the "
         "blue-headed duckling QUAXLY stands proudly with a stick in one wing; at the far "
         "RIGHT edge the grass kitten SPRIGATITO and the red crocodile FUECOCO watch.",
@@ -161,21 +163,22 @@ SCENES = {
         "duckling QUAXLY stands with one wing raised as if explaining.",
         ["sprigatito", "quaxly"]),
 
-    ("pokemon-ch4-l9-two-step", 1): ("a hilltop berry orchard at warm golden hour under open sky; the flat ground "
-        "surface is wide, smooth, level, bare short grass, with a big plain leafy "
-        "fruit-free tree at the far right edge whose branches stay low and out of the "
-        "top third. At the far LEFT edge the blue-headed "
-        "duckling QUAXLY stands looking toward the middle and the tiny electric mouse "
-        "PAWMI sits low beside it; at the far RIGHT edge the red crocodile FUECOCO "
-        "steadies a short wooden ladder against the tree while the plump piglet LECHONK "
-        "dozes at its foot.",
-        ["quaxly", "pawmi", "fuecoco", "lechonk"]),
+    ("pokemon-ch4-l9-two-step", 1): ("a hilltop orchard at warm golden hour under open sky; the flat ground "
+        "surface is wide, smooth, level, bare short grass; plain leafy fruit-free trees "
+        "sit far behind and low, none reaching the top third. The blue-headed duckling "
+        "QUAXLY and the tiny electric mouse PAWMI are SMALL and tucked tight into the "
+        "bottom-LEFT corner; the plump piglet LECHONK dozes SMALL and tucked tight into "
+        "the bottom-RIGHT corner. Nothing and nobody else stands anywhere near the "
+        "edges; the whole width between the two corners is empty ground.",
+        ["quaxly", "pawmi", "lechonk"]),
     ("pokemon-ch4-l9-two-step", 4): (DIRT + ". At the far LEFT edge the red crocodile "
         "FUECOCO watches the middle; at the far RIGHT edge the grass kitten SPRIGATITO "
         "stands with both paws hidden behind its back, ears flat, looking away "
         "innocently and guiltily.",
         ["fuecoco", "sprigatito"]),
-    ("pokemon-ch4-l9-two-step", 5): (DIRT + ". At the far LEFT edge the tiny electric "
+    ("pokemon-ch4-l9-two-step", 5): (DIRT + "; the bare dirt is GENEROUS — it fills the "
+        "bottom HALF of the frame, its far edge no higher than halfway down, and the "
+        "trees are pushed back small above it. At the far LEFT edge the tiny electric "
         "mouse PAWMI bounces with happy sparks; at the far RIGHT edge the blue-headed "
         "duckling QUAXLY watches approvingly.",
         ["pawmi", "quaxly"]),
@@ -234,17 +237,29 @@ def render_layer(build, span):
 #: corners; pulled in to four-fifths it clears them and is still large.
 INSET = {"full": 0.80, "wide": 0.90, "normal": 1.0, "tall": 1.0}
 
+#: manga.css shows a full-span panel in a 16/6 box and the art is 21:9, so
+#: `object-fit: cover` hides the top and bottom 29px. The objects are anchored
+#: above that line so a bar model's bottom border is never the part that is
+#: cropped. (Wide panels lose 69px each side the same way; their inset leaves
+#: too little room to lift, and only basket shadows fall in the hidden band.)
+CSS_HIDDEN_BOTTOM = {"full": 29}
 
-def composite(scene_path, build, span):
+#: Per-panel overrides of INSET. Six baskets across a wide panel reach the
+#: corners even at nine-tenths, and land on whoever is standing there.
+INSET_OVERRIDE = {("pokemon-ch4-l7-bar-model-word-problems", 1): 0.78}
+
+
+def composite(scene_path, build, span, key=None):
     w, h = dg.SPAN_SIZE[span]
     scene = Image.open(scene_path).convert("RGB").resize((w, h), Image.LANCZOS)
     layer = render_layer(build, span)
-    factor = INSET.get(span, 1.0)
+    factor = INSET_OVERRIDE.get(key, INSET.get(span, 1.0))
     if factor < 1.0:
         lw, lh = round(w * factor), round(h * factor)
         layer = layer.resize((lw, lh), Image.LANCZOS)
-        # Anchored bottom-centre so the objects stay standing on the ground.
-        offset = ((w - lw) // 2, h - lh)
+        # Anchored bottom-centre so the objects stay standing on the ground,
+        # lifted clear of the band the page's CSS crops away.
+        offset = ((w - lw) // 2, h - lh - CSS_HIDDEN_BOTTOM.get(span, 0))
     else:
         offset = (0, 0)
     scene.paste(layer, offset, layer)
@@ -289,6 +304,9 @@ class Command(BaseCommand):
             return
         if not chosen:
             raise CommandError("Nothing selected.")
+        if options["recomposite"] and options["redraw_scene"]:
+            raise CommandError("--recomposite reuses cached scenes and "
+                               "--redraw-scene deletes them; pick one.")
         if not options["recomposite"] and not imagegen.is_configured():
             raise CommandError("REPLICATE_API_TOKEN is not set; use --recomposite "
                                "to rebuild from cached scenes only.")
@@ -306,7 +324,7 @@ class Command(BaseCommand):
                 self._paint_scene(slug, order, span, scene_path)
                 self._throttle(options["delay"])
             out = os.path.join(settings.BASE_DIR, "static", "manga", slug, f"p{order}.jpg")
-            composite(scene_path, build, span).save(
+            composite(scene_path, build, span, key=(slug, order)).save(
                 out, format="JPEG", quality=88, optimize=True, progressive=True)
             self.stdout.write(f"  L{lesson} p{order} -- {note}")
         self.stdout.write(self.style.SUCCESS(f"Illustrated {len(chosen)} panels."))

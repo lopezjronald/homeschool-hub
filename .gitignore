@@ -36,3 +36,6 @@ saxon_source/
 
 # Adversarial review transcripts — working notes, not part of the app.
 reviews*.tmp.md
+
+# scene cache for illustrate_ch4_diagrams (regenerable, costs money)
+_illustrate_cache/

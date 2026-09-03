@@ -277,6 +277,10 @@ class LevelUnlockTests(TestCase):
         states = scheduling.ensure_states(self.child, forms)
         for state in states.values():
             state.is_mastered = True
+            # Mastery costs three fluent answers, so a mastered form always has
+            # attempts behind it. The accuracy floor reads them.
+            state.total_attempts = 4
+            state.total_correct = 4
             state.save()
 
     def test_the_first_level_is_open_and_the_rest_are_not(self):
@@ -616,6 +620,8 @@ class PortalTileTests(TestCase):
         for state in scheduling.ensure_states(
                 self.mathy, scheduling._forms_for_level(ones)).values():
             state.is_mastered = True
+            state.total_attempts = 4
+            state.total_correct = 4
             state.save()
         html = self._home(self.mathy)
         self.assertIn("Fives", html)
@@ -1784,7 +1790,11 @@ class LevelGateTests(TestCase):
             done += 1 if is_mastered else 0
             StudentFactState.objects.create(
                 student=self.child, fact=fact, operation=operation,
-                is_mastered=is_mastered, total_attempts=3, total_correct=2,
+                is_mastered=is_mastered,
+                # A child at the gate is ACCURATE — Violet's real Level 1 is
+                # 0.946 right. 2-of-3 would be a guesser, and the accuracy
+                # floor exists to refuse exactly that.
+                total_attempts=20, total_correct=19,
                 consecutive_fluent=3 if is_mastered else 1,
                 leitner_box=4 if is_mastered else 2)
 
@@ -1818,6 +1828,8 @@ class LevelGateTests(TestCase):
         StudentFactState.objects.create(
             student=self.child, fact=fact, operation=Operation.DIV_A,
             total_attempts=1, total_correct=1)
+        # ...and she is accurate across the level, so only the never-asked
+        # form was ever in the way.
         self.assertTrue(scheduling.is_level_beaten(self.child, self.ones))
 
     def test_the_small_levels_no_longer_demand_perfection(self):
@@ -1834,6 +1846,23 @@ class LevelGateTests(TestCase):
         self.assertFalse(scheduling.is_level_beaten(self.child, sixes))
         self._set(nines, mastered=8)
         self.assertTrue(scheduling.is_level_beaten(self.child, nines))
+
+    def test_a_level_answered_like_a_guesser_is_not_beaten(self):
+        """Count gate satisfied, accuracy not. Measured on the real code with
+        the floor removed: a child answering 75% right with fast random taps
+        beat Level 1 in 12 runs out of 12, and a 60% one in 3 of 12. The
+        seating that helps a stuck child re-asks a guesser exactly what she has
+        not mastered until luck carries it."""
+        self._set(self.ones, mastered=25)
+        self.assertTrue(scheduling.is_level_beaten(self.child, self.ones))
+        StudentFactState.objects.filter(student=self.child).update(
+            total_attempts=20, total_correct=15)          # 0.75
+        self.assertFalse(scheduling.is_level_beaten(self.child, self.ones))
+        self.assertEqual(scheduling.portal_summary(self.child)["current"]["level"],
+                         self.ones, "the tile must refuse her too")
+        StudentFactState.objects.filter(student=self.child).update(
+            total_attempts=20, total_correct=18)          # 0.90
+        self.assertTrue(scheduling.is_level_beaten(self.child, self.ones))
 
     def test_the_tile_and_the_map_agree(self):
         """One helper, two readers. The stored Level.mastery_threshold is no
@@ -1952,11 +1981,47 @@ class ControlTests(TestCase):
             now += timedelta(minutes=3)
 
     def test_a_seeded_guesser_does_not_beat_the_ones_and_twos(self):
-        """60% right, fast. This is the reason the streak stays at three."""
-        self._play(40, right=0.6, ms=lambda r: r.randint(800, 2000))
+        """60% right, fast — over NINETY rounds and five seeds.
+
+        The forty-round single-seed version of this passed while the leak was
+        wide open. Seating the un-mastered forms first is as attentive to a
+        guesser as to a child who is stuck: it re-asks exactly what she has not
+        mastered until a run of lucky hits carries it. Simulated over 400 runs
+        she took Level 1 in 51% of them. Ninety rounds is the horizon that
+        makes the failure visible; the accuracy floor is what closes it.
+        """
+        for seed in range(5):
+            StudentFactState.objects.filter(student=self.child).delete()
+            GameSession.objects.filter(student=self.child).delete()
+            self._play(90, right=0.6, ms=lambda r: r.randint(800, 2000),
+                       seed=seed)
+            self.assertFalse(scheduling.is_level_beaten(self.child, self.ones),
+                             "a guesser beat Level 1 on seed %d" % seed)
+
+    def test_a_luckier_guesser_is_still_refused(self):
+        """75% right and fast is a child who half-knows it and is stabbing at
+        the rest. She is not fluent at this level and must not clear it."""
+        self._play(90, right=0.75, ms=lambda r: r.randint(800, 2000), seed=11)
         self.assertFalse(scheduling.is_level_beaten(self.child, self.ones))
-        mastered, _learning, total = scheduling.level_breakdown(self.child, self.ones)
-        self.assertLess(mastered, scheduling.forms_needed(total))
+
+    def test_the_floor_is_what_refuses_her_not_luck(self):
+        """Name the mechanism: with the count gate alone she gets there, and
+        the accuracy floor is the thing standing in the way. If this ever
+        fails because the count gate now refuses her on its own, the guard
+        above has stopped testing what it says it tests."""
+        self._play(90, right=0.6, ms=lambda r: r.randint(800, 2000), seed=0)
+        mastered, learning, total = scheduling.level_breakdown(self.child, self.ones)
+        correct, attempts = scheduling.level_accuracy(self.child, self.ones)
+        self.assertLess(correct / attempts, 0.85, "she was more accurate than a guesser")
+        self.assertFalse(scheduling.is_level_beaten(self.child, self.ones))
+
+    def test_the_floor_does_not_touch_a_child_who_is_simply_slow(self):
+        """Violet's real Level 1 accuracy is 0.946 and Kaylin's 0.95-1.00. A
+        child who is right and slow must sail past this."""
+        self._play(12, right=1.0, ms=lambda r: 9000, seed=3)
+        correct, attempts = scheduling.level_accuracy(self.child, self.ones)
+        self.assertEqual(correct, attempts)
+        self.assertTrue(scheduling._accuracy_met(self.child, self.ones))
 
     def test_a_seeded_skip_counter_does_not_beat_the_ones_and_twos(self):
         """97% right at 4.1-6s — Violet's own deriving speed. A 5s bar would
@@ -2090,20 +2155,47 @@ class RebuildBandTests(TestCase):
 
 
 class MapCopyTests(TestCase):
-    """The map explains the rule; it never shows a clock."""
+    """The map explains the rule, and never quotes the bar to the child."""
+
+    SECONDS = r"\b\d+(\.\d+)?\s*(s|sec|secs|second|seconds)\b"
+
+    def _map(self, child):
+        from portal.tokens import make_portal_token
+
+        return self.client.get(reverse(
+            "factfluency:home",
+            kwargs={"token": make_portal_token(child)})).content.decode()
 
     def test_the_map_explains_the_rule_without_a_number(self):
         import re
 
-        from portal.tokens import make_portal_token
-
         child = _make_child("copy", "Violet", "G03")
-        html = self.client.get(reverse(
-            "factfluency:home", kwargs={"token": make_portal_token(child)})).content.decode()
+        html = self._map(child)
         self.assertIn("three separate rounds", html)
         self.assertIn("all but a few", html)
-        seconds = re.compile(r"\b\d+(\.\d+)?\s*(s|sec|secs|second|seconds)\b", re.I)
-        self.assertIsNone(seconds.search(html), seconds.search(html))
+        self.assertIsNone(re.compile(self.SECONDS, re.I).search(html))
+
+    def test_her_own_best_time_is_the_one_number_allowed(self):
+        """The live page failed the blanket version of the guard above, and it
+        was the guard that was wrong: the record chip reads "1.0s a question"
+        and that is HERS. What must never appear is the BAR — a number to beat
+        is a countdown by another name — so the rule copy stays number-free
+        while the record stands."""
+        import re
+
+        child = _make_child("record", "Violet", "G03")
+        PersonalRecord.objects.create(
+            student=child, level=Level.objects.get(slug="ones-twos"),
+            record_type=RecordType.BEST_TIME, value=1040)
+        html = self._map(child)
+        found = re.findall(self.SECONDS, html)
+        self.assertTrue(found, "the record chip should be showing")
+        self.assertIn("1.0s a question", html)
+        # ...and the rule sentences beside it still quote no number at all.
+        rule = html.split('class="fd-rule"', 1)[1]
+        self.assertIsNone(re.compile(self.SECONDS, re.I).search(rule))
+        for band in ("3000", "4000", "5000", "3 seconds", "4 seconds"):
+            self.assertNotIn(band, html)
 
 
 class MasteryStreakPinTests(TestCase):

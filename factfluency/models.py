@@ -56,6 +56,24 @@ MASTERY_STREAK = 3
 # — it closed a level at 69% fluent.
 LEVEL_GATE_PCT = 80
 
+# ...and she must have been RIGHT most of the time while earning it. A level's
+# answers, taken together, have to be at least this accurate.
+#
+# This is the control that the leniency broke. Seating the un-mastered forms
+# first is right for a child who is stuck on four facts — but it is just as
+# attentive to a child who is guessing, re-asking exactly the forms she has not
+# mastered until a run of lucky hits masters them. Simulated over 400 runs, a
+# child answering at 60% with fast random taps beat Level 1 in 51% of runs
+# under the new seating (it was 2% under the old lottery seating, which is why
+# the first pass missed it). With this floor she beats it in 0% at 60%, 65%,
+# 70% and 75% accuracy.
+#
+# 0.85 and not 0.9: Violet's real Level 1 accuracy is 0.946 and Kaylin's 0.95
+# to 1.00, so this costs neither of them anything, and a child who is genuinely
+# learning is right far more often than she is fluent — the point of the whole
+# "getting there" band.
+LEVEL_ACCURACY_FLOOR = 0.85
+
 
 class Cluster(models.TextChoices):
     ONES_TWOS = "ones_twos", "Ones & Twos"

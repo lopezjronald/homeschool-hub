@@ -22,8 +22,8 @@ from datetime import timedelta
 
 from . import hints
 from .models import (
-    BOX_INTERVALS, LEVEL_GATE_PCT, MASTERY_STREAK, MAX_BOX,
-    Fact, Operation, StudentFactState,
+    BOX_INTERVALS, LEVEL_ACCURACY_FLOOR, LEVEL_GATE_PCT, MASTERY_STREAK,
+    MAX_BOX, Fact, Operation, StudentFactState,
 )
 from .policy import policy_for, threshold_for
 
@@ -262,6 +262,31 @@ def forms_needed(total):
     return total - forms_allowed_unmastered(total)
 
 
+def level_accuracy(student, level):
+    """How often she has been RIGHT across this level, as (correct, attempts).
+
+    Straight off the stored counters, so it replays exactly like everything
+    else here.
+    """
+    forms = _forms_for_level(level)
+    wanted = {(f.pk, o) for f, o in forms}
+    correct = attempts = 0
+    for state in StudentFactState.objects.filter(
+            student=student, fact__in={f for f, _ in forms}):
+        if (state.fact_id, state.operation) in wanted:
+            correct += state.total_correct
+            attempts += state.total_attempts
+    return correct, attempts
+
+
+def _accuracy_met(student, level):
+    """Has she been right often enough across the level to have earned it?"""
+    correct, attempts = level_accuracy(student, level)
+    if not attempts:
+        return False
+    return (correct / attempts) >= LEVEL_ACCURACY_FLOOR
+
+
 def _gate_met(mastered, learning, total):
     """The one rule both the map and the portal tile read.
 
@@ -287,7 +312,8 @@ def is_level_beaten(student, level):
     """
     if level.is_challenge:
         return False
-    return _gate_met(*level_breakdown(student, level))
+    return (_gate_met(*level_breakdown(student, level))
+            and _accuracy_met(student, level))
 
 
 def unlocked_levels(student, levels):
@@ -513,8 +539,13 @@ def portal_summary(student):
             total_done += done
             total_learning += coming
         # The SAME rule as is_level_beaten — the tile and the map used to
-        # carry two copies of the gate and could disagree.
-        beaten = not level.is_challenge and _gate_met(done, coming, len(forms))
+        # carry two copies of the gate and could disagree. The accuracy floor
+        # is only consulted when the count gate has already passed, so the
+        # extra query per level costs nothing on the levels she has not
+        # finished (which is all of them but a handful).
+        beaten = (not level.is_challenge
+                  and _gate_met(done, coming, len(forms))
+                  and _accuracy_met(student, level))
         if current is None and previous_beaten and not beaten:
             current = {"level": level, "done": done, "of": len(forms),
                        "learning": coming}

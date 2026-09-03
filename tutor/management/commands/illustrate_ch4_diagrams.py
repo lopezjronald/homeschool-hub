@@ -134,8 +134,9 @@ SCENES = {
         "blue-headed duckling QUAXLY stands proudly with a stick in one wing; at the far "
         "RIGHT edge the grass kitten SPRIGATITO and the red crocodile FUECOCO watch.",
         ["quaxly", "sprigatito", "fuecoco"]),
-    ("pokemon-ch4-l7-bar-model-word-problems", 5): ("a sunlit berry orchard under open sky, comic and affectionate; the flat ground "
-        "surface is wide, smooth, level, bare short grass. "
+    ("pokemon-ch4-l7-bar-model-word-problems", 5): ("a sunlit orchard under open sky, comic and affectionate; the flat ground "
+        "surface is wide, smooth, level, bare short grass; every tree and bush is plain "
+        "solid green leaf with NO dots, NO fruit and NO flowers on it. "
         "At the far LEFT edge the grass kitten SPRIGATITO is mid-pounce after a small "
         "fluttering butterfly, and two EMPTY woven baskets lie tumbled on their sides "
         "right at the left edge; at the far RIGHT edge the blue-headed duckling QUAXLY "
@@ -228,13 +229,25 @@ def render_layer(build, span):
     return layer.convert("RGBA")
 
 
+#: How much of the frame's width the objects may use, by span. A full-width
+#: panel's bar model runs edge to edge and lands on top of the cast in the
+#: corners; pulled in to four-fifths it clears them and is still large.
+INSET = {"full": 0.80, "wide": 0.90, "normal": 1.0, "tall": 1.0}
+
+
 def composite(scene_path, build, span):
     w, h = dg.SPAN_SIZE[span]
     scene = Image.open(scene_path).convert("RGB").resize((w, h), Image.LANCZOS)
     layer = render_layer(build, span)
-    # A touch of blur on the layer's shadows only would need a second pass;
-    # the alpha ellipse reads as a shadow already at this size.
-    scene.paste(layer, (0, 0), layer)
+    factor = INSET.get(span, 1.0)
+    if factor < 1.0:
+        lw, lh = round(w * factor), round(h * factor)
+        layer = layer.resize((lw, lh), Image.LANCZOS)
+        # Anchored bottom-centre so the objects stay standing on the ground.
+        offset = ((w - lw) // 2, h - lh)
+    else:
+        offset = (0, 0)
+    scene.paste(layer, offset, layer)
     return scene.filter(ImageFilter.SMOOTH)
 
 

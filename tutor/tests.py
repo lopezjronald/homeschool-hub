@@ -9432,6 +9432,105 @@ class MiddleStepReorderTests(TestCase):
             list(qset.questions.order_by("order").values_list("pk", flat=True)),
             pks, "a reseed must not shuffle identical prompts")
 
+    def test_replacing_a_question_does_not_put_her_answer_under_it(self):
+        """The review's finding, and the same corruption in a new guise: the
+        position fallback would claim the slot of a question she had ANSWERED
+        and overwrite its wording, so her answer sat under a question she never
+        read. A reword keeps the row; a replacement must not."""
+        from tutor import seed_sync
+
+        qset = self._qset(["A", "B", "Who is Rose Lee afraid of?"])
+        sheet = self._answer(qset, {"Who is Rose Lee afraid of?": "her father"})
+        answered = qset.questions.get(prompt="Who is Rose Lee afraid of?")
+
+        seed_sync.sync_questions(qset, [
+            ("recollect", p, "") for p in
+            ("A", "B", "What does Naima paint on the walls?")])
+
+        answered.refresh_from_db()
+        self.assertEqual(answered.prompt, "Who is Rose Lee afraid of?",
+                         "her question was overwritten under her answer")
+        sheet.refresh_from_db()
+        self.assertEqual(sheet.answers[str(answered.pk)], "her father")
+        # The new question exists too, on a row of its own.
+        self.assertTrue(qset.questions.filter(
+            prompt="What does Naima paint on the walls?").exists())
+
+    def test_a_reworded_answered_question_is_still_claimed(self):
+        """The other side of the same gate: a typo fix must NOT be treated as a
+        replacement, or every correction would orphan her answer."""
+        from tutor import seed_sync
+
+        qset = self._qset(["A", "B", "What is teh quarrel about?"])
+        before = qset.questions.get(prompt="What is teh quarrel about?")
+        self._answer(qset, {"What is teh quarrel about?": "the rent"})
+
+        seed_sync.sync_questions(qset, [
+            ("recollect", p, "") for p in
+            ("A", "B", "What is the quarrel about?")])
+
+        before.refresh_from_db()
+        self.assertEqual(before.prompt, "What is the quarrel about?")
+        self.assertEqual(qset.questions.count(), 3, "no orphan row was made")
+
+    def test_growing_the_guide_does_not_overwrite_a_kept_answer(self):
+        """Kept rows are compacted to just after the live ones — which is the
+        range a growing guide claims next. Adding a question must not land on
+        top of the row holding her answer to a removed one."""
+        from tutor import seed_sync
+
+        qset = self._qset(["A", "B", "C"])
+        sheet = self._answer(qset, {"C": "my answer to C"})
+        kept = qset.questions.get(prompt="C")
+
+        seed_sync.sync_questions(qset, [("recollect", p, "") for p in ("A", "B")])
+        kept.refresh_from_db()
+        self.assertEqual(kept.prompt, "C")
+
+        # The next release of the guide adds a third question.
+        seed_sync.sync_questions(
+            qset, [("recollect", p, "") for p in ("A", "B", "BRAND NEW")])
+
+        kept.refresh_from_db()
+        self.assertEqual(kept.prompt, "C",
+                         "the new question landed on her kept answer")
+        sheet.refresh_from_db()
+        self.assertEqual(sheet.answers[str(kept.pk)], "my answer to C")
+
+    def test_several_kept_rows_get_distinct_orders(self):
+        """(question_set, order) is unique, so renumbering two kept rows to the
+        same slot raises IntegrityError inside the seeder's atomic block and
+        aborts the whole run with nothing written."""
+        from tutor import seed_sync
+
+        qset = self._qset(["A", "B", "C", "D", "E"])
+        self._answer(qset, {"B": "mine", "D": "mine", "E": "mine"})
+
+        seed_sync.sync_questions(qset, [("recollect", p, "") for p in ("A", "C")])
+
+        orders = list(qset.questions.order_by("order")
+                      .values_list("order", flat=True))
+        self.assertEqual(len(orders), len(set(orders)), "two rows share an order")
+        self.assertEqual(orders, list(range(1, len(orders) + 1)))
+        self.assertEqual(qset.questions.count(), 5, "three kept + two live")
+
+    def test_a_blank_draft_answer_does_not_pin_a_removed_question(self):
+        """The portal autosaves drafts, so merely opening a page writes an
+        empty string for every question. If that counted as an answer, a child
+        who once glanced at a section would pin every question the guide later
+        removed, and they would sit on her page for good."""
+        from tutor.models import Question, ResponseSheet
+        from tutor import seed_sync
+
+        qset = self._qset(["A", "B", "C"])
+        blank = qset.questions.get(prompt="C")
+        ResponseSheet.objects.create(
+            question_set=qset, child=self.child,
+            answers={str(q.pk): "  " for q in qset.questions.all()})
+
+        seed_sync.sync_questions(qset, [("recollect", p, "") for p in ("A", "B")])
+        self.assertFalse(Question.objects.filter(pk=blank.pk).exists())
+
     def test_a_reseed_that_changes_nothing_changes_nothing(self):
         qset = self._qset(["A", "B", "C"])
         before = list(qset.questions.order_by("order")

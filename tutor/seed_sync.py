@@ -37,6 +37,27 @@ from django.db.models import F
 #: than any real question count by a wide margin.
 _PARK = 10000
 
+#: How alike two promptings must read before the position fallback will treat
+#: them as the same question REWORDED rather than a different question put in
+#: the same slot. Only consulted for a question she has actually answered —
+#: for an unanswered row it does not matter who claims it.
+SIMILAR_ENOUGH = 0.6
+
+
+def looks_reworded(before, after):
+    """Is `after` a corrected version of `before`, or a different question?
+
+    "teh quarrel" -> "the quarrel" is a typo fix and must keep its pk, so her
+    answer stays attached. "Who is Rose Lee afraid of?" -> "What does Naima
+    paint on the walls?" is a REPLACEMENT, and claiming that slot would leave
+    her answer sitting under a question she never read.
+    """
+    import difflib
+
+    if before == after:
+        return True
+    return difflib.SequenceMatcher(None, before, after).ratio() >= SIMILAR_ENOUGH
+
 
 def as_row(item):
     """Normalise a seeder's (category, prompt, hint[, extra]) tuple.
@@ -96,6 +117,10 @@ def sync_questions(qset, items):
         by_prompt.setdefault(question.prompt, []).append(question)
         by_order.setdefault(question.order, question)
 
+    # Needed BEFORE the claiming, not just for the prune: pass 2 must know
+    # which rows carry her work before it decides to overwrite one.
+    answered = answered_pks(qset)
+
     # Park them all above the range we are about to assign.
     qset.questions.update(order=F("order") + _PARK)
 
@@ -123,9 +148,20 @@ def sync_questions(qset, items):
         if index in claimed:
             continue
         question = by_order.get(index + 1)
-        if question is not None and question.pk not in taken:
-            claimed[index] = question
-            taken.add(question.pk)
+        if question is None or question.pk in taken:
+            continue
+        # ...but never over the top of her work. Claiming by position is a
+        # guess that the slot still means the same thing, and for a question
+        # she has ANSWERED a wrong guess is the very corruption this module
+        # exists to prevent: her answer would end up under wording she never
+        # read. When the new prompt is not recognisably the old one reworded,
+        # leave the row alone — the prune below keeps it, and the new wording
+        # gets a row of its own.
+        if question.pk in answered and not looks_reworded(question.prompt,
+                                                          row["prompt"]):
+            continue
+        claimed[index] = question
+        taken.add(question.pk)
 
     seen = []
     for index, row in enumerate(rows):
@@ -141,13 +177,17 @@ def sync_questions(qset, items):
         seen.append(question.pk)
 
     # Anything the module no longer declares goes — unless she answered it.
-    answered = answered_pks(qset)
     stale = qset.questions.exclude(pk__in=seen)
     kept = sorted(stale.filter(pk__in=answered).values_list("pk", flat=True))
     stale.exclude(pk__in=answered).delete()
 
     # Bring the kept ones back down, after the real questions, so nothing is
     # left sitting at 10000-something where the page would order it oddly.
+    #
+    # They land AFTER the live rows, which is also the range a growing guide
+    # claims next — so the position fallback above deliberately refuses to
+    # overwrite them. Without that refusal, adding a question to the guide
+    # would silently drop new wording onto the row holding her old answer.
     for offset, pk in enumerate(kept, start=1):
         Question.objects.filter(pk=pk).update(order=len(rows) + offset)
     return kept
